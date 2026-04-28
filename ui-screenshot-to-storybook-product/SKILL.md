@@ -1,79 +1,112 @@
 ---
 name: ui-screenshot-to-storybook-product
 description: >-
-  Turns an uploaded UI screenshot into a token-backed implementation plan: inventory
-  UI building blocks, extend Storybook first with the project's design tokens, then
-  compose product screens from documented components only. Use when the user attaches
-  a UI mockup, screenshot, or Figma export; asks to implement a screen from an image;
-  or wants to sync a visual design into Storybook and the app without one-off styles.
+  Turn an uploaded UI screenshot, mockup, or Figma export into a reusable,
+  token-backed implementation workflow: inventory UI building blocks, extend
+  Storybook or the project's component catalog first, then compose product screens
+  from documented components. Use when implementing UI from an image without
+  creating one-off styles or duplicating design-system markup.
 ---
 
 # UI Screenshot → Storybook → Product
 
-Use this workflow **together with** design-system governance (Token Gate, Composition Gate, `ref → sys → comp`). **Never** skip governance because a reference image exists.
+Use this workflow to turn a visual reference into production UI while preserving the target project's existing design system, component structure, and styling conventions.
 
-**Where to load governance from**
+This skill is project-agnostic. Before editing code, discover how the repository handles components, tokens, stories, routes, and documentation. Prefer Storybook when the project has it; otherwise use the closest equivalent component catalog, examples directory, design-system package, or documented shared component layer.
 
-- **Extracted design-spec zip from cm-ai-ui-explorer:** read [`./design-system-governance/SKILL.md`](./design-system-governance/SKILL.md) in that folder.
-- **Any other product repo:** use that repo’s governance doc, or the `design-system-governance` skill if installed for Cursor / Claude Code.
+## When to Use
 
-## When to use
+- The user provides one or more UI images: screenshot, mockup, production capture, Figma export, or design handoff image.
+- The user asks to implement a screen from an image.
+- The user wants UI work to land through reusable components instead of page-specific markup.
+- The project has, or should have, a component documentation surface such as Storybook, Ladle, Histoire, examples, docs pages, or a shared component library.
 
-- The user (or tool) provides **one or more UI images** (mockup, production screenshot, Figma PNG).
-- The goal is to land the UI in **Storybook as the source of truth**, then **compose the product app** from those exports.
+## Inputs to Collect
 
-## Inputs the agent must collect
+1. **Image(s):** full viewport or focused region; note platform, viewport size, density, and theme if visible.
+2. **Implementation target:** route, page file, component file, story file, or user-provided destination.
+3. **Project map:** framework, route structure, component directories, styling approach, token files, theme files, and component documentation setup.
+4. **Existing catalog:** Storybook stories, shared components, primitives, design-system package exports, examples, and docs that can be reused.
+5. **Design guidance:** project rules, README files, token docs, brand guidelines, accessibility standards, and component usage docs.
 
-1. **Image(s)** — full viewport or focused region; note platform (web/mobile) if ambiguous.
-2. **Project map** — where tokens live (`tokens.css`, `globals.css`, `extracted-design-tokens/design-tokens.json`, or cm-ui-library imports), where components live (`src/components`, `vendor/cm-ui-library`), Storybook config (`.storybook/`).
-3. **Existing catalog** — list Storybook titles or run a quick file search for `*.stories.*` so new work **reuses** before inventing.
+## Discovery
 
-## Phase 1 — Visual parsing (no code yet)
+Before planning implementation:
 
-From the image, produce a structured **UI inventory**:
+1. Find component documentation: `.storybook/`, `stories/`, `*.stories.*`, `*.mdx`, `ladle/`, `histoire.config.*`, `docs/`, `examples/`, or package exports.
+2. Find reusable components: common directories include `src/components/`, `components/`, `src/ui/`, `src/design-system/`, `packages/ui/`, `ui/`, and `lib/components/`.
+3. Find tokens and themes: CSS variables, Tailwind config, theme files, design token JSON, Sass variables, CSS modules, styled-system theme objects, or component library theme providers.
+4. Identify local conventions for naming, variants, slots, props, accessibility, responsive behavior, and test coverage.
+5. If the project has explicit design-system governance, follow it. If not, use the rules in this skill as the minimum governance contract.
+
+## Phase 1: Visual Parsing
+
+From the image, produce a structured UI inventory before editing code:
 
 | ID | Block | Type (atom / molecule / organism / template) | Visible states | Notes |
 |----|-------|---------------------------------------------|----------------|-------|
 
-- Call out **navigation**, **data display** (tables, charts, KPI cards), **forms**, **dialogs**, **lists**, **empty/loading/error** if visible or implied.
-- Mark **repeated patterns** (same card row, chip row, toolbar) once — they become **one** shared component.
-- Record **approximate hierarchy** (sections top → bottom) for later page composition.
+- Call out navigation, data display, forms, dialogs, cards, lists, tables, charts, empty/loading/error states, and responsive hints.
+- Mark repeated patterns once; repeated visual structures should become one reusable component or variant.
+- Record hierarchy from top to bottom and parent to child so the product screen can be composed cleanly later.
+- Note visual tokens implied by the image: surface, text, border, radius, spacing, typography, elevation, opacity, and motion if visible.
 
-## Phase 2 — Map to design system & tokens
+## Phase 2: Map to Components and Tokens
 
-1. **Match** each inventory row to an **existing** Storybook component or cm-ui-library primitive when possible.
-2. For gaps, run the **Token Gate**: list required **sys/comp** roles (surface, on-surface, outline, spacing, radius, motion). If missing, **stop** and ask to add tokens (see governance skill) — no hex/rgb literals in JSX/CSS.
-3. **Composition Gate**: if a block needs a child that does not exist, prefer **splitting** into smaller shared pieces over a monolithic screen component.
+For each inventory row:
 
-## Phase 3 — Storybook first (implementation order)
+1. Match it to an existing documented component, primitive, pattern, or story when possible.
+2. If there is no match, decide whether the missing piece should be a new reusable component, a new variant of an existing component, or a page-only layout wrapper.
+3. Map visual values to the project's tokens or theme primitives. Use existing token names and scales rather than inventing new ones.
+4. If required tokens are missing, ask before adding a new token unless the project already has a clear token-extension convention.
+5. Avoid hardcoded colors, spacing, radii, shadows, and animation values when a token, utility class, or theme value exists.
 
-**Design System Architect (role):** Before hand-writing many component stories, **research the project’s design tokens** (from `CLAUDE.md`, `extracted-design-tokens/design-tokens.json`, and global CSS) and add **Foundations** documentation **inside Storybook** — as **`.tsx` / `.jsx` guide components** (swatches, type scale, spacing table, etc.) with **CSF `.stories.tsx`** under a **Foundations** group (**do not** use **`.mdx`** for these guides). Cover at minimum **Color guide**, **Typography guide**, **Spacing & layout guide**, **Shape / radius guide**, and **Elevation** (if the system uses shadow levels). These pages are the **auditable contract** for designers and devs; **update them whenever tokens change**.
+## Phase 3: Component Catalog First
 
-For every **new or extended** shared block:
+Implement reusable UI before composing the final screen.
 
-1. Implement the component using **only** token-backed styles (`var(--…)` aligned with this project's contract).
-2. Add or update a **co-located** `.stories.tsx` (CSF3, `tags: ['autodocs']`, meaningful `argTypes`).
-3. Cover at minimum: **Default**, **variants**, **interactive states** (hover/focus/disabled as applicable), and **light/dark** if the product has both.
-4. **Verify** in `storybook dev` before importing the block into a route or page.
+If the project uses Storybook:
 
-**Rule:** Product routes **import from** the shared component layer / Storybook-documented modules — they do not re-implement the same markup and styles inline.
+1. Add or update co-located stories using the project's existing story format.
+2. Cover default, variants, interactive states, responsive behavior, and light/dark themes when applicable.
+3. Add or update foundations documentation only when the project already has that convention or the user asks for it.
+4. Verify in Storybook before importing the component into a product route when practical.
 
-## Phase 4 — Assemble the product screen
+If the project does not use Storybook:
 
-1. Create a **page-level** module (e.g. `src/pages/…` or `src/app/…`) that **only composes** documented components and layout primitives.
-2. Map layout to the screenshot **section by section**; use the same spacing/radius tokens as in stories.
-3. Wire **data** (props, hooks, loaders) **after** the visual shell matches the reference at the token level.
-4. Compare side-by-side with the **uploaded image** and `./reference/` screenshots from this pack if present.
+1. Use the project's equivalent documentation or example surface.
+2. If no catalog exists, create the smallest useful example, demo, or test fixture that matches local conventions.
+3. Do not introduce Storybook as a new dependency unless the user asks for it.
 
-## Quality checklist (before calling the screen "done")
+## Phase 4: Assemble the Product Screen
+
+1. Create or update the page-level module using documented shared components and layout primitives.
+2. Compose the screenshot section by section; avoid re-implementing shared component internals in the route.
+3. Wire real data, loaders, actions, and integration logic after the visual shell is stable.
+4. Preserve accessibility semantics: landmarks, labels, keyboard states, focus handling, contrast, and reduced-motion behavior.
+5. Compare the result against the original image and fix visible drift.
+
+## Quality Checklist
 
 - [ ] No hardcoded colors, spacing, radius, or animation durations outside the token system.
-- [ ] **Foundations** guides exist in Storybook (at least color, typography, spacing, shape/radius; elevation if applicable) and match live tokens.
-- [ ] Every new reusable block has a Storybook story reviewed in isolation.
-- [ ] Page file contains composition and data wiring — not a second copy of design-system markup.
-- [ ] Governance **Ask** prompts were used if a token or child component was missing.
+- [ ] Existing components and primitives were reused before adding new ones.
+- [ ] Every new reusable block has a story, example, fixture, or documented usage path.
+- [ ] Product pages compose shared components instead of duplicating design-system markup.
+- [ ] Variants, responsive states, loading/empty/error states, and interaction states are represented when relevant.
+- [ ] Accessibility requirements are preserved or improved.
+- [ ] The implementation was visually compared with the provided image.
 
-## Tooling notes (Cursor / Claude Code)
+## Validation
 
-- **Attach the image** in chat so the vision-capable model can read typography, density, and component boundaries.
-- If the repo includes `CLAUDE.md` from this generator, treat it as the **written spec**; the image is an additional or overriding **visual** reference — resolve conflicts explicitly (prefer token spec + governance).
+Choose the cheapest reliable checks for the project:
+
+- component catalog or Storybook preview;
+- browser screenshot comparison against the reference;
+- lint, typecheck, unit tests, or visual tests;
+- focused manual inspection for layout, responsive behavior, and accessibility.
+
+## Tooling Notes
+
+- Ask the user to attach the image or provide a file path when no image is available in context.
+- If written specs and the image disagree, call out the conflict and ask which source should win unless the project has a documented priority order.
+- Keep implementation changes narrow: build only the components and screen areas needed for the requested image.
