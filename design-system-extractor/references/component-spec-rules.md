@@ -21,6 +21,8 @@ Common first components:
 
 ## Required Component Spec Sections
 
+Store each extracted component spec at `design-system/components/<component-name>.md`, using lowercase hyphen-case filenames. Start from `design-system/COMPONENT_SPEC_TEMPLATE.md`.
+
 Each component spec must include:
 
 - Purpose

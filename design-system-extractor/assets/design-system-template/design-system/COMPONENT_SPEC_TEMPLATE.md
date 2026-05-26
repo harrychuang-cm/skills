@@ -1,6 +1,6 @@
 # Component Spec Template
 
-Copy this template for each extracted component.
+Copy this template to `design-system/components/<component-name>.md` for each extracted component.
 
 ## Purpose
 

@@ -15,7 +15,7 @@ Update this file at every checkpoint.
 - [ ] DESIGN_ELEMENTS.md
 - [ ] TOKEN_ARCHITECTURE.md
 - [ ] COMPONENT_INVENTORY.md
-- [ ] Component token specs
+- [ ] design-system/components/*.md component token specs
 - [ ] INTERACTION_STATES.md
 - [ ] PAGE_COMPOSITION_RULES.md
 - [ ] ANTI_AI_STYLE_RULES.md
@@ -38,6 +38,9 @@ Update this file at every checkpoint.
 ## Open Questions
 
 ## Verification
+
+- Token audit mode:
+- Token audit result:
 
 ## Generated Documentation
 

@@ -17,9 +17,10 @@ Act as a Design System Architect. Extract a reusable design-system package from 
 ## First Actions
 
 1. Locate or create a design-system package root.
-2. If the package has no structure yet, copy `assets/design-system-template/` into the target root.
-3. Read existing `AGENTS.md`, `CLAUDE.md`, `.cursorrules`, `.cursor/rules/*`, and prior `design-system/SESSION_STATE.md` when present.
-4. Inspect references before writing tokens. If a source project has screenshots and code, inspect both.
+2. Resolve this skill's folder as `<skill-root>`. Use `<skill-root>/assets/...` and `<skill-root>/scripts/...` when copying templates or running bundled scripts.
+3. If the package has no structure yet, copy `<skill-root>/assets/design-system-template/` into the target root.
+4. Read existing `AGENTS.md`, `CLAUDE.md`, `.cursorrules`, `.cursor/rules/*`, and prior `design-system/SESSION_STATE.md` when present.
+5. Inspect references before writing tokens. If a source project has screenshots and code, inspect both.
 
 ## Workflow
 
@@ -73,7 +74,7 @@ Inventory repeated patterns from the references. Mark each component as `extract
 
 Extract at least one high-value component when the user did not specify one, usually the primary action component. Extract additional repeated shell/navigation components when they are central to the reference.
 
-For each extracted component, create a component token spec using `design-system/COMPONENT_SPEC_TEMPLATE.md` and update `tokens/tokens-comp.css`.
+For each extracted component, create `design-system/components/<component-name>.md` from `design-system/COMPONENT_SPEC_TEMPLATE.md` and update `tokens/tokens-comp.css`. Use lowercase hyphen-case filenames, such as `primary-button.md` or `bottom-navigation.md`.
 
 Use `references/component-spec-rules.md` for anatomy, variants, state coverage, accessibility, and token naming.
 
@@ -94,7 +95,7 @@ The output must protect the observed product character. Do not add generic SaaS 
 Generate developer-facing static HTML docs after design-system Markdown and token files are updated:
 
 ```sh
-node skills/design-system-extractor/scripts/generate_docs_html.mjs <target-root>
+node <skill-root>/scripts/generate_docs_html.mjs <target-root>
 ```
 
 Default output:
@@ -107,7 +108,13 @@ Use `references/html-documentation.md` when changing the HTML documentation beha
 
 ### 9. Audit And Checkpoint
 
-Run `scripts/audit_tokens.mjs <target-root>` when token CSS files exist.
+Run the strict token audit after an extraction or component expansion:
+
+```sh
+node <skill-root>/scripts/audit_tokens.mjs <target-root> --strict
+```
+
+Use non-strict mode only for an empty starter package or early setup check.
 
 Update `design-system/SESSION_STATE.md` with:
 
@@ -135,13 +142,13 @@ Use this pass when the user chooses to expand component tokens after the initial
 
 1. Pick one or more `planned` components from `design-system/COMPONENT_INVENTORY.md`.
 2. Confirm the component has evidence in `design-system/DESIGN_EVIDENCE_MAP.md`.
-3. Create or update a component token spec from `design-system/COMPONENT_SPEC_TEMPLATE.md`.
+3. Create or update `design-system/components/<component-name>.md` from `design-system/COMPONENT_SPEC_TEMPLATE.md`.
 4. Add missing system tokens only when they are reusable product-wide semantics.
 5. Add component tokens in `tokens/tokens-comp.css`; component tokens must reference system tokens only.
 6. Update `COMPONENT_INVENTORY.md` status and missing states.
 7. Update related interaction and page composition rules.
 8. Regenerate `docs/design-system/index.html`.
-9. Run `scripts/audit_tokens.mjs <target-root>`.
+9. Run `node <skill-root>/scripts/audit_tokens.mjs <target-root> --strict`.
 10. Update `SESSION_STATE.md`, then stop and ask for the next step.
 
 ## Gates
@@ -176,5 +183,5 @@ If the user wants to use the extraction package with Claude Code, Cursor, or Cod
 - `references/agent-integration.md`: Claude Code, Cursor, and Codex handoff guidance.
 - `references/html-documentation.md`: static HTML documentation output rules.
 - `assets/design-system-template/`: starter output package.
-- `scripts/audit_tokens.mjs`: token layer audit.
-- `scripts/generate_docs_html.mjs`: generated developer-facing HTML docs.
+- `scripts/audit_tokens.mjs`: token layer audit; pass `--strict` after real extraction work.
+- `scripts/generate_docs_html.mjs`: generated developer-facing HTML docs, including `design-system/components/*.md`.

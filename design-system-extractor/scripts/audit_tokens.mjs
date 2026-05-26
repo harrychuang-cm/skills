@@ -3,7 +3,10 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 
-const targetRoot = path.resolve(process.argv[2] || process.cwd());
+const args = process.argv.slice(2);
+const strict = args.includes("--strict");
+const targetArg = args.find((arg) => !arg.startsWith("--"));
+const targetRoot = path.resolve(targetArg || process.cwd());
 const tokenDir = path.join(targetRoot, "tokens");
 
 const files = {
@@ -11,6 +14,7 @@ const files = {
   sys: path.join(tokenDir, "tokens-sys.css"),
   comp: path.join(tokenDir, "tokens-comp.css"),
 };
+const indexFile = path.join(tokenDir, "tokens.css");
 
 const componentWords = [
   "button",
@@ -27,7 +31,6 @@ const componentWords = [
   "toast",
   "chip",
   "avatar",
-  "row",
   "carousel",
   "tile",
   "sidebar",
@@ -56,6 +59,9 @@ const semanticWords = [
   "foreground",
   "inverse",
 ];
+
+const rawValuePattern =
+  /#[0-9a-fA-F]{3,8}\b|\b-?(?:\d+|\d*\.\d+)(?:px|rem|em|%|vh|vw|vmin|vmax|svh|lvh|dvh|ms|s|deg)(?=$|[\s,;)])|rgba?\(|hsla?\(/;
 
 function normalizeTokenName(name) {
   return name.replace(/^--/, "").toLowerCase();
@@ -123,11 +129,47 @@ for (const [layer, file] of Object.entries(files)) {
   }
 }
 
+const indexCss = await readOptional(indexFile);
+if (indexCss === null) {
+  warnings.push(`Missing ${path.relative(targetRoot, indexFile)}`);
+}
+
 const props = {
   ref: parseProps(css.ref || ""),
   sys: parseProps(css.sys || ""),
   comp: parseProps(css.comp || ""),
 };
+
+if (strict) {
+  for (const [layer, file] of Object.entries(files)) {
+    if (css[layer] === null) {
+      issues.push(`Strict mode requires ${path.relative(targetRoot, file)}`);
+    }
+  }
+  for (const [layer, tokens] of Object.entries(props)) {
+    if (tokens.size === 0) {
+      issues.push(`Strict mode requires at least one ${layer} token`);
+    }
+  }
+
+  if (indexCss === null) {
+    issues.push(`Strict mode requires ${path.relative(targetRoot, indexFile)}`);
+  } else {
+    const importOrder = ["tokens-ref.css", "tokens-sys.css", "tokens-comp.css"];
+    const cleanIndexCss = indexCss.replace(/\/\*[\s\S]*?\*\//g, "");
+    const positions = importOrder.map((file) => cleanIndexCss.indexOf(file));
+    for (const [index, file] of importOrder.entries()) {
+      if (positions[index] === -1) {
+        issues.push(`tokens.css is missing import for ${file}`);
+      }
+    }
+    const hasAllImports = positions.every((position) => position !== -1);
+    const isOrdered = positions.every((position, index) => index === 0 || position > positions[index - 1]);
+    if (hasAllImports && !isOrdered) {
+      issues.push("tokens.css imports must be ordered ref -> sys -> comp");
+    }
+  }
+}
 
 for (const [name] of props.ref) {
   for (const word of semanticWords) {
@@ -151,7 +193,7 @@ for (const [name, value] of props.sys) {
   if (/var\(--[A-Za-z0-9_-]*-comp-/.test(value)) {
     issues.push(`System token references component token: ${name}: ${value}`);
   }
-  if (!/var\(--[A-Za-z0-9_-]*-ref-/.test(value) && /#[0-9a-fA-F]{3,8}\b|\b\d+px\b|rgba?\(|hsla?\(/.test(value)) {
+  if (!/var\(--[A-Za-z0-9_-]*-ref-/.test(value) && rawValuePattern.test(value)) {
     issues.push(`System token appears to use a raw value instead of a reference token: ${name}: ${value}`);
   }
 }
@@ -163,7 +205,7 @@ for (const [name, value] of props.comp) {
   if (/var\(--[A-Za-z0-9_-]*-comp-/.test(value)) {
     issues.push(`Component token references another component token: ${name}: ${value}`);
   }
-  if (!/var\(--[A-Za-z0-9_-]*-sys-/.test(value) && /#[0-9a-fA-F]{3,8}\b|\b\d+px\b|rgba?\(|hsla?\(/.test(value)) {
+  if (!/var\(--[A-Za-z0-9_-]*-sys-/.test(value) && rawValuePattern.test(value)) {
     issues.push(`Component token appears to use a raw value instead of a system token: ${name}: ${value}`);
   }
 }
@@ -184,6 +226,7 @@ console.log(`Token audit target: ${relRoot}`);
 console.log(`Reference tokens: ${props.ref.size}`);
 console.log(`System tokens: ${props.sys.size}`);
 console.log(`Component tokens: ${props.comp.size}`);
+console.log(`Strict mode: ${strict ? "on" : "off"}`);
 
 if (warnings.length) {
   console.log("\nWarnings:");

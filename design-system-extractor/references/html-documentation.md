@@ -33,6 +33,7 @@ The HTML documentation should include:
 - overview and generation timestamp
 - navigation for design-system documents
 - rendered Markdown from `design-system/`
+- rendered component specs from `design-system/components/*.md`
 - missing-document notices
 - token tables for reference, system, and component layers
 - resolved token values when possible
@@ -52,6 +53,6 @@ The HTML documentation should include:
 After generation:
 
 1. Confirm the HTML file exists.
-2. Re-run token audit.
+2. Re-run token audit with `--strict` after real extraction work.
 3. Open or inspect the generated file if a browser is available.
 4. Record the generated path in `design-system/SESSION_STATE.md`.

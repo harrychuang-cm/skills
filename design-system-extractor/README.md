@@ -83,10 +83,10 @@ For CSS custom properties, the default prefixes are:
 4. Define design elements: color, type, spacing, density, shape, elevation, iconography, imagery.
 5. Define token architecture and fill `tokens/`.
 6. Build `COMPONENT_INVENTORY.md` from repeated UI patterns.
-7. Extract initial component token specs, usually a primary action and core navigation/shell component.
+7. Extract initial component token specs under `design-system/components/`, usually a primary action and core navigation/shell component.
 8. Document page composition, interaction states, and anti-AI style rules.
 9. Generate developer-facing HTML documentation.
-10. Run the token audit.
+10. Run strict token audit.
 11. Update `SESSION_STATE.md`, stop, and ask the user for the next step.
 
 ## Component Expansion Pass
@@ -96,24 +96,24 @@ After the initial checkpoint, use the same skill to expand component tokens from
 Recommended prompt:
 
 ```txt
-Use $design-system-extractor to run a component expansion pass for <component-name>. Start from COMPONENT_INVENTORY.md, write the component token spec, add missing sys/comp tokens with strict ref -> sys -> comp inheritance, regenerate docs/design-system/index.html, run token audit, update SESSION_STATE.md, then stop.
+Use $design-system-extractor to run a component expansion pass for <component-name>. Start from COMPONENT_INVENTORY.md, write the component token spec under design-system/components/, add missing sys/comp tokens with strict ref -> sys -> comp inheritance, regenerate docs/design-system/index.html, run strict token audit, update SESSION_STATE.md, then stop.
 ```
 
 Expansion workflow:
 
 1. Pick one or more `planned` components from `COMPONENT_INVENTORY.md`.
 2. Confirm source evidence in `DESIGN_EVIDENCE_MAP.md`.
-3. Create or update the component spec from `COMPONENT_SPEC_TEMPLATE.md`.
+3. Create or update the component spec in `design-system/components/<component-name>.md` from `COMPONENT_SPEC_TEMPLATE.md`.
 4. Add only reusable product-wide system tokens.
 5. Add component slots to `tokens/tokens-comp.css`.
 6. Update inventory, interaction states, and page composition rules.
 7. Regenerate HTML docs.
-8. Run token audit.
+8. Run strict token audit.
 9. Update session state and stop.
 
 ## HTML Documentation
 
-Generate a static documentation page from `design-system/` Markdown files and `tokens/` CSS files:
+Generate a static documentation page from `design-system/` Markdown files, `design-system/components/*.md`, and `tokens/` CSS files:
 
 ```sh
 node skills/design-system-extractor/scripts/generate_docs_html.mjs .
@@ -134,6 +134,7 @@ node skills/design-system-extractor/scripts/generate_docs_html.mjs . public/desi
 The generated HTML includes:
 
 - rendered design-system Markdown
+- rendered component specs
 - sidebar navigation
 - missing-document notices
 - reference, system, and component token tables
@@ -144,16 +145,16 @@ Use this HTML file as the developer-friendly reading layer. The Markdown files a
 
 ## Token Audit
 
-Run the audit from the project root:
+Run the strict audit from the project root after real extraction work:
 
 ```sh
-node skills/design-system-extractor/scripts/audit_tokens.mjs .
+node skills/design-system-extractor/scripts/audit_tokens.mjs . --strict
 ```
 
-Or run it against another target package:
+Use non-strict mode only for an empty starter package or early setup check. Run strict mode against another target package like this:
 
 ```sh
-node path/to/design-system-extractor/scripts/audit_tokens.mjs /path/to/design-system-package
+node path/to/design-system-extractor/scripts/audit_tokens.mjs /path/to/design-system-package --strict
 ```
 
 The audit checks for:
@@ -162,6 +163,8 @@ The audit checks for:
 - system token names that include component vocabulary
 - reference token names that include semantic roles
 - raw values in system/component layers
+- missing token files or empty token layers in strict mode
+- `tokens.css` import order in strict mode
 - background-like system colors missing `on-*` foreground pairs
 
 ## Cross-Agent Use
@@ -204,7 +207,7 @@ Use `skills/design-system-extractor/SKILL.md` when extracting a design system fr
 Start with `design-system/SESSION_STATE.md` when it exists.
 Use `design-system/` and `tokens/` as source of truth before product UI code.
 Maintain token inheritance: ref -> sys -> comp.
-Run `node skills/design-system-extractor/scripts/audit_tokens.mjs .` after token changes.
+Run `node skills/design-system-extractor/scripts/audit_tokens.mjs . --strict` after token changes.
 Run `node skills/design-system-extractor/scripts/generate_docs_html.mjs .` after design-system documentation or token changes.
 Apply `design-system/ANTI_AI_STYLE_RULES.md` before UI recommendations.
 Stop at the checkpoint and ask before product implementation.
@@ -213,13 +216,13 @@ Stop at the checkpoint and ask before product implementation.
 Recommended Claude Code prompt:
 
 ```txt
-Use skills/design-system-extractor/SKILL.md to extract a reusable design-system package from the screenshots in design-reference/. Fill design-system/ and tokens/, generate docs/design-system/index.html, run the token audit, update SESSION_STATE.md, then stop and ask for the next step.
+Use skills/design-system-extractor/SKILL.md to extract a reusable design-system package from the screenshots in design-reference/. Fill design-system/ and tokens/, generate docs/design-system/index.html, run strict token audit, update SESSION_STATE.md, then stop and ask for the next step.
 ```
 
 For a Figma input:
 
 ```txt
-Use skills/design-system-extractor/SKILL.md to extract design-system docs and tokens from this Figma URL: <figma-url>. Treat Figma data as evidence, create an evidence map, generate docs/design-system/index.html, run token audit, and stop at the checkpoint.
+Use skills/design-system-extractor/SKILL.md to extract design-system docs and tokens from this Figma URL: <figma-url>. Treat Figma data as evidence, create an evidence map, generate docs/design-system/index.html, run strict token audit, and stop at the checkpoint.
 ```
 
 ### Cursor
@@ -254,7 +257,7 @@ Maintain token inheritance: ref -> sys -> comp.
 Component tokens may reference only system tokens.
 Do not hardcode color, spacing, radius, typography, opacity, shadow, or motion values when tokens exist.
 Apply `design-system/ANTI_AI_STYLE_RULES.md` before UI generation.
-Run `node skills/design-system-extractor/scripts/audit_tokens.mjs .` after token changes.
+Run `node skills/design-system-extractor/scripts/audit_tokens.mjs . --strict` after token changes.
 Run `node skills/design-system-extractor/scripts/generate_docs_html.mjs .` after design-system documentation or token changes.
 Stop and ask before moving from extraction into product implementation.
 ```
@@ -262,7 +265,7 @@ Stop and ask before moving from extraction into product implementation.
 Recommended Cursor prompt:
 
 ```txt
-Follow .cursor/rules/design-system.mdc and use skills/design-system-extractor/SKILL.md. Extract a reusable design-system package from design-reference/, update design-system/ and tokens/, generate docs/design-system/index.html, run the token audit, then update SESSION_STATE.md.
+Follow .cursor/rules/design-system.mdc and use skills/design-system-extractor/SKILL.md. Extract a reusable design-system package from design-reference/, update design-system/ and tokens/, generate docs/design-system/index.html, run strict token audit, then update SESSION_STATE.md.
 ```
 
 When starting from an existing project:
@@ -297,7 +300,7 @@ Start with `design-system/SESSION_STATE.md`.
 Keep token inheritance strict: ref -> sys -> comp.
 Fill or update design-system docs and tokens before product UI code.
 Apply `design-system/ANTI_AI_STYLE_RULES.md` before interface work.
-Run `node skills/design-system-extractor/scripts/audit_tokens.mjs .` after token changes.
+Run `node skills/design-system-extractor/scripts/audit_tokens.mjs . --strict` after token changes.
 Run `node skills/design-system-extractor/scripts/generate_docs_html.mjs .` after design-system documentation or token changes.
 Update `design-system/SESSION_STATE.md` and ask for the next step before continuing.
 ```
@@ -305,7 +308,7 @@ Update `design-system/SESSION_STATE.md` and ask for the next step before continu
 Recommended Codex prompt:
 
 ```txt
-Use $design-system-extractor to extract a reusable design-system package from design-reference/. Fill design-system/ and tokens/, generate docs/design-system/index.html, run the token audit, update SESSION_STATE.md, then stop before product implementation.
+Use $design-system-extractor to extract a reusable design-system package from design-reference/. Fill design-system/ and tokens/, generate docs/design-system/index.html, run strict token audit, update SESSION_STATE.md, then stop before product implementation.
 ```
 
 If the skill is only project-local and not installed globally:

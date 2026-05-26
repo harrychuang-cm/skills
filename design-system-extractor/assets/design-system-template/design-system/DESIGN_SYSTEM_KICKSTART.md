@@ -15,10 +15,10 @@ List screenshots, Figma URLs/nodes, rendered routes, project folders, and protot
 3. Fill `DESIGN_ELEMENTS.md`.
 4. Fill `TOKEN_ARCHITECTURE.md` and `tokens/`.
 5. Fill `COMPONENT_INVENTORY.md`.
-6. Extract at least one primary component token spec.
+6. Extract at least one primary component token spec into `design-system/components/`.
 7. Fill `PAGE_COMPOSITION_RULES.md`, `INTERACTION_STATES.md`, and `ANTI_AI_STYLE_RULES.md`.
 8. Generate `docs/design-system/index.html`.
-9. Run token audit.
+9. Run strict token audit.
 10. Update `SESSION_STATE.md`.
 11. Stop and ask the user what to do next.
 

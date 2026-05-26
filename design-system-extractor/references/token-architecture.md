@@ -87,7 +87,7 @@ At minimum, extract:
 - color: background, surface, surface variants, primary, secondary, success, warning, error, outline, disabled
 - foreground pairs: `on-*` for every background-like color
 - typography: display, headline, title, body, label, metadata, numeric
-- spacing: page gutters, section gaps, row gaps, inline gaps, inset spacing
+- spacing: page gutters, section gaps, stack gaps, inline gaps, inset spacing
 - shape: none, xs, sm, md, lg, full
 - size: icon, avatar, touch target, control heights, region heights
 - state: hover, pressed, focus, selected, disabled opacities
@@ -98,5 +98,6 @@ At minimum, extract:
 - `comp` tokens must not reference `ref` tokens directly.
 - `sys` names must not include component names.
 - `ref` names must not include semantic role names.
+- Run strict audit mode after extraction; empty starter templates may use non-strict mode.
 - Background-like system colors need matching `on-*` foreground tokens.
 - Component docs and component CSS tokens should stay in sync.

@@ -9,6 +9,7 @@ const outputPath = path.resolve(
 );
 
 const designSystemDir = path.join(targetRoot, "design-system");
+const componentDocsDir = path.join(designSystemDir, "components");
 const tokensDir = path.join(targetRoot, "tokens");
 
 const coreDocumentFiles = [
@@ -491,10 +492,17 @@ const docs = [];
 const missingDocs = [];
 const coreFileNames = new Set(coreDocumentFiles.map(([_label, file]) => file));
 const allMarkdownFiles = await listMarkdownDocs(designSystemDir);
+const componentMarkdownFiles = await listMarkdownDocs(componentDocsDir);
 const extraDocumentFiles = allMarkdownFiles
   .filter((file) => !coreFileNames.has(file))
   .map((file) => [file.replace(/\.md$/, "").replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase()), file]);
-const documentFiles = [...coreDocumentFiles, ...extraDocumentFiles];
+const componentDocumentFiles = componentMarkdownFiles.map((file) => {
+  const label = file
+    .replace(/\.md$/, "")
+    .replace(/[-_]/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+  return [`Component: ${label}`, path.join("components", file)];
+});
 
 for (const [label, file] of coreDocumentFiles) {
   const fullPath = path.join(designSystemDir, file);
@@ -506,7 +514,7 @@ for (const [label, file] of coreDocumentFiles) {
   }
 }
 
-for (const [label, file] of extraDocumentFiles) {
+for (const [label, file] of [...extraDocumentFiles, ...componentDocumentFiles]) {
   const fullPath = path.join(designSystemDir, file);
   const content = await readOptional(fullPath);
   if (content !== null) docs.push({ label, file, content });
