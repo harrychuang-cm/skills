@@ -55,6 +55,9 @@ const uiCopy = {
     summaryAriaLabel: "文件摘要",
     statDocuments: "設計系統文件",
     statTokens: "Token 總數",
+    statTokenRef: "Reference tokens",
+    statTokenSys: "System tokens",
+    statTokenComp: "Component tokens",
     statMissing: "缺少預期文件",
     tokenRef: "Reference Tokens",
     tokenSys: "System Tokens",
@@ -97,6 +100,9 @@ const uiCopy = {
     summaryAriaLabel: "Documentation summary",
     statDocuments: "Design-system documents",
     statTokens: "Total tokens",
+    statTokenRef: "Reference tokens",
+    statTokenSys: "System tokens",
+    statTokenComp: "Component tokens",
     statMissing: "Missing expected docs",
     tokenRef: "Reference Tokens",
     tokenSys: "System Tokens",
@@ -140,6 +146,9 @@ const uiCopy = {
     summaryAriaLabel: "ドキュメント概要",
     statDocuments: "デザインシステムドキュメント",
     statTokens: "Token 総数",
+    statTokenRef: "Reference tokens",
+    statTokenSys: "System tokens",
+    statTokenComp: "Component tokens",
     statMissing: "不足している想定ドキュメント",
     tokenRef: "Reference Tokens",
     tokenSys: "System Tokens",
@@ -559,17 +568,17 @@ function pageCss() {
     }
     .grid {
       display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
       gap: 0;
       border-bottom: 1px solid var(--doc-border);
       margin-bottom: 8px;
     }
     .stat {
-      padding: 14px 18px 16px 0;
+      padding: 14px 18px 16px;
       border-right: 1px solid var(--doc-border);
     }
-    .stat:last-child { border-right: 0; padding-left: 18px; }
-    .stat + .stat { padding-left: 18px; }
+    .stat:first-child { padding-left: 0; }
+    .stat:last-child { border-right: 0; }
     .stat strong {
       display: block;
       font-size: 24px;
@@ -745,6 +754,12 @@ for (const [label, file, layer] of tokenFiles) {
 }
 
 const totalTokens = [...tokensByLayer.values()].reduce((sum, entry) => sum + entry.tokens.length, 0);
+const tokenCounts = Object.fromEntries(
+  tokenFiles.map(([_i18nKey, _file, layer]) => [
+    layer,
+    tokensByLayer.get(layer)?.tokens.length || 0,
+  ]),
+);
 const generatedAt = new Date().toISOString();
 
 function navLink(doc) {
@@ -891,6 +906,9 @@ const html = `<!doctype html>
       <section class="grid" aria-label="${escapeAttr(t(DEFAULT_LOCALE, "summaryAriaLabel"))}">
         <div class="stat"><strong>${docs.length}</strong><span data-i18n="statDocuments">${escapeHtml(t(DEFAULT_LOCALE, "statDocuments"))}</span></div>
         <div class="stat"><strong>${totalTokens}</strong><span data-i18n="statTokens">${escapeHtml(t(DEFAULT_LOCALE, "statTokens"))}</span></div>
+        <div class="stat"><strong>${tokenCounts.ref}</strong><span data-i18n="statTokenRef">${escapeHtml(t(DEFAULT_LOCALE, "statTokenRef"))}</span></div>
+        <div class="stat"><strong>${tokenCounts.sys}</strong><span data-i18n="statTokenSys">${escapeHtml(t(DEFAULT_LOCALE, "statTokenSys"))}</span></div>
+        <div class="stat"><strong>${tokenCounts.comp}</strong><span data-i18n="statTokenComp">${escapeHtml(t(DEFAULT_LOCALE, "statTokenComp"))}</span></div>
         <div class="stat"><strong>${missingDocs.length}</strong><span data-i18n="statMissing">${escapeHtml(t(DEFAULT_LOCALE, "statMissing"))}</span></div>
       </section>
 
@@ -926,6 +944,9 @@ try {
 console.log(`Generated ${path.relative(process.cwd(), outputPath) || outputPath}`);
 console.log(`Documents: ${docs.length}`);
 console.log(`Tokens: ${totalTokens}`);
+console.log(`Reference tokens: ${tokenCounts.ref}`);
+console.log(`System tokens: ${tokenCounts.sys}`);
+console.log(`Component tokens: ${tokenCounts.comp}`);
 console.log(`Assets copied: ${copiedAssets ? "yes" : "no"}`);
 if (missingDocs.length) {
   console.log(`Missing documents: ${missingDocs.join(", ")}`);
