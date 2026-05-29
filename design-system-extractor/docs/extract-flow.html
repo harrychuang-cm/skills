@@ -9,20 +9,25 @@
         color-scheme: light;
         --bg: #ffffff;
         --surface: #ffffff;
-        --surface-alt: #ececec;
+        --surface-alt: #f7f7fb;
         --ink: #1f2328;
         --muted: #62666d;
-        --line: #d8d8d2;
-        --line-strong: #a8aaa8;
-        --accent: #34383f;
-        --accent-soft: #ebeceb;
+        --line: #deddf0;
+        --line-strong: #9a97b7;
+        --accent: #4f46e5;
+        --accent-strong: #312e81;
+        --accent-soft: #eef2ff;
+        --review: #6d28d9;
+        --review-soft: #f5f3ff;
         --code: #272b30;
-        --rail: #c7c8c5;
-        --radius: 24px;
-        --radius-sm: 18px;
-        --shadow: 0 26px 80px rgba(31, 35, 40, 0.1);
-        --shadow-soft: 0 18px 56px rgba(31, 35, 40, 0.08);
-        --shadow-control: 0 10px 30px rgba(31, 35, 40, 0.1);
+        --rail: #cbc9df;
+        --flow-map-width: 260px;
+        --flow-map-gap: 40px;
+        --radius: 10px;
+        --radius-sm: 8px;
+        --shadow: 0 18px 48px rgba(31, 35, 40, 0.08);
+        --shadow-soft: 0 10px 30px rgba(31, 35, 40, 0.06);
+        --shadow-control: 0 8px 22px rgba(31, 35, 40, 0.08);
       }
 
       * {
@@ -69,10 +74,14 @@
 
       .hero {
         display: grid;
-        grid-template-columns: minmax(0, 1fr) minmax(300px, 420px);
-        gap: 44px;
-        align-items: end;
-        padding: 64px 0 36px;
+        grid-template-columns: minmax(0, 720px);
+        gap: 24px;
+        align-items: start;
+        padding: 64px 0 46px;
+      }
+
+      .hero-copy {
+        max-width: 720px;
       }
 
       .eyebrow {
@@ -90,6 +99,7 @@
       h4 {
         margin: 0;
         line-height: 1.2;
+        overflow-wrap: anywhere;
       }
 
       h1 {
@@ -103,68 +113,159 @@
         margin: 18px 0 0;
         color: var(--muted);
         font-size: 1.08rem;
+        overflow-wrap: anywhere;
+      }
+
+      .hero-copy,
+      .hero-map,
+      .summary-card,
+      .stage-board,
+      .stage-card,
+      .language-section,
+      .flow li > div,
+      .why-item,
+      .output-item,
+      .principle-item {
+        min-width: 0;
       }
 
       .hero-map {
+        position: fixed;
+        top: 20px;
+        right: max(20px, calc((100vw - 1120px) / 2));
+        z-index: 20;
+        width: min(var(--flow-map-width), calc(100vw - 32px));
+        max-height: calc(100vh - 40px);
+        overflow: auto;
         border-radius: var(--radius);
-        background: rgba(255, 255, 255, 0.78);
-        box-shadow: var(--shadow);
-        padding: 18px;
+        border: 1px solid var(--line);
+        background: #fff;
+        padding: 12px;
+        box-shadow: none;
+      }
+
+      .hero-map-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 8px;
       }
 
       .hero-map-title {
-        margin: 0 0 12px;
+        margin: 0;
         color: var(--muted);
-        font-size: 0.78rem;
+        font-size: 0.68rem;
         font-weight: 800;
         letter-spacing: 0.08em;
         text-transform: uppercase;
       }
 
+      .flow-status {
+        border-radius: 999px;
+        background: var(--accent-soft);
+        padding: 2px 8px;
+        color: var(--accent-strong);
+        font-size: 0.72rem;
+        font-weight: 850;
+      }
+
+      .flow-progress {
+        height: 5px;
+        overflow: hidden;
+        border-radius: 999px;
+        background: var(--surface-alt);
+        margin-bottom: 10px;
+      }
+
+      .flow-progress span {
+        display: block;
+        width: 100%;
+        height: 100%;
+        border-radius: inherit;
+        background: var(--accent);
+        transform: scaleX(0.2);
+        transform-origin: left center;
+        transition: transform 360ms cubic-bezier(0.2, 0, 0, 1);
+      }
+
       .flow-mini {
         display: grid;
-        gap: 10px;
+        gap: 6px;
       }
 
       .flow-mini-item {
+        appearance: none;
         display: grid;
-        grid-template-columns: 32px minmax(0, 1fr);
-        gap: 10px;
+        grid-template-columns: 24px minmax(0, 1fr);
+        gap: 8px;
         align-items: center;
         position: relative;
+        width: 100%;
+        border: 1px solid transparent;
+        border-radius: var(--radius-sm);
+        background: transparent;
+        padding: 6px;
+        color: var(--code);
+        font: inherit;
+        text-align: left;
+        cursor: pointer;
+        transition:
+          border-color 220ms ease,
+          background 220ms ease,
+          transform 220ms ease;
       }
 
       .flow-mini-item:not(:last-child)::after {
         position: absolute;
-        left: 15px;
-        top: 34px;
+        left: 17px;
+        top: 33px;
         width: 1px;
-        height: 16px;
-        background: rgba(0, 0, 0, 0.1);
+        height: 6px;
+        background: var(--line);
         content: "";
+      }
+
+      .flow-mini-item:hover,
+      .flow-mini-item:focus-visible {
+        background: var(--surface-alt);
+      }
+
+      .flow-mini-item:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+      }
+
+      .flow-mini-item.is-active {
+        border-color: var(--accent);
+        background: var(--accent-soft);
+        transform: translateX(4px);
       }
 
       .flow-mini-number {
         display: grid;
         place-items: center;
-        width: 32px;
-        height: 32px;
+        width: 24px;
+        height: 24px;
         border-radius: 999px;
-        background: #000;
+        background: #2d3238;
         color: #fff;
-        font-size: 0.82rem;
+        font-size: 0.72rem;
         font-weight: 900;
-        box-shadow: var(--shadow-control);
+        transition:
+          background 220ms ease,
+          transform 220ms ease;
+      }
+
+      .flow-mini-item.is-active .flow-mini-number {
+        background: var(--accent);
+        transform: scale(1.04);
       }
 
       .flow-mini-label {
-        border-radius: var(--radius-sm);
-        background: #fff;
-        padding: 8px 10px;
         color: var(--code);
-        font-size: 0.9rem;
+        font-size: 0.82rem;
         font-weight: 750;
-        box-shadow: var(--shadow-control);
       }
 
       .language-nav {
@@ -179,8 +280,8 @@
         align-items: center;
         appearance: none;
         min-height: 38px;
-        border: 0;
-        border-radius: var(--radius);
+        border: 1px solid var(--line);
+        border-radius: 999px;
         background: var(--surface);
         padding: 8px 14px;
         color: var(--code);
@@ -188,18 +289,22 @@
         font-weight: 700;
         text-decoration: none;
         cursor: pointer;
-        box-shadow: var(--shadow-control);
+        transition:
+          border-color 180ms ease,
+          background 180ms ease,
+          color 180ms ease;
       }
 
       .language-nav button:hover,
       .language-nav button:focus-visible {
         background: var(--accent-soft);
+        border-color: var(--accent);
       }
 
       .language-nav button[aria-selected="true"] {
-        background: #000;
+        border-color: var(--accent-strong);
+        background: var(--accent-strong);
         color: #fff;
-        box-shadow: 0 14px 36px rgba(31, 35, 40, 0.14);
       }
 
       main {
@@ -219,8 +324,9 @@
 
       .panel {
         border-radius: var(--radius);
+        border: 1px solid var(--line);
         background: var(--surface);
-        box-shadow: var(--shadow);
+        box-shadow: none;
       }
 
       .summary-card {
@@ -236,20 +342,106 @@
       .summary-card ul {
         margin: 0;
         color: var(--muted);
+        overflow-wrap: anywhere;
       }
 
       .summary-card ul {
         padding-left: 18px;
       }
 
+      .stage-board {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 16px;
+        align-items: stretch;
+        margin: 0 0 34px;
+        border-radius: var(--radius);
+        background: transparent;
+        padding: 0;
+        box-shadow: none;
+      }
+
+      .stage-head {
+        display: grid;
+        grid-template-columns: minmax(0, 0.8fr) minmax(260px, 0.65fr);
+        align-items: end;
+        gap: 18px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius-sm);
+        background: var(--surface-alt);
+        padding: 18px;
+      }
+
+      .stage-head h2 {
+        font-size: clamp(1.35rem, 3vw, 2rem);
+      }
+
+      .stage-head p:last-child {
+        margin: 0;
+        color: var(--muted);
+        overflow-wrap: anywhere;
+      }
+
+      .stage-grid {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 18px;
+      }
+
+      .stage-card {
+        display: grid;
+        align-content: start;
+        gap: 10px;
+        min-height: 150px;
+        border-top: 2px solid var(--line);
+        background: transparent;
+        padding: 12px 0 0;
+      }
+
+      .stage-card:nth-child(4) {
+        border-color: var(--review);
+      }
+
+      .stage-card h3 {
+        font-size: 0.98rem;
+      }
+
+      .stage-card p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 0.92rem;
+        overflow-wrap: anywhere;
+      }
+
+      .stage-index {
+        display: inline-flex;
+        width: max-content;
+        border-radius: 999px;
+        background: var(--accent-soft);
+        padding: 2px 8px;
+        color: var(--accent-strong);
+        font-size: 0.78rem;
+        font-weight: 850;
+      }
+
+      .stage-card:nth-child(4) .stage-index {
+        background: var(--review-soft);
+        color: var(--review);
+      }
+
       .language-section {
         margin-top: 28px;
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+        box-shadow: none;
         overflow: hidden;
       }
 
       #traditional-chinese {
         margin-top: 0;
         box-shadow: none;
+        overflow: visible;
       }
 
       #english {
@@ -277,6 +469,7 @@
         max-width: 800px;
         margin: 10px 0 0;
         color: var(--muted);
+        overflow-wrap: anywhere;
       }
 
       .section-body {
@@ -318,10 +511,16 @@
         display: grid;
         grid-template-columns: 50px minmax(0, 1fr);
         gap: 16px;
+        border: 1px solid transparent;
         border-radius: var(--radius);
         background: #f9f9f9;
         padding: 18px;
         counter-increment: flow;
+        transition:
+          border-color 220ms ease,
+          background 220ms ease,
+          box-shadow 220ms ease,
+          transform 220ms ease;
       }
 
       .flow li::before {
@@ -337,11 +536,26 @@
         content: counter(flow);
         font-weight: 900;
         box-shadow: var(--shadow-control);
+        transition:
+          background 220ms ease,
+          transform 220ms ease;
       }
 
       .flow li.flow-purple::before {
-        background: #403c8e;
+        background: #4338ca;
         color: #fff;
+      }
+
+      .flow li.is-active {
+        border-color: var(--accent);
+        background: #fff;
+        transform: translateX(4px);
+      }
+
+      .flow li.is-active::before,
+      .flow li.flow-purple.is-active::before {
+        background: var(--accent);
+        transform: scale(1.04);
       }
 
       .flow h4 {
@@ -352,6 +566,7 @@
       .flow p {
         margin: 0;
         color: var(--muted);
+        overflow-wrap: anywhere;
       }
 
       .why-grid,
@@ -397,6 +612,7 @@
       .principle-item p {
         margin: 0;
         color: var(--muted);
+        overflow-wrap: anywhere;
       }
 
       .why-item::before,
@@ -434,6 +650,8 @@
         font-family:
           "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
         font-size: 0.92em;
+        overflow-wrap: anywhere;
+        white-space: normal;
       }
 
       .note {
@@ -452,7 +670,26 @@
         padding: 24px 0;
         color: var(--muted);
         font-size: 0.92rem;
-        box-shadow: 0 -18px 58px rgba(31, 35, 40, 0.06);
+      }
+
+      @media (max-width: 1080px) {
+        .hero-map {
+          position: static;
+          width: 100%;
+          max-height: none;
+          overflow: visible;
+        }
+      }
+
+      @media (min-width: 1081px) {
+        main.shell {
+          width: min(
+            calc(1120px - var(--flow-map-width) - var(--flow-map-gap)),
+            calc(100% - 32px - var(--flow-map-width) - var(--flow-map-gap))
+          );
+          margin-right: auto;
+          margin-left: max(16px, calc((100vw - 1120px) / 2));
+        }
       }
 
       @media (max-width: 800px) {
@@ -460,6 +697,11 @@
         .why-grid,
         .output-grid,
         .principle-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .stage-head,
+        .stage-grid {
           grid-template-columns: 1fr;
         }
 
@@ -472,6 +714,13 @@
           padding-top: 40px;
         }
 
+        .hero-map {
+          position: static;
+          width: 100%;
+          max-height: none;
+          overflow: visible;
+        }
+
         .section-head,
         .section-body {
           padding: 18px 0;
@@ -479,6 +728,11 @@
 
         .flow li {
           grid-template-columns: 1fr;
+        }
+
+        .flow-mini-item.is-active,
+        .flow li.is-active {
+          transform: none;
         }
 
         .why-item,
@@ -489,6 +743,27 @@
 
         .flow::before {
           display: none;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          animation-duration: 1ms !important;
+          animation-iteration-count: 1 !important;
+          scroll-behavior: auto !important;
+          transition-duration: 1ms !important;
+        }
+
+        .stage-card {
+          opacity: 1;
+          transform: none;
+        }
+
+        .flow-mini-item.is-active,
+        .flow li.is-active {
+          transform: none;
         }
       }
     </style>
@@ -539,38 +814,49 @@
           </div>
         </div>
         <aside class="hero-map" aria-label="Extraction flow map">
-          <p class="hero-map-title" data-i18n="flowMapTitle">流程圖</p>
+          <div class="hero-map-head">
+            <p class="hero-map-title" data-i18n="flowMapTitle">流程導覽</p>
+            <span class="flow-status" data-flow-status>01 / 05</span>
+          </div>
+          <div class="flow-progress" aria-hidden="true">
+            <span data-flow-progress></span>
+          </div>
           <div class="flow-mini">
-            <div class="flow-mini-item">
+            <button
+              class="flow-mini-item is-active"
+              type="button"
+              data-flow-jump="0"
+              aria-current="step"
+            >
               <span class="flow-mini-number">01</span>
               <span class="flow-mini-label" data-i18n="flowMapEvidence"
                 >設計證據</span
               >
-            </div>
-            <div class="flow-mini-item">
+            </button>
+            <button class="flow-mini-item" type="button" data-flow-jump="2">
               <span class="flow-mini-number">02</span>
               <span class="flow-mini-label" data-i18n="flowMapPrinciples"
                 >設計原則</span
               >
-            </div>
-            <div class="flow-mini-item">
+            </button>
+            <button class="flow-mini-item" type="button" data-flow-jump="4">
               <span class="flow-mini-number">03</span>
               <span class="flow-mini-label" data-i18n="flowMapTokens"
                 >Token 層級</span
               >
-            </div>
-            <div class="flow-mini-item">
+            </button>
+            <button class="flow-mini-item" type="button" data-flow-jump="5">
               <span class="flow-mini-number">04</span>
               <span class="flow-mini-label" data-i18n="flowMapComponents"
                 >Components</span
               >
-            </div>
-            <div class="flow-mini-item">
+            </button>
+            <button class="flow-mini-item" type="button" data-flow-jump="9">
               <span class="flow-mini-number">05</span>
               <span class="flow-mini-label" data-i18n="flowMapDocs"
                 >文件與 audit</span
               >
-            </div>
+            </button>
           </div>
         </aside>
       </div>
@@ -600,6 +886,58 @@
             近似 token 決策、component similarity review、anti-AI style rules、HTML docs 與 audit results。
           </p>
         </article>
+      </section>
+
+      <section class="stage-board" aria-labelledby="stage-title">
+        <div class="stage-head">
+          <div>
+            <p class="eyebrow" data-i18n="stageEyebrow">流程判斷點</p>
+            <h2 id="stage-title" data-i18n="stageTitle">
+              從來源到 checkpoint 的五個階段
+            </h2>
+          </div>
+          <p data-i18n="stageText">
+            先把觀察變成 evidence，再把 evidence 變成規範；遇到近似 token
+            或相似 component 時，進入 review queue，而不是直接新增。
+          </p>
+        </div>
+        <div class="stage-grid">
+          <article class="stage-card">
+            <span class="stage-index">01</span>
+            <h3 data-i18n="stageEvidenceTitle">Evidence first</h3>
+            <p data-i18n="stageEvidenceText">
+              將圖片、Figma 與程式線索整理成可追溯的設計證據。
+            </p>
+          </article>
+          <article class="stage-card">
+            <span class="stage-index">02</span>
+            <h3 data-i18n="stagePrincipleTitle">Principles</h3>
+            <p data-i18n="stagePrincipleText">
+              把重複出現的判斷整理成可執行的產品設計原則。
+            </p>
+          </article>
+          <article class="stage-card">
+            <span class="stage-index">03</span>
+            <h3 data-i18n="stageTokenTitle">Token structure</h3>
+            <p data-i18n="stageTokenText">
+              依照 ref、sys、comp 分層，並把近似數值留給開發者確認。
+            </p>
+          </article>
+          <article class="stage-card">
+            <span class="stage-index">04</span>
+            <h3 data-i18n="stageComponentTitle">Component review</h3>
+            <p data-i18n="stageComponentText">
+              用 inventory、fingerprint 與預覽證據找出可能重複的元件。
+            </p>
+          </article>
+          <article class="stage-card">
+            <span class="stage-index">05</span>
+            <h3 data-i18n="stageHandoffTitle">Docs and audit</h3>
+            <p data-i18n="stageHandoffText">
+              產出 HTML 文件、review queue 與 audit 結果，再進入 checkpoint。
+            </p>
+          </article>
+        </div>
       </section>
 
       <section
@@ -1352,7 +1690,7 @@
             heroTitle: "Extract flow and rationale",
             heroLead:
               "A multilingual guide that explains how this skill extracts evidence, design principles, tokens, components, and developer documentation from images, Figma URLs, and project folders.",
-            flowMapTitle: "Flow map",
+            flowMapTitle: "Flow guide",
             flowMapEvidence: "Evidence",
             flowMapPrinciples: "Design principles",
             flowMapTokens: "Token layers",
@@ -1370,6 +1708,25 @@
             outputsTitle: "Outputs",
             outputsText:
               'Markdown specs, design principles, strict <code>ref -&gt; sys -&gt; comp</code> tokens, near-token decisions, component similarity review, anti-AI style rules, HTML docs, and audit results.',
+            stageEyebrow: "Decision points",
+            stageTitle: "Five stages from source material to checkpoint",
+            stageText:
+              "Observations become evidence before they become rules. Near tokens and similar components move into the review queue instead of being added silently.",
+            stageEvidenceTitle: "Evidence first",
+            stageEvidenceText:
+              "Turn images, Figma context, and code references into traceable design evidence.",
+            stagePrincipleTitle: "Principles",
+            stagePrincipleText:
+              "Convert repeated decisions into product principles that can guide implementation.",
+            stageTokenTitle: "Token structure",
+            stageTokenText:
+              "Separate ref, sys, and comp layers, then flag close values for developer review.",
+            stageComponentTitle: "Component review",
+            stageComponentText:
+              "Use inventory, fingerprints, and preview evidence to find likely duplicate components.",
+            stageHandoffTitle: "Docs and audit",
+            stageHandoffText:
+              "Generate HTML docs, the review queue, and audit results before checkpointing.",
             footerText:
               "Source files remain Markdown and CSS tokens. This page is a portable guide for understanding the extraction workflow before running the skill in Claude Code, Cursor, or Codex.",
           },
@@ -1379,7 +1736,7 @@
             heroTitle: "抽出フローと目的",
             heroLead:
               "この skill が画像、Figma URL、プロジェクトフォルダから evidence、design principles、tokens、components、developer documentation を抽出する流れを説明する多言語ガイドです。",
-            flowMapTitle: "フローマップ",
+            flowMapTitle: "フローガイド",
             flowMapEvidence: "根拠",
             flowMapPrinciples: "デザイン原則",
             flowMapTokens: "Token 層",
@@ -1397,6 +1754,25 @@
             outputsTitle: "出力",
             outputsText:
               'Markdown specs、design principles、厳格な <code>ref -&gt; sys -&gt; comp</code> tokens、近い値の判断記録、component similarity review、anti-AI style rules、HTML docs、audit results。',
+            stageEyebrow: "判断ポイント",
+            stageTitle: "素材から checkpoint までの 5 段階",
+            stageText:
+              "観察をまず evidence にし、その後でルールに変換します。近い token や似た component は黙って追加せず、review queue に残します。",
+            stageEvidenceTitle: "Evidence first",
+            stageEvidenceText:
+              "画像、Figma、コード参照を追跡可能な design evidence に整理します。",
+            stagePrincipleTitle: "Principles",
+            stagePrincipleText:
+              "繰り返し現れる判断を、実装に使える product principles に変換します。",
+            stageTokenTitle: "Token structure",
+            stageTokenText:
+              "ref、sys、comp を分離し、近い値は developer review に回します。",
+            stageComponentTitle: "Component review",
+            stageComponentText:
+              "inventory、fingerprint、preview evidence で重複しそうな component を確認します。",
+            stageHandoffTitle: "Docs and audit",
+            stageHandoffText:
+              "HTML docs、review queue、audit results を生成して checkpoint します。",
             footerText:
               "Source files は Markdown と CSS tokens のままです。このページは、Claude Code、Cursor、Codex で skill を実行する前に extraction workflow を理解するためのポータブルガイドです。",
           },
@@ -1406,7 +1782,7 @@
             heroTitle: "Extract 流程與目的",
             heroLead:
               "多語系導覽，說明這個 skill 如何從圖片、Figma URL、專案資料夾 extract evidence、設計原則、tokens、components 與開發者文件。",
-            flowMapTitle: "流程圖",
+            flowMapTitle: "流程導覽",
             flowMapEvidence: "設計證據",
             flowMapPrinciples: "設計原則",
             flowMapTokens: "Token 層級",
@@ -1424,6 +1800,25 @@
             outputsTitle: "輸出內容",
             outputsText:
               'Markdown 規範、設計原則、嚴格 <code>ref -&gt; sys -&gt; comp</code> tokens、近似 token 決策、component similarity review、anti-AI style rules、HTML docs 與 audit results。',
+            stageEyebrow: "流程判斷點",
+            stageTitle: "從來源到 checkpoint 的五個階段",
+            stageText:
+              "先把觀察變成 evidence，再把 evidence 變成規範；遇到近似 token 或相似 component 時，進入 review queue，而不是直接新增。",
+            stageEvidenceTitle: "Evidence first",
+            stageEvidenceText:
+              "將圖片、Figma 與程式線索整理成可追溯的設計證據。",
+            stagePrincipleTitle: "Principles",
+            stagePrincipleText:
+              "把重複出現的判斷整理成可執行的產品設計原則。",
+            stageTokenTitle: "Token structure",
+            stageTokenText:
+              "依照 ref、sys、comp 分層，並把近似數值留給開發者確認。",
+            stageComponentTitle: "Component review",
+            stageComponentText:
+              "用 inventory、fingerprint 與預覽證據找出可能重複的元件。",
+            stageHandoffTitle: "Docs and audit",
+            stageHandoffText:
+              "產出 HTML 文件、review queue 與 audit 結果，再進入 checkpoint。",
             footerText:
               "Source files 仍然是 Markdown 與 CSS tokens。這個頁面是執行 Claude Code、Cursor 或 Codex skill 前，用來理解 extract workflow 的可攜式導覽。",
           },
@@ -1435,6 +1830,127 @@
         const panels = Array.from(
           document.querySelectorAll("[data-language-panel]")
         );
+        const flowButtons = Array.from(
+          document.querySelectorAll("[data-flow-jump]")
+        );
+        const flowStatus = document.querySelector("[data-flow-status]");
+        const flowProgress = document.querySelector("[data-flow-progress]");
+        const reducedMotion = window.matchMedia(
+          "(prefers-reduced-motion: reduce)"
+        );
+        let flowObserver = null;
+        let programmaticScrollIndex = null;
+        let programmaticScrollTimer = 0;
+
+        function getVisiblePanel() {
+          return panels.find((panel) => !panel.hidden) || panels[0];
+        }
+
+        function getVisibleFlowItems() {
+          const panel = getVisiblePanel();
+          if (!panel) return [];
+          return Array.from(panel.querySelectorAll(".flow li"));
+        }
+
+        function getFlowGroup(index) {
+          if (index <= 1) return 0;
+          if (index <= 3) return 1;
+          if (index === 4) return 2;
+          if (index <= 8) return 3;
+          return 4;
+        }
+
+        function prepareFlowItems() {
+          panels.forEach((panel) => {
+            panel.querySelectorAll(".flow li").forEach((item, index) => {
+              item.dataset.flowIndex = String(index);
+            });
+          });
+        }
+
+        function scrollFlowItemIntoView(item) {
+          const offset = window.innerWidth > 1080 ? 28 : 18;
+          const top = Math.max(
+            0,
+            window.scrollY + item.getBoundingClientRect().top - offset
+          );
+
+          window.scrollTo({
+            top,
+            behavior: reducedMotion.matches ? "auto" : "smooth",
+          });
+        }
+
+        function setActiveFlow(index, options = {}) {
+          const items = getVisibleFlowItems();
+          if (!items.length) return;
+          const activeIndex = Math.max(0, Math.min(index, items.length - 1));
+          const activeGroup = getFlowGroup(activeIndex);
+
+          items.forEach((item, itemIndex) => {
+            item.classList.toggle("is-active", itemIndex === activeIndex);
+          });
+
+          flowButtons.forEach((button, buttonIndex) => {
+            const active = buttonIndex === activeGroup;
+            button.classList.toggle("is-active", active);
+            if (active) {
+              button.setAttribute("aria-current", "step");
+            } else {
+              button.removeAttribute("aria-current");
+            }
+          });
+
+          if (flowStatus) {
+            flowStatus.textContent = `${String(activeGroup + 1).padStart(
+              2,
+              "0"
+            )} / 05`;
+          }
+
+          if (flowProgress) {
+            flowProgress.style.transform = `scaleX(${(activeGroup + 1) / 5})`;
+          }
+
+          if (options.scroll) {
+            programmaticScrollIndex = activeIndex;
+            window.clearTimeout(programmaticScrollTimer);
+            scrollFlowItemIntoView(items[activeIndex]);
+            programmaticScrollTimer = window.setTimeout(
+              () => {
+                programmaticScrollIndex = null;
+                setActiveFlow(activeIndex);
+              },
+              reducedMotion.matches ? 0 : 850
+            );
+          }
+        }
+
+        function observeVisibleFlow() {
+          if (!("IntersectionObserver" in window)) return;
+          if (flowObserver) flowObserver.disconnect();
+
+          flowObserver = new IntersectionObserver(
+            (entries) => {
+              if (programmaticScrollIndex !== null) return;
+              const visibleEntries = entries
+                .filter((entry) => entry.isIntersecting)
+                .sort((a, b) => b.intersectionRatio - a.intersectionRatio);
+              const activeEntry = visibleEntries[0];
+              if (!activeEntry) return;
+              const panel = getVisiblePanel();
+              if (!panel || !panel.contains(activeEntry.target)) return;
+              setActiveFlow(Number(activeEntry.target.dataset.flowIndex || 0));
+            },
+            {
+              root: null,
+              rootMargin: "-22% 0px -50% 0px",
+              threshold: [0.35, 0.55, 0.75],
+            }
+          );
+
+          getVisibleFlowItems().forEach((item) => flowObserver.observe(item));
+        }
 
         function setLanguage(language) {
           const messages = copy[language] || copy["zh-Hant"];
@@ -1470,11 +1986,23 @@
           panels.forEach((panel) => {
             panel.hidden = panel.dataset.languagePanel !== language;
           });
+
+          prepareFlowItems();
+          observeVisibleFlow();
+          setActiveFlow(0);
         }
 
         buttons.forEach((button) => {
           button.addEventListener("click", () => {
             setLanguage(button.dataset.languageButton);
+          });
+        });
+
+        flowButtons.forEach((button) => {
+          button.addEventListener("click", () => {
+            setActiveFlow(Number(button.dataset.flowJump || 0), {
+              scroll: true,
+            });
           });
         });
 
