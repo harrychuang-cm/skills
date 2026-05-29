@@ -36,6 +36,12 @@ Update this file at every checkpoint.
 - System:
 - Component:
 
+## Source Duplicate Review
+
+- Duplicate source candidates found:
+- Developer decisions recorded in `DESIGN_EVIDENCE_MAP.md`:
+- Source fingerprints recorded:
+
 ## Token Review
 
 - Near token candidates found:
@@ -51,6 +57,8 @@ Update this file at every checkpoint.
 
 ## Verification
 
+- Source audit mode:
+- Source audit result:
 - Token audit mode:
 - Token audit result:
 - Component audit mode:

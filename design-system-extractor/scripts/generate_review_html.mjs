@@ -11,6 +11,7 @@ const outputPath = path.resolve(
 const designSystemDir = path.join(targetRoot, "design-system");
 const tokensDir = path.join(targetRoot, "tokens");
 const designSystemAssetsDir = path.join(designSystemDir, "assets");
+const evidenceMapFile = path.join(designSystemDir, "DESIGN_EVIDENCE_MAP.md");
 const tokenArchitectureFile = path.join(designSystemDir, "TOKEN_ARCHITECTURE.md");
 const inventoryFile = path.join(designSystemDir, "COMPONENT_INVENTORY.md");
 const refTokensFile = path.join(tokensDir, "tokens-ref.css");
@@ -20,7 +21,7 @@ const NEAR_COLOR_DELTA_E = 3;
 const NEAR_COLOR_ALPHA_DELTA = 0.03;
 
 const decisionPattern =
-  /\b(?:merge|merged|make variant|variant|keep distinct|distinct|blocked|out-of-scope|separate|split)\b|合併|變體|變型|保留|拆開|分開|阻塞|別元件|独立|別コンポーネント|統合|バリアント/i;
+  /\b(?:merge|merged|make variant|variant|keep distinct|distinct|blocked|out-of-scope|separate|split|reuse existing source|reuse existing|reuse source|ignore duplicate|dedupe|deduplicate|same source)\b|合併|變體|變型|保留|拆開|分開|阻塞|重用|沿用|忽略重複|同一來源|別元件|独立|別コンポーネント|統合|バリアント|同一ソース/i;
 
 const unresolvedPattern =
   /^\s*(?:|[-—]|n\/a|na|none|tbd|todo|pending|open|unknown|needs review|needs decision|待確認|未決|未定|要確認|\?)\s*$/i;
@@ -382,6 +383,16 @@ function isSimilarityTable(table) {
   );
 }
 
+function isSourceDuplicateTable(table) {
+  const heading = normalizeHeading(table.heading);
+  return (
+    heading.includes("source duplicate review") ||
+    (includesHeader(table.headers, "candidate") &&
+      includesHeader(table.headers, "duplicate") &&
+      includesHeader(table.headers, "developer decision"))
+  );
+}
+
 function cleanCell(value) {
   return String(value).replace(/<br\s*\/?>/gi, " ").replace(/`/g, "").trim();
 }
@@ -419,9 +430,37 @@ function tableHtml(headers, rows, emptyMessage) {
 }
 
 const refCss = await readOptional(refTokensFile);
+const evidenceMapDoc = await readOptional(evidenceMapFile);
 const architectureDoc = await readOptional(tokenArchitectureFile);
 const inventoryDoc = await readOptional(inventoryFile);
 const declarations = parseDeclarations(refCss || "");
+
+const sourceRows = [];
+if (evidenceMapDoc) {
+  const sourceDuplicateTables = parseTables(evidenceMapDoc).filter(isSourceDuplicateTable);
+  for (const table of sourceDuplicateTables) {
+    for (const entry of table.rows) {
+      const candidate = firstValue(entry.row, ["candidate source", "candidate", "new source", "source a"]);
+      const duplicate = firstValue(entry.row, ["duplicate of", "existing source", "duplicate", "source b"]);
+      const matchType = firstValue(entry.row, ["match type", "match"]);
+      const fingerprint = firstValue(entry.row, ["fingerprint", "normalized key", "key"]);
+      const suggested = firstValue(entry.row, ["suggested action", "suggested"]);
+      const decision = firstValue(entry.row, ["developer decision", "decision"]);
+      const rationale = firstValue(entry.row, ["rationale", "owner"]);
+      if (!candidate && !duplicate && !matchType && !fingerprint && !decision) continue;
+      sourceRows.push({
+        candidate,
+        duplicate,
+        matchType,
+        fingerprint,
+        suggested,
+        decision,
+        rationale,
+        status: isUnresolvedDecision(decision) ? "needs-review" : "documented",
+      });
+    }
+  }
+}
 
 const referenceColors = [];
 for (const [name, declaration] of declarations) {
@@ -530,11 +569,13 @@ if (inventoryDoc) {
 }
 
 const counts = {
+  sources: sourceRows.length,
   colorScaleIssues: colorScaleIssues.length,
   nearColors: nearColorRows.length,
   nearNumbers: nearNumberRows.length,
   components: componentRows.length,
   needsReview:
+    sourceRows.filter((row) => row.status === "needs-review").length +
     colorScaleIssues.length +
     nearColorRows.filter((row) => row.status === "needs-review").length +
     nearNumberRows.filter((row) => row.status === "needs-review").length +
@@ -624,7 +665,7 @@ function css() {
     }
     .summary {
       display: grid;
-      grid-template-columns: repeat(5, minmax(0, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
       border-bottom: 1px solid var(--border);
       margin-bottom: 8px;
     }
@@ -771,6 +812,16 @@ const nearNumberTableRows = nearNumberRows.map(({ first, second, diff, status })
   <td>${statusBadge(status)}</td>
 </tr>`);
 
+const sourceTableRows = sourceRows.map((row) => `<tr>
+  <td>${formatInline(row.candidate || "candidate source")}</td>
+  <td>${formatInline(row.duplicate || "duplicate source")}</td>
+  <td>${formatInline(row.matchType || "")}</td>
+  <td>${formatInline(row.fingerprint || "")}</td>
+  <td>${formatInline(row.suggested || "")}</td>
+  <td>${formatInline(row.decision || "")}<br>${statusBadge(row.status)}</td>
+  <td>${formatInline(row.rationale || "")}</td>
+</tr>`);
+
 const componentTableRows = componentRows.map((row) => `<tr>
   <td>${formatInline(row.candidate || "candidate")}</td>
   <td>${formatInline(row.similar || "similar component")}</td>
@@ -798,6 +849,7 @@ const html = `<!doctype html>
       <nav>
         <a href="#overview">Overview</a>
         <a href="index.html">Full Documentation</a>
+        <a href="#source-duplicates">Duplicate Sources</a>
         <a href="#color-scale">Color Scale Issues</a>
         <a href="#near-colors">Near Color Tokens</a>
         <a href="#near-numbers">Near Number Tokens</a>
@@ -807,16 +859,23 @@ const html = `<!doctype html>
     <main>
       <section class="hero" id="overview">
         <h1>Design System Review Queue</h1>
-        <p>這份文件彙整萃取時需要設計或開發者審查的候選項目：相近 token、色階問題，以及外觀或功能相近的 component。</p>
+        <p>這份文件彙整萃取時需要設計或開發者審查的候選項目：重複來源、相近 token、色階問題，以及外觀或功能相近的 component。</p>
       </section>
 
       <div class="summary" aria-label="Review summary">
         <div class="metric"><strong>${counts.needsReview}</strong><span>Needs review</span></div>
+        <div class="metric"><strong>${counts.sources}</strong><span>Duplicate sources</span></div>
         <div class="metric"><strong>${counts.colorScaleIssues}</strong><span>Color scale issues</span></div>
         <div class="metric"><strong>${counts.nearColors}</strong><span>Near color pairs</span></div>
         <div class="metric"><strong>${counts.nearNumbers}</strong><span>Near number pairs</span></div>
         <div class="metric"><strong>${counts.components}</strong><span>Component rows</span></div>
       </div>
+
+      <section id="source-duplicates">
+        <h2>Duplicate Sources</h2>
+        <p class="section-lead">Rows come from <code>DESIGN_EVIDENCE_MAP.md</code>. Exact or likely duplicate screenshots, Figma nodes, and rendered states should be resolved before they count as separate evidence.</p>
+        ${tableHtml(["Candidate source", "Duplicate of", "Match type", "Fingerprint / key", "Suggested action", "Developer decision", "Rationale"], sourceTableRows, "No duplicate source review rows found.")}
+      </section>
 
       <section id="color-scale">
         <h2>Color Scale Issues</h2>
@@ -865,6 +924,7 @@ try {
 
 console.log(`Generated ${path.relative(process.cwd(), outputPath) || outputPath}`);
 console.log(`Needs review: ${counts.needsReview}`);
+console.log(`Duplicate source rows: ${counts.sources}`);
 console.log(`Color scale issues: ${counts.colorScaleIssues}`);
 console.log(`Near color pairs: ${counts.nearColors}`);
 console.log(`Near number pairs: ${counts.nearNumbers}`);

@@ -45,6 +45,7 @@ The HTML documentation should include:
 
 The review queue HTML should include:
 
+- duplicate source review rows from `DESIGN_EVIDENCE_MAP.md`, including fingerprints or normalized source keys
 - color scale issues with swatches
 - near color token pairs with swatches and deltaE
 - near numeric token pairs with differences
@@ -84,6 +85,6 @@ After generation:
 
 1. Confirm the HTML file exists.
 2. Confirm `docs/design-system/review.html` exists.
-3. Re-run token and component audits with `--strict` after real extraction work.
+3. Re-run source, token, and component audits with `--strict` after real extraction work.
 4. Open or inspect the generated files if a browser is available.
 5. Record the generated paths in `design-system/SESSION_STATE.md`.

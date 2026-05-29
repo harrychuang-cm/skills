@@ -10,7 +10,7 @@ List screenshots, Figma URLs/nodes, rendered routes, project folders, and protot
 
 ## Required Order
 
-1. Fill `DESIGN_EVIDENCE_MAP.md`.
+1. Fill `DESIGN_EVIDENCE_MAP.md`, record source fingerprints, and review duplicate source candidates.
 2. Fill `DESIGN_PRINCIPLES.md`.
 3. Fill `DESIGN_ELEMENTS.md`.
 4. Fill `TOKEN_ARCHITECTURE.md`, review near token candidates, then fill `tokens/`.
@@ -18,7 +18,7 @@ List screenshots, Figma URLs/nodes, rendered routes, project folders, and protot
 6. Extract at least one primary component token spec into `design-system/components/`.
 7. Fill `PAGE_COMPOSITION_RULES.md`, `INTERACTION_STATES.md`, and `ANTI_AI_STYLE_RULES.md`.
 8. Generate `docs/design-system/index.html` and `docs/design-system/review.html`.
-9. Run strict token and component audits.
+9. Run strict source, token, and component audits.
 10. Update `SESSION_STATE.md`.
 11. Stop and ask the user what to do next.
 

@@ -30,6 +30,15 @@ Record source types, paths/URLs, confidence, and known gaps in `design-system/SE
 
 For screenshots, list every image. For Figma, list node/page names or variable collections when available. For project folders, list token files, component directories, Storybook entries, and screenshot/render routes if available.
 
+Before using sources as evidence, run a source duplicate review:
+
+1. Create a source fingerprint for every input and record it in `design-system/DESIGN_EVIDENCE_MAP.md`.
+2. For local screenshots or exports, prefer `sha256:<hash>` for exact matches and add `phash:<hash>` or a screenshot crop note when perceptual comparison is available.
+3. For Figma inputs, normalize to `figma:<file-key>#<node-id>` when a node is known, or `figma:<file-key>#page:<page-name>` when only a page is known.
+4. For rendered routes or project screenshots, include the route, viewport, state, and source file or command in the fingerprint.
+5. If two sources are exact duplicates or likely duplicates, stop and ask the developer whether to `reuse existing source`, `ignore duplicate`, or `keep distinct`.
+6. Record every decision in `design-system/DESIGN_EVIDENCE_MAP.md` under `Source Duplicate Review` before using duplicate inputs to support separate design decisions.
+
 ### 2. Evidence Map
 
 Fill `design-system/DESIGN_EVIDENCE_MAP.md` before writing final design decisions.
@@ -132,9 +141,10 @@ Use `references/html-documentation.md` when changing the HTML documentation beha
 
 ### 9. Audit And Checkpoint
 
-Run strict token and component audits after an extraction or component expansion:
+Run strict source, token, and component audits after an extraction or component expansion:
 
 ```sh
+node <skill-root>/scripts/audit_sources.mjs <target-root> --strict
 node <skill-root>/scripts/audit_tokens.mjs <target-root> --strict
 node <skill-root>/scripts/audit_components.mjs <target-root> --strict
 ```
@@ -150,6 +160,7 @@ Update `design-system/SESSION_STATE.md` with:
 - generated HTML docs path
 - generated review queue path
 - audit result
+- source duplicate review result
 - component similarity review result
 - recommended next prompt
 
@@ -175,7 +186,7 @@ Use this pass when the user chooses to expand component tokens after the initial
 6. Update `COMPONENT_INVENTORY.md` status and missing states.
 7. Update related interaction and page composition rules.
 8. Regenerate `docs/design-system/index.html` and `docs/design-system/review.html`.
-9. Run `node <skill-root>/scripts/audit_tokens.mjs <target-root> --strict` and `node <skill-root>/scripts/audit_components.mjs <target-root> --strict`.
+9. Run `node <skill-root>/scripts/audit_sources.mjs <target-root> --strict`, `node <skill-root>/scripts/audit_tokens.mjs <target-root> --strict`, and `node <skill-root>/scripts/audit_components.mjs <target-root> --strict`.
 10. Update `SESSION_STATE.md`, then stop and ask for the next step.
 
 ## Gates
@@ -183,6 +194,8 @@ Use this pass when the user chooses to expand component tokens after the initial
 ### Evidence Gate
 
 If an important design rule has no source evidence, mark it Low confidence or ask the user before making it normative.
+
+Do not count duplicate screenshots, duplicate Figma nodes, or duplicate rendered routes as independent evidence until the duplicate source decision is recorded. If a source fingerprint matches or appears very close to another source, ask the developer for a reuse/ignore/keep-distinct decision before it changes confidence.
 
 ### Token Gate
 
@@ -214,7 +227,8 @@ If the user wants to use the extraction package with Claude Code, Cursor, or Cod
 - `references/agent-integration.md`: Claude Code, Cursor, and Codex handoff guidance.
 - `references/html-documentation.md`: static HTML documentation output rules.
 - `assets/design-system-template/`: starter output package.
+- `scripts/audit_sources.mjs`: source inventory and duplicate source review audit; pass `--strict` after real extraction work.
 - `scripts/audit_tokens.mjs`: token layer audit; pass `--strict` after real extraction work.
 - `scripts/audit_components.mjs`: component similarity review audit; pass `--strict` after inventory or component spec changes.
 - `scripts/generate_docs_html.mjs`: generated developer-facing HTML docs, including `design-system/components/*.md`.
-- `scripts/generate_review_html.mjs`: generated visual review queue for near tokens, color scale issues, and similar components.
+- `scripts/generate_review_html.mjs`: generated visual review queue for duplicate sources, near tokens, color scale issues, and similar components.

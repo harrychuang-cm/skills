@@ -883,7 +883,7 @@
           <h2 data-i18n="outputsTitle">輸出內容</h2>
           <p data-i18n="outputsText" data-i18n-html="true">
             Markdown 規範、設計原則、嚴格 <code>ref -&gt; sys -&gt; comp</code> tokens、
-            近似 token 決策、component similarity review、anti-AI style rules、HTML docs 與 audit results。
+            duplicate source review、近似 token 決策、component similarity review、anti-AI style rules、HTML docs 與 audit results。
           </p>
         </article>
       </section>
@@ -897,8 +897,8 @@
             </h2>
           </div>
           <p data-i18n="stageText">
-            先把觀察變成 evidence，再把 evidence 變成規範；遇到近似 token
-            或相似 component 時，進入 review queue，而不是直接新增。
+            先把來源整理成 evidence，再把 evidence 變成規範；遇到重複來源、
+            近似 token 或相似 component 時，進入 review queue，而不是直接新增。
           </p>
         </div>
         <div class="stage-grid">
@@ -906,7 +906,7 @@
             <span class="stage-index">01</span>
             <h3 data-i18n="stageEvidenceTitle">Evidence first</h3>
             <p data-i18n="stageEvidenceText">
-              將圖片、Figma 與程式線索整理成可追溯的設計證據。
+              將圖片、Figma 與程式線索整理成可追溯的設計證據，並先檢查重複來源。
             </p>
           </article>
           <article class="stage-card">
@@ -967,7 +967,8 @@
                   <p>
                     Locate screenshots, image exports, Figma links, variables,
                     routes, Storybook stories, CSS, token files, and existing
-                    agent rules.
+                    agent rules. Normalize source fingerprints and flag duplicate
+                    inputs before they become separate evidence.
                   </p>
                 </div>
               </li>
@@ -976,7 +977,8 @@
                   <h4>Create the evidence map</h4>
                   <p>
                     Record where each decision comes from: source, observed
-                    region, pattern, affected token or component, and confidence.
+                    region, source fingerprint, pattern, affected token or component,
+                    and confidence.
                   </p>
                 </div>
               </li>
@@ -1066,9 +1068,9 @@
                 <div>
                   <h4>Audit and checkpoint</h4>
                   <p>
-                    Run token and component audits, update session state, list
-                    open questions, and stop before implementation work changes
-                    the scope.
+                    Run source, token, and component audits, update session state,
+                    list open questions, and stop before implementation work
+                    changes the scope.
                   </p>
                 </div>
               </li>
@@ -1124,7 +1126,8 @@
                 <h4>Evidence prevents guessing</h4>
                 <p>
                   Every rule is traceable to an image, Figma node, route, or
-                  source file, so future AI agents do not invent design intent.
+                  source file, and duplicate sources are reviewed before they
+                  increase confidence.
                 </p>
               </article>
               <article class="why-item">
@@ -1168,7 +1171,7 @@
                   <code>docs/design-system/index.html</code> is generated from
                   the source files for developer review, and
                   <code>docs/design-system/review.html</code> summarizes near
-                  tokens and similar components.
+                  duplicate sources, near tokens, and similar components.
                 </p>
               </article>
               <article class="output-item">
@@ -1181,8 +1184,8 @@
               <article class="output-item">
                 <h4>Quality gate</h4>
                 <p>
-                  Token audits, near-token decisions, and session-state updates
-                  make the extraction repeatable across projects.
+                  Source audits, token audits, near-token decisions, and
+                  session-state updates make the extraction repeatable across projects.
                 </p>
               </article>
             </div>
@@ -1217,7 +1220,8 @@
                   <h4>入力を確認する</h4>
                   <p>
                     スクリーンショット、画像書き出し、Figma URL、Variables、
-                    画面ルート、Storybook、CSS、token、既存の agent ルールを確認します。
+                    画面ルート、Storybook、CSS、token、既存の agent ルールを確認し、
+                    source fingerprint で重複入力を先に見つけます。
                   </p>
                 </div>
               </li>
@@ -1226,7 +1230,7 @@
                   <h4>根拠マップを作る</h4>
                   <p>
                     判断の出典、観察した領域、パターン、影響する token
-                    または component、確信度を記録します。
+                    または component、source fingerprint、確信度を記録します。
                   </p>
                 </div>
               </li>
@@ -1311,7 +1315,7 @@
                 <div>
                   <h4>audit と checkpoint を行う</h4>
                   <p>
-                    token audit と component audit を実行し、session state
+                    source audit、token audit、component audit を実行し、session state
                     に決定事項と未解決事項を残し、実装に進む前に一度止めます。
                   </p>
                 </div>
@@ -1367,7 +1371,7 @@
                 <h4>根拠が推測を防ぐ</h4>
                 <p>
                   すべてのルールを画像、Figma node、route、source file に結びつけ、
-                  AI が意図を勝手に補完しないようにします。
+                  重複 source を確認してから confidence を上げます。
                 </p>
               </article>
               <article class="why-item">
@@ -1408,7 +1412,7 @@
                 <p>
                   <code>docs/design-system/index.html</code> は原本から生成される
                   開発者向けの閲覧ページです。<code>docs/design-system/review.html</code>
-                  は近い token と類似 component をまとめます。
+                  は重複 source、近い token、類似 component をまとめます。
                 </p>
               </article>
               <article class="output-item">
@@ -1421,7 +1425,7 @@
               <article class="output-item">
                 <h4>品質 gate</h4>
                 <p>
-                  token audit、近い値の判断記録、session-state 更新により、
+                  source audit、token audit、近い値の判断記録、session-state 更新により、
                   別プロジェクトでも同じ流れを再現できます。
                 </p>
               </article>
@@ -1455,7 +1459,8 @@
                   <h4>盤點輸入來源</h4>
                   <p>
                     找出 screenshots、圖片輸出、Figma URL、Variables、畫面路由、
-                    Storybook、CSS、token 檔案與既有 agent 規則。
+                    Storybook、CSS、token 檔案與既有 agent 規則，並用 source
+                    fingerprint 先檢查重複輸入。
                   </p>
                 </div>
               </li>
@@ -1464,7 +1469,7 @@
                   <h4>建立 evidence map</h4>
                   <p>
                     記錄每個設計判斷的來源、觀察區域、可重複模式、
-                    影響的 token 或 component，以及信心等級。
+                    影響的 token 或 component、source fingerprint，以及信心等級。
                   </p>
                 </div>
               </li>
@@ -1547,7 +1552,7 @@
                 <div>
                   <h4>執行 audit 並 checkpoint</h4>
                   <p>
-                    檢查 token 繼承與 component similarity review、更新
+                    檢查 source duplicate review、token 繼承與 component similarity review、更新
                     session state、列出未決問題，並在進入產品實作前暫停確認下一步。
                   </p>
                 </div>
@@ -1603,7 +1608,7 @@
                 <h4>Evidence 防止 AI 猜測</h4>
                 <p>
                   每個規則都能追溯到圖片、Figma node、route 或 source file，
-                  後續 AI 不需要自行想像設計意圖。
+                  且重複來源會先被審查，避免把同一份證據誤算成多份。
                 </p>
               </article>
               <article class="why-item">
@@ -1645,7 +1650,7 @@
                 <p>
                   <code>docs/design-system/index.html</code> 是由原始檔產生的
                   開發者閱讀頁面；<code>docs/design-system/review.html</code>
-                  則彙整近似 token 與相似 component。
+                  則彙整重複 source、近似 token 與相似 component。
                 </p>
               </article>
               <article class="output-item">
@@ -1658,7 +1663,7 @@
               <article class="output-item">
                 <h4>品質關卡</h4>
                 <p>
-                  透過 token audit、近似 token 決策和 session-state 更新，
+                  透過 source audit、token audit、近似 token 決策和 session-state 更新，
                   讓 extract 流程能在不同專案中重複使用。
                 </p>
               </article>
@@ -1707,14 +1712,14 @@
               "Extract evidence-backed design rules first. Product UI code comes only after the checkpoint unless explicitly requested.",
             outputsTitle: "Outputs",
             outputsText:
-              'Markdown specs, design principles, strict <code>ref -&gt; sys -&gt; comp</code> tokens, near-token decisions, component similarity review, anti-AI style rules, HTML docs, and audit results.',
+              'Markdown specs, design principles, strict <code>ref -&gt; sys -&gt; comp</code> tokens, duplicate source review, near-token decisions, component similarity review, anti-AI style rules, HTML docs, and audit results.',
             stageEyebrow: "Decision points",
             stageTitle: "Five stages from source material to checkpoint",
             stageText:
-              "Observations become evidence before they become rules. Near tokens and similar components move into the review queue instead of being added silently.",
+              "Sources become evidence before they become rules. Duplicate sources, near tokens, and similar components move into the review queue instead of being added silently.",
             stageEvidenceTitle: "Evidence first",
             stageEvidenceText:
-              "Turn images, Figma context, and code references into traceable design evidence.",
+              "Turn images, Figma context, and code references into traceable design evidence, with duplicate sources checked first.",
             stagePrincipleTitle: "Principles",
             stagePrincipleText:
               "Convert repeated decisions into product principles that can guide implementation.",
@@ -1753,14 +1758,14 @@
               "まず根拠に基づくデザインルールを抽出します。明示的に依頼されない限り、product UI code は checkpoint の後に扱います。",
             outputsTitle: "出力",
             outputsText:
-              'Markdown specs、design principles、厳格な <code>ref -&gt; sys -&gt; comp</code> tokens、近い値の判断記録、component similarity review、anti-AI style rules、HTML docs、audit results。',
+              'Markdown specs、design principles、厳格な <code>ref -&gt; sys -&gt; comp</code> tokens、duplicate source review、近い値の判断記録、component similarity review、anti-AI style rules、HTML docs、audit results。',
             stageEyebrow: "判断ポイント",
             stageTitle: "素材から checkpoint までの 5 段階",
             stageText:
-              "観察をまず evidence にし、その後でルールに変換します。近い token や似た component は黙って追加せず、review queue に残します。",
+              "source をまず evidence にし、その後でルールに変換します。重複 source、近い token、似た component は黙って追加せず、review queue に残します。",
             stageEvidenceTitle: "Evidence first",
             stageEvidenceText:
-              "画像、Figma、コード参照を追跡可能な design evidence に整理します。",
+              "画像、Figma、コード参照を追跡可能な design evidence に整理し、重複 source を先に確認します。",
             stagePrincipleTitle: "Principles",
             stagePrincipleText:
               "繰り返し現れる判断を、実装に使える product principles に変換します。",
@@ -1799,14 +1804,14 @@
               "先 extract 有 evidence 支撐的設計規範。除非明確要求，product UI code 只會在 checkpoint 之後才開始。",
             outputsTitle: "輸出內容",
             outputsText:
-              'Markdown 規範、設計原則、嚴格 <code>ref -&gt; sys -&gt; comp</code> tokens、近似 token 決策、component similarity review、anti-AI style rules、HTML docs 與 audit results。',
+              'Markdown 規範、設計原則、嚴格 <code>ref -&gt; sys -&gt; comp</code> tokens、duplicate source review、近似 token 決策、component similarity review、anti-AI style rules、HTML docs 與 audit results。',
             stageEyebrow: "流程判斷點",
             stageTitle: "從來源到 checkpoint 的五個階段",
             stageText:
-              "先把觀察變成 evidence，再把 evidence 變成規範；遇到近似 token 或相似 component 時，進入 review queue，而不是直接新增。",
+              "先把來源變成 evidence，再把 evidence 變成規範；遇到重複來源、近似 token 或相似 component 時，進入 review queue，而不是直接新增。",
             stageEvidenceTitle: "Evidence first",
             stageEvidenceText:
-              "將圖片、Figma 與程式線索整理成可追溯的設計證據。",
+              "將圖片、Figma 與程式線索整理成可追溯的設計證據，並先檢查重複來源。",
             stagePrincipleTitle: "Principles",
             stagePrincipleText:
               "把重複出現的判斷整理成可執行的產品設計原則。",
