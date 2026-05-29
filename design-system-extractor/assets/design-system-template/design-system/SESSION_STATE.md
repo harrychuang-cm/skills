@@ -23,6 +23,7 @@ Update this file at every checkpoint.
 - [ ] tokens/tokens-sys.css
 - [ ] tokens/tokens-comp.css
 - [ ] docs/design-system/index.html
+- [ ] docs/design-system/review.html
 
 ## Key Design Decisions
 
@@ -58,5 +59,6 @@ Update this file at every checkpoint.
 ## Generated Documentation
 
 - HTML docs:
+- Review queue:
 
 ## Recommended Next Prompt

@@ -17,7 +17,7 @@ List screenshots, Figma URLs/nodes, rendered routes, project folders, and protot
 5. Fill `COMPONENT_INVENTORY.md` and review similar component candidates.
 6. Extract at least one primary component token spec into `design-system/components/`.
 7. Fill `PAGE_COMPOSITION_RULES.md`, `INTERACTION_STATES.md`, and `ANTI_AI_STYLE_RULES.md`.
-8. Generate `docs/design-system/index.html`.
+8. Generate `docs/design-system/index.html` and `docs/design-system/review.html`.
 9. Run strict token and component audits.
 10. Update `SESSION_STATE.md`.
 11. Stop and ask the user what to do next.

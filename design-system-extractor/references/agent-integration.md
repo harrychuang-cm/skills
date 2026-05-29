@@ -18,6 +18,7 @@ All agents should follow the same rules:
 - Add or update `design-system/components/*.md` specs before implementing new shared components.
 - Apply `design-system/ANTI_AI_STYLE_RULES.md` before recommending or implementing UI.
 - Generate `docs/design-system/index.html` after design-system documentation or token changes.
+- Generate `docs/design-system/review.html` after token or component review changes.
 - Run strict token and component audits after extraction or component token changes.
 - Stop at checkpoints and ask the user before moving from design-system extraction to product implementation.
 
@@ -36,6 +37,7 @@ Document near-token merge/keep-distinct decisions in TOKEN_ARCHITECTURE.md.
 Document similar component merge/variant/keep-distinct/blocked decisions in COMPONENT_INVENTORY.md before creating new component specs.
 Run the strict token and component audits after token or component changes.
 Generate `docs/design-system/index.html` after design-system documentation or token changes.
+Generate `docs/design-system/review.html` after token or component review changes.
 Apply `design-system/ANTI_AI_STYLE_RULES.md` before UI recommendations.
 Do not implement product screens until the design-system checkpoint is approved.
 ```
@@ -64,6 +66,7 @@ Similar component candidates require documented merge/variant/keep-distinct/bloc
 Apply `design-system/ANTI_AI_STYLE_RULES.md` before UI generation.
 Run strict token and component audits after token or component changes.
 Generate `docs/design-system/index.html` after design-system documentation or token changes.
+Generate `docs/design-system/review.html` after token or component review changes.
 Stop and ask before creating new component categories without a component spec.
 ```
 
@@ -86,6 +89,7 @@ Fill or update design-system docs and tokens before product UI code.
 Apply `design-system/ANTI_AI_STYLE_RULES.md` before interface work.
 Run the strict token and component audits after token or component changes.
 Generate `docs/design-system/index.html` after design-system documentation or token changes.
+Generate `docs/design-system/review.html` after token or component review changes.
 Update `design-system/SESSION_STATE.md` and ask for the next step before continuing.
 ```
 
@@ -101,4 +105,5 @@ Before claiming the package is ready for another agent:
 - `design-system/components/*.md` contains specs for extracted component tokens.
 - `ANTI_AI_STYLE_RULES.md` is project-specific, not generic.
 - `docs/design-system/index.html` exists and reflects the latest docs and tokens.
+- `docs/design-system/review.html` exists and reflects near-token and similar-component review state.
 - Token and component audits pass or known failures are documented.

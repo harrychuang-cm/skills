@@ -44,6 +44,7 @@ const uiCopy = {
     langSelectorLabel: "語言",
     navOverview: "總覽",
     navTokens: "Tokens",
+    navReviewQueue: "審查佇列",
     navMissingDocuments: "缺少文件",
     heroTitle: "設計系統文件",
     heroLead:
@@ -85,6 +86,7 @@ const uiCopy = {
     langSelectorLabel: "Language",
     navOverview: "Overview",
     navTokens: "Tokens",
+    navReviewQueue: "Review Queue",
     navMissingDocuments: "Missing Documents",
     heroTitle: "Design System Documentation",
     heroLead:
@@ -127,6 +129,7 @@ const uiCopy = {
     langSelectorLabel: "言語",
     navOverview: "概要",
     navTokens: "Tokens",
+    navReviewQueue: "Review Queue",
     navMissingDocuments: "不足ドキュメント",
     heroTitle: "デザインシステムドキュメント",
     heroLead:
@@ -758,6 +761,7 @@ function navLink(doc) {
 const navItems = [
   `<a href="#overview" data-i18n="navOverview">${escapeHtml(t(DEFAULT_LOCALE, "navOverview"))}</a>`,
   `<a href="#tokens" data-i18n="navTokens">${escapeHtml(t(DEFAULT_LOCALE, "navTokens"))}</a>`,
+  `<a href="review.html" data-i18n="navReviewQueue">${escapeHtml(t(DEFAULT_LOCALE, "navReviewQueue"))}</a>`,
   ...docs.map((doc) => navLink(doc)),
   ...(missingDocs.length
     ? [`<a href="#missing-documents" data-i18n="navMissingDocuments">${escapeHtml(t(DEFAULT_LOCALE, "navMissingDocuments"))}</a>`]

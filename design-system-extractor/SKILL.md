@@ -116,12 +116,14 @@ Generate developer-facing static HTML docs after design-system Markdown and toke
 
 ```sh
 node <skill-root>/scripts/generate_docs_html.mjs <target-root>
+node <skill-root>/scripts/generate_review_html.mjs <target-root>
 ```
 
-Default output:
+Default outputs:
 
 ```txt
 docs/design-system/index.html
+docs/design-system/review.html
 ```
 
 The HTML shell supports `zh-Hant` (default), `en`, and `ja` UI locales with a sidebar language switcher. Markdown body content remains in the extraction language.
@@ -130,7 +132,7 @@ Use `references/html-documentation.md` when changing the HTML documentation beha
 
 ### 9. Audit And Checkpoint
 
-Run the strict token audit after an extraction or component expansion:
+Run strict token and component audits after an extraction or component expansion:
 
 ```sh
 node <skill-root>/scripts/audit_tokens.mjs <target-root> --strict
@@ -146,6 +148,7 @@ Update `design-system/SESSION_STATE.md` with:
 - open questions
 - token layers changed
 - generated HTML docs path
+- generated review queue path
 - audit result
 - component similarity review result
 - recommended next prompt
@@ -171,7 +174,7 @@ Use this pass when the user chooses to expand component tokens after the initial
 5. Add component tokens in `tokens/tokens-comp.css`; component tokens must reference system tokens only.
 6. Update `COMPONENT_INVENTORY.md` status and missing states.
 7. Update related interaction and page composition rules.
-8. Regenerate `docs/design-system/index.html`.
+8. Regenerate `docs/design-system/index.html` and `docs/design-system/review.html`.
 9. Run `node <skill-root>/scripts/audit_tokens.mjs <target-root> --strict` and `node <skill-root>/scripts/audit_components.mjs <target-root> --strict`.
 10. Update `SESSION_STATE.md`, then stop and ask for the next step.
 
@@ -214,3 +217,4 @@ If the user wants to use the extraction package with Claude Code, Cursor, or Cod
 - `scripts/audit_tokens.mjs`: token layer audit; pass `--strict` after real extraction work.
 - `scripts/audit_components.mjs`: component similarity review audit; pass `--strict` after inventory or component spec changes.
 - `scripts/generate_docs_html.mjs`: generated developer-facing HTML docs, including `design-system/components/*.md`.
+- `scripts/generate_review_html.mjs`: generated visual review queue for near tokens, color scale issues, and similar components.

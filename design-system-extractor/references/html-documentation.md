@@ -12,12 +12,14 @@ Generate:
 
 ```txt
 docs/design-system/index.html
+docs/design-system/review.html
 ```
 
 Use:
 
 ```sh
 node skills/design-system-extractor/scripts/generate_docs_html.mjs .
+node skills/design-system-extractor/scripts/generate_review_html.mjs .
 ```
 
 To write elsewhere:
@@ -41,6 +43,14 @@ The HTML documentation should include:
 - Markdown image references, including component similarity review thumbnails
 - links or labels for source filenames
 
+The review queue HTML should include:
+
+- color scale issues with swatches
+- near color token pairs with swatches and deltaE
+- near numeric token pairs with differences
+- component similarity review rows with visual references
+- documented versus needs-review status
+
 ## Design Rules
 
 - Keep the page static and dependency-free.
@@ -49,7 +59,7 @@ The HTML documentation should include:
 - Do not use gradients, glassmorphism, decorative blobs, or marketing hero patterns.
 - Use an editorial documentation layout: sidebar navigation, readable content column, dense token tables, and visible code/token specimens.
 - Treat generated HTML as documentation, not as product UI.
-- Copy `design-system/assets/` into the generated docs asset folder so review images linked as `assets/...` render from `docs/design-system/index.html`.
+- Copy `design-system/assets/` into the generated docs asset folder so review images linked as `assets/...` render from `docs/design-system/index.html` and `docs/design-system/review.html`.
 
 ## Internationalization
 
@@ -73,6 +83,7 @@ When changing UI strings or adding new chrome labels, update `scripts/generate_d
 After generation:
 
 1. Confirm the HTML file exists.
-2. Re-run token and component audits with `--strict` after real extraction work.
-3. Open or inspect the generated file if a browser is available.
-4. Record the generated path in `design-system/SESSION_STATE.md`.
+2. Confirm `docs/design-system/review.html` exists.
+3. Re-run token and component audits with `--strict` after real extraction work.
+4. Open or inspect the generated files if a browser is available.
+5. Record the generated paths in `design-system/SESSION_STATE.md`.
