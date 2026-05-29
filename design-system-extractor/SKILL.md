@@ -64,11 +64,31 @@ Default to strict `ref -> sys -> comp` inheritance when the project has no stron
 
 Use `references/token-architecture.md` before creating or changing token layers.
 
+Before finalizing token files, run a token candidate review:
+
+1. Collect raw color, spacing, radius, typography, opacity, shadow, and motion values from evidence.
+2. Normalize reference colors into palette families with numeric steps where `100` is lightest and `0` is darkest.
+3. Check each palette family so higher numbers are visually lighter than lower numbers.
+4. Cluster very close reference colors and very close reference numbers in the same value family.
+5. If close candidates appear, stop and ask the developer whether to `merge` or `keep distinct`.
+6. Record every decision in `design-system/TOKEN_ARCHITECTURE.md` under `Near Token Decisions`, or add an adjacent `token-review:` CSS comment when the decision must stay next to the token.
+7. Only then write final `ref`, `sys`, and `comp` tokens.
+
 ### 5. Component Inventory
 
 Fill `design-system/COMPONENT_INVENTORY.md`.
 
 Inventory repeated patterns from the references. Mark each component as `extracted`, `planned`, `blocked`, or `out-of-scope`. Include priority, observed sources, required token groups, missing states, and implementation notes.
+
+Before finalizing inventory or adding a new component spec, run a component similarity review:
+
+1. Read existing `COMPONENT_INVENTORY.md`, `design-system/components/*.md`, and relevant component tokens.
+2. Create a component fingerprint for each new candidate: purpose, anatomy, variants/states, token contract, layout/density, behavior, source evidence, and visual reference.
+3. Compare the candidate with existing extracted or planned components. Weight purpose and behavior first, then anatomy, states, token usage, and layout.
+4. If a candidate is similar to an existing component, stop and ask the developer whether to `merge`, `make variant`, `keep distinct`, or `block pending more evidence`.
+5. Record the decision in `COMPONENT_INVENTORY.md` under `Component Similarity Review` before creating or updating component specs.
+6. Use source-based visual references: for Figma, capture the actual node preview/screenshot or a crop of the design frame; for screenshot inputs, crop the relevant component region. Store review images under `design-system/assets/component-review/` and link them from the similarity table.
+7. Do not use an AI-drawn schematic as the review image when a Figma preview or screenshot crop is available. A schematic SVG is allowed only as a last-resort fallback when source previews cannot be captured, and it must be labeled `schematic fallback - source preview unavailable`; it is not design evidence.
 
 ### 6. Component Token Specs
 
@@ -104,6 +124,8 @@ Default output:
 docs/design-system/index.html
 ```
 
+The HTML shell supports `zh-Hant` (default), `en`, and `ja` UI locales with a sidebar language switcher. Markdown body content remains in the extraction language.
+
 Use `references/html-documentation.md` when changing the HTML documentation behavior.
 
 ### 9. Audit And Checkpoint
@@ -112,6 +134,7 @@ Run the strict token audit after an extraction or component expansion:
 
 ```sh
 node <skill-root>/scripts/audit_tokens.mjs <target-root> --strict
+node <skill-root>/scripts/audit_components.mjs <target-root> --strict
 ```
 
 Use non-strict mode only for an empty starter package or early setup check.
@@ -124,6 +147,7 @@ Update `design-system/SESSION_STATE.md` with:
 - token layers changed
 - generated HTML docs path
 - audit result
+- component similarity review result
 - recommended next prompt
 
 Then stop and ask the user what to do next. Suggested choices:
@@ -148,7 +172,7 @@ Use this pass when the user chooses to expand component tokens after the initial
 6. Update `COMPONENT_INVENTORY.md` status and missing states.
 7. Update related interaction and page composition rules.
 8. Regenerate `docs/design-system/index.html`.
-9. Run `node <skill-root>/scripts/audit_tokens.mjs <target-root> --strict`.
+9. Run `node <skill-root>/scripts/audit_tokens.mjs <target-root> --strict` and `node <skill-root>/scripts/audit_components.mjs <target-root> --strict`.
 10. Update `SESSION_STATE.md`, then stop and ask for the next step.
 
 ## Gates
@@ -161,9 +185,13 @@ If an important design rule has no source evidence, mark it Low confidence or as
 
 If a component needs a semantic or component token that does not exist, create or propose the token at the correct layer. Never use hardcoded fallback values in implementation guidance.
 
+Do not silently merge or split close token values. When near duplicate colors or numbers are found, ask the developer for a merge/keep-distinct decision and document it before the checkpoint.
+
 ### Component Gate
 
 Before adding a new component spec, check `COMPONENT_INVENTORY.md` and existing component docs. Reuse or extend a known component when intent, anatomy, slots, and states match.
+
+Do not create a new component only because the Figma layer name is new. If a candidate resembles an existing component, present the visual comparison and fingerprint difference, then ask for a merge/variant/keep-distinct/block decision.
 
 ### Implementation Boundary Gate
 
@@ -184,4 +212,5 @@ If the user wants to use the extraction package with Claude Code, Cursor, or Cod
 - `references/html-documentation.md`: static HTML documentation output rules.
 - `assets/design-system-template/`: starter output package.
 - `scripts/audit_tokens.mjs`: token layer audit; pass `--strict` after real extraction work.
+- `scripts/audit_components.mjs`: component similarity review audit; pass `--strict` after inventory or component spec changes.
 - `scripts/generate_docs_html.mjs`: generated developer-facing HTML docs, including `design-system/components/*.md`.

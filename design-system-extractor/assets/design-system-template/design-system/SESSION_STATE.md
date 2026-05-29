@@ -35,12 +35,25 @@ Update this file at every checkpoint.
 - System:
 - Component:
 
+## Token Review
+
+- Near token candidates found:
+- Developer decisions recorded in `TOKEN_ARCHITECTURE.md`:
+
+## Component Similarity Review
+
+- Similar component candidates found:
+- Developer decisions recorded in `COMPONENT_INVENTORY.md`:
+- Visual comparison assets:
+
 ## Open Questions
 
 ## Verification
 
 - Token audit mode:
 - Token audit result:
+- Component audit mode:
+- Component audit result:
 
 ## Generated Documentation
 

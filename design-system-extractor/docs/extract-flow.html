@@ -597,7 +597,7 @@
           <h2 data-i18n="outputsTitle">輸出內容</h2>
           <p data-i18n="outputsText" data-i18n-html="true">
             Markdown 規範、設計原則、嚴格 <code>ref -&gt; sys -&gt; comp</code> tokens、
-            component inventory、anti-AI style rules、HTML docs 與 audit results。
+            近似 token 決策、component similarity review、anti-AI style rules、HTML docs 與 audit results。
           </p>
         </article>
       </section>
@@ -668,7 +668,9 @@
                   <p>
                     Convert raw values into reference tokens, semantic roles
                     into system tokens, and component slots into component
-                    tokens.
+                    tokens. Order color scales as 100 lightest to 0 darkest,
+                    and pause for merge/keep-distinct review when values are
+                    very close.
                   </p>
                 </div>
               </li>
@@ -677,7 +679,9 @@
                   <h4>Inventory components</h4>
                   <p>
                     Identify repeated UI patterns and classify them as
-                    extracted, planned, blocked, or out of scope.
+                    extracted, planned, blocked, or out of scope. Compare
+                    component fingerprints and add visual review assets when a
+                    candidate overlaps an existing component.
                   </p>
                 </div>
               </li>
@@ -723,8 +727,9 @@
                 <div>
                   <h4>Audit and checkpoint</h4>
                   <p>
-                    Run token audits, update session state, list open questions,
-                    and stop before implementation work changes the scope.
+                    Run token and component audits, update session state, list
+                    open questions, and stop before implementation work changes
+                    the scope.
                   </p>
                 </div>
               </li>
@@ -787,7 +792,8 @@
                 <h4>Tokens prevent drift</h4>
                 <p>
                   Strict inheritance keeps raw values, semantic roles, and
-                  component decisions separate and easier to audit.
+                  component decisions separate and easier to audit. Near-token
+                  review prevents accidental duplicates.
                 </p>
               </article>
               <article class="why-item">
@@ -834,8 +840,8 @@
               <article class="output-item">
                 <h4>Quality gate</h4>
                 <p>
-                  Token audits and session-state updates make the extraction
-                  repeatable across projects.
+                  Token audits, near-token decisions, and session-state updates
+                  make the extraction repeatable across projects.
                 </p>
               </article>
             </div>
@@ -906,7 +912,9 @@
                   <h4>token 構造を作る</h4>
                   <p>
                     生の値は reference token、意味を持つ役割は system token、
-                    component の slot は component token に分けます。
+                    component の slot は component token に分けます。色階は
+                    100 を最も明るく、0 を最も暗くし、近い値は merge または
+                    keep-distinct の確認を取ります。
                   </p>
                 </div>
               </li>
@@ -915,7 +923,8 @@
                   <h4>component を棚卸しする</h4>
                   <p>
                     繰り返し使われる UI パターンを見つけ、extracted、planned、
-                    blocked、out-of-scope に分類します。
+                    blocked、out-of-scope に分類します。近い component
+                    は fingerprint と visual review asset で比較します。
                   </p>
                 </div>
               </li>
@@ -960,8 +969,8 @@
                 <div>
                   <h4>audit と checkpoint を行う</h4>
                   <p>
-                    token audit を実行し、session state に決定事項と未解決事項を残し、
-                    実装に進む前に一度止めます。
+                    token audit と component audit を実行し、session state
+                    に決定事項と未解決事項を残し、実装に進む前に一度止めます。
                   </p>
                 </div>
               </li>
@@ -1023,7 +1032,8 @@
                 <h4>token がずれを防ぐ</h4>
                 <p>
                   <code>ref -&gt; sys -&gt; comp</code> を守ることで、
-                  生値、意味、component 固有の判断を分離できます。
+                  生値、意味、component 固有の判断を分離できます。近い値の
+                  review により、偶発的な重複も防げます。
                 </p>
               </article>
               <article class="why-item">
@@ -1068,7 +1078,8 @@
               <article class="output-item">
                 <h4>品質 gate</h4>
                 <p>
-                  token audit と session-state 更新により、別プロジェクトでも同じ流れを再現できます。
+                  token audit、近い値の判断記録、session-state 更新により、
+                  別プロジェクトでも同じ流れを再現できます。
                 </p>
               </article>
             </div>
@@ -1137,7 +1148,8 @@
                   <h4>建立 token 架構</h4>
                   <p>
                     把原始值放在 reference token，把語意角色放在 system token，
-                    把 component slot 放在 component token。
+                    把 component slot 放在 component token。色階以 100
+                    作為最亮、0 作為最暗；遇到很接近的值時，先確認要合併或保留拆開。
                   </p>
                 </div>
               </li>
@@ -1146,7 +1158,8 @@
                   <h4>盤點 component</h4>
                   <p>
                     找出重複出現的 UI 模式，並標記為 extracted、planned、blocked
-                    或 out-of-scope。
+                    或 out-of-scope。遇到相似 component 時，用 fingerprint
+                    與視覺對照圖協助判斷。
                   </p>
                 </div>
               </li>
@@ -1190,8 +1203,8 @@
                 <div>
                   <h4>執行 audit 並 checkpoint</h4>
                   <p>
-                    檢查 token 繼承、更新 session state、列出未決問題，
-                    並在進入產品實作前暫停確認下一步。
+                    檢查 token 繼承與 component similarity review、更新
+                    session state、列出未決問題，並在進入產品實作前暫停確認下一步。
                   </p>
                 </div>
               </li>
@@ -1253,7 +1266,8 @@
                 <h4>Tokens 防止樣式漂移</h4>
                 <p>
                   嚴格維持 <code>ref -&gt; sys -&gt; comp</code>，
-                  可以把原始值、語意角色和 component 決策分清楚。
+                  可以把原始值、語意角色和 component 決策分清楚；近似 token
+                  review 則避免無意義的重複。
                 </p>
               </article>
               <article class="why-item">
@@ -1299,7 +1313,8 @@
               <article class="output-item">
                 <h4>品質關卡</h4>
                 <p>
-                  透過 token audit 和 session-state 更新，讓 extract 流程能在不同專案中重複使用。
+                  透過 token audit、近似 token 決策和 session-state 更新，
+                  讓 extract 流程能在不同專案中重複使用。
                 </p>
               </article>
             </div>
@@ -1347,7 +1362,7 @@
               "Extract evidence-backed design rules first. Product UI code comes only after the checkpoint unless explicitly requested.",
             outputsTitle: "Outputs",
             outputsText:
-              'Markdown specs, design principles, strict <code>ref -&gt; sys -&gt; comp</code> tokens, component inventory, anti-AI style rules, HTML docs, and audit results.',
+              'Markdown specs, design principles, strict <code>ref -&gt; sys -&gt; comp</code> tokens, near-token decisions, component similarity review, anti-AI style rules, HTML docs, and audit results.',
             footerText:
               "Source files remain Markdown and CSS tokens. This page is a portable guide for understanding the extraction workflow before running the skill in Claude Code, Cursor, or Codex.",
           },
@@ -1374,7 +1389,7 @@
               "まず根拠に基づくデザインルールを抽出します。明示的に依頼されない限り、product UI code は checkpoint の後に扱います。",
             outputsTitle: "出力",
             outputsText:
-              'Markdown specs、design principles、厳格な <code>ref -&gt; sys -&gt; comp</code> tokens、component inventory、anti-AI style rules、HTML docs、audit results。',
+              'Markdown specs、design principles、厳格な <code>ref -&gt; sys -&gt; comp</code> tokens、近い値の判断記録、component similarity review、anti-AI style rules、HTML docs、audit results。',
             footerText:
               "Source files は Markdown と CSS tokens のままです。このページは、Claude Code、Cursor、Codex で skill を実行する前に extraction workflow を理解するためのポータブルガイドです。",
           },
@@ -1401,7 +1416,7 @@
               "先 extract 有 evidence 支撐的設計規範。除非明確要求，product UI code 只會在 checkpoint 之後才開始。",
             outputsTitle: "輸出內容",
             outputsText:
-              'Markdown 規範、設計原則、嚴格 <code>ref -&gt; sys -&gt; comp</code> tokens、component inventory、anti-AI style rules、HTML docs 與 audit results。',
+              'Markdown 規範、設計原則、嚴格 <code>ref -&gt; sys -&gt; comp</code> tokens、近似 token 決策、component similarity review、anti-AI style rules、HTML docs 與 audit results。',
             footerText:
               "Source files 仍然是 Markdown 與 CSS tokens。這個頁面是執行 Claude Code、Cursor 或 Codex skill 前，用來理解 extract workflow 的可攜式導覽。",
           },

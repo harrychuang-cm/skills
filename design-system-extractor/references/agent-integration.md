@@ -9,12 +9,16 @@ All agents should follow the same rules:
 - Treat screenshots, Figma, rendered UI, and design-system docs as source evidence.
 - Read `design-system/SESSION_STATE.md` before continuing.
 - Use `tokens/tokens.css` import order: ref, sys, comp.
+- Keep reference color scales ordered as `100` lightest to `0` darkest.
+- Ask for and document merge/keep-distinct decisions before keeping near duplicate reference colors or numbers.
+- Review similar component candidates before adding new component specs; document merge/variant/keep-distinct/blocked decisions in `COMPONENT_INVENTORY.md`.
+- Use actual Figma node previews/screenshots or screenshot crops for component similarity review. Use schematic SVG only as a last-resort fallback, labeled `schematic fallback - source preview unavailable`, and never as design evidence.
 - Do not hardcode colors, spacing, radius, typography, opacity, shadows, or motion values when tokens exist.
 - Do not let component tokens reference reference tokens directly.
 - Add or update `design-system/components/*.md` specs before implementing new shared components.
 - Apply `design-system/ANTI_AI_STYLE_RULES.md` before recommending or implementing UI.
 - Generate `docs/design-system/index.html` after design-system documentation or token changes.
-- Run strict token audit after extraction or component token changes.
+- Run strict token and component audits after extraction or component token changes.
 - Stop at checkpoints and ask the user before moving from design-system extraction to product implementation.
 
 ## Claude Code
@@ -27,7 +31,10 @@ Create or update `CLAUDE.md` with:
 Start with `design-system/SESSION_STATE.md`.
 Use `design-system/` and `tokens/` as the source of truth before editing product UI.
 Maintain token inheritance: ref -> sys -> comp.
-Run the strict token audit after token changes.
+Keep color steps ordered 100 lightest to 0 darkest.
+Document near-token merge/keep-distinct decisions in TOKEN_ARCHITECTURE.md.
+Document similar component merge/variant/keep-distinct/blocked decisions in COMPONENT_INVENTORY.md before creating new component specs.
+Run the strict token and component audits after token or component changes.
 Generate `docs/design-system/index.html` after design-system documentation or token changes.
 Apply `design-system/ANTI_AI_STYLE_RULES.md` before UI recommendations.
 Do not implement product screens until the design-system checkpoint is approved.
@@ -51,8 +58,11 @@ Read `design-system/SESSION_STATE.md` before UI work.
 Use `tokens/` and component specs before writing component CSS.
 No hardcoded visual values when tokens exist.
 Component tokens may reference only system tokens.
+Reference color steps run 100 lightest to 0 darkest.
+Near token candidates require documented merge/keep-distinct decisions.
+Similar component candidates require documented merge/variant/keep-distinct/blocked decisions.
 Apply `design-system/ANTI_AI_STYLE_RULES.md` before UI generation.
-Run strict token audit after token changes.
+Run strict token and component audits after token or component changes.
 Generate `docs/design-system/index.html` after design-system documentation or token changes.
 Stop and ask before creating new component categories without a component spec.
 ```
@@ -69,9 +79,12 @@ Create or update `AGENTS.md` with:
 Use all reference screenshots, Figma data, rendered UI, and `design-system/` docs as source evidence.
 Start with `design-system/SESSION_STATE.md`.
 Keep token inheritance strict: ref -> sys -> comp.
+Use 100 lightest to 0 darkest for reference color scales.
+Document near-token merge/keep-distinct decisions before finalizing tokens.
+Document similar component merge/variant/keep-distinct/blocked decisions before finalizing component specs.
 Fill or update design-system docs and tokens before product UI code.
 Apply `design-system/ANTI_AI_STYLE_RULES.md` before interface work.
-Run the strict token audit after token changes.
+Run the strict token and component audits after token or component changes.
 Generate `docs/design-system/index.html` after design-system documentation or token changes.
 Update `design-system/SESSION_STATE.md` and ask for the next step before continuing.
 ```
@@ -82,8 +95,10 @@ Before claiming the package is ready for another agent:
 
 - `SESSION_STATE.md` names the current stage and next prompt.
 - `TOKEN_ARCHITECTURE.md` documents prefixes and inheritance.
+- `TOKEN_ARCHITECTURE.md` records near-token merge/keep-distinct decisions when audit finds candidates.
 - `COMPONENT_INVENTORY.md` shows which components are extracted and which are pending.
+- `COMPONENT_INVENTORY.md` records similarity review decisions and links visual comparison assets when candidates overlap.
 - `design-system/components/*.md` contains specs for extracted component tokens.
 - `ANTI_AI_STYLE_RULES.md` is project-specific, not generic.
 - `docs/design-system/index.html` exists and reflects the latest docs and tokens.
-- Token audit passes or known failures are documented.
+- Token and component audits pass or known failures are documented.
