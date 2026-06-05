@@ -1,0 +1,806 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CM Skills Guide</title>
+    <style>
+      :root {
+        --bg: #f7f7f4;
+        --surface: #ffffff;
+        --surface-soft: #f0f3ee;
+        --text: #1e2522;
+        --muted: #5f6c66;
+        --line: #d8ded8;
+        --accent: #246b5a;
+        --accent-strong: #16483d;
+        --accent-soft: #dcebe5;
+        --warn: #8a5a18;
+        --warn-soft: #f5ead8;
+        --code: #24302c;
+        --shadow: 0 16px 40px rgba(32, 45, 39, 0.1);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", sans-serif;
+        line-height: 1.65;
+      }
+
+      a {
+        color: var(--accent-strong);
+        text-decoration-thickness: 1px;
+        text-underline-offset: 3px;
+      }
+
+      .page {
+        max-width: 1120px;
+        margin: 0 auto;
+        padding: 30px 24px 64px;
+      }
+
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        padding: 0 0 18px;
+      }
+
+      .language-switcher {
+        display: inline-flex;
+        gap: 4px;
+        padding: 4px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--surface);
+      }
+
+      .language-switcher button {
+        min-width: 52px;
+        border: 0;
+        border-radius: 6px;
+        padding: 7px 10px;
+        background: transparent;
+        color: var(--muted);
+        cursor: pointer;
+        font: inherit;
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .language-switcher button[aria-pressed="true"] {
+        background: var(--accent);
+        color: #ffffff;
+      }
+
+      header {
+        padding: 18px 0 28px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .eyebrow {
+        margin: 0 0 10px;
+        color: var(--accent);
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 0;
+        text-transform: uppercase;
+      }
+
+      h1,
+      h2,
+      h3 {
+        margin: 0;
+        line-height: 1.2;
+        letter-spacing: 0;
+      }
+
+      h1 {
+        max-width: 790px;
+        font-size: 56px;
+      }
+
+      h2 {
+        margin-bottom: 16px;
+        font-size: 28px;
+      }
+
+      h3 {
+        font-size: 20px;
+      }
+
+      p {
+        margin: 0;
+      }
+
+      code {
+        font-family:
+          "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+        font-size: 0.95em;
+      }
+
+      .lead {
+        max-width: 800px;
+        margin-top: 18px;
+        color: var(--muted);
+        font-size: 18px;
+      }
+
+      .section {
+        padding: 34px 0;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .grid {
+        display: grid;
+        gap: 18px;
+      }
+
+      .grid.two {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .grid.four {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
+
+      .panel,
+      .skill,
+      .step,
+      .prompt {
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        box-shadow: var(--shadow);
+      }
+
+      .panel {
+        padding: 22px;
+      }
+
+      .skill {
+        display: flex;
+        min-height: 100%;
+        flex-direction: column;
+        gap: 16px;
+        padding: 20px;
+      }
+
+      .skill .tag,
+      .step .number {
+        display: inline-flex;
+        width: fit-content;
+        align-items: center;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .skill .tag {
+        padding: 3px 8px;
+        background: var(--accent-soft);
+        color: var(--accent-strong);
+      }
+
+      .skill p,
+      .step p,
+      .panel p {
+        color: var(--muted);
+      }
+
+      .skill ul,
+      .panel ul {
+        margin: 0;
+        padding-left: 20px;
+        color: var(--muted);
+      }
+
+      .step {
+        padding: 18px;
+      }
+
+      .step .number {
+        margin-bottom: 10px;
+        padding: 2px 7px;
+        background: var(--surface-soft);
+        color: var(--accent-strong);
+      }
+
+      .flow {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 14px;
+      }
+
+      .prompt-list {
+        display: grid;
+        gap: 12px;
+      }
+
+      .prompt {
+        padding: 14px 16px;
+        overflow: auto;
+        background: var(--code);
+        color: #f5fbf8;
+        font-family:
+          "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+        font-size: 13px;
+        line-height: 1.55;
+        white-space: pre-wrap;
+      }
+
+      .notice {
+        border-color: #ead7b5;
+        background: var(--warn-soft);
+      }
+
+      .notice strong {
+        color: var(--warn);
+      }
+
+      .meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 24px;
+      }
+
+      .pill {
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 7px 11px;
+        background: var(--surface);
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      footer {
+        padding-top: 28px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      @media (max-width: 860px) {
+        .grid.two,
+        .grid.four,
+        .flow {
+          grid-template-columns: 1fr;
+        }
+
+        .page {
+          padding: 20px 18px 44px;
+        }
+
+        .topbar {
+          justify-content: flex-start;
+        }
+
+        header {
+          padding-top: 14px;
+        }
+
+        h1 {
+          font-size: 38px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <div class="topbar">
+        <nav class="language-switcher" aria-label="Language">
+          <button type="button" data-lang="en">EN</button>
+          <button type="button" data-lang="ja">JP</button>
+          <button type="button" data-lang="zh-Hant">繁中</button>
+        </nav>
+      </div>
+      <div id="content" aria-live="polite"></div>
+    </main>
+
+    <script>
+      const skillData = [
+        {
+          tag: "$design-system-extractor",
+          key: "extractor",
+          bullets: {
+            en: [
+              "Create design principles",
+              "Create ref / sys / comp tokens",
+              "Review similar components and near tokens",
+            ],
+            ja: [
+              "デザイン原則を作成",
+              "ref / sys / comp トークンを作成",
+              "類似コンポーネントと近似トークンをレビュー",
+            ],
+            "zh-Hant": [
+              "建立設計原則",
+              "建立 ref / sys / comp tokens",
+              "檢查相似元件與 token 重複",
+            ],
+          },
+        },
+        {
+          tag: "$design-system-to-storybook",
+          key: "storybook",
+          bullets: {
+            en: [
+              "Read extracted specs",
+              "Install the Figma export addon",
+              "Build components and stories in batches",
+            ],
+            ja: [
+              "抽出済み specs を読む",
+              "Figma export addon を導入",
+              "コンポーネントと stories を分割して作成",
+            ],
+            "zh-Hant": [
+              "讀取已萃取的 specs",
+              "安裝 Figma export addon",
+              "分批建立元件與 stories",
+            ],
+          },
+        },
+        {
+          tag: "$ui-screenshot-to-storybook-product",
+          key: "screenshot",
+          bullets: {
+            en: [
+              "Parse visual blocks",
+              "Build shared components first",
+              "Compose the product page last",
+            ],
+            ja: [
+              "画面ブロックを解析",
+              "先に共通コンポーネントを作成",
+              "最後にプロダクト画面を構成",
+            ],
+            "zh-Hant": [
+              "分析畫面區塊",
+              "先建共用元件",
+              "最後組裝頁面",
+            ],
+          },
+        },
+        {
+          tag: "$ui-compare-to-reference",
+          key: "compare",
+          bullets: {
+            en: [
+              "Check visual parity",
+              "Trace fixes to tokens or shared components",
+              "Avoid one-off CSS patches",
+            ],
+            ja: [
+              "ビジュアル差分を確認",
+              "修正を token または共通コンポーネントへ戻す",
+              "一回限りの CSS 修正を避ける",
+            ],
+            "zh-Hant": [
+              "檢查 visual parity",
+              "追到 token 或 shared component",
+              "避免一次性 CSS 補丁",
+            ],
+          },
+        },
+      ];
+
+      const copy = {
+        en: {
+          title: "Design System and UI Implementation Skill Guide",
+          eyebrow: "CM Skills",
+          lead:
+            "This project provides reusable Codex / Cursor / Claude Code skills that connect design references, design-system documentation, Storybook components, and visual comparison into a clear workflow.",
+          pills: [
+            "Extract the design system first",
+            "Then implement Storybook",
+            "Component-first",
+            "Token-first",
+          ],
+          quickChoice: "Which skill should I use?",
+          skills: {
+            extractor: {
+              title: "Extract a design system from references",
+              body:
+                "Use this before implementation to turn screenshots, Figma, prototypes, or existing apps into design-system docs, tokens, component inventory, and review HTML.",
+            },
+            storybook: {
+              title: "Implement the design system in Storybook",
+              body:
+                "Use this after design-system docs exist. It builds Storybook foundations, shared components, and stories. Large inventories are queued and implemented in batches.",
+            },
+            screenshot: {
+              title: "Implement one screen through reusable components",
+              body:
+                "Use this when you have a screenshot or Figma export and want to split it into reusable UI blocks before composing the product screen.",
+            },
+            compare: {
+              title: "Compare implementation with a reference",
+              body:
+                "Use this after a screen exists to compare the current UI with a reference screenshot and fix spacing, typography, color, and layout drift.",
+            },
+          },
+          recommendedFlow: "Recommended flow",
+          flow: [
+            {
+              title: "Extract",
+              body:
+                "Use $design-system-extractor to create design-system docs and tokens from references or an existing product.",
+            },
+            {
+              title: "Review",
+              body:
+                "Open the generated review HTML and resolve duplicate sources, similar components, near tokens, and blocked decisions.",
+            },
+            {
+              title: "Implement",
+              body:
+                "Use $design-system-to-storybook to build Storybook foundations, components, and stories from the docs.",
+            },
+            {
+              title: "Compare",
+              body:
+                "Use $ui-compare-to-reference to inspect the final UI and fix drift at the token, component, or composition layer.",
+            },
+          ],
+          examples: "Common prompt examples",
+          prompts: [
+            "Use $design-system-extractor to extract a reusable design-system package from ./reference screenshots.",
+            "Use $design-system-to-storybook with design system at ./design-system and product repo at ./apps/web.",
+            "Use $ui-screenshot-to-storybook-product on reference/dashboard.png and implement it through reusable Storybook components.",
+            "Use $ui-compare-to-reference on reference/dashboard.png and http://localhost:3000/dashboard.",
+          ],
+          principleTitle: "Usage principle",
+          principleStrong: "Do not skip the design-system layer.",
+          principleBody:
+            "If tokens or shared components exist, use or extend them before changing the page itself. This keeps the UI consistent across screens.",
+          outputs: "What does each skill produce?",
+          extractOutputTitle: "Design-system extraction",
+          storybookOutputTitle: "Storybook implementation",
+          extractOutputs: [
+            "design-system/DESIGN_PRINCIPLES.md",
+            "design-system/COMPONENT_INVENTORY.md",
+            "design-system/components/*.md",
+            "tokens/tokens-ref.css",
+            "tokens/tokens-sys.css",
+            "tokens/tokens-comp.css",
+            "docs/design-system/index.html",
+            "docs/design-system/review.html",
+          ],
+          storybookOutputs: [
+            "Storybook foundations docs",
+            "shared UI components",
+            "component stories and states",
+            "large component queue",
+            "Figma export addon setup",
+            "batch verification log",
+          ],
+          footer:
+            "This guide is a quick entry point for choosing the right skill. The detailed rules still live in each skill folder's SKILL.md.",
+        },
+        ja: {
+          title: "デザインシステムと UI 実装の Skill ガイド",
+          eyebrow: "CM Skills",
+          lead:
+            "このプロジェクトは、デザイン参照、デザインシステム文書、Storybook コンポーネント、ビジュアル比較を一つの流れにつなぐ Codex / Cursor / Claude Code 用 skills を提供します。",
+          pills: [
+            "先にデザインシステムを抽出",
+            "次に Storybook へ実装",
+            "コンポーネント優先",
+            "Token 優先",
+          ],
+          quickChoice: "どの skill を使うべき？",
+          skills: {
+            extractor: {
+              title: "参照からデザインシステムを抽出",
+              body:
+                "実装前に使います。スクリーンショット、Figma、prototype、既存アプリから design-system 文書、tokens、component inventory、review HTML を作成します。",
+            },
+            storybook: {
+              title: "デザインシステムを Storybook に実装",
+              body:
+                "design-system 文書がある状態で使います。Storybook foundations、共通コンポーネント、stories を作成します。大量のコンポーネントは queue に入れて分割実装します。",
+            },
+            screenshot: {
+              title: "1 画面を再利用可能なコンポーネントで実装",
+              body:
+                "スクリーンショットや Figma export があり、プロダクト画面を作る前に再利用可能な UI ブロックへ分解したい時に使います。",
+            },
+            compare: {
+              title: "実装と参照画像を比較",
+              body:
+                "画面実装後に使います。現在の UI と参照スクリーンショットを比較し、spacing、typography、color、layout のずれを修正します。",
+            },
+          },
+          recommendedFlow: "おすすめの流れ",
+          flow: [
+            {
+              title: "抽出",
+              body:
+                "$design-system-extractor で参照や既存プロダクトから design-system 文書と tokens を作成します。",
+            },
+            {
+              title: "レビュー",
+              body:
+                "生成された review HTML を開き、重複ソース、類似コンポーネント、近似 tokens、blocked decisions を確認します。",
+            },
+            {
+              title: "実装",
+              body:
+                "$design-system-to-storybook で文書をもとに Storybook foundations、components、stories を作成します。",
+            },
+            {
+              title: "比較",
+              body:
+                "$ui-compare-to-reference で最終 UI を確認し、token、component、composition の層で差分を修正します。",
+            },
+          ],
+          examples: "よく使う prompt 例",
+          prompts: [
+            "Use $design-system-extractor to extract a reusable design-system package from ./reference screenshots.",
+            "Use $design-system-to-storybook with design system at ./design-system and product repo at ./apps/web.",
+            "Use $ui-screenshot-to-storybook-product on reference/dashboard.png and implement it through reusable Storybook components.",
+            "Use $ui-compare-to-reference on reference/dashboard.png and http://localhost:3000/dashboard.",
+          ],
+          principleTitle: "使用原則",
+          principleStrong: "デザインシステム層を飛ばさない。",
+          principleBody:
+            "tokens や共通コンポーネントがある場合は、ページを直接修正する前にそれらを使うか拡張します。これにより画面間の一貫性を保てます。",
+          outputs: "各 skill の成果物",
+          extractOutputTitle: "デザインシステム抽出",
+          storybookOutputTitle: "Storybook 実装",
+          extractOutputs: [
+            "design-system/DESIGN_PRINCIPLES.md",
+            "design-system/COMPONENT_INVENTORY.md",
+            "design-system/components/*.md",
+            "tokens/tokens-ref.css",
+            "tokens/tokens-sys.css",
+            "tokens/tokens-comp.css",
+            "docs/design-system/index.html",
+            "docs/design-system/review.html",
+          ],
+          storybookOutputs: [
+            "Storybook foundations docs",
+            "shared UI components",
+            "component stories and states",
+            "large component queue",
+            "Figma export addon setup",
+            "batch verification log",
+          ],
+          footer:
+            "このガイドは、適切な skill をすばやく選ぶための入口です。詳細なルールは各 skill フォルダの SKILL.md を確認してください。",
+        },
+        "zh-Hant": {
+          title: "設計系統與 UI 實作工作流指南",
+          eyebrow: "CM Skills",
+          lead:
+            "這個專案提供一組可重複使用的 Codex / Cursor / Claude Code skills，目標是把設計稿、設計系統文件、Storybook 元件和畫面比對串成清楚的流程。",
+          pills: ["先萃取設計系統", "再落地 Storybook", "元件優先", "Token 優先"],
+          quickChoice: "我該用哪個 skill？",
+          skills: {
+            extractor: {
+              title: "從設計稿萃取設計系統",
+              body:
+                "適合在開始實作前，把 screenshots、Figma、prototype 或既有專案整理成 design-system 文件、tokens、component inventory 和 review HTML。",
+            },
+            storybook: {
+              title: "把設計系統落地到 Storybook",
+              body:
+                "適合在已經有 design-system 文件後，建立 Storybook foundations、shared components 和 stories。大量元件會先排 queue 分批處理。",
+            },
+            screenshot: {
+              title: "從單張畫面做元件化實作",
+              body:
+                "適合你有一張 screenshot 或 Figma export，希望先拆出可重用元件，再用 Storybook 或專案的元件目錄組成產品畫面。",
+            },
+            compare: {
+              title: "比對實作與參考圖",
+              body:
+                "適合畫面已經做出來後，拿 reference screenshot 跟目前 UI 比對，找出 spacing、typography、color、layout 的偏差並修正。",
+            },
+          },
+          recommendedFlow: "推薦流程",
+          flow: [
+            {
+              title: "萃取",
+              body:
+                "用 $design-system-extractor 從設計稿或既有產品建立 design-system 文件與 tokens。",
+            },
+            {
+              title: "審查",
+              body:
+                "查看產出的 review HTML，確認重複來源、相似元件、near tokens 和 blocked decisions。",
+            },
+            {
+              title: "落地",
+              body:
+                "用 $design-system-to-storybook 依照文件建立 Storybook foundations、components 和 stories。",
+            },
+            {
+              title: "比對",
+              body:
+                "用 $ui-compare-to-reference 檢查實作結果，把偏差修在 token、元件或組裝層。",
+            },
+          ],
+          examples: "常用 prompt 範例",
+          prompts: [
+            "Use $design-system-extractor to extract a reusable design-system package from ./reference screenshots.",
+            "Use $design-system-to-storybook with design system at ./design-system and product repo at ./apps/web.",
+            "Use $ui-screenshot-to-storybook-product on reference/dashboard.png and implement it through reusable Storybook components.",
+            "Use $ui-compare-to-reference on reference/dashboard.png and http://localhost:3000/dashboard.",
+          ],
+          principleTitle: "使用原則",
+          principleStrong: "不要跳過設計系統層。",
+          principleBody:
+            "如果有 tokens 或共用元件，應先使用或擴充它們，再處理頁面本身。這樣可以避免畫面做得快，但後續每個頁面都長得不一致。",
+          outputs: "各 skill 會產出什麼？",
+          extractOutputTitle: "設計系統萃取",
+          storybookOutputTitle: "Storybook 落地",
+          extractOutputs: [
+            "design-system/DESIGN_PRINCIPLES.md",
+            "design-system/COMPONENT_INVENTORY.md",
+            "design-system/components/*.md",
+            "tokens/tokens-ref.css",
+            "tokens/tokens-sys.css",
+            "tokens/tokens-comp.css",
+            "docs/design-system/index.html",
+            "docs/design-system/review.html",
+          ],
+          storybookOutputs: [
+            "Storybook foundations docs",
+            "shared UI components",
+            "component stories and states",
+            "large component queue",
+            "Figma export addon setup",
+            "batch verification log",
+          ],
+          footer:
+            "這份指南是給使用者快速選擇 skill 用途的入口。詳細規則仍以各 skill 目錄中的 SKILL.md 為準。",
+        },
+      };
+
+      function escapeHtml(value) {
+        return String(value)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+      }
+
+      function detectLanguage() {
+        const stored = window.localStorage.getItem("cm-skills-language");
+        if (stored && copy[stored]) return stored;
+        const languages = navigator.languages?.length
+          ? navigator.languages
+          : [navigator.language || "en"];
+        for (const language of languages) {
+          const normalized = language.toLowerCase();
+          if (normalized.startsWith("ja") || normalized.startsWith("jp")) return "ja";
+          if (normalized.startsWith("zh")) return "zh-Hant";
+          if (normalized.startsWith("en")) return "en";
+        }
+        return "en";
+      }
+
+      function renderList(items, code = false) {
+        return `<ul>${items
+          .map((item) => `<li>${code ? `<code>${escapeHtml(item)}</code>` : escapeHtml(item)}</li>`)
+          .join("")}</ul>`;
+      }
+
+      function renderSkillCards(lang) {
+        return skillData
+          .map((skill) => {
+            const localized = copy[lang].skills[skill.key];
+            return `
+              <article class="skill">
+                <span class="tag">${escapeHtml(skill.tag)}</span>
+                <h3>${escapeHtml(localized.title)}</h3>
+                <p>${escapeHtml(localized.body)}</p>
+                ${renderList(skill.bullets[lang])}
+              </article>
+            `;
+          })
+          .join("");
+      }
+
+      function renderFlow(lang) {
+        return copy[lang].flow
+          .map(
+            (item, index) => `
+              <article class="step">
+                <span class="number">${String(index + 1).padStart(2, "0")}</span>
+                <h3>${escapeHtml(item.title)}</h3>
+                <p>${escapeHtml(item.body)}</p>
+              </article>
+            `,
+          )
+          .join("");
+      }
+
+      function renderPrompts(lang) {
+        return copy[lang].prompts
+          .map((prompt) => `<pre class="prompt">${escapeHtml(prompt)}</pre>`)
+          .join("");
+      }
+
+      function render(lang) {
+        const text = copy[lang];
+        document.documentElement.lang = lang;
+        document.title = text.title;
+        document.querySelectorAll("[data-lang]").forEach((button) => {
+          button.setAttribute("aria-pressed", String(button.dataset.lang === lang));
+        });
+        document.getElementById("content").innerHTML = `
+          <header>
+            <p class="eyebrow">${escapeHtml(text.eyebrow)}</p>
+            <h1>${escapeHtml(text.title)}</h1>
+            <p class="lead">${escapeHtml(text.lead)}</p>
+            <div class="meta" aria-label="Highlights">
+              ${text.pills.map((pill) => `<span class="pill">${escapeHtml(pill)}</span>`).join("")}
+            </div>
+          </header>
+
+          <section class="section" aria-labelledby="quick-choice">
+            <h2 id="quick-choice">${escapeHtml(text.quickChoice)}</h2>
+            <div class="grid four">${renderSkillCards(lang)}</div>
+          </section>
+
+          <section class="section" aria-labelledby="recommended-flow">
+            <h2 id="recommended-flow">${escapeHtml(text.recommendedFlow)}</h2>
+            <div class="flow">${renderFlow(lang)}</div>
+          </section>
+
+          <section class="section" aria-labelledby="examples">
+            <h2 id="examples">${escapeHtml(text.examples)}</h2>
+            <div class="grid two">
+              <div class="prompt-list" aria-label="Prompt examples">
+                ${renderPrompts(lang)}
+              </div>
+              <aside class="panel notice">
+                <h3>${escapeHtml(text.principleTitle)}</h3>
+                <p><strong>${escapeHtml(text.principleStrong)}</strong> ${escapeHtml(text.principleBody)}</p>
+              </aside>
+            </div>
+          </section>
+
+          <section class="section" aria-labelledby="outputs">
+            <h2 id="outputs">${escapeHtml(text.outputs)}</h2>
+            <div class="grid two">
+              <article class="panel">
+                <h3>${escapeHtml(text.extractOutputTitle)}</h3>
+                ${renderList(text.extractOutputs, true)}
+              </article>
+              <article class="panel">
+                <h3>${escapeHtml(text.storybookOutputTitle)}</h3>
+                ${renderList(text.storybookOutputs)}
+              </article>
+            </div>
+          </section>
+
+          <footer>
+            <p>${escapeHtml(text.footer)}</p>
+          </footer>
+        `;
+      }
+
+      document.querySelectorAll("[data-lang]").forEach((button) => {
+        button.addEventListener("click", () => {
+          const lang = button.dataset.lang;
+          window.localStorage.setItem("cm-skills-language", lang);
+          render(lang);
+        });
+      });
+
+      render(detectLanguage());
+    </script>
+  </body>
+</html>

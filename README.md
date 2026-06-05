@@ -2,6 +2,8 @@
 
 Reusable Cursor / Claude Code skills for UI implementation workflows.
 
+Open the visual guide at [`docs/skills-guide.html`](docs/skills-guide.html) for a simple overview of each skill, when to use it, and common prompts.
+
 ## Skills
 
 ### `design-system-extractor`
