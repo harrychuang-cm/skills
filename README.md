@@ -4,6 +4,17 @@ Reusable Cursor / Claude Code skills for UI implementation workflows.
 
 ## Skills
 
+### `design-system-extractor`
+
+Extract a reusable design-system package from screenshots, Figma references, exports, existing app folders, or prototype code:
+
+1. Build evidence-backed design principles and design elements.
+2. Define `ref -> sys -> comp` token architecture and token files.
+3. Inventory components and write component token specs.
+4. Generate static HTML documentation and run source/token/component audits.
+
+Use this before implementation when the design system needs to be documented and reviewed as a source of truth.
+
 ### `ui-compare-to-reference`
 
 Compare an implemented UI against one or more reference screenshots, then apply focused visual fixes. This skill is project-agnostic: it discovers the target repo's screenshots, routes, components, Storybook stories, styling system, and design tokens before editing.
@@ -33,6 +44,19 @@ Turn a UI screenshot, mockup, or Figma export into a token-backed implementation
 
 Use this when implementing a new screen from an image and you want reusable components, documented examples, and token-backed styles to remain the source of truth.
 
+### `design-system-to-storybook`
+
+Build or update Storybook from an already extracted design-system package:
+
+1. Read `design-system/` Markdown specs and `tokens/`.
+2. Map token layers and component specs into the target product repo.
+3. Install and configure the Figma export addon for compatible React Storybook 10 projects.
+4. Plan large inventories into dependency-aware batches when there are many components.
+5. Create or update Storybook foundations, shared components, and stories.
+6. Verify each batch with Storybook, lint/typecheck, tests, or visual checks.
+
+Use this after `design-system-extractor` when the extraction is complete and you want the design-system documentation to become a token-backed component catalog in a product project.
+
 ## Usage
 
 Install or reference these folders as agent skills in Cursor / Claude Code. Each skill lives in its own directory and exposes a `SKILL.md` with frontmatter metadata and workflow instructions.
@@ -55,6 +79,16 @@ If only a screenshot, URL, route, or file is available, the skill will attempt t
 
 ```text
 .
+├── design-system-extractor/
+│   ├── SKILL.md
+│   ├── agents/
+│   ├── assets/
+│   ├── references/
+│   └── scripts/
+├── design-system-to-storybook/
+│   ├── SKILL.md
+│   ├── agents/
+│   └── assets/
 ├── ui-compare-to-reference/
 │   └── SKILL.md
 └── ui-screenshot-to-storybook-product/

@@ -170,6 +170,7 @@ Then stop and ask the user what to do next. Suggested choices:
 - expand component tokens
 - generate Figma Variables or token export
 - create/update cross-agent instructions
+- build Storybook foundations and components with `design-system-to-storybook`
 - start a separate product implementation workspace
 
 ## Post-Checkpoint Workflows
@@ -212,6 +213,8 @@ Do not create a new component only because the Figma layer name is new. If a can
 ### Implementation Boundary Gate
 
 Do not generate product UI code, Storybook implementation code, or app routes inside this skill before the checkpoint unless the user explicitly requests product implementation.
+
+After the checkpoint, use the separate `design-system-to-storybook` skill when the next step is to turn the extracted design-system package into Storybook foundations, shared components, and stories.
 
 ## Cross-Agent Use
 
