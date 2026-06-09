@@ -35,9 +35,9 @@ This is a downstream implementation skill. Do not re-extract a design system her
 3. Run the source trace script to resolve extractor sources before implementation: `node <skill-root>/scripts/trace_sources.mjs <design-system-package-root> --write`.
 4. Run the component planner before choosing implementation order and queue rows: `node <skill-root>/scripts/plan_component_batches.mjs <design-system-package-root> --write --queue`.
 5. Inspect referenced design sources for the selected scope: use Figma MCP for Figma nodes, inspect local UI images/crops, and inspect referenced frontend folders/routes when present.
-6. Inspect product conventions before editing: component folders, story format, token files, theme providers, Storybook config, build scripts, lint/typecheck scripts, and package manager.
+6. Inspect product conventions before editing: component folders, page folders, story format, token files, theme providers, Storybook config, build scripts, lint/typecheck scripts, and package manager.
 7. Record an implementation map before code changes. Prefer `design-system/STORYBOOK_IMPLEMENTATION_MAP.md` when the design-system package lives in the product repo; otherwise use `docs/design-system/storybook-implementation.md`.
-8. Install the bundled Figma export addon and configure it when the product has a compatible React Storybook 10 setup.
+8. Install the bundled Figma export addon, generate project-local addon config, and configure Storybook when the product has a compatible React Storybook 10 setup.
 9. If implementing more than one component, create or update a component queue before reading every spec or editing code.
 10. If the product has explicit design-system governance instructions, follow them. Otherwise apply the gates in this skill.
 
@@ -52,6 +52,10 @@ Choose the smallest mode that satisfies the user request:
 - **Adoption pass:** replace ad hoc product UI with documented shared components after the Storybook catalog exists.
 
 Do not compose product screens before the required shared components and stories exist unless the user explicitly asks for a product route first.
+
+## Agent Installation
+
+If the user asks to install or share this skill with Claude Code, Codex, or Cursor, read `references/agent-installation.md` and use `scripts/install_agent_skill.mjs`. Install the full skill directory so `SKILL.md`, scripts, references, and the bundled Storybook addon asset remain together.
 
 ## Workflow
 
@@ -122,13 +126,28 @@ Find the local implementation pattern before adding files:
 
 - Storybook config: `.storybook/`, `*.stories.*`, `*.mdx`, docs pages, decorators, preview styles.
 - Components: `src/components/`, `components/`, `src/ui/`, `src/design-system/`, `packages/ui/`, or existing exports.
+- Pages and composed screens: `src/pages/`, `pages/`, `src/screens/`, route modules, or existing composed view folders.
 - Tokens and themes: CSS variables, token CSS imports, Tailwind config, theme objects, Sass variables, style dictionaries, or package-level token builds.
 - Accessibility and tests: existing interaction tests, visual tests, a11y addons, Playwright, Vitest, Jest, Testing Library.
 - i18n: locale files or message catalogs when stories or components need visible text.
 
 Do not install Storybook or unrelated dependencies unless the user asked for Storybook setup or approves it after discovery. The bundled Figma export addon in the next section is the default dependency exception for compatible projects.
 
-### 5. Figma Export Addon
+### 5. Target File Layout
+
+Use folder co-location for new implementation files. Do not create a separate root `stories/` folder for component stories.
+
+- Shared components live in the product's component root, normally `src/components/<ComponentName>/`.
+- Each component folder contains the component source, styles, and story together: `<ComponentName>.tsx`, `<ComponentName>.css`, and `<ComponentName>.stories.tsx`. Add `index.ts`, tests, or helpers only when the product convention calls for them.
+- Component stories must be co-located with their component. Avoid `stories/<ComponentName>.stories.*`, `src/stories/<ComponentName>.stories.*`, or other detached component-story targets for new files.
+- Foundation guides/docs may live in the Storybook docs area, normally `stories/` or `src/stories/`, because they document tokens rather than a single component implementation.
+- Page or screen implementations requested by the user live outside the shared component root, normally `src/pages/<PageName>/`.
+- Each page folder contains the page source, styles, and story together: `<PageName>.tsx`, `<PageName>.css`, and `<PageName>.stories.tsx`.
+- Pages should compose existing shared components. Do not create page-only primitives inside `pages/` if they belong in the reusable component library.
+
+If the product has an established component or page root, use that root while preserving the co-located folder shape. When editing existing files, avoid moving unrelated stories unless the current component/page needs cleanup for this rollout.
+
+### 6. Figma Export Addon
 
 Install and configure the bundled `@harrychuang/storybook-addon-figma-export` by default when all requirements are met:
 
@@ -156,29 +175,47 @@ Use `--copy-only` only when you need to inspect or manually install the vendored
 
 If Storybook is missing, not version 10, or the project is not React-based, do not force the addon. Mark `figma-export-addon` as `blocked` in the implementation map with the reason and ask before installing or upgrading Storybook.
 
+Generate a project-local addon config before editing `.storybook/main.*` or `.storybook/preview.*`:
+
+```sh
+node <skill-root>/scripts/generate_figma_export_config.mjs <design-system-package-root> --product-root <product-repo-root> --write
+```
+
+Default output is `<product-repo-root>/.storybook/figma-export.config.ts`. This file is where project-specific settings belong:
+
+- `componentClassPrefixes` and `tokenPrefix`, inferred from token CSS variables such as `--cm-ref-*`, `--cm-sys-*`, and `--cm-comp-*`
+- `storyTitlePrefix`, inferred from existing story titles when possible
+- `absoluteFidelityComponents`, inferred from page/screen/composite/product-pattern entries
+- review API path, plugin name, and status JSON path
+- source fallback values, such as design-system Figma file URL and per-component node overrides from `STORYBOOK_SOURCE_TRACE.md`
+
+Do not hardcode project-specific Figma file URLs, node IDs, class prefixes, theme globals, local graphics, or token imports inside the addon package. Keep those in `.storybook/figma-export.config.ts`, `.storybook/preview.*`, or product code. The addon should only expose generic helpers.
+
 Configuration rules:
 
 1. Add `"@harrychuang/storybook-addon-figma-export"` to `.storybook/main.*` `addons`, preserving existing addons.
-2. In `.storybook/preview.*`, import:
+2. Import `figmaExportProjectConfig` from `.storybook/figma-export.config.ts` and build `figmaExportOptions` from that config.
+3. In `.storybook/preview.*`, import:
    - `createFigmaExportDecorator`
    - `createFigmaExportGlobalTypes`
    - `createFigmaExportInitialGlobals`
    - `FigmaExportAddonOptions`
    - `@harrychuang/storybook-addon-figma-export/styles.css`
-3. Merge the decorator, `globalTypes`, and `initialGlobals` into the existing preview export. Do not overwrite existing decorators or globals.
-4. Infer `figmaExportOptions` from the extracted token architecture and Storybook titles:
+4. Merge the decorator, `globalTypes`, and `initialGlobals` into the existing preview export. Do not overwrite existing decorators or globals.
+5. Infer `figmaExportOptions` from the generated config, extracted token architecture, and Storybook titles:
    - set `tokenPrefix` only when the CSS token prefix is explicit or auto-detection would be ambiguous
    - keep `tokenLayers` aligned to `ref`, `sys`, and `comp` unless the extraction uses different segment names
    - set `storyTitlePrefix` to the project's component story namespace, usually `"Components/"`
    - set `componentClassPrefixes` from component CSS class prefixes when available
-5. When the project needs export review/status tracking, use the bundled addon helpers instead of copying a product-specific panel:
+6. When the project needs export review/status tracking, use the bundled addon helpers instead of copying a product-specific panel:
    - `.storybook/main.*`: import `createFigmaReviewStatusPlugin` from `@harrychuang/storybook-addon-figma-export/review-server`
    - `.storybook/preview.*`: use `createFigmaExportReviewDecorator` from `@harrychuang/storybook-addon-figma-export/review`
+   - `.storybook/preview.*`: use `getFigmaSourceUrl` from `@harrychuang/storybook-addon-figma-export/source` only for project-local fallback logic
    - import `@harrychuang/storybook-addon-figma-export/review.css`
-   - pass a project-specific `getFigmaSourceUrl` callback only for local Markdown/Figma URL fallback logic
-6. Record the copied vendor path, installed package spec, config files, options, and review helper usage in the implementation map.
+   - pass `componentSpecModules`, `designSystemFileUrlFallback`, and `nodeOverrides` from `.storybook/figma-export.config.ts` when local Markdown fallback is needed
+7. Record the copied vendor path, installed package spec, generated config path, config values, config files, options, and review helper usage in the implementation map.
 
-### 6. Implementation Map
+### 7. Implementation Map
 
 Before editing code, create or update the implementation map with:
 
@@ -190,8 +227,10 @@ Also record:
 
 - package manager and framework
 - Storybook version or catalog alternative
+- target layout roots for co-located components, foundation docs, and pages
 - Figma export addon status and options
 - bundled addon vendor path in the product repo
+- generated `.storybook/figma-export.config.ts` path and inferred project-specific values
 - source trace path and per-component source IDs
 - component dependency plan path, recommended order, and current dependency decisions
 - original Figma nodes, local images, frontend folders, and rendered routes used for implementation
@@ -200,7 +239,7 @@ Also record:
 - current batch, when using a queue
 - open questions and blocked specs
 
-### 7. Component Queue And Batch Planning
+### 8. Component Queue And Batch Planning
 
 Use this section when implementing more than one component, when `COMPONENT_INVENTORY.md` contains more than 8 components, or when the user asks to build a full library.
 
@@ -215,7 +254,7 @@ Plan before implementation:
 5. Mark blocked items explicitly: `needs-extraction`, `needs-source`, `needs-token`, `needs-api-decision`, `needs-existing-component-review`, or `out-of-scope`.
 6. Pick the next batch from adjacent dependencies. Default to 3-5 simple components, 1-2 complex composites, or one cross-cutting foundation pass.
 7. Read only the selected batch specs and their direct dependencies. Do not load every component spec into context unless generating or repairing the queue.
-8. Finish token integration, component code, stories, source URL parameters, queue updates, and verification for each component before starting the next component.
+8. Finish token integration, co-located component/page code, co-located stories, source URL parameters, queue updates, and verification for each component before starting the next component.
 
 Each batch should produce a clean resumable state:
 
@@ -223,14 +262,14 @@ Each batch should produce a clean resumable state:
 |---|---|---|---|---|---|---|
 | `B01` | component names | tokens/components needed first | source IDs, Figma nodes, images, or routes | planned product files | checks to run | queued/done/blocked |
 
-### 8. Long-Running Implementation Protocol
+### 9. Long-Running Implementation Protocol
 
 Use this protocol for every multi-component implementation pass and every resume after a long run:
 
 1. Re-read `STORYBOOK_COMPONENT_PLAN.md`, `STORYBOOK_COMPONENT_QUEUE.md`, `STORYBOOK_IMPLEMENTATION_MAP.md`, and `git status --short` before editing.
 2. Select exactly one next component: the earliest unfinished queue row whose dependencies are `done`, `reused`, or accepted blocked decisions.
 3. Mark that component `in-progress` in the queue before code edits.
-4. Complete the component through the full sequence: source inspection, existing-component review, token decision, component implementation, story coverage, story source URL parameters, verification, and documentation updates.
+4. Complete the component through the full sequence: source inspection, existing-component review, token decision, co-located component/page implementation, story coverage, story source URL parameters, verification, and documentation updates.
 5. Update the queue, dependency plan status, implementation map, and verification log immediately after that component.
 6. Only then select the next component. Do not keep building from memory after a component is complete.
 
@@ -244,7 +283,7 @@ node <skill-root>/scripts/plan_component_batches.mjs <design-system-package-root
 
 Then re-read the queue before continuing. This keeps dependency order, source URLs, and completion records synchronized across long sessions.
 
-### 9. Token Integration
+### 10. Token Integration
 
 Integrate tokens before components:
 
@@ -256,7 +295,7 @@ Integrate tokens before components:
 
 If the product repo has no token system, ask whether to establish one before implementing components.
 
-### 10. Storybook Foundations
+### 11. Storybook Foundations
 
 Create or update foundations stories/docs for the token groups touched by this pass:
 
@@ -269,7 +308,9 @@ Create or update foundations stories/docs for the token groups touched by this p
 
 Use the project's existing docs style. If none exists, create the smallest useful Storybook docs page that displays token names, rendered examples, and usage notes.
 
-### 11. Component Implementation
+Foundation guides may use the product's Storybook docs folder, normally `stories/` or `src/stories/`. Keep these docs separate from component folders because they describe token systems rather than a single reusable component.
+
+### 12. Component Implementation
 
 For each selected component spec:
 
@@ -286,13 +327,26 @@ For each selected component spec:
 7. Implement props, slots, variants, states, accessibility behavior, and responsive behavior from the spec.
 8. Resolve the story source URL from `STORYBOOK_SOURCE_TRACE.md` for the component.
 9. Keep component styles token-backed. Do not reach directly into reference tokens from component CSS unless the extracted architecture explicitly allows it.
-10. Export the component through the repo's existing public API.
+10. Create or update the component in a co-located folder under the component root: `<ComponentName>.tsx`, `<ComponentName>.css`, and `<ComponentName>.stories.tsx`.
+11. Export the component through the repo's existing public API.
 
 If the extracted spec lacks a necessary state, mark it blocked or implement only the documented states. Do not invent undocumented visual variants as normative design-system behavior.
 
 For a batch pass, keep implementation scoped to the selected batch. If a new primitive or API decision would change later batches, update the queue and implementation map before continuing.
 
-### 12. Story Coverage
+### 13. Page Implementation
+
+Use this section only when the user asks for product pages, composed screens, or page-level Storybook entries.
+
+1. Confirm the required shared components already exist, are reused, or are explicitly accepted as blocked.
+2. Place each new page in a dedicated page folder, normally `src/pages/<PageName>/`.
+3. Keep the page source, styles, and Storybook story co-located: `<PageName>.tsx`, `<PageName>.css`, and `<PageName>.stories.tsx`.
+4. Compose the page from shared components and page-level layout only. Promote reusable subparts back into `components/<ComponentName>/` before using them in multiple pages.
+5. Record page dependencies and verification separately from shared components in the implementation map and queue.
+
+Do not place page stories in the root `stories/` folder unless the existing product uses that folder exclusively for page docs and the implementation map records the exception.
+
+### 14. Story Coverage
 
 Every new or changed shared component needs Storybook coverage:
 
@@ -321,9 +375,9 @@ parameters: {
 
 Set this at the story meta level when all variants share the same source. Set it per story only when variants/states map to different Figma nodes or source URLs. The bundled review helper reads `parameters.figmaSourceUrl`, `parameters.figma.url`, and `parameters.design.url` automatically for the Open source action.
 
-Prefer existing story conventions. Use Autodocs or MDX only when the repo already uses them or the user asks for docs pages.
+Prefer existing story conventions inside the co-located component or page folder. Use Autodocs or MDX only when the repo already uses them or the user asks for docs pages. Root `stories/` or `src/stories/` is reserved for foundation guides/docs, not new component stories.
 
-### 13. Verification
+### 15. Verification
 
 Run the cheapest reliable checks available:
 
@@ -338,7 +392,7 @@ If Storybook is runnable, open the relevant stories and inspect rendered states 
 
 For large inventories, verify per batch and keep the full-library check for milestone boundaries. Do not wait until dozens of components are complete before running Storybook build or typecheck if those checks are available.
 
-### 14. Closeout
+### 16. Closeout
 
 Update the implementation map and component queue with completed files, blocked items, token decisions, and verification results.
 
@@ -348,6 +402,7 @@ Report:
 - source trace path and original sources inspected
 - dependency plan path and current completed/blocked component order
 - product files changed
+- co-located component/page folders created or updated
 - tokens reused or added
 - bundled Figma export addon installed/configured or blocked reason
 - components reused, extended, or created
@@ -374,6 +429,8 @@ Do not hardcode colors, spacing, radii, typography, shadows, or motion values in
 
 Do not create a new shared component before checking the product's existing components and stories. If a candidate is close to an existing component, extend the existing one or ask whether to make it a variant.
 
+Do not place new component stories in a detached root `stories/` or `src/stories/` folder. New shared components use `components/<ComponentName>/<ComponentName>.stories.*`; foundation docs are the only default exception.
+
 ### Dependency Order Gate
 
 Do not start a composed component while `STORYBOOK_COMPONENT_PLAN.md` lists unfinished dependencies for it. Build, reuse, or explicitly block the dependency first, then update the queue and implementation map before moving to the composed component. Do not mark a component `done` until every listed dependency is `done`, `reused`, or recorded as an accepted blocked decision.
@@ -392,9 +449,13 @@ Do not silently skip addon setup for compatible React Storybook 10 projects. Ins
 
 Use the bundled addon installer instead of GitHub dependency specs. If `@storybook/icons` is missing and package-manager install cannot reach the registry, record the addon as blocked with that dependency reason.
 
+Keep project-specific addon settings in `.storybook/figma-export.config.ts`. Do not patch the bundled addon with product Figma file URLs, node overrides, token prefixes, theme globals, local image imports, or story sorting rules.
+
 ### Story Gate
 
 Do not mark a shared component implementation complete without a story, example, or documented catalog entry covering its main states.
+
+Do not mark a component or page complete until its story is co-located in that component/page folder, unless the implementation map records an explicit product-convention exception.
 
 ### Story Source URL Gate
 
@@ -408,6 +469,9 @@ Do not rewrite product screens to use the new library until the relevant shared 
 
 - `scripts/trace_sources.mjs`: scans extractor output and writes `design-system/STORYBOOK_SOURCE_TRACE.md` with Figma, image, frontend-folder, and rendered-route sources.
 - `scripts/plan_component_batches.mjs`: infers dependency order from component inventory/specs and writes `design-system/STORYBOOK_COMPONENT_PLAN.md`; use `--queue` to sync `design-system/STORYBOOK_COMPONENT_QUEUE.md`.
+- `scripts/install_agent_skill.mjs`: installs this skill into Claude Code, Codex, or Cursor user/project skill directories.
+- `scripts/generate_figma_export_config.mjs`: infers product-specific addon settings and writes `.storybook/figma-export.config.ts`.
 - `scripts/install_figma_export_addon.mjs`: copies the bundled Figma export addon into a product repo and installs it as a local `file:` dependency.
+- `references/agent-installation.md`: target paths and verification checklist for Claude Code, Codex, and Cursor installation.
 - `assets/storybook-component-queue-template.md`: queue template for large component inventories.
 - `assets/figma-export-addon/`: vendored `@harrychuang/storybook-addon-figma-export` package, sourced from `https://github.com/harrychuang/storybook-addons/tree/main/packages/figma-export`.

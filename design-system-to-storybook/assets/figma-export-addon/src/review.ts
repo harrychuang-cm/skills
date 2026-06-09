@@ -9,6 +9,7 @@ import {
   type ResolvedFigmaExportAddonOptions,
 } from "./options";
 import { createFigmaExportDecorator } from "./preview";
+import { getParameterUrl } from "./source";
 
 export type FigmaReviewStatus =
   | "not-started"
@@ -157,13 +158,6 @@ function getStatusText(state: SaveState): string {
   if (state === "saved") return "Saved";
   if (state === "error") return "Save failed";
   return "Ready";
-}
-
-function getParameterUrl(value: unknown): string | undefined {
-  if (typeof value === "string") return value;
-  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
-  const url = (value as Record<string, unknown>).url;
-  return typeof url === "string" ? url : undefined;
 }
 
 export function getDefaultFigmaExportComponentTitle(

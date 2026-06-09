@@ -48,6 +48,10 @@
       "types": "./dist/review-server.d.ts",
       "default": "./dist/review-server.js"
     },
+    "./source": {
+      "types": "./dist/source.d.ts",
+      "default": "./dist/source.js"
+    },
     "./styles.css": "./dist/figma-code-exporter.css",
     "./review.css": "./dist/review.css",
     "./package.json": "./package.json"

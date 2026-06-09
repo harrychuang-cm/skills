@@ -84,6 +84,7 @@ function assertBundledAddon() {
     path.join(bundledAddonDir, "dist", "preset.js"),
     path.join(bundledAddonDir, "dist", "review.js"),
     path.join(bundledAddonDir, "dist", "review-server.js"),
+    path.join(bundledAddonDir, "dist", "source.js"),
     path.join(bundledAddonDir, "dist", "figma-code-exporter.css"),
     path.join(bundledAddonDir, "dist", "review.css"),
   ];

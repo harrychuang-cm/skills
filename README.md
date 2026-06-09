@@ -63,6 +63,18 @@ Use this after `design-system-extractor` when the extraction is complete and you
 
 Install or reference these folders as agent skills in Cursor / Claude Code. Each skill lives in its own directory and exposes a `SKILL.md` with frontmatter metadata and workflow instructions.
 
+For `design-system-to-storybook`, use the bundled installer to install the full skill package into Claude Code, Codex, or Cursor:
+
+```sh
+node design-system-to-storybook/scripts/install_agent_skill.mjs --agent all --scope user
+```
+
+For a project-local install:
+
+```sh
+node design-system-to-storybook/scripts/install_agent_skill.mjs --agent all --scope project --project-root <repo>
+```
+
 When invoking the visual comparison skill, provide the most specific target pair available. For example, prefer:
 
 ```text
@@ -90,7 +102,9 @@ If only a screenshot, URL, route, or file is available, the skill will attempt t
 ├── design-system-to-storybook/
 │   ├── SKILL.md
 │   ├── agents/
-│   └── assets/
+│   ├── assets/
+│   ├── references/
+│   └── scripts/
 ├── ui-compare-to-reference/
 │   └── SKILL.md
 └── ui-screenshot-to-storybook-product/

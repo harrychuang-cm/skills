@@ -12,6 +12,7 @@ export default defineConfig({
     manager: "src/manager-entry.ts",
     review: "src/review.ts",
     "review-server": "src/review-server.ts",
+    source: "src/source.ts",
   },
   external: [
     "react",

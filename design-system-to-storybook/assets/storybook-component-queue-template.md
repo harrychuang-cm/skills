@@ -11,6 +11,7 @@
 - Figma export addon:
 - Package manager:
 - Token import strategy:
+- Target layout: components in `src/components/<ComponentName>/`, pages in `src/pages/<PageName>/`, foundation docs in `stories/` or `src/stories/`
 - Current batch:
 
 ## Status Values
@@ -47,6 +48,7 @@
 | Token decision |  |
 | Product files |  |
 | Story files |  |
+| Target layout |  |
 | Verification |  |
 | Blocker / next action |  |
 
@@ -60,7 +62,7 @@
 
 | Batch | Order | Component | Category | Source spec | Design sources | Story source URL | Depends on | Used by | Product target | Story target | Decision | Status |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| `B01` | 1 |  |  |  |  |  |  |  |  |  |  | queued |
+| `B01` | 1 |  |  |  |  |  |  |  | `src/components/<ComponentName>/<ComponentName>.tsx` | `src/components/<ComponentName>/<ComponentName>.stories.tsx` |  | queued |
 
 ## Batch Plan
 
@@ -82,6 +84,7 @@
 | React |  |  |  |
 | Bundled addon asset | `assets/figma-export-addon/` |  |  |
 | Product vendor path | `.storybook/vendor/figma-export-addon/` |  |  |
+| Project config | `.storybook/figma-export.config.ts` |  |  |
 | `@storybook/icons` |  |  |  |
 | Addon package |  |  |  |
 | `.storybook/main.*` registration |  |  |  |

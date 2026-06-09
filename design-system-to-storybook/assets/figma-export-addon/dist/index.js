@@ -2045,6 +2045,7 @@ function createFigmaExportInitialGlobals(options) {
     [getFigmaExportGlobalName(options)]: "off"
   };
 }
+
 export {
   FigmaCodeExporter,
   createFigmaExportDecorator,

@@ -110,6 +110,7 @@ import {
   createFigmaExportInitialGlobals,
 } from "@harrychuang/storybook-addon-figma-export/preview";
 import { createFigmaExportReviewDecorator } from "@harrychuang/storybook-addon-figma-export/review";
+import { getFigmaSourceUrl } from "@harrychuang/storybook-addon-figma-export/source";
 import "@harrychuang/storybook-addon-figma-export/styles.css";
 import "@harrychuang/storybook-addon-figma-export/review.css";
 
@@ -117,9 +118,11 @@ const preview: Preview = {
   decorators: [
     createFigmaExportReviewDecorator(figmaExportOptions, {
       getFigmaSourceUrl(context) {
-        return (
-          context.parameters?.figmaSourceUrl as string | undefined
-        );
+        return getFigmaSourceUrl(context.parameters, context.title ?? "", {
+          componentSpecModules,
+          designSystemFileUrl,
+          nodeOverrides,
+        });
       },
     }),
   ],
@@ -135,6 +138,9 @@ const preview: Preview = {
 The default source resolver reads `parameters.figmaSourceUrl`,
 `parameters.figma.url`, or `parameters.design.url`. Use `getFigmaSourceUrl`
 for project-specific fallbacks, such as parsing local design-system Markdown.
+The fallback inputs (`componentSpecModules`, `designSystemFileUrl`, and
+`nodeOverrides`) should come from project-local Storybook config, not from the
+addon package.
 
 ### Manual manager registration (optional)
 
@@ -180,5 +186,6 @@ If auto-detection fails, set `tokenPrefix` (for example `"md"`).
 - `@harrychuang/storybook-addon-figma-export/manager` — toolbar registration (side effect)
 - `@harrychuang/storybook-addon-figma-export/review` — optional export review panel and decorator
 - `@harrychuang/storybook-addon-figma-export/review-server` — optional Vite middleware for persisted review state
+- `@harrychuang/storybook-addon-figma-export/source` — source URL resolver helpers for story parameters and documented Figma node fallbacks
 - `@harrychuang/storybook-addon-figma-export/styles.css` — exporter overlay styles
 - `@harrychuang/storybook-addon-figma-export/review.css` — export review panel styles

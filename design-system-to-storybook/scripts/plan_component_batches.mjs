@@ -408,6 +408,7 @@ function detectCycles(components) {
 
 function serializeComponent(component, order, batches) {
   const batch = batches.find((candidate) => candidate.components.includes(component.name));
+  const targets = implementationTargets(component);
   return {
     batch: batch?.id || "",
     buildReason: buildReason(component),
@@ -419,6 +420,8 @@ function serializeComponent(component, order, batches) {
     order,
     sourceRefs: component.sourceRefs || "-",
     storySourceUrl: component.storySourceUrl || "-",
+    storyTarget: targets.story,
+    productTarget: targets.product,
   };
 }
 
@@ -472,7 +475,7 @@ function renderMarkdown(data) {
         cell(batch.sharedDependencies.join(", ") || "-"),
         cell(batch.tiers.join(", ")),
         cell(batch.rationale),
-        cell("components, stories, source URL parameters, queue status, and verification log updated"),
+        cell("component/page folder, co-located story, source URL parameters, queue status, and verification log updated"),
       ].join("|").replace(/^/, "|").replace(/$/, "|"));
     }
   }
@@ -525,6 +528,8 @@ function renderMarkdown(data) {
   lines.push("- Implement components in the recommended order unless product discovery proves an existing component can be reused first.");
   lines.push("- Do not build a composed component before its listed dependencies are implemented, reused, or explicitly marked blocked with a reason.");
   lines.push("- After each component, update the queue/implementation map before starting the next component.");
+  lines.push("- Put new component stories beside their component files; reserve root `stories/` or `src/stories/` for foundation guides/docs.");
+  lines.push("- Put requested page/screen implementations in dedicated page folders with co-located page stories.");
   lines.push("- If a dependency is inferred incorrectly, record the correction in the implementation map and update the queue ordering.");
   lines.push("");
 
@@ -603,6 +608,7 @@ function renderQueueMarkdown(data, existing) {
   lines.push("- Figma export addon:");
   lines.push("- Package manager:");
   lines.push("- Token import strategy:");
+  lines.push("- Target layout: components in `src/components/<ComponentName>/`, pages in `src/pages/<PageName>/`, foundation docs in `stories/` or `src/stories/`");
   lines.push(data.batches[0] ? `- Current batch: ${data.batches[0].id}` : "- Current batch:");
   lines.push("");
   lines.push("## Status Values");
@@ -643,7 +649,7 @@ function renderQueueMarkdown(data, existing) {
   lines.push("");
   lines.push("## Current Component Checkpoint");
   lines.push("");
-  lines.push(existing.currentCheckpoint || "| Field | Value |\n|---|---|\n| Active component |  |\n| Queue order / batch |  |\n| Dependency status |  |\n| Source inspected |  |\n| Existing component review |  |\n| Token decision |  |\n| Product files |  |\n| Story files |  |\n| Verification |  |\n| Blocker / next action |  |");
+  lines.push(existing.currentCheckpoint || "| Field | Value |\n|---|---|\n| Active component |  |\n| Queue order / batch |  |\n| Dependency status |  |\n| Source inspected |  |\n| Existing component review |  |\n| Token decision |  |\n| Product files |  |\n| Story files |  |\n| Target layout |  |\n| Verification |  |\n| Blocker / next action |  |");
   lines.push("");
   lines.push("## Dependency Plan");
   lines.push("");
@@ -688,8 +694,8 @@ function renderQueueMarkdown(data, existing) {
         cell(component.storySourceUrl),
         cell(component.dependencies.join(", ") || "-"),
         cell(component.dependents.join(", ") || "-"),
-        cell(previous["product-target"] || previous.product || ""),
-        cell(previous["story-target"] || previous.story || ""),
+        cell(previous["product-target"] || previous.product || component.productTarget),
+        cell(previous["story-target"] || previous.story || component.storyTarget),
         cell(previous.decision || ""),
         cell(previous.status || "queued"),
       ].join("|").replace(/^/, "|").replace(/$/, "|"));
@@ -714,7 +720,7 @@ function renderQueueMarkdown(data, existing) {
         cell(batch.sharedDependencies.join(", ") || "-"),
         cell([...new Set(designSources)].join("; ") || "-"),
         cell("all listed dependencies are done, reused, or accepted blocked decisions"),
-        cell("stories, source URLs, verification log"),
+        cell("co-located stories, source URLs, verification log"),
         cell(batchStatus(batch, existing.componentRows)),
       ].join("|").replace(/^/, "|").replace(/$/, "|"));
     }
@@ -726,7 +732,7 @@ function renderQueueMarkdown(data, existing) {
   lines.push("");
   lines.push("## Figma Export Addon");
   lines.push("");
-  lines.push(existing.figmaExportAddon || "| Requirement | Detected value | Status | Notes |\n|---|---|---|---|\n| Storybook `^10` |  |  |  |\n| React |  |  |  |\n| Bundled addon asset | `assets/figma-export-addon/` |  |  |\n| Product vendor path | `.storybook/vendor/figma-export-addon/` |  |  |\n| `@storybook/icons` |  |  |  |\n| Addon package |  |  |  |\n| `.storybook/main.*` registration |  |  |  |\n| `.storybook/preview.*` decorator/globals |  |  |  |\n| Review helper / status API |  |  |  |\n| Token prefix/options |  |  |  |");
+  lines.push(existing.figmaExportAddon || "| Requirement | Detected value | Status | Notes |\n|---|---|---|---|\n| Storybook `^10` |  |  |  |\n| React |  |  |  |\n| Bundled addon asset | `assets/figma-export-addon/` |  |  |\n| Product vendor path | `.storybook/vendor/figma-export-addon/` |  |  |\n| Project config | `.storybook/figma-export.config.ts` |  |  |\n| `@storybook/icons` |  |  |  |\n| Addon package |  |  |  |\n| `.storybook/main.*` registration |  |  |  |\n| `.storybook/preview.*` decorator/globals |  |  |  |\n| Review helper / status API |  |  |  |\n| Token prefix/options |  |  |  |");
   lines.push("");
   lines.push("## Verification Log");
   lines.push("");
@@ -883,6 +889,31 @@ function dependencyNames(component) {
 function dependentNames(component, componentList) {
   const byKey = new Map(componentList.map((candidate) => [candidate.key, candidate]));
   return [...component.dependents].map((key) => byKey.get(key)?.name || key).sort();
+}
+
+function implementationTargets(component) {
+  const fileName = implementationFileName(component.name);
+  const root = isPageTarget(component) ? "src/pages" : "src/components";
+  return {
+    product: `${root}/${fileName}/${fileName}.tsx`,
+    story: `${root}/${fileName}/${fileName}.stories.tsx`,
+  };
+}
+
+function implementationFileName(value) {
+  const words = stripFormatting(value)
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/[^a-zA-Z0-9]+/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+
+  return words.map((word) => `${word[0].toUpperCase()}${word.slice(1)}`).join("") || "Component";
+}
+
+function isPageTarget(component) {
+  const text = normalizeText(`${component.name} ${component.category}`);
+  return component.category === "product-pattern" || /\b(page|screen|view|route)\b/.test(text);
 }
 
 function buildReason(component) {
