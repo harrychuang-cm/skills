@@ -36,6 +36,10 @@ export default config;
 ```
 
 This loads the addon preset and registers the Figma export toolbar toggle.
+When the toolbar toggle is on, the exporter overlay provides `Copy JSON`,
+`Plugin Console Script`, and an icon-only `Copy design to Figma` action. The
+Figma copy action writes an SVG design representation to the clipboard so it can
+be pasted directly into Figma for quick visual review.
 
 ### 2. Wire preview (decorator + globals)
 
@@ -72,10 +76,12 @@ export default preview;
 
 Adjust `figmaExportOptions` for your design tokens and story naming.
 
-### Optional export review panel
+### Export review panel
 
 Use the bundled review helpers when you want Storybook to track each story's
-Figma source URL and export/import review state.
+Figma source URL and export/import review state. The
+`design-system-to-storybook` skill wires this review decorator by default so the
+Open source action is available when source URLs can be resolved.
 
 `.storybook/main.ts`:
 

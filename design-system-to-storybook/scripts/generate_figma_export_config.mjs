@@ -205,7 +205,7 @@ function detectTokenPrefix(...roots) {
 function detectStoryTitlePrefixes(root) {
   const storyFiles = walkSafe(path.join(root, "src"))
     .filter((file) => /\.stories\.[cm]?[jt]sx?$/.test(file));
-  const prefixes = new Set(["Components/"]);
+  const prefixes = new Set();
 
   for (const file of storyFiles) {
     const text = fs.readFileSync(file, "utf8");
@@ -214,7 +214,8 @@ function detectStoryTitlePrefixes(root) {
     }
   }
 
-  return [...prefixes].sort();
+  const values = [...prefixes].sort();
+  return values.length ? values : false;
 }
 
 function inferAbsoluteFidelityComponents(planRows, inventoryRows) {

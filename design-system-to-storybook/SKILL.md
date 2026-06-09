@@ -196,24 +196,26 @@ Configuration rules:
 1. Add `"@harrychuang/storybook-addon-figma-export"` to `.storybook/main.*` `addons`, preserving existing addons.
 2. Import `figmaExportProjectConfig` from `.storybook/figma-export.config.ts` and build `figmaExportOptions` from that config.
 3. In `.storybook/preview.*`, import:
-   - `createFigmaExportDecorator`
    - `createFigmaExportGlobalTypes`
    - `createFigmaExportInitialGlobals`
    - `FigmaExportAddonOptions`
+   - `createFigmaExportReviewDecorator` from `@harrychuang/storybook-addon-figma-export/review`
+   - `getFigmaSourceUrl` from `@harrychuang/storybook-addon-figma-export/source`
    - `@harrychuang/storybook-addon-figma-export/styles.css`
-4. Merge the decorator, `globalTypes`, and `initialGlobals` into the existing preview export. Do not overwrite existing decorators or globals.
+   - `@harrychuang/storybook-addon-figma-export/review.css`
+4. Merge `createFigmaExportReviewDecorator`, `globalTypes`, and `initialGlobals` into the existing preview export. Do not overwrite existing decorators or globals. Use plain `createFigmaExportDecorator` only if the user explicitly opts out of review/Open source.
 5. Infer `figmaExportOptions` from the generated config, extracted token architecture, and Storybook titles:
    - set `tokenPrefix` only when the CSS token prefix is explicit or auto-detection would be ambiguous
    - keep `tokenLayers` aligned to `ref`, `sys`, and `comp` unless the extraction uses different segment names
-   - set `storyTitlePrefix` to the project's component story namespace, usually `"Components/"`
+   - set `storyTitlePrefix` to `false` when the project has no established story namespace; otherwise include every relevant namespace such as `"Components/"`, `"Pages/"`, and `"Foundations/"`
    - set `componentClassPrefixes` from component CSS class prefixes when available
-6. When the project needs export review/status tracking, use the bundled addon helpers instead of copying a product-specific panel:
+6. Configure review/Open source by default using the bundled addon helpers instead of copying a product-specific panel:
    - `.storybook/main.*`: import `createFigmaReviewStatusPlugin` from `@harrychuang/storybook-addon-figma-export/review-server`
-   - `.storybook/preview.*`: use `createFigmaExportReviewDecorator` from `@harrychuang/storybook-addon-figma-export/review`
-   - `.storybook/preview.*`: use `getFigmaSourceUrl` from `@harrychuang/storybook-addon-figma-export/source` only for project-local fallback logic
-   - import `@harrychuang/storybook-addon-figma-export/review.css`
-   - pass `componentSpecModules`, `designSystemFileUrlFallback`, and `nodeOverrides` from `.storybook/figma-export.config.ts` when local Markdown fallback is needed
+   - `.storybook/preview.*`: pass `componentSpecModules`, `designSystemFileUrl`, and `nodeOverrides` to `getFigmaSourceUrl`; map `figmaExportProjectConfig.source.designSystemFileUrlFallback` to the `designSystemFileUrl` option
+   - the review overlay and Open source action render only when the Storybook `figmaExport` toolbar global is toggled on
 7. Record the copied vendor path, installed package spec, generated config path, config values, config files, options, and review helper usage in the implementation map.
+
+If the Figma export toolbar is visible but the review overlay or Open source action is missing, read `references/figma-export-review-setup.md` and fix the missing preview/main wiring before marking addon setup complete.
 
 ### 7. Implementation Map
 
@@ -388,7 +390,7 @@ Run the cheapest reliable checks available:
 - visual screenshot checks for high-risk components against the best resolved original source
 - token audit or CSS variable scan when available
 
-If Storybook is runnable, open the relevant stories and inspect rendered states before calling the pass done. When the selected component has Figma evidence, compare against a Figma MCP screenshot or exported frame when available. When the Figma export addon is installed, confirm the Storybook toolbar loads without console errors and the export overlay can be enabled for at least one component story.
+If Storybook is runnable, open the relevant stories and inspect rendered states before calling the pass done. When the selected component has Figma evidence, compare against a Figma MCP screenshot or exported frame when available. When the Figma export addon is installed, confirm the Storybook toolbar loads without console errors, the `figmaExport` toolbar can be toggled on, the review overlay appears, and Open source is available for at least one component story with a resolved source URL.
 
 For large inventories, verify per batch and keep the full-library check for milestone boundaries. Do not wait until dozens of components are complete before running Storybook build or typecheck if those checks are available.
 
@@ -473,5 +475,6 @@ Do not rewrite product screens to use the new library until the relevant shared 
 - `scripts/generate_figma_export_config.mjs`: infers product-specific addon settings and writes `.storybook/figma-export.config.ts`.
 - `scripts/install_figma_export_addon.mjs`: copies the bundled Figma export addon into a product repo and installs it as a local `file:` dependency.
 - `references/agent-installation.md`: target paths and verification checklist for Claude Code, Codex, and Cursor installation.
+- `references/figma-export-review-setup.md`: troubleshooting and required wiring for the review overlay and Open source action.
 - `assets/storybook-component-queue-template.md`: queue template for large component inventories.
 - `assets/figma-export-addon/`: vendored `@harrychuang/storybook-addon-figma-export` package, sourced from `https://github.com/harrychuang/storybook-addons/tree/main/packages/figma-export`.
