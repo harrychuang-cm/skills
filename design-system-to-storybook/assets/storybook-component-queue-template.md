@@ -7,6 +7,7 @@
 - Framework:
 - Storybook/catalog:
 - Source trace:
+- Component build plan:
 - Figma export addon:
 - Package manager:
 - Token import strategy:
@@ -17,6 +18,7 @@
 - `queued`: ready for a future batch
 - `in-progress`: selected for the current batch
 - `done`: implemented, documented, and verified
+- `reused`: existing product component accepted as the implementation
 - `blocked`: cannot continue without a decision or missing source
 - `deferred`: intentionally postponed
 - `needs-extraction`: missing design-system evidence or component spec
@@ -33,17 +35,38 @@
 |---|---|---|---|---|---|---|
 |  |  |  |  |  |  |  |
 
+## Current Component Checkpoint
+
+| Field | Value |
+|---|---|
+| Active component |  |
+| Queue order / batch |  |
+| Dependency status |  |
+| Source inspected |  |
+| Existing component review |  |
+| Token decision |  |
+| Product files |  |
+| Story files |  |
+| Verification |  |
+| Blocker / next action |  |
+
+## Dependency Plan
+
+| Order | Component | Category | Depends on | Used by | Core reason | Status | Notes |
+|---|---|---|---|---|---|---|---|
+| 1 |  |  |  |  |  | queued |  |
+
 ## Component Queue
 
-| Batch | Component | Category | Source spec | Design sources | Story source URL | Dependencies | Product target | Story target | Decision | Status |
-|---|---|---|---|---|---|---|---|---|---|---|
-| `B01` |  |  |  |  |  |  |  |  |  | queued |
+| Batch | Order | Component | Category | Source spec | Design sources | Story source URL | Depends on | Used by | Product target | Story target | Decision | Status |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| `B01` | 1 |  |  |  |  |  |  |  |  |  |  | queued |
 
 ## Batch Plan
 
-| Batch | Components | Shared dependencies | Design sources | Validation | Exit criteria | Status |
+| Batch | Components | Shared dependencies | Design sources | Dependency exit criteria | Validation | Status |
 |---|---|---|---|---|---|---|
-| `B01` |  |  |  |  |  | queued |
+| `B01` |  |  |  | all listed dependencies are done, reused, or accepted blocked decisions |  | queued |
 
 ## Decisions
 

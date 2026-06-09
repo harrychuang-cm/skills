@@ -5,8 +5,9 @@ description: >-
   stories from an extracted design-system package. Use after
   design-system-extractor, or when Codex must read design-system Markdown and
   token files, automatically trace original design sources such as Figma
-  URLs/nodes, UI images, rendered routes, and frontend folders, map component
-  specs into a product repo, create or update Storybook docs, plan large
+  URLs/nodes, UI images, rendered routes, and frontend folders, infer component
+  dependency order so core primitives are built before composed components, map
+  component specs into a product repo, create or update Storybook docs, plan
   component batches, and verify implementation with the bundled Figma export
   addon without bypassing tokens.
 ---
@@ -32,12 +33,13 @@ This is a downstream implementation skill. Do not re-extract a design system her
 1. Locate the design-system package root and the product repo root. They may be the same folder.
 2. Read `design-system/SESSION_STATE.md`, `DESIGN_EVIDENCE_MAP.md`, `TOKEN_ARCHITECTURE.md`, `COMPONENT_INVENTORY.md`, `DESIGN_ELEMENTS.md`, and relevant `design-system/components/*.md`.
 3. Run the source trace script to resolve extractor sources before implementation: `node <skill-root>/scripts/trace_sources.mjs <design-system-package-root> --write`.
-4. Inspect referenced design sources for the selected scope: use Figma MCP for Figma nodes, inspect local UI images/crops, and inspect referenced frontend folders/routes when present.
-5. Inspect product conventions before editing: component folders, story format, token files, theme providers, Storybook config, build scripts, lint/typecheck scripts, and package manager.
-6. Record an implementation map before code changes. Prefer `design-system/STORYBOOK_IMPLEMENTATION_MAP.md` when the design-system package lives in the product repo; otherwise use `docs/design-system/storybook-implementation.md`.
-7. Install the bundled Figma export addon and configure it when the product has a compatible React Storybook 10 setup.
-8. If the component inventory has more than 8 implementable items, create or update a component queue before reading every spec or editing code.
-9. If the product has explicit design-system governance instructions, follow them. Otherwise apply the gates in this skill.
+4. Run the component planner before choosing implementation order and queue rows: `node <skill-root>/scripts/plan_component_batches.mjs <design-system-package-root> --write --queue`.
+5. Inspect referenced design sources for the selected scope: use Figma MCP for Figma nodes, inspect local UI images/crops, and inspect referenced frontend folders/routes when present.
+6. Inspect product conventions before editing: component folders, story format, token files, theme providers, Storybook config, build scripts, lint/typecheck scripts, and package manager.
+7. Record an implementation map before code changes. Prefer `design-system/STORYBOOK_IMPLEMENTATION_MAP.md` when the design-system package lives in the product repo; otherwise use `docs/design-system/storybook-implementation.md`.
+8. Install the bundled Figma export addon and configure it when the product has a compatible React Storybook 10 setup.
+9. If implementing more than one component, create or update a component queue before reading every spec or editing code.
+10. If the product has explicit design-system governance instructions, follow them. Otherwise apply the gates in this skill.
 
 ## Scope Modes
 
@@ -91,7 +93,30 @@ If the trace finds source IDs in component specs that cannot be resolved, mark t
 
 Use original sources to clarify implementation details, not to silently override extracted design decisions. When Figma/image/frontend evidence contradicts the extracted tokens or component spec, stop and update the implementation map with the conflict; ask whether to revise the extraction or implement the documented spec.
 
-### 3. Product Discovery
+### 3. Component Dependency Planning
+
+Build a dependency plan before selecting components or batches:
+
+```sh
+node <skill-root>/scripts/plan_component_batches.mjs <design-system-package-root> --write --queue
+```
+
+Default outputs are `design-system/STORYBOOK_COMPONENT_PLAN.md` and `design-system/STORYBOOK_COMPONENT_QUEUE.md`. Use them to decide which component should be built next. The planner reads `COMPONENT_INVENTORY.md`, component specs, and `STORYBOOK_SOURCE_TRACE.md`, then infers:
+
+- component category/tier: foundation, primitive, form-control, layout, navigation, data-display, feedback, overlay, composite, product-pattern, or unknown
+- dependencies from explicit dependency/composition/anatomy/slot sections
+- dependencies from component-name composition such as `IconButton` depending on `Button`
+- dependency phrases from component spec mentions, such as `uses`, `contains`, `renders`, `wraps`, or `depends on`
+- dependents, so heavily reused primitives are prioritized before the components that consume them
+- story source URLs from the source trace, so queue rows inherit the right source URL
+
+Use the recommended order unless product discovery proves that a dependency already exists and can be reused. Do not build a composite component before its listed dependencies are implemented, reused, or explicitly marked blocked with a reason. If the planner reports a cycle, pick the lowest-level reusable primitive in that cycle first, record the cycle in the implementation map, and update the queue after the first component breaks the cycle.
+
+For any multi-component pass, create or update the queue from `STORYBOOK_COMPONENT_PLAN.md`. The next component should come from the earliest unfinished row in the recommended build order whose dependencies are done, reused, or blocked with an accepted decision.
+
+Re-run the planner with `--queue` after dependency decisions change. It preserves existing queue statuses, product targets, story targets, and decisions while refreshing order, batch, dependency, and source URL data.
+
+### 4. Product Discovery
 
 Find the local implementation pattern before adding files:
 
@@ -103,7 +128,7 @@ Find the local implementation pattern before adding files:
 
 Do not install Storybook or unrelated dependencies unless the user asked for Storybook setup or approves it after discovery. The bundled Figma export addon in the next section is the default dependency exception for compatible projects.
 
-### 4. Figma Export Addon
+### 5. Figma Export Addon
 
 Install and configure the bundled `@harrychuang/storybook-addon-figma-export` by default when all requirements are met:
 
@@ -153,7 +178,7 @@ Configuration rules:
    - pass a project-specific `getFigmaSourceUrl` callback only for local Markdown/Figma URL fallback logic
 6. Record the copied vendor path, installed package spec, config files, options, and review helper usage in the implementation map.
 
-### 5. Implementation Map
+### 6. Implementation Map
 
 Before editing code, create or update the implementation map with:
 
@@ -168,27 +193,29 @@ Also record:
 - Figma export addon status and options
 - bundled addon vendor path in the product repo
 - source trace path and per-component source IDs
+- component dependency plan path, recommended order, and current dependency decisions
 - original Figma nodes, local images, frontend folders, and rendered routes used for implementation
 - token import strategy
 - components reused from the product repo
 - current batch, when using a queue
 - open questions and blocked specs
 
-### 6. Large Inventory Planning
+### 7. Component Queue And Batch Planning
 
-Use this section when `COMPONENT_INVENTORY.md` contains more than 8 components, or when the user asks to build a full library.
+Use this section when implementing more than one component, when `COMPONENT_INVENTORY.md` contains more than 8 components, or when the user asks to build a full library.
 
 Create or update `design-system/STORYBOOK_COMPONENT_QUEUE.md` when the design-system package lives in the product repo. Otherwise create `docs/design-system/storybook-component-queue.md`. Use `assets/storybook-component-queue-template.md` as the output shape when starting a new queue.
 
 Plan before implementation:
 
-1. Categorize components as foundations, primitives, form controls, navigation, data display, feedback, overlays, layout, composites, or product-specific patterns.
-2. Build a dependency order: tokens first, primitives before composites, lower-level slots before containers, common variants before rare variants.
-3. Rank by reuse, source confidence, implementation risk, token readiness, and whether an existing product component can be extended.
-4. Mark blocked items explicitly: `needs-extraction`, `needs-source`, `needs-token`, `needs-api-decision`, `needs-existing-component-review`, or `out-of-scope`.
-5. Pick the next batch from adjacent dependencies. Default to 3-5 simple components, 1-2 complex composites, or one cross-cutting foundation pass.
-6. Read only the selected batch specs and their direct dependencies. Do not load every component spec into context unless generating or repairing the queue.
-7. Finish token integration, component code, stories, and verification for the current batch before starting the next batch.
+1. Start from `STORYBOOK_COMPONENT_PLAN.md`; do not manually invent the first batch while the planner output is available.
+2. Categorize components as foundations, primitives, form controls, navigation, data display, feedback, overlays, layout, composites, or product-specific patterns.
+3. Build a dependency order: tokens first, primitives before composites, lower-level slots before containers, common variants before rare variants.
+4. Rank by dependency depth, reuse/dependent count, source confidence, implementation risk, token readiness, and whether an existing product component can be extended.
+5. Mark blocked items explicitly: `needs-extraction`, `needs-source`, `needs-token`, `needs-api-decision`, `needs-existing-component-review`, or `out-of-scope`.
+6. Pick the next batch from adjacent dependencies. Default to 3-5 simple components, 1-2 complex composites, or one cross-cutting foundation pass.
+7. Read only the selected batch specs and their direct dependencies. Do not load every component spec into context unless generating or repairing the queue.
+8. Finish token integration, component code, stories, source URL parameters, queue updates, and verification for each component before starting the next component.
 
 Each batch should produce a clean resumable state:
 
@@ -196,7 +223,28 @@ Each batch should produce a clean resumable state:
 |---|---|---|---|---|---|---|
 | `B01` | component names | tokens/components needed first | source IDs, Figma nodes, images, or routes | planned product files | checks to run | queued/done/blocked |
 
-### 7. Token Integration
+### 8. Long-Running Implementation Protocol
+
+Use this protocol for every multi-component implementation pass and every resume after a long run:
+
+1. Re-read `STORYBOOK_COMPONENT_PLAN.md`, `STORYBOOK_COMPONENT_QUEUE.md`, `STORYBOOK_IMPLEMENTATION_MAP.md`, and `git status --short` before editing.
+2. Select exactly one next component: the earliest unfinished queue row whose dependencies are `done`, `reused`, or accepted blocked decisions.
+3. Mark that component `in-progress` in the queue before code edits.
+4. Complete the component through the full sequence: source inspection, existing-component review, token decision, component implementation, story coverage, story source URL parameters, verification, and documentation updates.
+5. Update the queue, dependency plan status, implementation map, and verification log immediately after that component.
+6. Only then select the next component. Do not keep building from memory after a component is complete.
+
+If a check fails, a source is ambiguous, a token is missing, or an API decision is needed, stop on that component and mark it with the narrowest blocked status. Do not continue to downstream composed components until the blocked dependency is resolved, reused, or explicitly accepted as blocked.
+
+Every 3 completed components, or when context has become large, re-run:
+
+```sh
+node <skill-root>/scripts/plan_component_batches.mjs <design-system-package-root> --write --queue
+```
+
+Then re-read the queue before continuing. This keeps dependency order, source URLs, and completion records synchronized across long sessions.
+
+### 9. Token Integration
 
 Integrate tokens before components:
 
@@ -208,7 +256,7 @@ Integrate tokens before components:
 
 If the product repo has no token system, ask whether to establish one before implementing components.
 
-### 8. Storybook Foundations
+### 10. Storybook Foundations
 
 Create or update foundations stories/docs for the token groups touched by this pass:
 
@@ -221,29 +269,30 @@ Create or update foundations stories/docs for the token groups touched by this p
 
 Use the project's existing docs style. If none exists, create the smallest useful Storybook docs page that displays token names, rendered examples, and usage notes.
 
-### 9. Component Implementation
+### 11. Component Implementation
 
 For each selected component spec:
 
 1. Read the component spec and its referenced tokens.
 2. Resolve its evidence IDs through `STORYBOOK_SOURCE_TRACE.md`.
-3. Inspect the original source when available:
+3. Confirm the component is the earliest unfinished item in `STORYBOOK_COMPONENT_QUEUE.md` whose dependencies are already done, reused, or explicitly blocked with an accepted decision.
+4. Inspect the original source when available:
    - Figma node/page through Figma MCP, including screenshot when visual parity matters.
    - UI image/crop through local image inspection.
    - Frontend folder/prototype code for behavior, API shape, and existing implementation clues.
    - Rendered route/story for measured layout and states when runnable.
-4. Search for an existing shared component with matching purpose, anatomy, behavior, and states.
-5. Prefer reuse or extension over creating a new component.
-6. Implement props, slots, variants, states, accessibility behavior, and responsive behavior from the spec.
-7. Resolve the story source URL from `STORYBOOK_SOURCE_TRACE.md` for the component.
-8. Keep component styles token-backed. Do not reach directly into reference tokens from component CSS unless the extracted architecture explicitly allows it.
-9. Export the component through the repo's existing public API.
+5. Search for an existing shared component with matching purpose, anatomy, behavior, and states.
+6. Prefer reuse or extension over creating a new component.
+7. Implement props, slots, variants, states, accessibility behavior, and responsive behavior from the spec.
+8. Resolve the story source URL from `STORYBOOK_SOURCE_TRACE.md` for the component.
+9. Keep component styles token-backed. Do not reach directly into reference tokens from component CSS unless the extracted architecture explicitly allows it.
+10. Export the component through the repo's existing public API.
 
 If the extracted spec lacks a necessary state, mark it blocked or implement only the documented states. Do not invent undocumented visual variants as normative design-system behavior.
 
 For a batch pass, keep implementation scoped to the selected batch. If a new primitive or API decision would change later batches, update the queue and implementation map before continuing.
 
-### 10. Story Coverage
+### 12. Story Coverage
 
 Every new or changed shared component needs Storybook coverage:
 
@@ -274,7 +323,7 @@ Set this at the story meta level when all variants share the same source. Set it
 
 Prefer existing story conventions. Use Autodocs or MDX only when the repo already uses them or the user asks for docs pages.
 
-### 11. Verification
+### 13. Verification
 
 Run the cheapest reliable checks available:
 
@@ -289,7 +338,7 @@ If Storybook is runnable, open the relevant stories and inspect rendered states 
 
 For large inventories, verify per batch and keep the full-library check for milestone boundaries. Do not wait until dozens of components are complete before running Storybook build or typecheck if those checks are available.
 
-### 12. Closeout
+### 14. Closeout
 
 Update the implementation map and component queue with completed files, blocked items, token decisions, and verification results.
 
@@ -297,6 +346,7 @@ Report:
 
 - design-system package path used
 - source trace path and original sources inspected
+- dependency plan path and current completed/blocked component order
 - product files changed
 - tokens reused or added
 - bundled Figma export addon installed/configured or blocked reason
@@ -324,9 +374,17 @@ Do not hardcode colors, spacing, radii, typography, shadows, or motion values in
 
 Do not create a new shared component before checking the product's existing components and stories. If a candidate is close to an existing component, extend the existing one or ask whether to make it a variant.
 
+### Dependency Order Gate
+
+Do not start a composed component while `STORYBOOK_COMPONENT_PLAN.md` lists unfinished dependencies for it. Build, reuse, or explicitly block the dependency first, then update the queue and implementation map before moving to the composed component. Do not mark a component `done` until every listed dependency is `done`, `reused`, or recorded as an accepted blocked decision.
+
+### Checkpoint Gate
+
+Do not move from one component to the next until the current component has a queue status, dependency-plan status, implementation-map entry, story source URL decision, and verification-log entry. For long runs, treat each component as a checkpoint boundary: finish or block the current component cleanly before reading the next spec.
+
 ### Batch Gate
 
-Do not attempt to implement a large inventory in one pass. When there are more than 8 implementable components, create or update the component queue, choose a bounded batch, and leave the remaining work queued.
+Do not attempt to implement a large inventory in one pass. When implementing more than one component, create or update the component queue from `STORYBOOK_COMPONENT_PLAN.md`, choose a bounded dependency-adjacent batch, and leave the remaining work queued.
 
 ### Figma Export Addon Gate
 
@@ -349,6 +407,7 @@ Do not rewrite product screens to use the new library until the relevant shared 
 ## Resource Map
 
 - `scripts/trace_sources.mjs`: scans extractor output and writes `design-system/STORYBOOK_SOURCE_TRACE.md` with Figma, image, frontend-folder, and rendered-route sources.
+- `scripts/plan_component_batches.mjs`: infers dependency order from component inventory/specs and writes `design-system/STORYBOOK_COMPONENT_PLAN.md`; use `--queue` to sync `design-system/STORYBOOK_COMPONENT_QUEUE.md`.
 - `scripts/install_figma_export_addon.mjs`: copies the bundled Figma export addon into a product repo and installs it as a local `file:` dependency.
 - `assets/storybook-component-queue-template.md`: queue template for large component inventories.
 - `assets/figma-export-addon/`: vendored `@harrychuang/storybook-addon-figma-export` package, sourced from `https://github.com/harrychuang/storybook-addons/tree/main/packages/figma-export`.
