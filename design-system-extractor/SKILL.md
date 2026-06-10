@@ -1,6 +1,6 @@
 ---
 name: design-system-extractor
-description: Extract a reusable design-system specification from UI screenshots/images, Figma URLs or exports, Figma Variables, existing app/project folders, or prototype code. Use when Codex must produce evidence-backed design principles, design elements, token architecture, component inventory, component token specs, anti-AI style constraints, static HTML documentation for developers, cross-agent handoff guidance for Claude Code/Cursor/Codex, and a checkpoint before any product implementation.
+description: Extract a reusable design-system specification from UI screenshots/images, graphic/brand/editorial references, Figma URLs or exports, Figma Variables, existing app/project folders, or prototype code. Use when Codex must produce evidence-backed design principles, design elements, token architecture, component inventory, component token specs including typographic/text-lockup components, anti-AI style constraints, static HTML documentation for developers, cross-agent handoff guidance for Claude Code/Cursor/Codex, and a checkpoint before any product implementation.
 ---
 
 # Design System Extractor
@@ -9,7 +9,7 @@ Act as a Design System Architect. Extract a reusable design-system package from 
 
 ## Supported Inputs
 
-- **Images / screenshots:** use all provided screenshots as source of truth. Prefer concrete observed regions over general style impressions.
+- **Images / screenshots:** use all provided screenshots, graphic exports, brand/editorial samples, posters, social visuals, and marketing captures as source of truth. Prefer concrete observed regions over general style impressions.
 - **Figma URL / Figma exports:** use available Figma tools or exported screenshots/metadata. Treat selected nodes, variables, and component names as evidence, but still record where each decision came from.
 - **Project / prototype folder:** inspect rendered UI, screenshots, tokens, CSS, Storybook, and components. Treat prototype code as reference-only unless the user asks to migrate code.
 - **Mixed input:** rank evidence in this order unless user says otherwise: production Figma/component library, production screenshots, rendered project UI, prototype code, descriptive prompt.
@@ -58,7 +58,13 @@ Use `references/visual-analysis-rubric.md` when evaluating screenshots or render
 
 Fill `design-system/DESIGN_PRINCIPLES.md` and `design-system/DESIGN_ELEMENTS.md`.
 
-Cover color proportions, typography, spacing, density, shape, elevation/depth, iconography, imagery, data display, and state language. Every principle must include evidence and an implementation rule.
+Cover color proportions, typography, typographic composition/text lockups, spacing, density, shape, elevation/depth, iconography, imagery, data display, and state language. Every principle must include evidence and an implementation rule.
+
+Separate atomic typography from reusable text composition:
+
+- typography foundations define typefaces, type scale, weights, line height, letter spacing, numeric behavior, and language/script behavior
+- text composition patterns define recurring relationships between text slots, such as kicker + headline, headline + subhead, number + unit + caption, quote + attribution, or label + value
+- typographic components are text composition patterns that are reusable, structurally stable, brand-significant, or token-heavy enough to guide future work
 
 ### 4. Token Architecture
 
@@ -87,12 +93,14 @@ Before finalizing token files, run a token candidate review:
 
 Fill `design-system/COMPONENT_INVENTORY.md`.
 
-Inventory repeated patterns from the references. Mark each component as `extracted`, `planned`, `blocked`, or `out-of-scope`. Include priority, observed sources, required token groups, missing states, and implementation notes.
+Inventory repeated UI, graphic, layout, and typographic patterns from the references. Mark each component as `extracted`, `planned`, `blocked`, or `out-of-scope`. Include priority, observed sources, required token groups, missing states or `not applicable` for display-only components, and implementation notes.
+
+Always consider typographic component candidates across all source types, not only graphic design sources. Promote a text composition to a component only when it has reusable structure, clear slots, evidence-backed hierarchy, tokenizable spacing/type/color relationships, and a role beyond a one-off decorative treatment.
 
 Before finalizing inventory or adding a new component spec, run a component similarity review:
 
 1. Read existing `COMPONENT_INVENTORY.md`, `design-system/components/*.md`, and relevant component tokens.
-2. Create a component fingerprint for each new candidate: purpose, anatomy, variants/states, token contract, layout/density, behavior, source evidence, and visual reference.
+2. Create a component fingerprint for each new candidate: purpose, behavior or composition role, anatomy/slots, variants/states or modes, token contract, layout/density, source evidence, and visual reference.
 3. Compare the candidate with existing extracted or planned components. Weight purpose and behavior first, then anatomy, states, token usage, and layout.
 4. If a candidate is similar to an existing component, stop and ask the developer whether to `merge`, `make variant`, `keep distinct`, or `block pending more evidence`.
 5. Record the decision in `COMPONENT_INVENTORY.md` under `Component Similarity Review` before creating or updating component specs.
@@ -101,11 +109,11 @@ Before finalizing inventory or adding a new component spec, run a component simi
 
 ### 6. Component Token Specs
 
-Extract at least one high-value component when the user did not specify one, usually the primary action component. Extract additional repeated shell/navigation components when they are central to the reference.
+Extract at least one high-value component when the user did not specify one. For UI-heavy references this is usually the primary action component; for brand, editorial, marketing, or graphic-heavy references this may be a typographic lockup such as an editorial heading stack, hero title lockup, metric lockup, or quote lockup. Extract additional repeated shell/navigation, layout, graphic, or typographic components when they are central to the reference.
 
 For each extracted component, create `design-system/components/<component-name>.md` from `design-system/COMPONENT_SPEC_TEMPLATE.md` and update `tokens/tokens-comp.css`. Use lowercase hyphen-case filenames, such as `primary-button.md` or `bottom-navigation.md`.
 
-Use `references/component-spec-rules.md` for anatomy, variants, state coverage, accessibility, and token naming.
+Use `references/component-spec-rules.md` for anatomy, variants, state coverage, typographic composition, accessibility, and token naming.
 
 ### 7. Composition, Interaction, And Anti-AI Rules
 

@@ -255,7 +255,20 @@ function inferType(locator, declaredType = "") {
   const value = String(locator).toLowerCase();
 
   if (declared.includes("figma") || value.startsWith("figma:") || value.includes("figma.com/")) return "figma";
-  if (declared.includes("image") || declared.includes("screenshot") || declared.includes("crop") || IMAGE_EXT.test(value)) return "image";
+  if (
+    declared.includes("image")
+    || declared.includes("screenshot")
+    || declared.includes("crop")
+    || declared.includes("graphic")
+    || declared.includes("brand")
+    || declared.includes("editorial")
+    || declared.includes("poster")
+    || declared.includes("social")
+    || declared.includes("marketing")
+    || IMAGE_EXT.test(value)
+  ) {
+    return "image";
+  }
   if (declared.includes("rendered") || declared.includes("route") || isRenderedRoute(value)) return "rendered-route";
   if (
     declared.includes("frontend")

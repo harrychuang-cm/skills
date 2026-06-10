@@ -4,7 +4,7 @@ Use these rules when extracting components from references.
 
 ## Component Selection
 
-Extract components when a pattern is repeated, central to navigation or conversion, structurally reusable, or token-heavy enough to block implementation.
+Extract components when a pattern is repeated, central to navigation, conversion, brand expression, editorial hierarchy, information display, structurally reusable, or token-heavy enough to block implementation.
 
 Common first components:
 
@@ -18,6 +18,42 @@ Common first components:
 - chip / segmented selector
 - avatar / contact item
 - data row / metric row
+- hero title lockup
+- editorial heading stack
+- metric lockup
+- quote lockup
+- label/value text group
+
+## Typographic Components / Text Lockups
+
+Typographic components are reusable text compositions, not isolated font tokens. Use typography foundations for atomic values like font family, size, weight, line height, and letter spacing. Create a typographic component only when the reference shows a stable text grouping with reusable slots, hierarchy, layout behavior, and tokenized relationships.
+
+Common text-lockup slots:
+
+- kicker / eyebrow
+- headline / title
+- subhead / supporting text
+- body excerpt
+- number
+- unit
+- caption
+- attribution
+- label
+- value
+
+Good candidates:
+
+- repeated heading stacks across pages, posters, social cards, or editorial layouts
+- brand-critical title treatments that set future layout rules
+- metric or price lockups with stable number, unit, caption, and alignment rules
+- quote compositions with repeatable quote, attribution, and source slots
+
+Poor candidates:
+
+- one-off art-directed lettering
+- copy that is only unique campaign content with no reusable structure
+- isolated font-size or weight choices that belong in typography foundations
+- text embedded in a raster image when no future editable usage is expected
 
 ## Required Component Spec Sections
 
@@ -44,15 +80,15 @@ Before creating a new component spec, summarize the candidate as a fingerprint:
 
 | Dimension | What to capture |
 |---|---|
-| Purpose / behavior | action, navigation, selection, display-only, data entry, feedback, or layout container |
-| Anatomy | slots such as container, icon, label, media, metadata, badge, divider, state layer |
-| Variants / states | default, selected, active, disabled, loading, density, hierarchy, emphasis |
-| Token contract summary | main color, type, spacing, radius, elevation, size, and state tokens |
-| Layout / density | height, padding, gap, alignment, truncation, responsive behavior |
+| Purpose / behavior | action, navigation, selection, display-only, data entry, feedback, layout container, brand expression, editorial hierarchy, or information display |
+| Anatomy | slots such as container, icon, label, media, metadata, badge, divider, state layer, kicker, headline, subhead, number, unit, caption, attribution |
+| Variants / states | default, selected, active, disabled, loading, density, hierarchy, emphasis, scale, alignment, theme, or display mode |
+| Token contract summary | main color, type, spacing, radius, elevation, size, state, hierarchy, and slot relationship tokens |
+| Layout / density | height, padding, gap, alignment, truncation, responsive behavior, line breaks, max line length, and text wrapping behavior |
 | Visual reference | Figma node preview/screenshot or screenshot crop; schematic SVG only as labeled fallback |
 | Similar components reviewed | matching existing components and final decision |
 
-Similarity review compares purpose and behavior first. Visual similarity alone is not enough to merge components; different behavior may require separate components or variants.
+Similarity review compares purpose, behavior, and composition role first. Visual similarity alone is not enough to merge components; different behavior, content structure, or typographic hierarchy may require separate components or variants.
 
 ## Component Similarity Review
 
@@ -86,6 +122,11 @@ List slots by visual and semantic role:
 - media
 - badge
 - amount / metadata
+- kicker / eyebrow
+- headline / title
+- subhead / supporting text
+- number / unit
+- caption / attribution
 
 Only include slots observed or clearly required by the component role.
 
@@ -103,11 +144,13 @@ Interactive components should define:
 
 If a state is not visible in references, infer cautiously from system state tokens and label it as inferred.
 
+Display-only, graphic, and typographic components can mark interactive states as `not applicable`. They should still define observed variants or modes such as scale, density, emphasis, alignment, color theme, image overlay usage, editorial/marketing context, responsive wrapping, and language/script behavior.
+
 ## Token Contract
 
 Use a table:
 
-| Component token | Maps to system token | Purpose | State |
+| Component token | Maps to system token | Purpose | State / mode |
 |---|---|---|---|
 
 Component tokens must reference system tokens only. If no system role exists, add or propose a system role before defining the component slot.
@@ -121,6 +164,9 @@ Specify:
 - padding
 - icon size
 - text alignment
+- text hierarchy ratio
+- line count / max line length
+- line-break behavior
 - gap
 - border/radius/elevation behavior
 - responsive behavior
@@ -137,6 +183,9 @@ Specify:
 - icon-only labeling
 - contrast requirements
 - screen-reader formatting for numeric or monetary content
+- heading level guidance for heading lockups
+- preserving real editable text when implemented on web or in templates
+- alt text guidance when the composition must ship as a raster image
 
 ## Component Inventory Status
 

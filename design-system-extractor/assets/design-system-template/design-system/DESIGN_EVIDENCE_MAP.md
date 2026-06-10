@@ -9,7 +9,7 @@ Use this file to trace design decisions back to source evidence.
 
 ## Source Duplicate Review
 
-Use this table when two screenshots, Figma nodes, routes, or exports are exact duplicates or visually/functionally very close. Record the decision before counting both as separate evidence.
+Use this table when two screenshots, graphic/brand exports, Figma nodes, routes, or other exports are exact duplicates or visually/functionally very close. Record the decision before counting both as separate evidence.
 
 | Candidate source | Duplicate of | Match type | Fingerprint / normalized key | Suggested action | Developer decision | Rationale |
 |---|---|---|---|---|---|---|

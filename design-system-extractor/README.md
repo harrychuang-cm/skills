@@ -1,6 +1,6 @@
 # Design System Extractor Skill
 
-`design-system-extractor` is a reusable skill for extracting a token-backed design-system package from screenshots, Figma references, or an existing project/prototype folder.
+`design-system-extractor` is a reusable skill for extracting a token-backed design-system package from screenshots, graphic/brand/editorial references, Figma references, or an existing project/prototype folder.
 
 It does not implement product screens by default. It produces design-system documentation, token files, component inventory, component token specs, anti-AI style rules, static HTML documentation, and a checkpoint for the next step.
 
@@ -15,6 +15,7 @@ This guide describes the skill's reusable workflow. The generated project-specif
 Use this skill when you have one or more of these inputs:
 
 - UI screenshots or image exports
+- Graphic design, brand, editorial, poster, social, or marketing image references
 - Figma URL, Figma node, Figma exports, or Figma Variables
 - Existing project folder with app code, CSS, tokens, or Storybook
 - Prototype folder that should be treated as visual/reference material
@@ -28,6 +29,10 @@ Use $design-system-extractor to extract a design system from the screenshots in 
 
 ```txt
 Use $design-system-extractor to analyze this Figma URL and create design-system docs and tokens.
+```
+
+```txt
+Use $design-system-extractor to extract a reusable visual system from these brand and poster references, including typographic lockups when they have reusable structure.
 ```
 
 ```txt
@@ -82,17 +87,19 @@ Reference color scales use `100 -> 0` from light to dark. Near duplicate referen
 
 Input sources also go through duplicate review. Screenshots, image exports, Figma URLs/nodes, rendered routes, and prototype references should be recorded with a source fingerprint in `DESIGN_EVIDENCE_MAP.md`. Exact or likely duplicate sources must be confirmed as `reuse existing source`, `ignore duplicate`, or `keep distinct` before both are counted as separate evidence.
 
-Component candidates also go through a similarity review. When a new Figma or screenshot component resembles an existing component, the extractor records a fingerprint and asks whether to merge it, make it a variant, keep it distinct, or block it pending more evidence. Visual comparison assets should come from actual Figma node previews/screenshots or screenshot crops, stored under `design-system/assets/component-review/`, and linked from `COMPONENT_INVENTORY.md`. Schematic SVGs are only a labeled last-resort fallback when source previews cannot be captured.
+Component candidates also go through a similarity review. When a new Figma or screenshot component resembles an existing component, the extractor records a fingerprint and asks whether to merge it, make it a variant, keep it distinct, or block it pending more evidence. Component candidates include interactive UI elements, layout/display patterns, graphic motifs, and reusable typographic compositions. Visual comparison assets should come from actual Figma node previews/screenshots or screenshot crops, stored under `design-system/assets/component-review/`, and linked from `COMPONENT_INVENTORY.md`. Schematic SVGs are only a labeled last-resort fallback when source previews cannot be captured.
+
+Typographic components, also called text lockups, sit between typography foundations and full layout components. Extract them when a repeated text grouping has stable slots and reusable hierarchy, such as kicker + headline, headline + subhead, number + unit + caption, quote + attribution, or label + value. Do not promote one-off lettering or decorative art text into a component unless the references show it is reused or brand-critical enough to constrain future work.
 
 ## Standard Workflow
 
 1. Discover inputs: screenshots, Figma data, rendered UI, project code, tokens, Storybook, and review duplicate sources.
 2. Build `DESIGN_EVIDENCE_MAP.md` so design decisions trace back to source evidence.
 3. Extract 5-7 design principles with evidence and implementation rules.
-4. Define design elements: color, type, spacing, density, shape, elevation, iconography, imagery.
+4. Define design elements: color, type, typographic composition, spacing, density, shape, elevation, iconography, imagery.
 5. Define token architecture, review near token candidates, and fill `tokens/`.
-6. Build `COMPONENT_INVENTORY.md` from repeated UI patterns and review similar component candidates.
-7. Extract initial component token specs under `design-system/components/`, usually a primary action and core navigation/shell component.
+6. Build `COMPONENT_INVENTORY.md` from repeated UI, layout, graphic, and typographic patterns and review similar component candidates.
+7. Extract initial component token specs under `design-system/components/`, usually a primary action/core navigation component for UI-heavy references or a high-value typographic lockup for graphic/editorial-heavy references.
 8. Document page composition, interaction states, and anti-AI style rules.
 9. Generate developer-facing HTML documentation and the visual review queue.
 10. Run strict source, token, and component audits.

@@ -6,7 +6,7 @@ Do not implement product screens yet. Do not scaffold app routes yet. Do not inv
 
 ## References
 
-List screenshots, Figma URLs/nodes, rendered routes, project folders, and prototype sources here.
+List screenshots, graphic/brand/editorial references, Figma URLs/nodes, rendered routes, project folders, and prototype sources here.
 
 ## Required Order
 
@@ -14,8 +14,8 @@ List screenshots, Figma URLs/nodes, rendered routes, project folders, and protot
 2. Fill `DESIGN_PRINCIPLES.md`.
 3. Fill `DESIGN_ELEMENTS.md`.
 4. Fill `TOKEN_ARCHITECTURE.md`, review near token candidates, then fill `tokens/`.
-5. Fill `COMPONENT_INVENTORY.md` and review similar component candidates.
-6. Extract at least one primary component token spec into `design-system/components/`.
+5. Fill `COMPONENT_INVENTORY.md`, including reusable typographic/text-lockup candidates, and review similar component candidates.
+6. Extract at least one primary component token spec into `design-system/components/`. For graphic/editorial-heavy references, this may be a high-value typographic lockup instead of an interactive UI control.
 7. Fill `PAGE_COMPOSITION_RULES.md`, `INTERACTION_STATES.md`, and `ANTI_AI_STYLE_RULES.md`.
 8. Generate `docs/design-system/index.html` and `docs/design-system/review.html`.
 9. Run strict source, token, and component audits.

@@ -162,6 +162,11 @@ function parseInventoryRows(file) {
   const rows = [];
 
   for (const line of lines) {
+    if (/^##\s+Component Similarity Review\b/i.test(line.trim())) {
+      headers = [];
+      continue;
+    }
+
     const cells = splitMarkdownRow(line);
     if (!cells) continue;
     if (cells.every((cellValue) => /^:?-{3,}:?$/.test(cellValue))) continue;
@@ -221,7 +226,7 @@ function detectStoryTitlePrefixes(root) {
 function inferAbsoluteFidelityComponents(planRows, inventoryRows) {
   const rows = planRows.length ? planRows : inventoryRows;
   return rows
-    .filter((row) => /page|screen|composite|product-pattern/i.test(`${row.category} ${row.component}`))
+    .filter((row) => /page|screen|composite|product-pattern|typographic|text[- ]?lockup|type[- ]?lockup|lockup|heading stack|title lockup|hero title|editorial heading|quote lockup/i.test(`${row.category} ${row.component}`))
     .map((row) => componentSlug(row.component))
     .filter(Boolean)
     .sort();

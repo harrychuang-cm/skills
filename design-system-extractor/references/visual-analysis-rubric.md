@@ -11,7 +11,7 @@ Record every source:
 
 Source types:
 
-- `image`: screenshots, exports, marketing captures, mobile captures
+- `image`: screenshots, exports, marketing captures, mobile captures, posters, social graphics, brand/editorial samples
 - `figma`: Figma URL, node, page, Variables, component library
 - `rendered-project`: localhost route, Storybook story, app screenshot
 - `project-code`: CSS, tokens, components, templates
@@ -51,12 +51,13 @@ Analyze these dimensions for every coherent product surface:
 - duplicate source candidates: repeated screenshots, duplicate Figma nodes, repeated route/state screenshots, or prototype exports that should be reused or ignored
 - foreground/background pairs: every background-like color needs a readable text/icon pair
 - typography: family clues, scale, weights, line height, numeric behavior
+- typographic composition/text lockups: recurring slot relationships such as kicker + headline, headline + subhead, number + unit + caption, quote + attribution, label + value, hierarchy ratios, line breaks, alignment, max line length, and spacing between text slots
 - spacing: screen gutters, section gaps, row height, internal padding, density
 - near numeric candidates: close spacing, radius, typography, opacity, or motion values that may need merge review
 - shape: controls, cards, sheets, dialogs, chips, avatars, images
 - elevation/depth: shadows, outlines, dividers, overlap, raised surfaces
 - layout rhythm: app shell, top bars, bottom bars, section order, scroll behavior
-- component candidates: purpose, behavior, anatomy, variants, states, and overlap with existing inventory/specs
+- component candidates: purpose, behavior or composition role, anatomy/slots, variants, states or display modes, and overlap with existing inventory/specs
 - component review visuals: actual Figma node previews/screenshots or screenshot crops for close candidates; schematic SVG only as labeled fallback when source previews are unavailable
 - icons: style, stroke, fill, size, labels, accessibility role
 - imagery: photo/illustration style, crop, saturation, texture, realism
@@ -66,6 +67,8 @@ Analyze these dimensions for every coherent product surface:
 ## Extraction Rules
 
 - Prefer repeated patterns over one-off decorative moments.
+- Treat reusable text groupings as component candidates in any source type, not only graphic design. Keep atomic type values in typography tokens; promote the grouping to a typographic component only when the slot relationship, hierarchy, spacing, alignment, and content rules are reusable.
+- Do not promote one-off decorative lettering, art-directed headlines, or single-use campaign copy to component status unless the references prove reuse or brand-critical importance.
 - Do not treat duplicate screenshots, Figma nodes, or rendered states as separate proof until the source duplicate review decision is documented.
 - Do not create a separate component only because a Figma layer name differs; compare fingerprint, behavior, anatomy, states, tokens, and layout first.
 - Do not normalize a distinctive design into generic SaaS defaults.

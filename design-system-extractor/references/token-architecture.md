@@ -128,6 +128,8 @@ Examples:
 - `--md-comp-primary-button-label-text-color`
 - `--md-comp-bottom-navigation-active-icon-color`
 - `--md-comp-spending-row-amount-text-size`
+- `--md-comp-hero-title-lockup-headline-text-size`
+- `--md-comp-metric-lockup-unit-gap`
 
 ## Required Token Families
 
@@ -135,7 +137,8 @@ At minimum, extract:
 
 - color: background, surface, surface variants, primary, secondary, success, warning, error, outline, disabled
 - foreground pairs: `on-*` for every background-like color
-- typography: display, headline, title, body, label, metadata, numeric
+- typography: display, headline, title, body, label, metadata, numeric, editorial, brand
+- typographic composition: lockup gaps, hierarchy ratios, alignment roles, max line lengths, and slot-specific type/color mappings when a text grouping is extracted as a component
 - spacing: page gutters, section gaps, stack gaps, inline gaps, inset spacing
 - shape: none, xs, sm, md, lg, full
 - size: icon, avatar, touch target, control heights, region heights
