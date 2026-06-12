@@ -19,8 +19,9 @@ List screenshots, graphic/brand/editorial references, Figma URLs/nodes, rendered
 7. Fill `PAGE_COMPOSITION_RULES.md`, `INTERACTION_STATES.md`, and `ANTI_AI_STYLE_RULES.md`.
 8. Generate `docs/design-system/index.html` and `docs/design-system/review.html`.
 9. Run strict source, token, and component audits.
-10. Update `SESSION_STATE.md`.
-11. Stop and ask the user what to do next.
+10. For collaborative branch or PR work, update `INTEGRATION_REVIEW.md`.
+11. Update `SESSION_STATE.md`.
+12. Stop and ask the user what to do next.
 
 ## Boundary
 

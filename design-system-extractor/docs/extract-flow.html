@@ -642,6 +642,79 @@
         grid-column: 2;
       }
 
+      .team-board {
+        display: grid;
+        gap: 18px;
+        margin: 0 0 34px;
+        padding: 22px;
+      }
+
+      .team-head {
+        display: grid;
+        gap: 8px;
+        max-width: 860px;
+      }
+
+      .team-head h2 {
+        font-size: clamp(1.35rem, 3vw, 2rem);
+      }
+
+      .team-head p:last-child {
+        margin: 0;
+        color: var(--muted);
+      }
+
+      .role-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 16px;
+      }
+
+      .role-card {
+        display: grid;
+        gap: 12px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius-sm);
+        background: var(--surface-alt);
+        padding: 16px;
+      }
+
+      .role-card h3 {
+        font-size: 1.05rem;
+      }
+
+      .role-card ol {
+        display: grid;
+        gap: 8px;
+        margin: 0;
+        padding-left: 20px;
+        color: var(--muted);
+      }
+
+      .branch-flow {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+        border-top: 1px solid var(--line);
+        padding-top: 16px;
+      }
+
+      .branch-flow span {
+        border-radius: 999px;
+        background: var(--accent-soft);
+        padding: 6px 10px;
+        color: var(--accent-strong);
+        font-size: 0.86rem;
+        font-weight: 800;
+      }
+
+      .branch-flow .flow-arrow {
+        background: transparent;
+        color: var(--muted);
+        padding: 0;
+      }
+
       code {
         border-radius: 10px;
         background: #ededeb;
@@ -694,6 +767,7 @@
 
       @media (max-width: 800px) {
         .summary-grid,
+        .role-grid,
         .why-grid,
         .output-grid,
         .principle-grid {
@@ -883,7 +957,7 @@
           <h2 data-i18n="outputsTitle">輸出內容</h2>
           <p data-i18n="outputsText" data-i18n-html="true">
             Markdown 規範、設計原則、嚴格 <code>ref -&gt; sys -&gt; comp</code> tokens、
-            duplicate source review、近似 token 決策、component similarity review、anti-AI style rules、HTML docs 與 audit results。
+            duplicate source review、近似 token 決策、component similarity review、integration review records、anti-AI style rules、HTML docs 與 audit results。
           </p>
         </article>
       </section>
@@ -937,6 +1011,48 @@
               產出 HTML 文件、review queue 與 audit 結果，再進入 checkpoint。
             </p>
           </article>
+        </div>
+      </section>
+
+      <section class="team-board" aria-labelledby="team-title">
+        <div class="team-head">
+          <p class="eyebrow" data-i18n="teamEyebrow">多人協作流程</p>
+          <h2 id="team-title" data-i18n="teamTitle">
+            開發者先送 PR，整合者再集中整併
+          </h2>
+          <p data-i18n="teamLead">
+            每個開發者只負責自己的元件 branch；整合者從 main 開 integration
+            branch，逐一 review 和 merge，最後用 integration PR 回到 main。
+          </p>
+        </div>
+        <div class="role-grid">
+          <article class="role-card">
+            <h3 data-i18n="developerRoleTitle">開發者</h3>
+            <ol data-i18n-list="developerRoleSteps">
+              <li>從最新 main 開 ds/new-comp。</li>
+              <li>用 skill 萃取自己的 Figma 元件。</li>
+              <li>跑 docs、strict audits 和 self-review。</li>
+              <li>push branch，開 PR 到 main，等待整合者處理。</li>
+            </ol>
+          </article>
+          <article class="role-card">
+            <h3 data-i18n="integratorRoleTitle">整合者</h3>
+            <ol data-i18n-list="integratorRoleSteps">
+              <li>從最新 main 開 ds/integration-round-1。</li>
+              <li>逐一 review 開發者 PR 或 branch。</li>
+              <li>用 INTEGRATION_REVIEW.md 記錄 merge、blocked 或 request changes。</li>
+              <li>重產 docs、跑 strict audits，開 integration PR 回 main。</li>
+            </ol>
+          </article>
+        </div>
+        <div class="branch-flow" aria-label="Team branch flow">
+          <span data-i18n="teamFlowMain">main</span>
+          <span class="flow-arrow">→</span>
+          <span data-i18n="teamFlowDev">developer branches / PRs</span>
+          <span class="flow-arrow">→</span>
+          <span data-i18n="teamFlowIntegration">integration branch</span>
+          <span class="flow-arrow">→</span>
+          <span data-i18n="teamFlowFinal">integration PR to main</span>
         </div>
       </section>
 
@@ -1719,7 +1835,7 @@
               "Extract evidence-backed design rules first. Product UI code comes only after the checkpoint unless explicitly requested.",
             outputsTitle: "Outputs",
             outputsText:
-              'Markdown specs, design principles, strict <code>ref -&gt; sys -&gt; comp</code> tokens, duplicate source review, near-token decisions, component similarity review, anti-AI style rules, HTML docs, and audit results.',
+              'Markdown specs, design principles, strict <code>ref -&gt; sys -&gt; comp</code> tokens, duplicate source review, near-token decisions, component similarity review, integration review records, anti-AI style rules, HTML docs, and audit results.',
             stageEyebrow: "Decision points",
             stageTitle: "Five stages from source material to checkpoint",
             stageText:
@@ -1739,6 +1855,28 @@
             stageHandoffTitle: "Docs and audit",
             stageHandoffText:
               "Generate HTML docs, the review queue, and audit results before checkpointing.",
+            teamEyebrow: "Team workflow",
+            teamTitle: "Developers send PRs; the integrator lands one final PR",
+            teamLead:
+              "Each developer owns one component branch. The integrator starts from main, opens an integration branch, reviews and merges branches one by one, then sends the integration PR back to main.",
+            developerRoleTitle: "Developer",
+            developerRoleSteps: [
+              "Create ds/new-comp from latest main.",
+              "Use the skill to extract one Figma component or small scope.",
+              "Regenerate docs, run strict audits, and self-review.",
+              "Push the branch and open a PR to main for the integration round.",
+            ],
+            integratorRoleTitle: "Integrator",
+            integratorRoleSteps: [
+              "Create ds/integration-round-1 from latest main.",
+              "Review each contributor PR or branch.",
+              "Record merge, blocked, or request-changes decisions in INTEGRATION_REVIEW.md.",
+              "Regenerate docs, run strict audits, and open the integration PR back to main.",
+            ],
+            teamFlowMain: "main",
+            teamFlowDev: "developer branches / PRs",
+            teamFlowIntegration: "integration branch",
+            teamFlowFinal: "integration PR to main",
             footerText:
               "Source files remain Markdown and CSS tokens. This page is a portable guide for understanding the extraction workflow before running the skill in Claude Code, Cursor, or Codex.",
           },
@@ -1765,7 +1903,7 @@
               "まず根拠に基づくデザインルールを抽出します。明示的に依頼されない限り、product UI code は checkpoint の後に扱います。",
             outputsTitle: "出力",
             outputsText:
-              'Markdown specs、design principles、厳格な <code>ref -&gt; sys -&gt; comp</code> tokens、duplicate source review、近い値の判断記録、component similarity review、anti-AI style rules、HTML docs、audit results。',
+              'Markdown specs、design principles、厳格な <code>ref -&gt; sys -&gt; comp</code> tokens、duplicate source review、近い値の判断記録、component similarity review、integration review records、anti-AI style rules、HTML docs、audit results。',
             stageEyebrow: "判断ポイント",
             stageTitle: "素材から checkpoint までの 5 段階",
             stageText:
@@ -1785,6 +1923,28 @@
             stageHandoffTitle: "Docs and audit",
             stageHandoffText:
               "HTML docs、review queue、audit results を生成して checkpoint します。",
+            teamEyebrow: "チームワークフロー",
+            teamTitle: "開発者が PR を出し、integrator が最後の PR を main に戻します",
+            teamLead:
+              "各開発者は 1 つの component branch を担当します。integrator は main から integration branch を作り、branch を 1 つずつ review と merge し、最後に integration PR を main へ出します。",
+            developerRoleTitle: "開発者",
+            developerRoleSteps: [
+              "最新の main から ds/new-comp を作成します。",
+              "skill で 1 つの Figma component または小さな範囲を抽出します。",
+              "docs を再生成し、strict audits と self-review を実行します。",
+              "branch を push し、integration round 用に main へ PR を出します。",
+            ],
+            integratorRoleTitle: "Integrator",
+            integratorRoleSteps: [
+              "最新の main から ds/integration-round-1 を作成します。",
+              "各 contributor PR または branch を review します。",
+              "merge、blocked、request changes を INTEGRATION_REVIEW.md に記録します。",
+              "docs を再生成し、strict audits を実行し、integration PR を main へ出します。",
+            ],
+            teamFlowMain: "main",
+            teamFlowDev: "developer branches / PRs",
+            teamFlowIntegration: "integration branch",
+            teamFlowFinal: "integration PR to main",
             footerText:
               "Source files は Markdown と CSS tokens のままです。このページは、Claude Code、Cursor、Codex で skill を実行する前に extraction workflow を理解するためのポータブルガイドです。",
           },
@@ -1811,7 +1971,7 @@
               "先 extract 有 evidence 支撐的設計規範。除非明確要求，product UI code 只會在 checkpoint 之後才開始。",
             outputsTitle: "輸出內容",
             outputsText:
-              'Markdown 規範、設計原則、嚴格 <code>ref -&gt; sys -&gt; comp</code> tokens、duplicate source review、近似 token 決策、component similarity review、anti-AI style rules、HTML docs 與 audit results。',
+              'Markdown 規範、設計原則、嚴格 <code>ref -&gt; sys -&gt; comp</code> tokens、duplicate source review、近似 token 決策、component similarity review、integration review records、anti-AI style rules、HTML docs 與 audit results。',
             stageEyebrow: "流程判斷點",
             stageTitle: "從來源到 checkpoint 的五個階段",
             stageText:
@@ -1831,6 +1991,28 @@
             stageHandoffTitle: "Docs and audit",
             stageHandoffText:
               "產出 HTML 文件、review queue 與 audit 結果，再進入 checkpoint。",
+            teamEyebrow: "多人協作流程",
+            teamTitle: "開發者先送 PR，整合者再集中整併",
+            teamLead:
+              "每個開發者只負責自己的元件 branch；整合者從 main 開 integration branch，逐一 review 和 merge，最後用 integration PR 回到 main。",
+            developerRoleTitle: "開發者",
+            developerRoleSteps: [
+              "從最新 main 開 ds/new-comp。",
+              "用 skill 萃取自己的 Figma 元件或小範圍。",
+              "重產 docs，跑 strict audits 和 self-review。",
+              "push branch，開 PR 到 main，等待整合者處理。",
+            ],
+            integratorRoleTitle: "整合者",
+            integratorRoleSteps: [
+              "從最新 main 開 ds/integration-round-1。",
+              "逐一 review 開發者 PR 或 branch。",
+              "用 INTEGRATION_REVIEW.md 記錄 merge、blocked 或 request changes。",
+              "重產 docs，跑 strict audits，開 integration PR 回 main。",
+            ],
+            teamFlowMain: "main",
+            teamFlowDev: "developer branches / PRs",
+            teamFlowIntegration: "integration branch",
+            teamFlowFinal: "integration PR to main",
             footerText:
               "Source files 仍然是 Markdown 與 CSS tokens。這個頁面是執行 Claude Code、Cursor 或 Codex skill 前，用來理解 extract workflow 的可攜式導覽。",
           },

@@ -1,6 +1,6 @@
 ---
 name: design-system-extractor
-description: Extract a reusable design-system specification from UI screenshots/images, graphic/brand/editorial references, Figma URLs or exports, Figma Variables, existing app/project folders, or prototype code. Use when Codex must produce evidence-backed design principles, design elements, token architecture, component inventory, component token specs including typographic/text-lockup components, anti-AI style constraints, static HTML documentation for developers, cross-agent handoff guidance for Claude Code/Cursor/Codex, and a checkpoint before any product implementation.
+description: Extract a reusable design-system specification from UI screenshots/images, graphic/brand/editorial references, Figma URLs or exports, Figma Variables, existing app/project folders, or prototype code, and review or integrate parallel design-system extraction branches. Use when Codex must produce evidence-backed design principles, design elements, token architecture, component inventory, component token specs including typographic/text-lockup components, anti-AI style constraints, collaborative branch review records, static HTML documentation for developers, cross-agent handoff guidance for Claude Code/Cursor/Codex, and a checkpoint before any product implementation.
 ---
 
 # Design System Extractor
@@ -19,7 +19,7 @@ Act as a Design System Architect. Extract a reusable design-system package from 
 1. Locate or create a design-system package root.
 2. Resolve this skill's folder as `<skill-root>`. Use `<skill-root>/assets/...` and `<skill-root>/scripts/...` when copying templates or running bundled scripts.
 3. If the package has no structure yet, copy `<skill-root>/assets/design-system-template/` into the target root.
-4. Read existing `AGENTS.md`, `CLAUDE.md`, `.cursorrules`, `.cursor/rules/*`, and prior `design-system/SESSION_STATE.md` when present.
+4. Read existing `AGENTS.md`, `CLAUDE.md`, `.cursorrules`, `.cursor/rules/*`, prior `design-system/SESSION_STATE.md`, and prior `design-system/INTEGRATION_REVIEW.md` when present.
 5. Inspect references before writing tokens. If a source project has screenshots and code, inspect both.
 
 ## Workflow
@@ -170,12 +170,14 @@ Update `design-system/SESSION_STATE.md` with:
 - audit result
 - source duplicate review result
 - component similarity review result
+- integration review result when collaborating across branches or PRs
 - recommended next prompt
 
 Then stop and ask the user what to do next. Suggested choices:
 
 - review and refine the extraction
 - expand component tokens
+- review and integrate collaborator extraction branches
 - generate Figma Variables or token export
 - create/update cross-agent instructions
 - build Storybook foundations and components with `design-system-to-storybook`
@@ -197,6 +199,21 @@ Use this pass when the user chooses to expand component tokens after the initial
 8. Regenerate `docs/design-system/index.html` and `docs/design-system/review.html`.
 9. Run `node <skill-root>/scripts/audit_sources.mjs <target-root> --strict`, `node <skill-root>/scripts/audit_tokens.mjs <target-root> --strict`, and `node <skill-root>/scripts/audit_components.mjs <target-root> --strict`.
 10. Update `SESSION_STATE.md`, then stop and ask for the next step.
+
+### Collaboration Review And Integration Pass
+
+Use this pass when multiple contributors extracted separate Figma sources, components, or token candidates on separate branches or PRs. Read `references/collaboration-review.md` before acting.
+
+1. Confirm the integration target branch and the contributor branches or PRs to review.
+2. Inspect each branch or PR diff before merging. Identify touched sources, components, token layers, generated docs, and audit output.
+3. Read `design-system/SESSION_STATE.md`, `design-system/INTEGRATION_REVIEW.md`, `DESIGN_EVIDENCE_MAP.md`, `TOKEN_ARCHITECTURE.md`, `COMPONENT_INVENTORY.md`, relevant `design-system/components/*.md`, and `tokens/*.css`.
+4. Record every branch or PR in `design-system/INTEGRATION_REVIEW.md` with owner, scope, files touched, audit status, and reviewer decision.
+5. Merge or rebase one contributor branch at a time into an integration branch. Resolve conflicts from source evidence, token inheritance, and component similarity decisions; do not keep both versions only to avoid choosing.
+6. Treat `docs/design-system/index.html` and `docs/design-system/review.html` as generated outputs. Regenerate them after source Markdown and token conflicts are resolved.
+7. If two branches create near token candidates or similar components, use the existing duplicate, near-token, and component-similarity review tables before finalizing the merge.
+8. If a conflict requires a design decision that is not supported by evidence, mark the integration row `blocked`, record the question, and ask the developer.
+9. Run strict source, token, and component audits after the final integrated source state.
+10. Update `SESSION_STATE.md` and `INTEGRATION_REVIEW.md`, then stop with the integration decision summary.
 
 ## Gates
 
@@ -224,6 +241,12 @@ Do not generate product UI code, Storybook implementation code, or app routes in
 
 After the checkpoint, use the separate `design-system-to-storybook` skill when the next step is to turn the extracted design-system package into Storybook foundations, shared components, and stories.
 
+### Collaboration Gate
+
+Do not integrate parallel branches by silently accepting duplicate components, duplicate source evidence, or near-identical token values. Record `merge`, `make variant`, `keep distinct`, `reuse existing source`, `ignore duplicate`, or `blocked` decisions in the appropriate review table before the checkpoint.
+
+Do not hand-edit generated HTML docs to resolve merge conflicts. Resolve source Markdown and token files first, then regenerate docs.
+
 ## Cross-Agent Use
 
 If the user wants to use the extraction package with Claude Code, Cursor, or Codex, read `references/agent-integration.md` and generate the appropriate instruction files from the extracted rules. Keep agent instructions short and point them back to the design-system docs and token audit.
@@ -236,6 +259,7 @@ If the user wants to use the extraction package with Claude Code, Cursor, or Cod
 - `references/page-composition-rules.md`: layout, density, page shell, and composition rules.
 - `references/anti-ai-style-rules.md`: constraints that prevent generic AI-looking UI.
 - `references/agent-integration.md`: Claude Code, Cursor, and Codex handoff guidance.
+- `references/collaboration-review.md`: branch/PR review and integration workflow for teams.
 - `references/html-documentation.md`: static HTML documentation output rules.
 - `assets/design-system-template/`: starter output package.
 - `scripts/audit_sources.mjs`: source inventory and duplicate source review audit; pass `--strict` after real extraction work.

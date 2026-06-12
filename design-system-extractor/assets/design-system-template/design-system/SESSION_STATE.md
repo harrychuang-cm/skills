@@ -11,6 +11,7 @@ Update this file at every checkpoint.
 ## Completed Outputs
 
 - [ ] DESIGN_EVIDENCE_MAP.md
+- [ ] INTEGRATION_REVIEW.md
 - [ ] DESIGN_PRINCIPLES.md
 - [ ] DESIGN_ELEMENTS.md
 - [ ] TOKEN_ARCHITECTURE.md
@@ -52,6 +53,14 @@ Update this file at every checkpoint.
 - Similar component candidates found:
 - Developer decisions recorded in `COMPONENT_INVENTORY.md`:
 - Visual comparison assets:
+
+## Collaboration Review
+
+- Active branches / PRs:
+- Integrator / reviewer:
+- Integration decisions recorded in `INTEGRATION_REVIEW.md`:
+- Blocked items:
+- Final integration result:
 
 ## Open Questions
 

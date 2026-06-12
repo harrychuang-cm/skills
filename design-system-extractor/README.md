@@ -1,6 +1,6 @@
 # Design System Extractor Skill
 
-`design-system-extractor` is a reusable skill for extracting a token-backed design-system package from screenshots, graphic/brand/editorial references, Figma references, or an existing project/prototype folder.
+`design-system-extractor` is a reusable skill for extracting and collaboratively reviewing a token-backed design-system package from screenshots, graphic/brand/editorial references, Figma references, branch diffs, or an existing project/prototype folder.
 
 It does not implement product screens by default. It produces design-system documentation, token files, component inventory, component token specs, anti-AI style rules, static HTML documentation, and a checkpoint for the next step.
 
@@ -39,6 +39,10 @@ Use $design-system-extractor to extract a reusable visual system from these bran
 Use $design-system-extractor to extract a reusable design system from this project folder. Treat prototype code as reference only.
 ```
 
+```txt
+Use $design-system-extractor to review and integrate the design-system extraction branches from this team round. Record branch decisions in INTEGRATION_REVIEW.md, regenerate docs, run strict audits, and stop with blockers.
+```
+
 ## What It Produces
 
 The skill creates or updates a package like this:
@@ -46,6 +50,7 @@ The skill creates or updates a package like this:
 ```txt
 design-system/
 ├── DESIGN_SYSTEM_KICKSTART.md
+├── INTEGRATION_REVIEW.md
 ├── DESIGN_EVIDENCE_MAP.md
 ├── DESIGN_PRINCIPLES.md
 ├── DESIGN_ELEMENTS.md
@@ -105,6 +110,54 @@ Typographic components, also called text lockups, sit between typography foundat
 10. Run strict source, token, and component audits.
 11. Update `SESSION_STATE.md`, stop, and ask the user for the next step.
 
+For teams working on separate branches, use the collaboration review pass before merging extracted sources, tokens, and component specs into the shared design-system package.
+
+## Team Branch Workflow
+
+Use this simple flow when several developers extract Figma components into the same design-system package.
+
+### Developer Flow
+
+Start from latest `main`, create one branch for one component or one small Figma scope, then make the branch review-ready.
+
+```txt
+main -> ds/new-comp -> extract with this skill -> self-review and audits -> push -> PR
+```
+
+Developer prompt:
+
+```txt
+Use $design-system-extractor to run a component expansion pass for <component-name> from this Figma node: <figma-url-or-node>.
+Update DESIGN_EVIDENCE_MAP.md, COMPONENT_INVENTORY.md, design-system/components/<component-name>.md, tokens, docs, and SESSION_STATE.md.
+Run strict source, token, and component audits.
+Do not merge other branches. Stop with PR review notes, audit results, and open questions.
+```
+
+Developer PR checklist:
+
+- The PR targets `main`, but it is treated as review input for the integration round.
+- The branch includes evidence, component inventory updates, component spec, required tokens, regenerated docs, and `SESSION_STATE.md`.
+- Duplicate source, near-token, or similar-component decisions are recorded when relevant.
+- Strict source, token, and component audits pass, or blockers are written clearly.
+
+### Integrator Flow
+
+The integrator starts from latest `main`, creates one integration branch, reviews contributor PRs or branches, and merges the integration branch back through a final PR.
+
+```txt
+main -> ds/integration-round-1 -> merge contributor branches one by one -> run collaboration review -> integration PR -> main
+```
+
+Integrator prompt:
+
+```txt
+Use $design-system-extractor to run a collaboration review and integration pass for these branches or PRs: <branch-or-pr-list>.
+Target branch is main. Integration branch is ds/integration-round-1.
+Review each branch, record decisions in INTEGRATION_REVIEW.md, merge one branch at a time, resolve source/token/component conflicts through the review gates, regenerate docs, run strict audits, update SESSION_STATE.md, then stop with merge decisions and blockers.
+```
+
+Rule of thumb: developer PRs are the review inputs; the integration PR is the final design-system change that lands in `main`.
+
 ## Component Expansion Pass
 
 After the initial checkpoint, use the same skill to expand component tokens from `COMPONENT_INVENTORY.md`.
@@ -128,6 +181,29 @@ Expansion workflow:
 9. Regenerate HTML docs and review queue.
 10. Run strict source, token, and component audits.
 11. Update session state and stop.
+
+## Collaboration Review And Integration Pass
+
+Use this pass when multiple contributors extracted separate Figma sources, components, or token candidates on separate branches or PRs.
+
+Recommended prompt:
+
+```txt
+Use $design-system-extractor to run a collaboration review and integration pass for these branches or PRs: <branch-or-pr-list>. Read SESSION_STATE.md, INTEGRATION_REVIEW.md, DESIGN_EVIDENCE_MAP.md, TOKEN_ARCHITECTURE.md, COMPONENT_INVENTORY.md, relevant component specs, and tokens. Review each branch scope, record decisions in INTEGRATION_REVIEW.md, resolve source/token/component conflicts using the review gates, regenerate docs/design-system/index.html and docs/design-system/review.html, run strict audits, update SESSION_STATE.md, then stop with merge decisions and blockers.
+```
+
+Integration workflow:
+
+1. Confirm the target branch, integration branch, and branch or PR list.
+2. Inspect each branch or PR diff before merging and record owner, scope, files touched, and review status in `design-system/INTEGRATION_REVIEW.md`.
+3. Merge or rebase one branch at a time into the integration branch.
+4. Resolve source conflicts through `DESIGN_EVIDENCE_MAP.md` duplicate decisions.
+5. Resolve token conflicts through `TOKEN_ARCHITECTURE.md` near-token decisions and strict `ref -> sys -> comp` inheritance.
+6. Resolve component conflicts through `COMPONENT_INVENTORY.md` similarity decisions and component fingerprints.
+7. Treat `docs/design-system/index.html` and `docs/design-system/review.html` as generated output; regenerate them after source conflicts are resolved.
+8. Run strict source, token, and component audits.
+9. Update `SESSION_STATE.md` and `INTEGRATION_REVIEW.md`.
+10. Stop with `merged`, `request changes`, `blocked`, `superseded`, or `defer` decisions for each branch or PR.
 
 ## HTML Documentation
 
@@ -155,6 +231,7 @@ The generated HTML includes:
 
 - rendered design-system Markdown
 - rendered component specs
+- rendered integration review records
 - sidebar navigation
 - missing-document notices
 - reference, system, and component token tables
@@ -245,6 +322,7 @@ Add this to `CLAUDE.md`:
 
 Use `skills/design-system-extractor/SKILL.md` when extracting a design system from screenshots, Figma references, or project code.
 Start with `design-system/SESSION_STATE.md` when it exists.
+Use `design-system/INTEGRATION_REVIEW.md` when reviewing or integrating parallel extraction branches.
 Use `design-system/` and `tokens/` as source of truth before product UI code.
 Maintain token inheritance: ref -> sys -> comp.
 Keep reference color scales ordered as 100 lightest to 0 darkest.
@@ -267,6 +345,12 @@ For a Figma input:
 
 ```txt
 Use skills/design-system-extractor/SKILL.md to extract design-system docs and tokens from this Figma URL: <figma-url>. Treat Figma data as evidence, create an evidence map with source fingerprints, review duplicate Figma sources, capture component similarity review images when candidates overlap, generate docs/design-system/index.html and docs/design-system/review.html, run strict source, token, and component audits, and stop at the checkpoint.
+```
+
+Recommended Claude Code prompt for collaborative integration:
+
+```txt
+Use skills/design-system-extractor/SKILL.md to review and integrate these design-system extraction branches or PRs: <branch-or-pr-list>. Record branch review decisions in design-system/INTEGRATION_REVIEW.md, resolve source/token/component conflicts through the existing review tables, regenerate docs, run strict audits, update SESSION_STATE.md, and stop with blockers.
 ```
 
 ### Cursor
@@ -296,6 +380,7 @@ alwaysApply: true
 
 Use `skills/design-system-extractor/SKILL.md` for design-system extraction from screenshots, Figma references, rendered UI, or project code.
 Read `design-system/SESSION_STATE.md` before continuing existing work.
+Use `design-system/INTEGRATION_REVIEW.md` when reviewing or integrating parallel extraction branches.
 Fill or update `design-system/` and `tokens/` before product UI code.
 Maintain token inheritance: ref -> sys -> comp.
 Keep reference color scales ordered as 100 lightest to 0 darkest.
@@ -322,6 +407,12 @@ When starting from an existing project:
 Use skills/design-system-extractor/SKILL.md to inspect this project as reference material. Extract the design system into design-system/ and tokens/, then generate docs/design-system/index.html and docs/design-system/review.html. Do not refactor product UI yet.
 ```
 
+For branch integration:
+
+```txt
+Follow .cursor/rules/design-system.mdc and use skills/design-system-extractor/SKILL.md. Review and integrate these design-system branches or PRs: <branch-or-pr-list>. Update INTEGRATION_REVIEW.md and SESSION_STATE.md, regenerate docs, run strict audits, and stop with blockers.
+```
+
 ### Codex
 
 Codex can use this as a native skill when the folder is installed in a discoverable skills directory, or as a project-local skill when the prompt points to `skills/design-system-extractor/SKILL.md`.
@@ -345,6 +436,7 @@ Add this to `AGENTS.md`:
 Use `skills/design-system-extractor/SKILL.md` when extracting a design system from screenshots, Figma references, rendered UI, or project code.
 Use all reference screenshots, Figma data, rendered UI, and `design-system/` docs as source evidence.
 Start with `design-system/SESSION_STATE.md`.
+Use `design-system/INTEGRATION_REVIEW.md` when reviewing or integrating parallel extraction branches.
 Keep token inheritance strict: ref -> sys -> comp.
 Keep reference color scales ordered as 100 lightest to 0 darkest.
 Document duplicate source reuse/ignore/keep-distinct decisions in `DESIGN_EVIDENCE_MAP.md`.
@@ -369,6 +461,12 @@ If the skill is only project-local and not installed globally:
 Use skills/design-system-extractor/SKILL.md to extract a reusable design-system package from this project. Treat screenshots, Figma data, and prototype code as evidence. Fill design-system/ and tokens/, generate docs/design-system/index.html and docs/design-system/review.html, run the audits, and stop at the checkpoint.
 ```
 
+For collaborative branch review:
+
+```txt
+Use $design-system-extractor to review and integrate these design-system extraction branches or PRs: <branch-or-pr-list>. Use INTEGRATION_REVIEW.md as the integration log, resolve source/token/component conflicts through the review gates, regenerate docs, run strict audits, update SESSION_STATE.md, and stop with decisions and blockers.
+```
+
 To install for global Codex discovery, copy the `design-system-extractor/` folder into your Codex skills directory, commonly:
 
 ```txt
@@ -387,6 +485,8 @@ Use $design-system-extractor to analyze this Figma URL and create design-system 
 - Do not copy prototype code into production by default.
 - Do not invent design rules without evidence; mark uncertain decisions as Low confidence.
 - Do not bypass token layers to make UI match faster.
+- Do not silently accept duplicate components, duplicate source evidence, or near-identical tokens during branch integration.
+- Do not hand-edit generated HTML docs to resolve merge conflicts; regenerate them from source Markdown and tokens.
 - Do not add generic gradients, glassmorphism, outline-card stacks, inflated whitespace, or SaaS landing-page patterns unless the references clearly show them.
 
 ## Template
