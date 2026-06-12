@@ -39,7 +39,7 @@ Claude Code discovers skills from `.claude/skills/<skill-name>/SKILL.md` and `~/
 
 Supported targets:
 
-- User: `~/.codex/skills/design-system-to-storybook/`
+- User: `~/.agents/skills/design-system-to-storybook/`
 - Project/open-standard: `<repo>/.agents/skills/design-system-to-storybook/`
 
 Invoke with:

@@ -61,7 +61,35 @@ Use this after `design-system-extractor` when the extraction is complete and you
 
 ## Usage
 
-Install or reference these folders as agent skills in Cursor / Claude Code. Each skill lives in its own directory and exposes a `SKILL.md` with frontmatter metadata and workflow instructions.
+Install or reference these folders as agent skills in Claude Code, Codex, or Cursor. Each skill lives in its own directory and exposes a `SKILL.md` with frontmatter metadata and workflow instructions.
+
+Install all skills for your user account:
+
+```sh
+node scripts/install_agent_skills.mjs --agent all --scope user
+```
+
+Install all skills into a project repo:
+
+```sh
+node scripts/install_agent_skills.mjs --agent all --scope project --project-root <repo>
+```
+
+Install one skill:
+
+```sh
+node scripts/install_agent_skills.mjs --agent codex --scope user --skill design-system-extractor
+```
+
+Use `--dry-run` to preview destinations and `--force` to replace existing installed copies.
+
+Default install locations:
+
+| Agent | User scope | Project scope |
+|---|---|---|
+| Claude Code | `~/.claude/skills/<skill>/` | `<repo>/.claude/skills/<skill>/` |
+| Codex | `~/.agents/skills/<skill>/` | `<repo>/.agents/skills/<skill>/` |
+| Cursor | `~/.cursor/skills/<skill>/` | `<repo>/.cursor/skills/<skill>/` |
 
 For `design-system-to-storybook`, use the bundled installer to install the full skill package into Claude Code, Codex, or Cursor:
 
@@ -105,6 +133,8 @@ If only a screenshot, URL, route, or file is available, the skill will attempt t
 │   ├── assets/
 │   ├── references/
 │   └── scripts/
+├── scripts/
+│   └── install_agent_skills.mjs
 ├── ui-compare-to-reference/
 │   └── SKILL.md
 └── ui-screenshot-to-storybook-product/

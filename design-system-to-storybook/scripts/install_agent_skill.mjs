@@ -44,7 +44,7 @@ for (const target of targets) {
 }
 
 console.log("");
-console.log("Installed targets:");
+console.log(dryRun ? "Dry-run targets:" : "Installed targets:");
 for (const target of targets) {
   console.log(`- ${target.agent}: ${target.destination}`);
 }
@@ -78,7 +78,7 @@ function destinationFor(selectedAgent, selectedScope, selectedProjectRoot) {
   if (selectedScope === "user") {
     const home = os.homedir();
     if (selectedAgent === "claude") return path.join(home, ".claude", "skills", skillName);
-    if (selectedAgent === "codex") return path.join(home, ".codex", "skills", skillName);
+    if (selectedAgent === "codex") return path.join(home, ".agents", "skills", skillName);
     if (selectedAgent === "cursor") return path.join(home, ".cursor", "skills", skillName);
   }
 
@@ -101,13 +101,13 @@ function installSkill(target) {
     fail(`Refusing to install into the source skill directory: ${destination}`);
   }
 
-  if (fs.existsSync(destination) && !force) {
-    fail(`${destination} already exists. Re-run with --force to replace it.`);
-  }
-
   if (dryRun) {
     console.log(`[dry-run] ${target.agent}: ${skillRoot} -> ${destination}`);
     return;
+  }
+
+  if (fs.existsSync(destination) && !force) {
+    fail(`${destination} already exists. Re-run with --force to replace it.`);
   }
 
   if (fs.existsSync(destination)) {
