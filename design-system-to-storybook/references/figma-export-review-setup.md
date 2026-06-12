@@ -2,12 +2,58 @@
 
 Use this reference when the Figma export toolbar appears but the review overlay or Open source action is missing.
 
+Also use this reference before wiring `.storybook/main.*` or `.storybook/preview.*` for the bundled Figma export addon.
+
 The addon has two preview UIs:
 
 - `createFigmaExportDecorator`: shows the export overlay for copying JSON or plugin-console code.
 - `createFigmaExportReviewDecorator`: wraps the export overlay and also shows the review overlay with the Open source action.
 
 For this skill, use `createFigmaExportReviewDecorator` by default. Do not configure only `createFigmaExportDecorator` unless the user explicitly opts out of review/Open source.
+
+## Installer And Config
+
+Install the bundled addon with:
+
+```sh
+node <skill-root>/scripts/install_figma_export_addon.mjs <product-repo-root>
+```
+
+The installer:
+
+- copies `assets/figma-export-addon/` into `<product-repo-root>/.storybook/vendor/figma-export-addon/`
+- detects `npm`, `pnpm`, `yarn`, or `bun`
+- installs `file:.storybook/vendor/figma-export-addon`
+- installs `@storybook/icons@^1.0.0` only when the target package does not already declare `@storybook/icons`
+
+Generate config before editing Storybook files:
+
+```sh
+node <skill-root>/scripts/generate_figma_export_config.mjs <design-system-package-root> --product-root <product-repo-root> --write
+```
+
+Default output is `<product-repo-root>/.storybook/figma-export.config.ts`. Keep project-specific Figma URLs, node IDs, class prefixes, theme globals, local graphics, token imports, review API settings, and source fallbacks in `.storybook/figma-export.config.ts`, `.storybook/preview.*`, or product code. The bundled addon should stay generic.
+
+The generated config covers:
+
+- `componentClassPrefixes` and `tokenPrefix`, inferred from token CSS variables such as `--cm-ref-*`, `--cm-sys-*`, and `--cm-comp-*`
+- `storyTitlePrefix`, inferred from existing story titles when possible
+- `absoluteFidelityComponents`, inferred from page/screen/composite/product-pattern entries and graphic or typographic lockups that need tighter visual parity
+- review API path, plugin name, and status JSON path
+- source fallback values, such as design-system Figma file URL and per-component node overrides from `STORYBOOK_SOURCE_TRACE.md`
+
+## Configuration Rules
+
+1. Add `"@harrychuang/storybook-addon-figma-export"` to `.storybook/main.*` `addons`, preserving existing addons.
+2. Import `figmaExportProjectConfig` from `.storybook/figma-export.config.ts` and build `figmaExportOptions` from that config.
+3. Merge `createFigmaExportReviewDecorator`, `globalTypes`, and `initialGlobals` into the existing preview export. Do not overwrite existing decorators or globals.
+4. Use plain `createFigmaExportDecorator` only if the user explicitly opts out of review/Open source.
+5. Set `tokenPrefix` only when the CSS token prefix is explicit or auto-detection would be ambiguous.
+6. Keep `tokenLayers` aligned to `ref`, `sys`, and `comp` unless the extraction uses different segment names.
+7. Set `storyTitlePrefix` to `false` when the project has no established story namespace; otherwise include every relevant namespace such as `Components/`, `Pages/`, and `Foundations/`.
+8. Set `componentClassPrefixes` from component CSS class prefixes when available.
+9. Configure review/Open source using bundled addon helpers instead of copying a product-specific panel.
+10. Remember that the review overlay and Open source action render only when the Storybook `figmaExport` toolbar global is toggled on.
 
 ## Why The Review Overlay Is Missing
 

@@ -8,9 +8,10 @@ description: >-
   URLs/nodes, UI or graphic images, rendered routes, and frontend folders,
   infer component dependency order so foundations, primitives, typographic
   lockups, and composed components are built in the right order, map component
-  specs into a product repo, create or update Storybook docs, plan component
-  batches, and verify implementation with the bundled Figma export addon
-  without bypassing tokens.
+  specs into a product repo, create or update Storybook docs, synchronize or
+  backfill design-system component documentation, plan component batches, and
+  verify implementation with the bundled Figma export addon without bypassing
+  tokens.
 ---
 
 # Design System to Storybook
@@ -27,6 +28,7 @@ This is a downstream implementation skill. Do not re-extract a design system her
 - **Runtime constraints:** framework, package manager, styling system, existing Storybook setup, and test commands.
 - **Batch budget:** optional number of components to implement in the current pass.
 - **Extractor source evidence:** `DESIGN_EVIDENCE_MAP.md`, `SESSION_STATE.md`, component spec `Evidence` tables, component-review image links, and any Figma URLs/nodes, UI screenshots, graphic/brand/editorial image references, rendered routes, or frontend folders listed there.
+- **Documentation sync inputs:** existing component folders, co-located Storybook stories, component CSS token usage, explicit user component briefs, `COMPONENT_INVENTORY.md`, and component-review status JSON when design-system docs need auditing or backfilling.
 - **Bundled Figma export addon:** enabled by default for compatible React Storybook 10 projects.
 
 ## First Actions
@@ -37,10 +39,11 @@ This is a downstream implementation skill. Do not re-extract a design system her
 4. Run the component planner before choosing implementation order and queue rows: `node <skill-root>/scripts/plan_component_batches.mjs <design-system-package-root> --write --queue`.
 5. Inspect referenced design sources for the selected scope: use Figma MCP for Figma nodes, inspect local UI or graphic images/crops, and inspect referenced frontend folders/routes when present.
 6. Inspect product conventions before editing: component folders, page folders, story format, token files, theme providers, Storybook config, build scripts, lint/typecheck scripts, and package manager.
-7. Record an implementation map before code changes. Prefer `design-system/STORYBOOK_IMPLEMENTATION_MAP.md` when the design-system package lives in the product repo; otherwise use `docs/design-system/storybook-implementation.md`.
-8. Install the bundled Figma export addon, generate project-local addon config, and configure Storybook when the product has a compatible React Storybook 10 setup.
-9. If implementing more than one component, create or update a component queue before reading every spec or editing code.
-10. If the product has explicit design-system governance instructions, follow them. Otherwise apply the gates in this skill.
+7. Run the component documentation checker for product repos that already contain components: `node <skill-root>/scripts/check_component_docs.mjs <product-repo-root> --design-system-root <design-system-package-root>`. Use `--write` only when the user asked to backfill missing docs or when this pass creates new components.
+8. Record an implementation map before code changes. Prefer `design-system/STORYBOOK_IMPLEMENTATION_MAP.md` when the design-system package lives in the product repo; otherwise use `docs/design-system/storybook-implementation.md`.
+9. Install the bundled Figma export addon, generate project-local addon config, and configure Storybook when the product has a compatible React Storybook 10 setup.
+10. If implementing more than one component, create or update a component queue before reading every spec or editing code.
+11. If the product has explicit design-system governance instructions, follow them. Otherwise apply the gates in this skill.
 
 ## Scope Modes
 
@@ -49,6 +52,7 @@ Choose the smallest mode that satisfies the user request:
 - **Foundations:** import or mirror tokens and add Storybook docs for color, typography, typographic composition, spacing, radius, elevation, and motion.
 - **Typographic component pass:** implement selected text-lockup specs such as hero title lockups, editorial heading stacks, metric lockups, quote lockups, and label/value text groups as token-backed display components with stories.
 - **Component pass:** implement selected `extracted` or `planned` component specs as shared components with stories.
+- **Documentation sync pass:** audit and backfill `design-system/components/*.md`, `COMPONENT_INVENTORY.md`, implementation map entries, queue status, and review-status coverage for components that already exist in code or were just created.
 - **Library pass:** build or update a reusable component package from the full component inventory.
 - **Batch pass:** implement one dependency-aligned group from a large component queue.
 - **Adoption pass:** replace ad hoc product UI with documented shared components after the Storybook catalog exists.
@@ -76,7 +80,7 @@ Confirm the extracted package is usable:
 | `design-system/COMPONENT_INVENTORY.md` | component priority and status |
 | `design-system/components/*.md` | anatomy, variants, states or display modes, accessibility, and token contracts |
 
-If a required file is absent, continue only for the modes that still have enough evidence. For example, foundations can proceed without component specs, but component implementation cannot.
+If a required file is absent, continue only for the modes that still have enough evidence. For example, foundations can proceed without component specs, but component implementation cannot unless the user provides an explicit component brief for the current pass. When a component doc is created from code, stories, or a user brief instead of extracted evidence, mark it as `implementation-derived` or `brief-derived` and `needs-review`; do not treat it as an extracted source of truth until reviewed.
 
 ### 2. Source Trace And Design Source Discovery
 
@@ -166,14 +170,7 @@ Install it with the bundled installer:
 node <skill-root>/scripts/install_figma_export_addon.mjs <product-repo-root>
 ```
 
-The installer:
-
-- copies `assets/figma-export-addon/` into `<product-repo-root>/.storybook/vendor/figma-export-addon/`
-- detects `npm`, `pnpm`, `yarn`, or `bun`
-- installs `file:.storybook/vendor/figma-export-addon`
-- installs `@storybook/icons@^1.0.0` only when the target package does not already declare `@storybook/icons`
-
-Use `--copy-only` only when you need to inspect or manually install the vendored package. If the bundled addon asset is missing or incomplete, mark `figma-export-addon` as `blocked`; do not fall back to GitHub unless the user explicitly asks to refresh the vendored asset.
+The installer copies the vendored addon, detects the package manager, and installs the local `file:` dependency plus `@storybook/icons` when needed. Use `--copy-only` only when you need to inspect or manually install the vendored package. If the bundled addon asset is missing or incomplete, mark `figma-export-addon` as `blocked`; do not fall back to GitHub unless the user explicitly asks to refresh the vendored asset.
 
 If Storybook is missing, not version 10, or the project is not React-based, do not force the addon. Mark `figma-export-addon` as `blocked` in the implementation map with the reason and ask before installing or upgrading Storybook.
 
@@ -183,41 +180,9 @@ Generate a project-local addon config before editing `.storybook/main.*` or `.st
 node <skill-root>/scripts/generate_figma_export_config.mjs <design-system-package-root> --product-root <product-repo-root> --write
 ```
 
-Default output is `<product-repo-root>/.storybook/figma-export.config.ts`. This file is where project-specific settings belong:
+Default output is `<product-repo-root>/.storybook/figma-export.config.ts`; keep project-specific URLs, node IDs, class prefixes, theme globals, local graphics, token imports, review API settings, and source fallbacks there or in product code, never inside the bundled addon package.
 
-- `componentClassPrefixes` and `tokenPrefix`, inferred from token CSS variables such as `--cm-ref-*`, `--cm-sys-*`, and `--cm-comp-*`
-- `storyTitlePrefix`, inferred from existing story titles when possible
-- `absoluteFidelityComponents`, inferred from page/screen/composite/product-pattern entries and graphic or typographic lockups that need tighter visual parity
-- review API path, plugin name, and status JSON path
-- source fallback values, such as design-system Figma file URL and per-component node overrides from `STORYBOOK_SOURCE_TRACE.md`
-
-Do not hardcode project-specific Figma file URLs, node IDs, class prefixes, theme globals, local graphics, or token imports inside the addon package. Keep those in `.storybook/figma-export.config.ts`, `.storybook/preview.*`, or product code. The addon should only expose generic helpers.
-
-Configuration rules:
-
-1. Add `"@harrychuang/storybook-addon-figma-export"` to `.storybook/main.*` `addons`, preserving existing addons.
-2. Import `figmaExportProjectConfig` from `.storybook/figma-export.config.ts` and build `figmaExportOptions` from that config.
-3. In `.storybook/preview.*`, import:
-   - `createFigmaExportGlobalTypes`
-   - `createFigmaExportInitialGlobals`
-   - `FigmaExportAddonOptions`
-   - `createFigmaExportReviewDecorator` from `@harrychuang/storybook-addon-figma-export/review`
-   - `getFigmaSourceUrl` from `@harrychuang/storybook-addon-figma-export/source`
-   - `@harrychuang/storybook-addon-figma-export/styles.css`
-   - `@harrychuang/storybook-addon-figma-export/review.css`
-4. Merge `createFigmaExportReviewDecorator`, `globalTypes`, and `initialGlobals` into the existing preview export. Do not overwrite existing decorators or globals. Use plain `createFigmaExportDecorator` only if the user explicitly opts out of review/Open source.
-5. Infer `figmaExportOptions` from the generated config, extracted token architecture, and Storybook titles:
-   - set `tokenPrefix` only when the CSS token prefix is explicit or auto-detection would be ambiguous
-   - keep `tokenLayers` aligned to `ref`, `sys`, and `comp` unless the extraction uses different segment names
-   - set `storyTitlePrefix` to `false` when the project has no established story namespace; otherwise include every relevant namespace such as `"Components/"`, `"Pages/"`, and `"Foundations/"`
-   - set `componentClassPrefixes` from component CSS class prefixes when available
-6. Configure review/Open source by default using the bundled addon helpers instead of copying a product-specific panel:
-   - `.storybook/main.*`: import `createFigmaReviewStatusPlugin` from `@harrychuang/storybook-addon-figma-export/review-server`
-   - `.storybook/preview.*`: pass `componentSpecModules`, `designSystemFileUrl`, and `nodeOverrides` to `getFigmaSourceUrl`; map `figmaExportProjectConfig.source.designSystemFileUrlFallback` to the `designSystemFileUrl` option
-   - the review overlay and Open source action render only when the Storybook `figmaExport` toolbar global is toggled on
-7. Record the copied vendor path, installed package spec, generated config path, config values, config files, options, and review helper usage in the implementation map.
-
-If the Figma export toolbar is visible but the review overlay or Open source action is missing, read `references/figma-export-review-setup.md` and fix the missing preview/main wiring before marking addon setup complete.
+Read `references/figma-export-review-setup.md` before wiring `.storybook/main.*` or `.storybook/preview.*`, and again if the toolbar, review overlay, or Open source action is missing. Record the copied vendor path, installed package spec, generated config path, config values, config files, options, and review helper usage in the implementation map.
 
 ### 7. Implementation Map
 
@@ -237,6 +202,7 @@ Also record:
 - generated `.storybook/figma-export.config.ts` path and inferred project-specific values
 - source trace path and per-component source IDs
 - component dependency plan path, recommended order, and current dependency decisions
+- component documentation provenance: extracted, brief-derived, implementation-derived, or needs-review
 - original Figma nodes, local images, frontend folders, and rendered routes used for implementation
 - token import strategy
 - components reused from the product repo
@@ -273,7 +239,7 @@ Use this protocol for every multi-component implementation pass and every resume
 1. Re-read `STORYBOOK_COMPONENT_PLAN.md`, `STORYBOOK_COMPONENT_QUEUE.md`, `STORYBOOK_IMPLEMENTATION_MAP.md`, and `git status --short` before editing.
 2. Select exactly one next component: the earliest unfinished queue row whose dependencies are `done`, `reused`, or accepted blocked decisions.
 3. Mark that component `in-progress` in the queue before code edits.
-4. Complete the component through the full sequence: source inspection, existing-component review, token decision, co-located component/page implementation, story coverage, story source URL parameters, verification, and documentation updates.
+4. Complete the component through the full sequence: source inspection, existing-component review, token decision, co-located component/page implementation, story coverage, story source URL parameters, design-system documentation sync, verification, and documentation updates.
 5. Update the queue, dependency plan status, implementation map, and verification log immediately after that component.
 6. Only then select the next component. Do not keep building from memory after a component is complete.
 
@@ -399,12 +365,33 @@ Set this at the story meta level when all variants share the same source. Set it
 
 Prefer existing story conventions inside the co-located component or page folder. Use Autodocs or MDX only when the repo already uses them or the user asks for docs pages. Root `stories/` or `src/stories/` is reserved for foundation guides/docs, not new component stories.
 
-### 15. Verification
+### 15. Documentation Sync And Backfill
+
+Every new or changed shared component must leave the design-system documentation synchronized with the implementation state.
+
+Read `references/documentation-sync.md` when the user asks to audit/backfill docs, when the current pass creates or changes a component, when the checker reports missing/stale docs, or when a component doc must be generated from code, stories, or a user brief.
+
+Run the checker after product discovery and again before closeout:
+
+```sh
+node <skill-root>/scripts/check_component_docs.mjs <product-repo-root> --design-system-root <design-system-package-root>
+```
+
+Use `--write` to create missing component doc drafts when the user asked for automatic backfill or when the current pass created the component:
+
+```sh
+node <skill-root>/scripts/check_component_docs.mjs <product-repo-root> --design-system-root <design-system-package-root> --write
+```
+
+Treat checker output as an implementation checklist, not as a substitute for reading the component spec. Do not silently promote implementation-derived docs to source-of-truth docs. If implementation contradicts an extracted component spec, stop and ask whether to update the extraction/spec or adjust the implementation.
+
+### 16. Verification
 
 Run the cheapest reliable checks available:
 
 - Storybook build or relevant story preview
 - Figma export addon config check when installed
+- component documentation check with `scripts/check_component_docs.mjs`; use `--strict` for CI-style failure when missing docs or inventory entries should block completion
 - lint and typecheck
 - unit or interaction tests for changed components
 - visual screenshot checks for high-risk components against the best resolved original source
@@ -415,7 +402,7 @@ If Storybook is runnable, open the relevant stories and inspect rendered states 
 
 For large inventories, verify per batch and keep the full-library check for milestone boundaries. Do not wait until dozens of components are complete before running Storybook build or typecheck if those checks are available.
 
-### 16. Closeout
+### 17. Closeout
 
 Update the implementation map and component queue with completed files, blocked items, token decisions, and verification results.
 
@@ -426,6 +413,7 @@ Report:
 - dependency plan path and current completed/blocked component order
 - product files changed
 - co-located component/page folders created or updated
+- design-system docs created or updated, including provenance (`extracted`, `brief-derived`, or `implementation-derived`)
 - tokens reused or added
 - bundled Figma export addon installed/configured or blocked reason
 - components reused, extended, or created
@@ -462,7 +450,7 @@ Do not start a composed component while `STORYBOOK_COMPONENT_PLAN.md` lists unfi
 
 ### Checkpoint Gate
 
-Do not move from one component to the next until the current component has a queue status, dependency-plan status, implementation-map entry, story source URL decision, and verification-log entry. For long runs, treat each component as a checkpoint boundary: finish or block the current component cleanly before reading the next spec.
+Do not move from one component to the next until the current component has a queue status, dependency-plan status, implementation-map entry, story source URL decision, component doc status, and verification-log entry. For long runs, treat each component as a checkpoint boundary: finish or block the current component cleanly before reading the next spec.
 
 ### Batch Gate
 
@@ -482,6 +470,12 @@ Do not mark a shared component implementation complete without a story, example,
 
 Do not mark a component or page complete until its story is co-located in that component/page folder, unless the implementation map records an explicit product-convention exception.
 
+### Documentation Gate
+
+Do not mark a shared component complete until its design-system component doc exists, its inventory entry is present or explicitly marked out-of-scope, and the implementation map records doc provenance. If the doc is generated from code/stories rather than extracted design evidence, mark it `implementation-derived` and `needs-review`.
+
+Do not overwrite extracted component specs with implementation-derived details without preserving the original evidence and recording the conflict.
+
 ### Story Source URL Gate
 
 Do not mark a component story complete until the best resolved source URL from `STORYBOOK_SOURCE_TRACE.md` is written to story parameters, or until the implementation map records that no URL source exists. Prefer `parameters.figmaSourceUrl` for Figma; use `parameters.design.url` for other web sources. Local screenshots and frontend folders are implementation evidence, but they are not Open source URLs unless the product serves them through a stable URL.
@@ -494,10 +488,12 @@ Do not rewrite product screens to use the new library until the relevant shared 
 
 - `scripts/trace_sources.mjs`: scans extractor output and writes `design-system/STORYBOOK_SOURCE_TRACE.md` with Figma, image, frontend-folder, and rendered-route sources.
 - `scripts/plan_component_batches.mjs`: infers dependency order from component inventory/specs and writes `design-system/STORYBOOK_COMPONENT_PLAN.md`; use `--queue` to sync `design-system/STORYBOOK_COMPONENT_QUEUE.md`.
+- `scripts/check_component_docs.mjs`: audits product component folders against `design-system/components/*.md`, inventory entries, stories, token usage, and review status; use `--write` to create implementation-derived missing-doc drafts.
 - `scripts/install_agent_skill.mjs`: installs this skill into Claude Code, Codex, or Cursor user/project skill directories.
 - `scripts/generate_figma_export_config.mjs`: infers product-specific addon settings and writes `.storybook/figma-export.config.ts`.
 - `scripts/install_figma_export_addon.mjs`: copies the bundled Figma export addon into a product repo and installs it as a local `file:` dependency.
 - `references/agent-installation.md`: target paths and verification checklist for Claude Code, Codex, and Cursor installation.
+- `references/documentation-sync.md`: detailed rules for auditing, backfilling, provenance-labeling, and closing out design-system component docs.
 - `references/figma-export-review-setup.md`: troubleshooting and required wiring for the review overlay and Open source action.
 - `assets/storybook-component-queue-template.md`: queue template for large component inventories.
 - `assets/figma-export-addon/`: vendored `@harrychuang/storybook-addon-figma-export` package, sourced from `https://github.com/harrychuang/storybook-addons/tree/main/packages/figma-export`.
