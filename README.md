@@ -59,6 +59,17 @@ Build or update Storybook from an already extracted design-system package:
 
 Use this after `design-system-extractor` when the extraction is complete and you want the design-system documentation to become a token-backed component catalog in a product project.
 
+### `storybook-product-prototype`
+
+Create PRD-led product prototypes in Storybook:
+
+1. Turn a product idea into PRD, Flow Spec, UI Spec, Data Spec, and Acceptance Criteria.
+2. Scaffold a prototype folder with typed route metadata, deterministic fixtures, and Storybook story files.
+3. Attach `parameters.prototype` metadata for Story, Docs, Data, and UI Flow review.
+4. Validate that docs, flow routes, transition metadata, fixtures, and story wiring stay consistent.
+
+Use this when a team wants a clickable Storybook prototype for product review before production implementation.
+
 ## Usage
 
 Install or reference these folders as agent skills in Claude Code, Codex, or Cursor. Each skill lives in its own directory and exposes a `SKILL.md` with frontmatter metadata and workflow instructions.
@@ -128,6 +139,12 @@ If only a screenshot, URL, route, or file is available, the skill will attempt t
 │   ├── references/
 │   └── scripts/
 ├── design-system-to-storybook/
+│   ├── SKILL.md
+│   ├── agents/
+│   ├── assets/
+│   ├── references/
+│   └── scripts/
+├── storybook-product-prototype/
 │   ├── SKILL.md
 │   ├── agents/
 │   ├── assets/
