@@ -1,6 +1,6 @@
 # Design System Extractor Skill
 
-`design-system-extractor` is a reusable skill for extracting and collaboratively reviewing a token-backed design-system package from screenshots, graphic/brand/editorial references, Figma references, branch diffs, or an existing project/prototype folder.
+`design-system-extractor` is a reusable skill for extracting and collaboratively reviewing a token-backed design-system package from screenshots, graphic/brand/editorial references, Figma references, branch diffs, an existing project/prototype folder, or an AI-generated/vibe-coded prototype project.
 
 It does not implement product screens by default. It produces design-system documentation, token files, component inventory, component token specs, anti-AI style rules, static HTML documentation, and a checkpoint for the next step.
 
@@ -18,6 +18,7 @@ Use this skill when you have one or more of these inputs:
 - Graphic design, brand, editorial, poster, social, or marketing image references
 - Figma URL, Figma node, Figma exports, or Figma Variables
 - Existing project folder with app code, CSS, tokens, or Storybook
+- AI-generated or vibe-coded project where rendered UI should be treated as stronger evidence than source-only code
 - Prototype folder that should be treated as visual/reference material
 - Mixed references that need to become a reusable design-system package
 
@@ -37,6 +38,10 @@ Use $design-system-extractor to extract a reusable visual system from these bran
 
 ```txt
 Use $design-system-extractor to extract a reusable design system from this project folder. Treat prototype code as reference only.
+```
+
+```txt
+Use $design-system-extractor to extract a reusable design system from this vibe-coded project. Treat code as reference-only, prioritize rendered routes/screenshots/Storybook, classify demo-only or unused generated code as low confidence, and record keep/ignore decisions.
 ```
 
 ```txt
@@ -95,6 +100,20 @@ Input sources also go through duplicate review. Screenshots, image exports, Figm
 Component candidates also go through a similarity review. When a new Figma or screenshot component resembles an existing component, the extractor records a fingerprint and asks whether to merge it, make it a variant, keep it distinct, or block it pending more evidence. Component candidates include interactive UI elements, layout/display patterns, graphic motifs, and reusable typographic compositions. Visual comparison assets should come from actual Figma node previews/screenshots or screenshot crops, stored under `design-system/assets/component-review/`, and linked from `COMPONENT_INVENTORY.md`. Schematic SVGs are only a labeled last-resort fallback when source previews cannot be captured.
 
 Typographic components, also called text lockups, sit between typography foundations and full layout components. Extract them when a repeated text grouping has stable slots and reusable hierarchy, such as kicker + headline, headline + subhead, number + unit + caption, quote + attribution, or label + value. Do not promote one-off lettering or decorative art text into a component unless the references show it is reused or brand-critical enough to constrain future work.
+
+## Vibe-Coded Project Intake
+
+For AI-generated or vibe-coded project folders, precision depends on source hygiene. The extractor should first locate or create a route/state manifest with each important route or Storybook story, viewport, state, render command, screenshot path, relevant source files, and keep/ignore notes.
+
+Use this evidence order by default:
+
+1. User-marked keep/ignore notes tied to visible routes or screenshots.
+2. Captured screenshots and rendered routes with viewport/state metadata.
+3. Storybook stories or component examples that represent product UI.
+4. Used CSS variables, tokens, components, and route imports.
+5. Source-only code, unused CSS, demo pages, starter components, or generated comments.
+
+Do not raise confidence from source-only artifacts. Classify project evidence as `rendered`, `screenshot`, `storybook`, `token-used`, `component-used`, `demo-only`, `unused`, `dead-code`, `contradictory`, or `out-of-scope`, then record route coverage and keep/ignore decisions in `SESSION_STATE.md` and `DESIGN_EVIDENCE_MAP.md`.
 
 ## Standard Workflow
 

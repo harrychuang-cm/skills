@@ -43,6 +43,16 @@ Update this file at every checkpoint.
 - Developer decisions recorded in `DESIGN_EVIDENCE_MAP.md`:
 - Source fingerprints recorded:
 
+## Vibe Project Intake
+
+- Applies:
+- Route/state manifest:
+- Rendered routes or stories covered:
+- Screenshots captured or supplied:
+- Keep/ignore decisions recorded in `DESIGN_EVIDENCE_MAP.md`:
+- Demo-only / unused / dead-code / contradictory sources found:
+- Confidence impact:
+
 ## Token Review
 
 - Near token candidates found:

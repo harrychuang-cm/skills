@@ -1,6 +1,6 @@
 ---
 name: design-system-extractor
-description: Extract a reusable design-system specification from UI screenshots/images, graphic/brand/editorial references, Figma URLs or exports, Figma Variables, existing app/project folders, or prototype code, and review or integrate parallel design-system extraction branches. Use when Codex must produce evidence-backed design principles, design elements, token architecture, component inventory, component token specs including typographic/text-lockup components, anti-AI style constraints, collaborative branch review records, static HTML documentation for developers, cross-agent handoff guidance for Claude Code/Cursor/Codex, and a checkpoint before any product implementation.
+description: Extract a reusable design-system specification from UI screenshots/images, graphic/brand/editorial references, Figma URLs or exports, Figma Variables, existing app/project folders, AI-generated or vibe-coded prototype projects, or prototype code, and review or integrate parallel design-system extraction branches. Use when Codex must produce evidence-backed design principles, design elements, token architecture, component inventory, component token specs including typographic/text-lockup components, anti-AI style constraints, collaborative branch review records, static HTML documentation for developers, cross-agent handoff guidance for Claude Code/Cursor/Codex, and a checkpoint before any product implementation.
 ---
 
 # Design System Extractor
@@ -11,8 +11,20 @@ Act as a Design System Architect. Extract a reusable design-system package from 
 
 - **Images / screenshots:** use all provided screenshots, graphic exports, brand/editorial samples, posters, social visuals, and marketing captures as source of truth. Prefer concrete observed regions over general style impressions.
 - **Figma URL / Figma exports:** use available Figma tools or exported screenshots/metadata. Treat selected nodes, variables, and component names as evidence, but still record where each decision came from.
-- **Project / prototype folder:** inspect rendered UI, screenshots, tokens, CSS, Storybook, and components. Treat prototype code as reference-only unless the user asks to migrate code.
+- **Project / prototype folder:** inspect rendered UI, screenshots, tokens, CSS, Storybook, and components. Treat prototype code as reference-only unless the user asks to migrate code. For AI-generated or vibe-coded projects, apply the intake rules below before trusting source code patterns.
 - **Mixed input:** rank evidence in this order unless user says otherwise: production Figma/component library, production screenshots, rendered project UI, prototype code, descriptive prompt.
+
+## Vibe Coding Project Intake
+
+When a source project appears AI-generated, vibe-coded, exploratory, or prototype-heavy:
+
+1. Treat it as prototype/reference material unless the user explicitly says it is production.
+2. Prioritize rendered routes, captured screenshots, and Storybook stories over static source code, unused CSS, demo pages, or component filenames.
+3. Create or locate a route/state manifest before extraction. Include route or story, viewport, state, render command, screenshot path when available, relevant source files, and keep/ignore notes.
+4. Classify project evidence as `rendered`, `screenshot`, `storybook`, `token-used`, `component-used`, `demo-only`, `unused`, `dead-code`, `contradictory`, or `out-of-scope`.
+5. Count source code as supporting evidence only when the component/style appears in rendered output, is referenced by a route/story, or is explicitly marked intentional by the user.
+6. Use confidence conservatively: High requires repeated rendered evidence plus used token/component agreement; Medium fits clear rendered evidence with noisy code/tokens; Low fits source-only or inferred patterns.
+7. Record route coverage, keep/ignore decisions, noise classifications, and gaps in `design-system/SESSION_STATE.md` and `design-system/DESIGN_EVIDENCE_MAP.md`.
 
 ## First Actions
 
@@ -28,7 +40,7 @@ Act as a Design System Architect. Extract a reusable design-system package from 
 
 Record source types, paths/URLs, confidence, and known gaps in `design-system/SESSION_STATE.md`.
 
-For screenshots, list every image. For Figma, list node/page names or variable collections when available. For project folders, list token files, component directories, Storybook entries, and screenshot/render routes if available.
+For screenshots, list every image. For Figma, list node/page names or variable collections when available. For project folders, list token files, component directories, Storybook entries, and screenshot/render routes if available. For vibe-coded projects, complete the route/state manifest and evidence classification before using project code to raise confidence.
 
 Before using sources as evidence, run a source duplicate review:
 
@@ -81,7 +93,7 @@ Use `references/token-architecture.md` before creating or changing token layers.
 
 Before finalizing token files, run a token candidate review:
 
-1. Collect raw color, spacing, radius, typography, opacity, shadow, and motion values from evidence.
+1. Collect raw color, spacing, radius, typography, opacity, shadow, and motion values from evidence. For vibe-coded projects, do not promote values found only in unused CSS, demo-only components, or dead code unless the user marks them intentional.
 2. Normalize reference colors into palette families with numeric steps where `100` is lightest and `0` is darkest.
 3. Check each palette family so higher numbers are visually lighter than lower numbers.
 4. Cluster very close reference colors and very close reference numbers in the same value family.
@@ -93,7 +105,7 @@ Before finalizing token files, run a token candidate review:
 
 Fill `design-system/COMPONENT_INVENTORY.md`.
 
-Inventory repeated UI, graphic, layout, and typographic patterns from the references. Mark each component as `extracted`, `planned`, `blocked`, or `out-of-scope`. Include priority, observed sources, required token groups, missing states or `not applicable` for display-only components, and implementation notes.
+Inventory repeated UI, graphic, layout, and typographic patterns from the references. Mark each component as `extracted`, `planned`, `blocked`, or `out-of-scope`. Include priority, observed sources, required token groups, missing states or `not applicable` for display-only components, and implementation notes. For vibe-coded projects, component filenames are not proof of reusable components; verify usage through rendered routes, Storybook stories, imports, or user keep/ignore notes.
 
 Always consider typographic component candidates across all source types, not only graphic design sources. Promote a text composition to a component only when it has reusable structure, clear slots, evidence-backed hierarchy, tokenizable spacing/type/color relationships, and a role beyond a one-off decorative treatment.
 
@@ -169,6 +181,7 @@ Update `design-system/SESSION_STATE.md` with:
 - generated review queue path
 - audit result
 - source duplicate review result
+- vibe project intake result when applicable
 - component similarity review result
 - integration review result when collaborating across branches or PRs
 - recommended next prompt

@@ -13,6 +13,7 @@ Source types:
 
 - `image`: screenshots, exports, marketing captures, mobile captures, posters, social graphics, brand/editorial samples
 - `figma`: Figma URL, node, page, Variables, component library
+- `vibe-project`: AI-generated or vibe-coded project folder, usually used as an umbrella source with rendered/project-code rows below it
 - `rendered-project`: localhost route, Storybook story, app screenshot
 - `project-code`: CSS, tokens, components, templates
 - `prompt`: written user description
@@ -41,6 +42,45 @@ Use confidence labels:
 - High: repeated in multiple screens or confirmed by code/tokens.
 - Medium: clear in one source, not contradicted elsewhere.
 - Low: inferred, partially obscured, or only described by prompt.
+
+For vibe-coded or AI-generated project folders, tighten those labels:
+
+- High: visible in repeated rendered routes, screenshots, or stories, and supported by used tokens/components.
+- Medium: visible in rendered UI, but source code or token usage is noisy, duplicated, or inconsistent.
+- Low: present only in source code, generated demo UI, unused CSS, prompts, or inferred intent.
+
+## Vibe / AI Prototype Intake
+
+Before extracting from a vibe-coded project, create or locate a route/state manifest:
+
+| Route or story | Viewport | State | Render command | Screenshot path | Source files | Keep / ignore | Notes |
+|---|---|---|---|---|---|---|---|
+
+Classify project evidence before using it:
+
+| Source | Classification | Visible in rendered UI | Token/component used | Keep / ignore decision | Rationale |
+|---|---|---|---|---|---|
+
+Use these classifications:
+
+- `rendered`: observed in a live route or captured browser state.
+- `screenshot`: observed in a supplied or generated screenshot.
+- `storybook`: observed in an isolated story or component example.
+- `token-used`: token is referenced by rendered UI or a live component.
+- `component-used`: component is imported or routed into rendered UI.
+- `demo-only`: appears only in example, scaffold, starter, or showcase code.
+- `unused`: no evidence of route/story/import/render usage.
+- `dead-code`: obsolete, unreachable, or contradicted by rendered UI.
+- `contradictory`: conflicts with stronger rendered, screenshot, Figma, or user keep/ignore evidence.
+- `out-of-scope`: visible or present, but explicitly excluded from extraction.
+
+For vibe projects, prefer this evidence order unless the user says otherwise:
+
+1. User-marked keep/ignore notes tied to visible routes or screenshots.
+2. Captured screenshots and rendered routes with viewport/state metadata.
+3. Storybook stories or component examples that are representative of the product.
+4. Used CSS variables, tokens, components, and route imports.
+5. Source-only code, unused CSS, demo pages, starter components, or generated comments.
 
 ## Visual Dimensions
 
@@ -75,3 +115,5 @@ Analyze these dimensions for every coherent product surface:
 - Capture what is absent as well as what is present: no gradients, no card outlines, no shadows, no dense nav, etc.
 - If the reference shows mobile-only UI, do not invent desktop behavior beyond responsive constraints.
 - For project folders, rendered UI beats unused CSS. Existing tokens beat ad hoc CSS only when they are actually used.
+- For vibe-coded projects, do not let source-only generated artifacts raise confidence. Exclude demo-only, unused, dead-code, contradictory, or out-of-scope patterns from normative design rules unless the user explicitly keeps them.
+- For vibe-coded projects, component filenames and CSS variable names are clues, not proof. Verify them through rendered routes, stories, imports, or user notes before treating them as reusable system decisions.

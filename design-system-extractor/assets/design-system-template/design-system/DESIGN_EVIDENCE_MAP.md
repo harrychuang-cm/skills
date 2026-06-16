@@ -14,6 +14,20 @@ Use this table when two screenshots, graphic/brand exports, Figma nodes, routes,
 | Candidate source | Duplicate of | Match type | Fingerprint / normalized key | Suggested action | Developer decision | Rationale |
 |---|---|---|---|---|---|---|
 
+## Vibe Project Scope Review
+
+Use this table when the input is an AI-generated or vibe-coded project. Record whether project evidence is rendered, screenshot, storybook, token-used, component-used, demo-only, unused, dead-code, contradictory, or out-of-scope before it influences confidence.
+
+| Source | Classification | Visible in rendered UI | Token/component used | Keep / ignore decision | Rationale |
+|---|---|---|---|---|---|
+
+## Route / State Manifest
+
+Use this table when extracting from a project folder with runnable routes or Storybook stories.
+
+| Route or story | Viewport | State | Render command | Screenshot path | Source files | Keep / ignore | Notes |
+|---|---|---|---|---|---|---|---|
+
 ## Evidence
 
 | Evidence ID | Source ID | Region | Observed pattern | Design decision | Affected output | Confidence |
