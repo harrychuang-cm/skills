@@ -41,7 +41,7 @@ Use $design-system-extractor to extract a reusable design system from this proje
 ```
 
 ```txt
-Use $design-system-extractor to extract a reusable design system from this vibe-coded project. Treat code as reference-only, prioritize rendered routes/screenshots/Storybook, classify demo-only or unused generated code as low confidence, and record keep/ignore decisions.
+Use $design-system-extractor to extract a reusable design system from this vibe-coded project. Run the product or Storybook if possible, capture rendered routes across key viewports/states, treat code as reference-only, classify demo-only or unused generated code as low confidence, and record keep/ignore decisions.
 ```
 
 ```txt
@@ -66,7 +66,8 @@ design-system/
 ├── PAGE_COMPOSITION_RULES.md
 ├── ANTI_AI_STYLE_RULES.md
 ├── assets/
-│   └── component-review/
+│   ├── component-review/
+│   └── rendered-captures/
 └── SESSION_STATE.md
 
 tokens/
@@ -105,6 +106,16 @@ Typographic components, also called text lockups, sit between typography foundat
 
 For AI-generated or vibe-coded project folders, precision depends on source hygiene. The extractor should first locate or create a route/state manifest with each important route or Storybook story, viewport, state, render command, screenshot path, relevant source files, and keep/ignore notes.
 
+When the project is runnable, the extractor should run a rendered UI capture pass before extracting tokens or components:
+
+1. Detect install, dev server, preview, Storybook, and seed/test-data commands.
+2. Start the app or Storybook when dependencies and permissions allow.
+3. Open local routes or stories with browser automation.
+4. Capture mobile, tablet, and desktop screenshots, plus reachable UI states.
+5. Inspect DOM/computed styles to connect visible UI with used tokens, CSS variables, components, and route imports.
+6. Store screenshots under `design-system/assets/rendered-captures/`.
+7. Record every capture attempt, screenshot path, blocker, and confidence impact in `DESIGN_EVIDENCE_MAP.md`.
+
 Use this evidence order by default:
 
 1. User-marked keep/ignore notes tied to visible routes or screenshots.
@@ -113,11 +124,13 @@ Use this evidence order by default:
 4. Used CSS variables, tokens, components, and route imports.
 5. Source-only code, unused CSS, demo pages, starter components, or generated comments.
 
-Do not raise confidence from source-only artifacts. Classify project evidence as `rendered`, `screenshot`, `storybook`, `token-used`, `component-used`, `demo-only`, `unused`, `dead-code`, `contradictory`, or `out-of-scope`, then record route coverage and keep/ignore decisions in `SESSION_STATE.md` and `DESIGN_EVIDENCE_MAP.md`.
+Do not raise confidence from source-only artifacts. Classify project evidence as `rendered`, `screenshot`, `storybook`, `token-used`, `component-used`, `demo-only`, `unused`, `dead-code`, `capture-blocked`, `auth-blocked`, `contradictory`, or `out-of-scope`, then record route coverage and keep/ignore decisions in `SESSION_STATE.md` and `DESIGN_EVIDENCE_MAP.md`.
+
+If the product cannot be started or a route is blocked by auth/data/setup, record the blocker and keep affected source-only design rules Low confidence unless the user supplies screenshots or confirms the pattern.
 
 ## Standard Workflow
 
-1. Discover inputs: screenshots, Figma data, rendered UI, project code, tokens, Storybook, and review duplicate sources.
+1. Discover inputs: screenshots, Figma data, rendered UI, project code, tokens, Storybook, rendered capture attempts, and review duplicate sources.
 2. Build `DESIGN_EVIDENCE_MAP.md` so design decisions trace back to source evidence.
 3. Extract 5-7 design principles with evidence and implementation rules.
 4. Define design elements: color, type, typographic composition, spacing, density, shape, elevation, iconography, imagery.

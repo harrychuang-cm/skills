@@ -8,12 +8,12 @@ Do not implement product screens yet. Do not scaffold app routes yet. Do not inv
 
 List screenshots, graphic/brand/editorial references, Figma URLs/nodes, rendered routes, project folders, and prototype sources here.
 
-For AI-generated or vibe-coded project folders, include route/state coverage, screenshot paths, Storybook stories, and keep/ignore notes before using source code as high-confidence evidence.
+For AI-generated or vibe-coded project folders, include route/state coverage, rendered capture attempts, screenshot paths, Storybook stories, and keep/ignore notes before using source code as high-confidence evidence.
 
 ## Required Order
 
 1. Fill `DESIGN_EVIDENCE_MAP.md`, record source fingerprints, and review duplicate source candidates.
-2. For vibe-coded projects, complete the route/state manifest and classify demo-only, unused, dead-code, contradictory, or out-of-scope sources before raising confidence.
+2. For vibe-coded projects, complete the route/state manifest, run rendered UI capture when possible, and classify demo-only, unused, dead-code, capture-blocked, auth-blocked, contradictory, or out-of-scope sources before raising confidence.
 3. Fill `DESIGN_PRINCIPLES.md`.
 4. Fill `DESIGN_ELEMENTS.md`.
 5. Fill `TOKEN_ARCHITECTURE.md`, review near token candidates, then fill `tokens/`.

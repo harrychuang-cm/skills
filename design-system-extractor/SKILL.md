@@ -1,6 +1,6 @@
 ---
 name: design-system-extractor
-description: Extract a reusable design-system specification from UI screenshots/images, graphic/brand/editorial references, Figma URLs or exports, Figma Variables, existing app/project folders, AI-generated or vibe-coded prototype projects, or prototype code, and review or integrate parallel design-system extraction branches. Use when Codex must produce evidence-backed design principles, design elements, token architecture, component inventory, component token specs including typographic/text-lockup components, anti-AI style constraints, collaborative branch review records, static HTML documentation for developers, cross-agent handoff guidance for Claude Code/Cursor/Codex, and a checkpoint before any product implementation.
+description: Extract a reusable design-system specification from UI screenshots/images, graphic/brand/editorial references, Figma URLs or exports, Figma Variables, existing app/project folders, runnable rendered UI captures, AI-generated or vibe-coded prototype projects, or prototype code, and review or integrate parallel design-system extraction branches. Use when Codex must produce evidence-backed design principles, design elements, token architecture, component inventory, component token specs including typographic/text-lockup components, anti-AI style constraints, collaborative branch review records, static HTML documentation for developers, cross-agent handoff guidance for Claude Code/Cursor/Codex, and a checkpoint before any product implementation.
 ---
 
 # Design System Extractor
@@ -21,10 +21,25 @@ When a source project appears AI-generated, vibe-coded, exploratory, or prototyp
 1. Treat it as prototype/reference material unless the user explicitly says it is production.
 2. Prioritize rendered routes, captured screenshots, and Storybook stories over static source code, unused CSS, demo pages, or component filenames.
 3. Create or locate a route/state manifest before extraction. Include route or story, viewport, state, render command, screenshot path when available, relevant source files, and keep/ignore notes.
-4. Classify project evidence as `rendered`, `screenshot`, `storybook`, `token-used`, `component-used`, `demo-only`, `unused`, `dead-code`, `contradictory`, or `out-of-scope`.
-5. Count source code as supporting evidence only when the component/style appears in rendered output, is referenced by a route/story, or is explicitly marked intentional by the user.
-6. Use confidence conservatively: High requires repeated rendered evidence plus used token/component agreement; Medium fits clear rendered evidence with noisy code/tokens; Low fits source-only or inferred patterns.
-7. Record route coverage, keep/ignore decisions, noise classifications, and gaps in `design-system/SESSION_STATE.md` and `design-system/DESIGN_EVIDENCE_MAP.md`.
+4. If the project is runnable or has Storybook, run the Rendered UI Capture Pass before token or component decisions.
+5. Classify project evidence as `rendered`, `screenshot`, `storybook`, `token-used`, `component-used`, `demo-only`, `unused`, `dead-code`, `capture-blocked`, `auth-blocked`, `contradictory`, or `out-of-scope`.
+6. Count source code as supporting evidence only when the component/style appears in rendered output, is referenced by a route/story, or is explicitly marked intentional by the user.
+7. Use confidence conservatively: High requires repeated rendered evidence plus used token/component agreement; Medium fits clear rendered evidence with noisy code/tokens; Low fits source-only, blocked capture, or inferred patterns.
+8. Record route coverage, keep/ignore decisions, noise classifications, capture blockers, and gaps in `design-system/SESSION_STATE.md` and `design-system/DESIGN_EVIDENCE_MAP.md`.
+
+## Rendered UI Capture Pass
+
+For runnable project folders, inspect the actual product before extracting design decisions:
+
+1. Identify install, dev server, Storybook, preview, and test-data commands from package scripts, docs, or existing agent rules.
+2. Build a route/story capture plan from router files, app directories, Storybook entries, screenshots, or user-provided route/state notes.
+3. Start the app or Storybook when dependencies and permissions allow. If install, build, auth, seed data, or runtime setup blocks capture, record the blocker and continue with lower-confidence evidence.
+4. Use available browser automation to open local routes/stories and capture representative screenshots. Default viewports: mobile `390x844`, tablet `768x1024`, desktop `1440x900`, unless the product context suggests better sizes.
+5. Exercise non-destructive states that are reachable with available data, such as hover, selected, expanded, loading, empty, validation error, disabled, and responsive navigation. Do not invent hidden states that cannot be reached or evidenced.
+6. Save captures under `design-system/assets/rendered-captures/` with filenames that include route or story, state, and viewport.
+7. Inspect DOM/computed styles or rendered component source when available to connect visible UI to used tokens, CSS variables, components, and route imports.
+8. Record every capture attempt in `DESIGN_EVIDENCE_MAP.md`, including route/story, viewport, state, command, screenshot path, source files, observed UI, and confidence impact.
+9. Treat failed or blocked capture as an evidence result, not a reason to guess. Mark affected source-only rules Low confidence unless the user supplies screenshots or confirms the pattern.
 
 ## First Actions
 
@@ -40,7 +55,7 @@ When a source project appears AI-generated, vibe-coded, exploratory, or prototyp
 
 Record source types, paths/URLs, confidence, and known gaps in `design-system/SESSION_STATE.md`.
 
-For screenshots, list every image. For Figma, list node/page names or variable collections when available. For project folders, list token files, component directories, Storybook entries, and screenshot/render routes if available. For vibe-coded projects, complete the route/state manifest and evidence classification before using project code to raise confidence.
+For screenshots, list every image. For Figma, list node/page names or variable collections when available. For project folders, list token files, component directories, Storybook entries, and screenshot/render routes if available. For vibe-coded projects, complete the route/state manifest, rendered capture pass, and evidence classification before using project code to raise confidence.
 
 Before using sources as evidence, run a source duplicate review:
 
@@ -182,6 +197,7 @@ Update `design-system/SESSION_STATE.md` with:
 - audit result
 - source duplicate review result
 - vibe project intake result when applicable
+- rendered UI capture result when applicable
 - component similarity review result
 - integration review result when collaborating across branches or PRs
 - recommended next prompt

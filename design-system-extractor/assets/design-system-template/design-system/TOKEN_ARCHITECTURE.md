@@ -52,4 +52,4 @@ Use this table when candidate reference tokens are visually or numerically close
 - Reference color steps follow `100` lightest to `0` darkest.
 - Near reference colors and numbers have a documented merge or keep-distinct decision.
 - Every background-like system color has a matching foreground pair.
-- For vibe-coded projects, values found only in unused CSS, demo-only components, or dead code are not promoted to tokens unless a keep decision is recorded in `DESIGN_EVIDENCE_MAP.md`.
+- For vibe-coded projects, values found only in unused CSS, demo-only components, dead code, or blocked captures are not promoted to tokens unless a keep decision is recorded in `DESIGN_EVIDENCE_MAP.md`.

@@ -47,10 +47,16 @@ Update this file at every checkpoint.
 
 - Applies:
 - Route/state manifest:
+- Rendered UI capture pass:
+- App / Storybook command:
+- Local URL:
 - Rendered routes or stories covered:
 - Screenshots captured or supplied:
+- Capture assets path:
+- Capture blockers:
+- DOM/CSS inspection result:
 - Keep/ignore decisions recorded in `DESIGN_EVIDENCE_MAP.md`:
-- Demo-only / unused / dead-code / contradictory sources found:
+- Demo-only / unused / dead-code / capture-blocked / auth-blocked / contradictory sources found:
 - Confidence impact:
 
 ## Token Review

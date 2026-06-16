@@ -22,7 +22,7 @@ Fingerprint guidance:
 
 - Images and screenshots: use `sha256:<hash>` for exact file matches; add `phash:<hash>` or a crop note when perceptual comparison is available.
 - Figma: normalize URLs to `figma:<file-key>#<node-id>` or `figma:<file-key>#page:<page-name>`.
-- Rendered routes: include route, viewport, state, and screenshot/render command.
+- Rendered routes: include route, viewport, state, screenshot path, render command, and capture status.
 - Project code: include normalized file path plus exported token/component name when relevant.
 
 When two sources share the same fingerprint or appear visually/functionally very close, record a row before counting both as independent evidence:
@@ -53,8 +53,13 @@ For vibe-coded or AI-generated project folders, tighten those labels:
 
 Before extracting from a vibe-coded project, create or locate a route/state manifest:
 
-| Route or story | Viewport | State | Render command | Screenshot path | Source files | Keep / ignore | Notes |
-|---|---|---|---|---|---|---|---|
+| Route or story | Viewport | State | Render command | Screenshot path | Source files | Capture status | Keep / ignore | Notes |
+|---|---|---|---|---|---|---|---|---|
+
+For runnable projects, record browser capture attempts before extracting tokens or components:
+
+| Capture ID | Route or story | Viewport | State | URL | Screenshot path | DOM/CSS inspected | Source files linked | Status | Confidence impact |
+|---|---|---|---|---|---|---|---|---|---|
 
 Classify project evidence before using it:
 
@@ -71,6 +76,8 @@ Use these classifications:
 - `demo-only`: appears only in example, scaffold, starter, or showcase code.
 - `unused`: no evidence of route/story/import/render usage.
 - `dead-code`: obsolete, unreachable, or contradicted by rendered UI.
+- `capture-blocked`: route/story could not be opened because install, build, runtime, data, or environment setup failed.
+- `auth-blocked`: route/story requires credentials or permissions that were not available.
 - `contradictory`: conflicts with stronger rendered, screenshot, Figma, or user keep/ignore evidence.
 - `out-of-scope`: visible or present, but explicitly excluded from extraction.
 
@@ -80,7 +87,15 @@ For vibe projects, prefer this evidence order unless the user says otherwise:
 2. Captured screenshots and rendered routes with viewport/state metadata.
 3. Storybook stories or component examples that are representative of the product.
 4. Used CSS variables, tokens, components, and route imports.
-5. Source-only code, unused CSS, demo pages, starter components, or generated comments.
+5. Source-only code, blocked routes, unused CSS, demo pages, starter components, or generated comments.
+
+Rendered UI capture rules:
+
+- Default viewports are mobile `390x844`, tablet `768x1024`, and desktop `1440x900` unless the source indicates a different target.
+- Capture route/story states that are reachable without destructive actions: default, hover, selected, expanded, loading, empty, error, disabled, and responsive navigation.
+- Save captures under `design-system/assets/rendered-captures/` and use filenames that include route or story, state, and viewport.
+- Link visible regions back to DOM/computed styles, used CSS variables, tokens, components, and route imports when those connections can be inspected.
+- If capture is blocked, record the blocker and keep source-only rules Low confidence unless supplied screenshots or user confirmation support them.
 
 ## Visual Dimensions
 
@@ -117,3 +132,4 @@ Analyze these dimensions for every coherent product surface:
 - For project folders, rendered UI beats unused CSS. Existing tokens beat ad hoc CSS only when they are actually used.
 - For vibe-coded projects, do not let source-only generated artifacts raise confidence. Exclude demo-only, unused, dead-code, contradictory, or out-of-scope patterns from normative design rules unless the user explicitly keeps them.
 - For vibe-coded projects, component filenames and CSS variable names are clues, not proof. Verify them through rendered routes, stories, imports, or user notes before treating them as reusable system decisions.
+- For runnable vibe-coded projects, capture actual browser screenshots before extracting tokens or components. If capture cannot run, document why and reduce confidence instead of filling gaps from generated code.
