@@ -35,6 +35,20 @@ Dashboard.stories.tsx
 
 Use this when you need visual parity checks, layout drift fixes, token alignment, or screenshot-to-implementation comparison.
 
+### `ui-pixel-align-report`
+
+Generate a design pixel alignment audit between an original design reference and an implemented UI. The skill captures or organizes full screenshots, per-issue crops, measured visual drift, ownership classification, and recommended fixes into a static HTML + CSS report.
+
+Expected report inputs include:
+
+```text
+reference/dashboard.png http://localhost:3000/dashboard
+https://www.figma.com/design/...node-id=1-2 http://localhost:3000/dashboard
+figma-frame.png Dashboard.stories.tsx
+```
+
+Use this when you need reviewable evidence, design QA documentation, screenshot-backed incorrect style findings, or a handoff artifact before applying visual fixes.
+
 ### `ui-screenshot-to-storybook-product`
 
 Turn a UI screenshot, mockup, or Figma export into a token-backed implementation workflow:
@@ -128,6 +142,14 @@ Use ui-compare-to-reference on reference/dashboard.png and src/pages/Dashboard.t
 
 If only a screenshot, URL, route, or file is available, the skill will attempt to infer the matching target.
 
+When invoking the pixel alignment report skill, provide the original design source and implemented target when possible:
+
+```text
+Use ui-pixel-align-report on reference/dashboard.png and http://localhost:3000/dashboard
+```
+
+The generated report is a static HTML + CSS artifact, usually under `reports/design-pixel-align/<target>/`.
+
 ## Repository Structure
 
 ```text
@@ -154,6 +176,11 @@ If only a screenshot, URL, route, or file is available, the skill will attempt t
 │   └── install_agent_skills.mjs
 ├── ui-compare-to-reference/
 │   └── SKILL.md
+├── ui-pixel-align-report/
+│   ├── SKILL.md
+│   ├── agents/
+│   ├── assets/
+│   └── scripts/
 └── ui-screenshot-to-storybook-product/
     └── SKILL.md
 ```

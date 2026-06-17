@@ -391,6 +391,27 @@
             ],
           },
         },
+        {
+          tag: "$ui-pixel-align-report",
+          key: "pixelReport",
+          bullets: {
+            en: [
+              "Capture per-issue evidence",
+              "Classify token or component ownership",
+              "Generate static HTML and CSS reports",
+            ],
+            ja: [
+              "課題ごとの証拠をキャプチャ",
+              "token または component の責任範囲を分類",
+              "静的 HTML / CSS レポートを生成",
+            ],
+            "zh-Hant": [
+              "逐項截圖保留證據",
+              "標記 token 或元件歸屬",
+              "產出靜態 HTML / CSS 報告",
+            ],
+          },
+        },
       ];
 
       const copy = {
@@ -427,6 +448,11 @@
               body:
                 "Use this after a screen exists to compare the current UI with a reference screenshot and fix spacing, typography, color, and layout drift.",
             },
+            pixelReport: {
+              title: "Document pixel alignment drift",
+              body:
+                "Use this when the team needs screenshot-backed design QA evidence, original design links, measured drift, and a static HTML report before or alongside fixes.",
+            },
           },
           recommendedFlow: "Recommended flow",
           flow: [
@@ -450,6 +476,11 @@
               body:
                 "Use $ui-compare-to-reference to inspect the final UI and fix drift at the token, component, or composition layer.",
             },
+            {
+              title: "Document",
+              body:
+                "Use $ui-pixel-align-report when review or handoff requires cropped evidence, source links, ownership, and recommended fixes.",
+            },
           ],
           examples: "Common prompt examples",
           prompts: [
@@ -457,6 +488,7 @@
             "Use $design-system-to-storybook with design system at ./design-system and product repo at ./apps/web.",
             "Use $ui-screenshot-to-storybook-product on reference/dashboard.png and implement it through reusable Storybook components.",
             "Use $ui-compare-to-reference on reference/dashboard.png and http://localhost:3000/dashboard.",
+            "Use $ui-pixel-align-report on reference/dashboard.png and http://localhost:3000/dashboard.",
           ],
           principleTitle: "Usage principle",
           principleStrong: "Do not skip the design-system layer.",
@@ -465,6 +497,7 @@
           outputs: "What does each skill produce?",
           extractOutputTitle: "Design-system extraction",
           storybookOutputTitle: "Storybook implementation",
+          pixelReportOutputTitle: "Pixel alignment report",
           extractOutputs: [
             "design-system/DESIGN_PRINCIPLES.md",
             "design-system/COMPONENT_INVENTORY.md",
@@ -482,6 +515,13 @@
             "large component queue",
             "Figma export addon setup",
             "batch verification log",
+          ],
+          pixelReportOutputs: [
+            "reports/design-pixel-align/<target>/index.html",
+            "reports/design-pixel-align/<target>/styles.css",
+            "full reference and implementation screenshots",
+            "per-finding reference, implementation, and diff crops",
+            "findings.json with ownership and recommended fixes",
           ],
           footer:
             "This guide is a quick entry point for choosing the right skill. The detailed rules still live in each skill folder's SKILL.md.",
@@ -519,6 +559,11 @@
               body:
                 "画面実装後に使います。現在の UI と参照スクリーンショットを比較し、spacing、typography、color、layout のずれを修正します。",
             },
+            pixelReport: {
+              title: "Pixel alignment のずれを文書化",
+              body:
+                "修正前または修正と同時に、スクリーンショット証拠、元デザインリンク、測定したずれ、静的 HTML レポートが必要な時に使います。",
+            },
           },
           recommendedFlow: "おすすめの流れ",
           flow: [
@@ -542,6 +587,11 @@
               body:
                 "$ui-compare-to-reference で最終 UI を確認し、token、component、composition の層で差分を修正します。",
             },
+            {
+              title: "文書化",
+              body:
+                "$ui-pixel-align-report で crop 証拠、source link、責任範囲、推奨修正をレビュー用に残します。",
+            },
           ],
           examples: "よく使う prompt 例",
           prompts: [
@@ -549,6 +599,7 @@
             "Use $design-system-to-storybook with design system at ./design-system and product repo at ./apps/web.",
             "Use $ui-screenshot-to-storybook-product on reference/dashboard.png and implement it through reusable Storybook components.",
             "Use $ui-compare-to-reference on reference/dashboard.png and http://localhost:3000/dashboard.",
+            "Use $ui-pixel-align-report on reference/dashboard.png and http://localhost:3000/dashboard.",
           ],
           principleTitle: "使用原則",
           principleStrong: "デザインシステム層を飛ばさない。",
@@ -557,6 +608,7 @@
           outputs: "各 skill の成果物",
           extractOutputTitle: "デザインシステム抽出",
           storybookOutputTitle: "Storybook 実装",
+          pixelReportOutputTitle: "Pixel alignment レポート",
           extractOutputs: [
             "design-system/DESIGN_PRINCIPLES.md",
             "design-system/COMPONENT_INVENTORY.md",
@@ -574,6 +626,13 @@
             "large component queue",
             "Figma export addon setup",
             "batch verification log",
+          ],
+          pixelReportOutputs: [
+            "reports/design-pixel-align/<target>/index.html",
+            "reports/design-pixel-align/<target>/styles.css",
+            "full reference and implementation screenshots",
+            "per-finding reference, implementation, and diff crops",
+            "findings.json with ownership and recommended fixes",
           ],
           footer:
             "このガイドは、適切な skill をすばやく選ぶための入口です。詳細なルールは各 skill フォルダの SKILL.md を確認してください。",
@@ -606,6 +665,11 @@
               body:
                 "適合畫面已經做出來後，拿 reference screenshot 跟目前 UI 比對，找出 spacing、typography、color、layout 的偏差並修正。",
             },
+            pixelReport: {
+              title: "產出 pixel align 稽核文件",
+              body:
+                "適合需要設計 QA 證據、原始設計稿連結、逐項截圖、量測偏差和靜態 HTML 報告，再交付修正或審查時使用。",
+            },
           },
           recommendedFlow: "推薦流程",
           flow: [
@@ -629,6 +693,11 @@
               body:
                 "用 $ui-compare-to-reference 檢查實作結果，把偏差修在 token、元件或組裝層。",
             },
+            {
+              title: "文件化",
+              body:
+                "用 $ui-pixel-align-report 保留 crop 證據、來源連結、歸屬層級和建議修正，方便設計審查與交接。",
+            },
           ],
           examples: "常用 prompt 範例",
           prompts: [
@@ -636,6 +705,7 @@
             "Use $design-system-to-storybook with design system at ./design-system and product repo at ./apps/web.",
             "Use $ui-screenshot-to-storybook-product on reference/dashboard.png and implement it through reusable Storybook components.",
             "Use $ui-compare-to-reference on reference/dashboard.png and http://localhost:3000/dashboard.",
+            "Use $ui-pixel-align-report on reference/dashboard.png and http://localhost:3000/dashboard.",
           ],
           principleTitle: "使用原則",
           principleStrong: "不要跳過設計系統層。",
@@ -644,6 +714,7 @@
           outputs: "各 skill 會產出什麼？",
           extractOutputTitle: "設計系統萃取",
           storybookOutputTitle: "Storybook 落地",
+          pixelReportOutputTitle: "Pixel align 報告",
           extractOutputs: [
             "design-system/DESIGN_PRINCIPLES.md",
             "design-system/COMPONENT_INVENTORY.md",
@@ -661,6 +732,13 @@
             "large component queue",
             "Figma export addon setup",
             "batch verification log",
+          ],
+          pixelReportOutputs: [
+            "reports/design-pixel-align/<target>/index.html",
+            "reports/design-pixel-align/<target>/styles.css",
+            "full reference and implementation screenshots",
+            "per-finding reference, implementation, and diff crops",
+            "findings.json with ownership and recommended fixes",
           ],
           footer:
             "這份指南是給使用者快速選擇 skill 用途的入口。詳細規則仍以各 skill 目錄中的 SKILL.md 為準。",
@@ -782,6 +860,10 @@
               <article class="panel">
                 <h3>${escapeHtml(text.storybookOutputTitle)}</h3>
                 ${renderList(text.storybookOutputs)}
+              </article>
+              <article class="panel">
+                <h3>${escapeHtml(text.pixelReportOutputTitle)}</h3>
+                ${renderList(text.pixelReportOutputs, true)}
               </article>
             </div>
           </section>
