@@ -60,7 +60,7 @@ The generated config covers:
 Common causes:
 
 - `.storybook/preview.*` imports only `createFigmaExportDecorator`, not `createFigmaExportReviewDecorator`.
-- `.storybook/preview.*` does not import `@harrychuang/storybook-addon-figma-export/review.css`.
+- `.storybook/preview.*` does not import `@harrychuang/storybook-addon-figma-export/styles.css`; this stylesheet includes both exporter and review overlay styles.
 - Storybook toolbar global `figmaExport` is still `off`; the review overlay renders only after the toolbar is toggled on.
 - `figmaExportOptions.storyTitlePrefix` excludes the current story title. Use `false` to include all stories, or include every namespace such as `Components/`, `Pages/`, and `Foundations/`.
 - `.storybook/main.*` does not include `"@harrychuang/storybook-addon-figma-export"` in `addons`, so the toolbar control is missing.
@@ -88,7 +88,6 @@ import {
 import { createFigmaExportReviewDecorator } from "@harrychuang/storybook-addon-figma-export/review";
 import { getFigmaSourceUrl } from "@harrychuang/storybook-addon-figma-export/source";
 import "@harrychuang/storybook-addon-figma-export/styles.css";
-import "@harrychuang/storybook-addon-figma-export/review.css";
 
 import { figmaExportProjectConfig } from "./figma-export.config";
 

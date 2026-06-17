@@ -1,6 +1,6 @@
-// design-system-to-storybook/assets/figma-export-addon/src/review-server.ts
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+// src/review-server.ts
+import { mkdir, readFile, writeFile } from "fs/promises";
+import { dirname, resolve } from "path";
 var defaultFigmaReviewStatusApiPath = "/__figma_export_review_status";
 var reviewStatusValues = /* @__PURE__ */ new Set([
   "not-started",
@@ -133,3 +133,4 @@ export {
   createFigmaReviewStatusPlugin,
   defaultFigmaReviewStatusApiPath
 };
+//# sourceMappingURL=review-server.js.map

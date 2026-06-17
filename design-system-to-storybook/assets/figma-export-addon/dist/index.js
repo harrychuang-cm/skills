@@ -1873,33 +1873,33 @@ async function copyText(text) {
     throw new Error("Clipboard copy failed.");
   }
 }
-function copyDesignEscapeXml(value) {
+function exporterEscapeXml(value) {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
-function copyDesignEscapeSvgAttribute(value) {
-  return copyDesignEscapeXml(value).replace(/"/g, "&quot;");
+function exporterEscapeSvgAttribute(value) {
+  return exporterEscapeXml(value).replace(/"/g, "&quot;");
 }
-function copyDesignFormatSvgNumber(value) {
+function exporterFormatSvgNumber(value) {
   const numberValue = Number.isFinite(value) ? Number(value) : 0;
   return Number.isInteger(numberValue) ? String(numberValue) : numberValue.toFixed(2);
 }
-function copyDesignSvgDataUrl(svgText) {
+function exporterSvgDataUrl(svgText) {
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgText)}`;
 }
-function copyDesignGetSvgPaint(value, fallback = "none") {
-  return value ? copyDesignEscapeSvgAttribute(value) : fallback;
+function exporterGetSvgPaint(value, fallback = "none") {
+  return value ? exporterEscapeSvgAttribute(value) : fallback;
 }
 function renderSvgImageNode(node, isRoot) {
   const { height, width, x, y } = node.styles;
-  const transform = isRoot ? "" : ` transform="translate(${copyDesignFormatSvgNumber(x)} ${copyDesignFormatSvgNumber(y)})"`;
+  const transform = isRoot ? "" : ` transform="translate(${exporterFormatSvgNumber(x)} ${exporterFormatSvgNumber(y)})"`;
   if (!node.svgText) return "";
-  return `<g${transform}><image href="${copyDesignEscapeSvgAttribute(copyDesignSvgDataUrl(node.svgText))}" width="${copyDesignFormatSvgNumber(width)}" height="${copyDesignFormatSvgNumber(height)}" preserveAspectRatio="none"/></g>`;
+  return `<g${transform}><image href="${exporterEscapeSvgAttribute(exporterSvgDataUrl(node.svgText))}" width="${exporterFormatSvgNumber(width)}" height="${exporterFormatSvgNumber(height)}" preserveAspectRatio="none"/></g>`;
 }
 function renderSvgTextNode(node, isRoot) {
   const { color, fontFamily, fontSize, fontWeight, width, x, y } = node.styles;
-  const transform = isRoot ? "" : ` transform="translate(${copyDesignFormatSvgNumber(x)} ${copyDesignFormatSvgNumber(y)})"`;
+  const transform = isRoot ? "" : ` transform="translate(${exporterFormatSvgNumber(x)} ${exporterFormatSvgNumber(y)})"`;
   const resolvedFontSize = fontSize ?? 12;
-  return `<text${transform} x="0" y="${copyDesignFormatSvgNumber(resolvedFontSize)}" fill="${copyDesignGetSvgPaint(color, "#000000")}" font-family="${copyDesignEscapeSvgAttribute(fontFamily ?? "sans-serif")}" font-size="${copyDesignFormatSvgNumber(resolvedFontSize)}" font-weight="${copyDesignEscapeSvgAttribute(String(fontWeight ?? 400))}" textLength="${copyDesignFormatSvgNumber(width)}">${copyDesignEscapeXml(node.text ?? "")}</text>`;
+  return `<text${transform} x="0" y="${exporterFormatSvgNumber(resolvedFontSize)}" fill="${exporterGetSvgPaint(color, "#000000")}" font-family="${exporterEscapeSvgAttribute(fontFamily ?? "sans-serif")}" font-size="${exporterFormatSvgNumber(resolvedFontSize)}" font-weight="${exporterEscapeSvgAttribute(String(fontWeight ?? 400))}" textLength="${exporterFormatSvgNumber(width)}">${exporterEscapeXml(node.text ?? "")}</text>`;
 }
 function renderSvgFrameNode(node, isRoot) {
   const {
@@ -1913,12 +1913,12 @@ function renderSvgFrameNode(node, isRoot) {
     x,
     y
   } = node.styles;
-  const transform = isRoot ? "" : ` transform="translate(${copyDesignFormatSvgNumber(x)} ${copyDesignFormatSvgNumber(y)})"`;
-  const groupOpacity = typeof opacity === "number" && opacity >= 0 && opacity < 1 ? ` opacity="${copyDesignFormatSvgNumber(opacity)}"` : "";
+  const transform = isRoot ? "" : ` transform="translate(${exporterFormatSvgNumber(x)} ${exporterFormatSvgNumber(y)})"`;
+  const groupOpacity = typeof opacity === "number" && opacity >= 0 && opacity < 1 ? ` opacity="${exporterFormatSvgNumber(opacity)}"` : "";
   const hasRect = Boolean(backgroundColor || borderColor && borderWidth);
-  const rect = hasRect ? `<rect width="${copyDesignFormatSvgNumber(width)}" height="${copyDesignFormatSvgNumber(height)}" rx="${copyDesignFormatSvgNumber(radius)}" fill="${copyDesignGetSvgPaint(backgroundColor)}"${borderColor && borderWidth ? ` stroke="${copyDesignGetSvgPaint(borderColor)}" stroke-width="${copyDesignFormatSvgNumber(borderWidth)}"` : ""}/>` : "";
-  const children2 = node.children.map((child) => renderSvgNode(child)).join("");
-  return `<g${transform}${groupOpacity}>${rect}${children2}</g>`;
+  const rect = hasRect ? `<rect width="${exporterFormatSvgNumber(width)}" height="${exporterFormatSvgNumber(height)}" rx="${exporterFormatSvgNumber(radius)}" fill="${exporterGetSvgPaint(backgroundColor)}"${borderColor && borderWidth ? ` stroke="${exporterGetSvgPaint(borderColor)}" stroke-width="${exporterFormatSvgNumber(borderWidth)}"` : ""}/>` : "";
+  const children = node.children.map((child) => renderSvgNode(child)).join("");
+  return `<g${transform}${groupOpacity}>${rect}${children}</g>`;
 }
 function renderSvgNode(node, isRoot = false) {
   if (node.kind === "text") return renderSvgTextNode(node, isRoot);
@@ -1930,7 +1930,7 @@ function renderSvgNode(node, isRoot = false) {
 function createFigmaDesignSvg(payload) {
   const width = Math.max(1, payload.root.styles.width);
   const height = Math.max(1, payload.root.styles.height);
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${copyDesignFormatSvgNumber(width)}" height="${copyDesignFormatSvgNumber(height)}" viewBox="0 0 ${copyDesignFormatSvgNumber(width)} ${copyDesignFormatSvgNumber(height)}" role="img" aria-label="${copyDesignEscapeSvgAttribute(payload.root.name)}">${renderSvgNode(payload.root, true)}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${exporterFormatSvgNumber(width)}" height="${exporterFormatSvgNumber(height)}" viewBox="0 0 ${exporterFormatSvgNumber(width)} ${exporterFormatSvgNumber(height)}" role="img" aria-label="${exporterEscapeSvgAttribute(payload.root.name)}">${renderSvgNode(payload.root, true)}</svg>`;
 }
 async function copySvgDesign(svgText) {
   if (navigator.clipboard?.write && typeof ClipboardItem !== "undefined") {
@@ -1977,7 +1977,9 @@ function FigmaCodeExporter({
     setActiveFormat(format);
     setCopiedFormat(void 0);
     setStatus("copying");
-    setSummary(format === "design" ? "Generating SVG design..." : format === "json" ? "Generating JSON payload..." : "Generating console script...");
+    setSummary(
+      format === "design" ? "Generating SVG design..." : format === "json" ? "Generating JSON payload..." : "Generating console script..."
+    );
     try {
       const payload = await createFigmaExportPayload({
         componentTitle,
@@ -2147,7 +2149,6 @@ function createFigmaExportInitialGlobals(options) {
     [getFigmaExportGlobalName(options)]: "off"
   };
 }
-
 export {
   FigmaCodeExporter,
   createFigmaExportDecorator,

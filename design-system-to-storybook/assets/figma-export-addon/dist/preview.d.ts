@@ -1,2 +1,29 @@
-import 'react';
-export { g as createFigmaExportDecorator, h as createFigmaExportGlobalTypes, i as createFigmaExportInitialGlobals, k as getFigmaExportGlobalName } from './preview-BH_VlNlD.js';
+import * as react from 'react';
+import { ReactNode } from 'react';
+import { F as FigmaExportAddonOptions } from './options-YZ-qddgw.js';
+
+type StorybookContext = {
+    globals?: Record<string, unknown>;
+    id?: string;
+    name?: string;
+    title?: string;
+};
+type StorybookStory = () => ReactNode;
+declare function getFigmaExportGlobalName(options?: FigmaExportAddonOptions): string;
+declare function createFigmaExportDecorator(options?: FigmaExportAddonOptions): (Story: StorybookStory, context: StorybookContext) => react.FunctionComponentElement<{
+    children?: ReactNode;
+    context: {
+        globals?: Record<string, unknown>;
+        id?: string;
+        name?: string;
+        title?: string;
+    };
+    options?: FigmaExportAddonOptions;
+}>;
+declare function createFigmaExportGlobalTypes(options?: FigmaExportAddonOptions): Record<string, {
+    defaultValue: "off";
+    description: string;
+}>;
+declare function createFigmaExportInitialGlobals(options?: FigmaExportAddonOptions): Record<string, "off">;
+
+export { createFigmaExportDecorator, createFigmaExportGlobalTypes, createFigmaExportInitialGlobals, getFigmaExportGlobalName };

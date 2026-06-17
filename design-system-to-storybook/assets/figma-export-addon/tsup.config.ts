@@ -47,8 +47,11 @@ export default defineConfig({
       "index.css",
       "preview.css",
       "review.css.map",
+      "review-server.js.map",
+      "review.js.map",
       "index.css.map",
       "preview.css.map",
+      "source.js.map",
     ]) {
       try {
         unlinkSync(join("dist", artifact));

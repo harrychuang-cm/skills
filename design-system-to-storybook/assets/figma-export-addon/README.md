@@ -118,7 +118,6 @@ import {
 import { createFigmaExportReviewDecorator } from "@harrychuang/storybook-addon-figma-export/review";
 import { getFigmaSourceUrl } from "@harrychuang/storybook-addon-figma-export/source";
 import "@harrychuang/storybook-addon-figma-export/styles.css";
-import "@harrychuang/storybook-addon-figma-export/review.css";
 
 const preview: Preview = {
   decorators: [
@@ -193,5 +192,5 @@ If auto-detection fails, set `tokenPrefix` (for example `"md"`).
 - `@harrychuang/storybook-addon-figma-export/review` — optional export review panel and decorator
 - `@harrychuang/storybook-addon-figma-export/review-server` — optional Vite middleware for persisted review state
 - `@harrychuang/storybook-addon-figma-export/source` — source URL resolver helpers for story parameters and documented Figma node fallbacks
-- `@harrychuang/storybook-addon-figma-export/styles.css` — exporter overlay styles
-- `@harrychuang/storybook-addon-figma-export/review.css` — export review panel styles
+- `@harrychuang/storybook-addon-figma-export/styles.css` — exporter and review overlay styles
+- `@harrychuang/storybook-addon-figma-export/review.css` — optional direct export review panel styles

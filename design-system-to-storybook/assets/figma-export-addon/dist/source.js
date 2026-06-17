@@ -1,3 +1,4 @@
+// src/source.ts
 function isRecord(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -60,3 +61,4 @@ export {
   getFigmaSourceUrl,
   getParameterUrl
 };
+//# sourceMappingURL=source.js.map

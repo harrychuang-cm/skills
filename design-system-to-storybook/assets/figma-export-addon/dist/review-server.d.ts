@@ -1,34 +1,28 @@
-import type { FigmaReviewEntry } from "./review.js";
+import { IncomingMessage, ServerResponse } from 'node:http';
+import { FigmaReviewEntry } from './review.js';
+import 'react';
+import './options-YZ-qddgw.js';
 
-export declare const defaultFigmaReviewStatusApiPath =
-  "/__figma_export_review_status";
-
-export type FigmaReviewStatusFile = {
-  stories: Record<string, FigmaReviewEntry>;
-  version: 1;
+declare const defaultFigmaReviewStatusApiPath = "/__figma_export_review_status";
+type FigmaReviewStatusFile = {
+    stories: Record<string, FigmaReviewEntry>;
+    version: 1;
 };
-
-export type FigmaReviewStatusPluginOptions = {
-  apiPath?: string;
-  cwd?: string;
-  filePath?: string;
-  name?: string;
+type FigmaReviewStatusPluginOptions = {
+    apiPath?: string;
+    cwd?: string;
+    filePath?: string;
+    name?: string;
 };
-
-export declare function createFigmaReviewStatusPlugin(
-  options?: FigmaReviewStatusPluginOptions,
-): {
-  configureServer(server: {
+type MiddlewareHandler = (request: IncomingMessage, response: ServerResponse, next?: (error?: unknown) => void) => void;
+type MiddlewareServer = {
     middlewares: {
-      use(
-        path: string,
-        handler: (
-          request: import("node:http").IncomingMessage,
-          response: import("node:http").ServerResponse,
-          next?: (error?: unknown) => void,
-        ) => void,
-      ): void;
+        use(path: string, handler: MiddlewareHandler): void;
     };
-  }): void;
-  name: string;
 };
+declare function createFigmaReviewStatusPlugin(options?: FigmaReviewStatusPluginOptions): {
+    configureServer(server: MiddlewareServer): void;
+    name: string;
+};
+
+export { type FigmaReviewStatusFile, type FigmaReviewStatusPluginOptions, createFigmaReviewStatusPlugin, defaultFigmaReviewStatusApiPath };

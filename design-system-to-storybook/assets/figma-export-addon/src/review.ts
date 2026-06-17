@@ -2,6 +2,7 @@ import { EditIcon, FigmaIcon, LinkIcon } from "@storybook/icons";
 import type { ReactNode } from "react";
 import { Fragment, createElement as h, useEffect, useRef, useState } from "react";
 
+import "./review.css";
 import {
   isStoryIncludedForFigmaExport,
   resolveFigmaExportAddonOptions,

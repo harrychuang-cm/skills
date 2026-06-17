@@ -1,6 +1,3 @@
-import * as react from 'react';
-import { ReactNode } from 'react';
-
 type TokenLayer = "ref" | "sys" | "comp";
 type FigmaVariableType = "BOOLEAN" | "COLOR" | "FLOAT" | "STRING";
 type FigmaVariableValue = boolean | number | string | {
@@ -99,28 +96,4 @@ declare const defaultFigmaExportGlobalName = "figmaExport";
 declare function resolveFigmaExportAddonOptions(options: FigmaExportAddonOptions | undefined): ResolvedFigmaExportAddonOptions;
 declare function isStoryIncludedForFigmaExport(title: string | undefined, options: ResolvedFigmaExportAddonOptions): boolean;
 
-type StorybookContext = {
-    globals?: Record<string, unknown>;
-    id?: string;
-    name?: string;
-    title?: string;
-};
-type StorybookStory = () => ReactNode;
-declare function getFigmaExportGlobalName(options?: FigmaExportAddonOptions): string;
-declare function createFigmaExportDecorator(options?: FigmaExportAddonOptions): (Story: StorybookStory, context: StorybookContext) => react.FunctionComponentElement<{
-    children?: ReactNode;
-    context: {
-        globals?: Record<string, unknown>;
-        id?: string;
-        name?: string;
-        title?: string;
-    };
-    options?: FigmaExportAddonOptions;
-}>;
-declare function createFigmaExportGlobalTypes(options?: FigmaExportAddonOptions): Record<string, {
-    defaultValue: "off";
-    description: string;
-}>;
-declare function createFigmaExportInitialGlobals(options?: FigmaExportAddonOptions): Record<string, "off">;
-
-export { type FigmaExportAddonOptions as F, type ResolvedFigmaExportAddonOptions as R, type TokenLayer as T, type FigmaExportPayload as a, type FigmaBindingName as b, type FigmaExportNode as c, type FigmaExportToken as d, type FigmaLayoutStrategy as e, type FigmaNodeKind as f, createFigmaExportDecorator as g, createFigmaExportGlobalTypes as h, createFigmaExportInitialGlobals as i, defaultFigmaExportGlobalName as j, getFigmaExportGlobalName as k, isStoryIncludedForFigmaExport as l, resolveFigmaExportAddonOptions as r };
+export { type FigmaExportAddonOptions as F, type ResolvedFigmaExportAddonOptions as R, type TokenLayer as T, type FigmaExportPayload as a, type FigmaBindingName as b, type FigmaExportNode as c, type FigmaExportToken as d, type FigmaLayoutStrategy as e, type FigmaNodeKind as f, defaultFigmaExportGlobalName as g, isStoryIncludedForFigmaExport as i, resolveFigmaExportAddonOptions as r };
