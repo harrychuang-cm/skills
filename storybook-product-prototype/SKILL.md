@@ -1,11 +1,13 @@
 ---
 name: storybook-product-prototype
-description: Create PRD-led product prototypes in Storybook with docs, deterministic data, typed UI Flow route and transition metadata, and prototype stories. Use when turning a product idea into PRD, UI Flow, Data Spec, Acceptance Criteria, and a clickable Storybook prototype; when scaffolding a new prototype folder; or when validating prototype docs and metadata across React Storybook projects.
+description: Create PRD-led product prototypes in Storybook with docs, deterministic data, typed UI Flow route and transition metadata, interactive prototype stories, template-compatible Static Flow export stories, and an optional installable Prototype Inspector runtime for Story/Docs/UI Flow/Data review. Use after design-system-to-storybook or independently when turning a product idea into PRD, UI Flow, Data Spec, Acceptance Criteria, and a clickable Storybook prototype; when scaffolding a new prototype folder; when aligning prototype UI Flow with the design-system-to-storybook storybook-template contract; when installing a Storybook UI Flow viewer; or when validating prototype docs and metadata across React Storybook projects.
 ---
 
 # Storybook Product Prototype
 
-Use this skill to create a product prototype workflow that starts with PRD and flow decisions, then generates docs, deterministic fixtures, typed route metadata, and a clickable Storybook story. The skill is project-agnostic, but it expects a React/TypeScript Storybook project or a project that can adapt the generated files.
+Use this skill to create a product prototype workflow that starts with PRD and flow decisions, then generates docs, deterministic fixtures, typed route metadata, a clickable Storybook story, and a Static Flow export story. The skill is project-agnostic, but it expects a React/TypeScript Storybook project or a project that can adapt the generated files.
+
+When the target was created or upgraded by `design-system-to-storybook/storybook-template`, treat that template's Prototype Inspector, `prototypeFlowLayout.ts`, `parameters.prototype`, `prototypeRoute`, `prototypeFlowPreview`, and Static Flow story pattern as the canonical UI Flow contract.
 
 ## First Actions
 
@@ -13,7 +15,9 @@ Use this skill to create a product prototype workflow that starts with PRD and f
 2. Read existing prototype or page conventions if present: `src/pages/prototypes`, `src/pages`, `src/screens`, `src/components`, `.storybook`, and nearby `*.stories.*`.
 3. If the user is still exploring the product idea, run a discussion first and ask one focused product question at a time. Do not create files until route, data, and acceptance scope are clear.
 4. If the user asks to scaffold immediately, use `scripts/scaffold_prototype.py` and then fill the generated docs from the product brief.
-5. If the target project already has a prototype inspector or `parameters.prototype` convention, adapt to it. If not, still generate `parameters.prototype` metadata and document that UI Flow rendering requires a Storybook addon or project-specific viewer.
+5. If the target project already has a prototype inspector, `prototypeFlowLayout.ts`, Static Flow story, or `parameters.prototype` convention, adapt to it instead of creating a second contract.
+6. If the target project has no prototype inspector and the user asks for UI Flow runtime review, install the bundled Prototype Inspector with `scripts/install_prototype_inspector.mjs`; the installer also adds the shared flow layout helper expected by Static Flow exports.
+7. If the user only wants metadata or scaffolding, still generate `parameters.prototype` and document that visual UI Flow review requires the runtime viewer.
 
 ## Reference Loading
 
@@ -68,6 +72,7 @@ Rules:
 - Add every route-changing user action to the transitions array.
 - Use stable triggers such as `quoteRow.click`, `submitButton.click`, `bottomNavigation.watchlist`, or `settingsSheet.dismiss`.
 - Use `flowLine: "key"` only for transitions that should be drawn on the simplified UI Flow canvas; keep the full transition list in metadata.
+- Add optional `sourceAnchor: { x, y }` to a transition only when a Static Flow export needs a stable edge origin for future Figma export layout. Treat `x` and `y` as route-card-relative ratios from `0` to `1`.
 
 ### 4. Create Deterministic Data
 
@@ -83,7 +88,7 @@ Rules:
 
 ### 5. Compose The Storybook Prototype
 
-Create the React prototype, CSS, metadata, story, and index files.
+Create the React prototype, Static Flow export, CSS, metadata, stories, and index files.
 
 Rules:
 
@@ -93,16 +98,30 @@ Rules:
 - Keep prototype-only CSS scoped under a feature root class.
 - Use project tokens and styling conventions.
 - Attach the complete meta object to `parameters.prototype`.
-- Support iframe or embedded preview mode when the target Storybook UI Flow viewer requires it.
+- Support `prototypeFlowPreview=true` and `prototypeRoute=<route-id>` query modes for iframe route previews.
+- Add `data-prototype-route-preview="true"` on the route preview shell. Keep `data-prototype-root="true"` on the prototype root for older viewers.
+- Create `<FeaturePrototypeFlowExport>.tsx` and `<FeaturePrototypeFlowExport>.stories.tsx` with `StaticFlow`, reading layout from `../prototypeFlowLayout` and rendering route cards from the same flow metadata.
+- Add `figmaExport.flowStoryId` to the prototype meta object so export tools can locate the Static Flow story.
 
-### 6. Validate
+### 6. Install The Runtime Viewer When Requested
+
+If the project needs the Storybook toolbar and Docs/UI Flow/Data runtime, run:
+
+```sh
+node <skill-root>/scripts/install_prototype_inspector.mjs --project-root <repo-root>
+```
+
+Use `--force` only when intentionally replacing an existing `.storybook/prototype-inspector` folder or project-level `src/pages/prototypes/prototypeFlowLayout.ts`. The installer copies the bundled addon, adds its preset to `.storybook/main.*`, and installs the shared flow layout helper used by the addon and Static Flow exports.
+
+### 7. Validate
 
 Run the checks that fit the target repo:
 
-- `python <skill-root>/scripts/validate_prototype.py <prototype-folder>`
+- `python3 <skill-root>/scripts/validate_prototype.py <prototype-folder>`
 - Project typecheck, usually `npm run typecheck`
 - Storybook render or build, usually `npm run storybook` or `npm run storybook:build`
 - Manual Storybook review of Story, Docs, Data, and UI Flow if the project has a prototype inspector.
+- Manual `StaticFlow` story review when future Figma export or design review depends on a stable flow artifact.
 
 Do not mark the prototype complete unless docs, flow metadata, fixture data, story metadata, and interactive behavior describe the same product behavior.
 
@@ -111,18 +130,21 @@ Do not mark the prototype complete unless docs, flow metadata, fixture data, sto
 Use the scaffold script when creating a new prototype from scratch:
 
 ```sh
-python <skill-root>/scripts/scaffold_prototype.py "Portfolio Alerts" \
+python3 <skill-root>/scripts/scaffold_prototype.py "Portfolio Alerts" \
   --target-root src/pages/prototypes \
   --owner "Product Team"
 ```
 
-The scaffold creates a folder based on the feature name and fills template tokens. After scaffolding, replace the generated bracketed guidance with concrete product content before implementation.
+The scaffold creates a folder based on the feature name, adds `prototypeFlowLayout.ts` to the prototypes root when needed, and fills template tokens. After scaffolding, replace the generated bracketed guidance with concrete product content before implementation.
 
 ## Quality Bar
 
 - The prototype is a clickable product flow, not a static screenshot recreation.
 - PRD, UI Spec, Flow Spec, Data Spec, Acceptance Criteria, and Storybook metadata stay consistent.
 - UI Flow is generated from route, flow-node, and transition metadata.
+- UI Flow route cards preview the correct route through `prototypeRoute` and `prototypeFlowPreview`.
+- Static Flow export uses the same metadata and saved inspector layout as the runtime UI Flow.
+- `figmaExport.flowStoryId` points to the `StaticFlow` story for future Figma export automation.
 - Fixture data is deterministic and local.
 - Storybook `parameters.prototype` remains the review contract.
-- Project-specific UI Flow rendering is handled by the target project runtime or addon; this skill provides the metadata contract and templates.
+- Runtime UI Flow rendering is provided by the bundled Prototype Inspector when installed, or by an existing project-specific viewer when present.

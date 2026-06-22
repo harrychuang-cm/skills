@@ -10,6 +10,8 @@ Each prototype should live in its own folder:
 src/pages/prototypes/<feature-prototype>/
   <FeaturePrototype>.tsx
   <FeaturePrototype>.stories.tsx
+  <FeaturePrototypeFlowExport>.tsx
+  <FeaturePrototypeFlowExport>.stories.tsx
   <featurePrototypeData>.ts
   <featurePrototypeFlow>.ts
   <featurePrototypeMeta>.ts
@@ -22,6 +24,7 @@ src/pages/prototypes/<feature-prototype>/
     DATA_SPEC.md
     ACCEPTANCE.md
     IMPLEMENTATION_GUIDE.md
+src/pages/prototypes/prototypeFlowLayout.ts
 ```
 
 Adapt the root path if the project uses `src/screens`, `app`, `packages/ui`, or a different Storybook story convention.
@@ -45,7 +48,10 @@ Adapt the root path if the project uses `src/screens`, `app`, `packages/ui`, or 
 6. Add scoped prototype CSS.
 7. Create `*Meta.ts` importing docs and exposing `parameters.prototype` data.
 8. Create `<FeaturePrototype>.stories.tsx`.
-9. Verify docs, UI Flow metadata, interaction behavior, and typecheck.
+9. Create `<FeaturePrototypeFlowExport>.tsx` and `<FeaturePrototypeFlowExport>.stories.tsx` with `StaticFlow`.
+10. Add `figmaExport.flowStoryId` to `<featurePrototypeMeta>.ts`.
+11. Install the bundled Prototype Inspector when Storybook runtime review is requested.
+12. Verify docs, UI Flow metadata, interaction behavior, Static Flow rendering, and typecheck.
 
 ## Handoff Checklist
 
@@ -56,3 +62,5 @@ Adapt the root path if the project uses `src/screens`, `app`, `packages/ui`, or 
 - Existing components to reuse are named.
 - Prototype-only CSS scope is named.
 - Acceptance criteria cover Storybook, docs, UI Flow, interaction, accessibility, and TypeScript.
+- Storybook route previews support `prototypeRoute`, expose `data-prototype-route-preview`, and keep `data-prototype-root`.
+- Static Flow story uses the same `parameters.prototype` and saved `prototypeFlowLayout.ts` layout as the Storybook UI Flow runtime.

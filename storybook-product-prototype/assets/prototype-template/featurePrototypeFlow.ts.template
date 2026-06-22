@@ -46,6 +46,10 @@ export type __FEATURE_PASCAL__Transition = {
   trigger: string;
   label: string;
   flowLine?: "key" | "reference" | "hidden";
+  sourceAnchor?: {
+    x: number;
+    y: number;
+  };
   kind?:
     | "primary"
     | "return"

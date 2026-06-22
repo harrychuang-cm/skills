@@ -39,6 +39,9 @@ export const __FEATURE_CAMEL__Meta = {
     prd,
     uiSpec,
   },
+  figmaExport: {
+    flowStoryId: "__FEATURE_STORY_ID__",
+  },
   flow: __FEATURE_CAMEL__Flow,
   id: "__FEATURE_KEBAB__",
   owner: "__OWNER__",

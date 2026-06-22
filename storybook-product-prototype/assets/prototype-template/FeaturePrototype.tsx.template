@@ -16,6 +16,29 @@ export type __FEATURE_PASCAL__Props = {
   isFlowPreview?: boolean;
 };
 
+function is__FEATURE_PASCAL__RouteId(
+  value: string | null,
+): value is __FEATURE_PASCAL__RouteId {
+  return __FEATURE_CAMEL__RouteIds.includes(value as __FEATURE_PASCAL__RouteId);
+}
+
+function getRouteFromLocation() {
+  if (typeof window === "undefined") {
+    return undefined;
+  }
+
+  const routeId = new URLSearchParams(window.location.search).get("prototypeRoute");
+  return is__FEATURE_PASCAL__RouteId(routeId) ? routeId : undefined;
+}
+
+function getFlowPreviewFromLocation() {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  return new URLSearchParams(window.location.search).get("prototypeFlowPreview") === "true";
+}
+
 function RoutePanel({
   route,
 }: {
@@ -34,50 +57,68 @@ export function __FEATURE_PASCAL__({
   initialRouteId = "__ENTRY_ROUTE_ID__",
   isFlowPreview = false,
 }: __FEATURE_PASCAL__Props) {
-  const [routeId, setRouteId] = useState<__FEATURE_PASCAL__RouteId>(initialRouteId);
-  const activeRoute = get__FEATURE_PASCAL__Route(routeId);
+  const previewRoute = getRouteFromLocation();
+  const [routeId, setRouteId] = useState<__FEATURE_PASCAL__RouteId>(
+    previewRoute ?? initialRouteId,
+  );
+  const visibleRoute = previewRoute ?? routeId;
+  const activeRoute = get__FEATURE_PASCAL__Route(visibleRoute);
   const routeContent = useMemo(
     () =>
       __FEATURE_CAMEL__Routes.find((route) => route.id === activeRoute.id) ??
       __FEATURE_CAMEL__Routes[0],
     [activeRoute.id],
   );
+  const isEmbeddedFlowPreview = isFlowPreview || getFlowPreviewFromLocation();
+
+  const goTo = (nextRoute: __FEATURE_PASCAL__RouteId) => {
+    if (!previewRoute) {
+      setRouteId(nextRoute);
+    }
+  };
 
   return (
     <main
       className={[
         "__FEATURE_CSS_CLASS__",
-        isFlowPreview ? "__FEATURE_CSS_CLASS__--flow-preview" : "",
+        isEmbeddedFlowPreview ? "__FEATURE_CSS_CLASS__--flow-preview" : "",
       ]
         .filter(Boolean)
         .join(" ")}
-      data-route={routeId}
+      data-prototype-root="true"
+      data-route={visibleRoute}
       aria-label="__FEATURE_TITLE__"
+      role="region"
     >
-      <header className="__FEATURE_CSS_CLASS____header">
-        <div>
-          <p className="__FEATURE_CSS_CLASS____eyebrow">Prototype</p>
-          <h1>{activeRoute.title}</h1>
-        </div>
-      </header>
+      <section
+        className="__FEATURE_CSS_CLASS____shell"
+        data-prototype-route-preview="true"
+      >
+        <header className="__FEATURE_CSS_CLASS____header">
+          <div>
+            <p className="__FEATURE_CSS_CLASS____eyebrow">Prototype</p>
+            <h1>{activeRoute.title}</h1>
+          </div>
+        </header>
 
-      <nav className="__FEATURE_CSS_CLASS____nav" aria-label="Prototype routes">
-        {__FEATURE_CAMEL__RouteIds.map((id) => {
-          const route = get__FEATURE_PASCAL__Route(id);
-          return (
-            <button
-              key={id}
-              type="button"
-              aria-pressed={routeId === id}
-              onClick={() => setRouteId(id)}
-            >
-              {route.title}
-            </button>
-          );
-        })}
-      </nav>
+        <nav className="__FEATURE_CSS_CLASS____nav" aria-label="Prototype routes">
+          {__FEATURE_CAMEL__RouteIds.map((id) => {
+            const route = get__FEATURE_PASCAL__Route(id);
+            return (
+              <button
+                key={id}
+                type="button"
+                aria-pressed={visibleRoute === id}
+                onClick={() => goTo(id)}
+              >
+                {route.title}
+              </button>
+            );
+          })}
+        </nav>
 
-      <RoutePanel route={routeContent} />
+        <RoutePanel route={routeContent} />
+      </section>
     </main>
   );
 }

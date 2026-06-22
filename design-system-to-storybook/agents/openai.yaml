@@ -1,7 +1,7 @@
 interface:
   display_name: "Design System to Storybook"
   short_description: "Build Storybook and sync docs"
-  default_prompt: "Use $design-system-to-storybook to trace extractor source evidence, infer component dependency order including typographic/text-lockup components, generate project-local Figma export addon config, install the bundled addon, build token-backed Storybook components with co-located component/page stories, and synchronize or backfill design-system component documentation."
+  default_prompt: "Use $design-system-to-storybook to trace extractor source evidence, ask whether to bootstrap from the bundled storybook-template when Storybook is missing, infer component dependency order including typographic/text-lockup components, generate project-local Figma export addon config, install or reuse the bundled addon, build token-backed and Figma-export-ready Storybook components with co-located component/page stories, validate copied Figma export JSON when available, synchronize or backfill design-system component documentation, and hand off PRD/product UI Flow work to $storybook-product-prototype using the template Static Flow contract."
 
 policy:
   allow_implicit_invocation: true

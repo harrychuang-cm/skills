@@ -43,6 +43,7 @@ Every user-triggered route change must define:
 - `label`: human-readable edge label.
 - `kind`: optional semantic category such as `primary`, `return`, `global`, `secondary`, `outcome`, or `condition`.
 - `flowLine`: optional display hint. Use `key` only for transitions drawn on the simplified canvas.
+- `sourceAnchor`: optional `{ x, y }` route-card-relative ratio used only when Static Flow export needs a stable edge origin for Figma-ready layout. Use sparingly and keep values between `0` and `1`.
 
 ## Trigger Naming
 
@@ -74,3 +75,8 @@ Create mapping objects before wiring handlers:
 - Every documented click appears in transition metadata.
 - Every transition target exists as a route or flow-only node.
 - UI Flow canvas uses key transitions; Transition Index uses the full transition list.
+- The prototype supports `prototypeRoute=<route-id>` for route-specific iframe previews.
+- The prototype supports `prototypeFlowPreview=true` for compact embedded rendering.
+- The route preview shell exposes `data-prototype-route-preview="true"` for template-compatible iframe measurement.
+- The prototype root keeps `data-prototype-root="true"` for backward-compatible iframe height measurement.
+- Static Flow export reads saved layout from `prototypeFlowLayout.ts` using the same storage key as the Prototype Inspector.
