@@ -1,0 +1,3250 @@
+type FigmaVariableType = "BOOLEAN" | "COLOR" | "FLOAT" | "STRING";
+type TokenCollection = "comp" | "ref" | "sys";
+type FigmaNodeKind = "frame" | "image" | "svg" | "text";
+type TextAutoResizeMode = "WIDTH_AND_HEIGHT";
+type TextHorizontalAlign = "CENTER" | "JUSTIFIED" | "LEFT" | "RIGHT";
+type TextVerticalAlign = "CENTER";
+type FigmaExportArtifactKind = "component" | "page";
+
+type RgbaColor = {
+  a: number;
+  b: number;
+  g: number;
+  r: number;
+};
+
+type FigmaVariableValue = boolean | number | string | RgbaColor;
+
+type FigmaExportToken = {
+  alias?: string;
+  collection: TokenCollection;
+  cssName: string;
+  figmaName: string;
+  rawValue: string;
+  scopes: string[];
+  type: FigmaVariableType;
+  value?: FigmaVariableValue;
+};
+
+type FigmaComponentReference = {
+  key: string;
+  name: string;
+  sourceName: string;
+  variant?: string;
+  variantProperties?: Record<string, string>;
+};
+
+type FigmaExportGradientStop = {
+  color: string;
+  position: number;
+  token?: string;
+};
+
+type FigmaExportLinearGradient = {
+  angle: number;
+  stops: FigmaExportGradientStop[];
+};
+
+type FigmaTokenSystem = {
+  collections?: Partial<Record<TokenCollection, string>>;
+  pluginDataKey?: string;
+};
+
+type FigmaComponentSystem = {
+  componentsPageName?: string;
+  pluginDataKey?: string;
+};
+
+type FigmaBindingName =
+  | "backgroundColor"
+  | "borderColor"
+  | "borderWidth"
+  | "cornerRadius"
+  | "fontFamily"
+  | "fontSize"
+  | "fontWeight"
+  | "gap"
+  | "height"
+  | "lineHeight"
+  | "opacity"
+  | "paddingBottom"
+  | "paddingLeft"
+  | "paddingRight"
+  | "paddingTop"
+  | "textColor"
+  | "width";
+
+type FigmaNodeConstraintValue = "CENTER" | "MAX" | "MIN" | "SCALE" | "STRETCH";
+
+type FigmaExportConstraints = {
+  horizontal: FigmaNodeConstraintValue;
+  vertical: FigmaNodeConstraintValue;
+};
+
+type FigmaBorderSideName = "bottom" | "left" | "right" | "top";
+
+type FigmaExportBorderSide = {
+  color?: string;
+  width: number;
+};
+
+type FigmaExportBorderSides = Partial<
+  Record<FigmaBorderSideName, FigmaExportBorderSide>
+>;
+
+type FigmaExportNode = {
+  bindings?: Partial<Record<FigmaBindingName, string>>;
+  children?: FigmaExportNode[];
+  component?: FigmaComponentReference;
+  kind: FigmaNodeKind;
+  name: string;
+  styles: {
+    alignItems?: string;
+    backgroundColor?: string;
+    backgroundLinearGradient?: FigmaExportLinearGradient;
+    borderColor?: string;
+    borderSides?: FigmaExportBorderSides;
+    borderWidth?: number;
+    constraints?: FigmaExportConstraints;
+    color?: string;
+    display?: string;
+    flexDirection?: string;
+    fontFamily?: string;
+    fontSize?: number;
+    fontWeight?: number;
+    gap?: number;
+    height: number;
+    justifyContent?: string;
+    layoutAlign?: "STRETCH";
+    layoutGrow?: number;
+    layoutSizingHorizontal?: "HUG";
+    layoutSizingVertical?: "HUG";
+    lineHeight?: number | "normal";
+    maxLines?: number;
+    textTruncation?: "ENDING";
+    opacity?: number;
+    outOfFlow?: boolean;
+    overflow?: string;
+    paddingBottom?: number;
+    paddingLeft?: number;
+    paddingRight?: number;
+    paddingTop?: number;
+    radius?: number;
+    textAlign?: string;
+    textAlignVertical?: TextVerticalAlign;
+    textAutoResize?: TextAutoResizeMode;
+    width: number;
+    x: number;
+    y: number;
+  };
+  svgText?: string;
+  text?: string;
+};
+
+type FigmaExportPayload = {
+  artifactKind?: FigmaExportArtifactKind;
+  component?: FigmaComponentReference;
+  componentSystem?: FigmaComponentSystem;
+  componentTitle: string;
+  generatedAt: string;
+  root: FigmaExportNode;
+  storyId: string;
+  storyName: string;
+  storyTitle?: string;
+  tokens: FigmaExportToken[];
+  tokenSystem?: FigmaTokenSystem;
+  version: 1 | 2;
+};
+
+type ImportMessage =
+  | {
+      json: string;
+      type: "import-json";
+    }
+  | {
+      type: "cancel";
+    };
+
+type ImportStats = {
+  artifactKind?: FigmaExportArtifactKind;
+  componentDefinitionsPrepared?: number;
+  componentsCreated: number;
+  importedAsComponent?: boolean;
+  nodesCreated: number;
+  reusedComponents: number;
+  reusedVariables: number;
+  rootName?: string;
+  rootType?: SceneNode["type"];
+  componentSectionsOrganized?: number;
+  sectionName?: string;
+  targetPageName?: string;
+  tokensChecked: number;
+  variablesCreated: number;
+  warnings: string[];
+};
+
+type VariablePluginData = Variable & {
+  getPluginData?: (key: string) => string;
+  setPluginData?: (key: string, value: string) => void;
+};
+
+type VariableWithCodeSyntax = Variable & {
+  setVariableCodeSyntax?: (platform: "WEB", codeSyntax: string) => void;
+};
+
+type BoundVariableTarget = SceneNode & {
+  setBoundVariable?: (field: string, variable: Variable | null) => void;
+};
+
+type NodePluginData = BaseNode & {
+  getPluginData?: (key: string) => string;
+  setPluginData?: (key: string, value: string) => void;
+};
+
+type NodeWithChildren = BaseNode & {
+  children?: readonly BaseNode[];
+};
+
+type FrameLikeNode = ComponentNode | FrameNode;
+
+type CreateNodeOptions = {
+  autoAttachComponentSet?: boolean;
+  inferredTextAlignHorizontal?: TextHorizontalAlign;
+  isRoot?: boolean;
+  reuseComponents?: boolean;
+};
+
+function getTextAlignHorizontal(
+  spec: FigmaExportNode,
+  options: CreateNodeOptions,
+): TextHorizontalAlign {
+  const explicitTextAlign = mapTextAlignHorizontal(spec.styles.textAlign);
+  if (explicitTextAlign) return explicitTextAlign;
+  if (spec.kind === "text" && spec.styles.layoutAlign === "STRETCH") return "CENTER";
+  return (
+    options.inferredTextAlignHorizontal ??
+    "LEFT"
+  );
+}
+
+function applyTextAlignHorizontal(
+  node: TextNode,
+  spec: FigmaExportNode,
+  options: CreateNodeOptions,
+  path: string,
+): void {
+  try {
+    node.textAlignHorizontal = getTextAlignHorizontal(spec, options);
+  } catch (error) {
+    console.warn(`Could not set ${path}.textAlignHorizontal: ${formatError(error)}`);
+  }
+}
+
+function applyTextAlignVertical(
+  node: TextNode,
+  value: TextVerticalAlign | undefined,
+  path: string,
+): void {
+  if (!value) return;
+
+  try {
+    node.textAlignVertical = value;
+  } catch (error) {
+    console.warn(`Could not set ${path}.textAlignVertical: ${formatError(error)}`);
+  }
+}
+
+function applyTextAlignmentFromSpec(
+  node: SceneNode,
+  spec: FigmaExportNode,
+  options: CreateNodeOptions,
+  path: string,
+): void {
+  if (node.type === "TEXT" && spec.kind === "text") {
+    applyTextAlignHorizontal(node, spec, options, path);
+    applyTextAlignVertical(node, spec.styles.textAlignVertical, path);
+    return;
+  }
+
+  if (!("children" in node)) return;
+
+  const children = Array.from(node.children).filter(
+    (child): child is SceneNode => "visible" in child,
+  );
+  const specChildren = spec.children ?? [];
+  const usedChildIndexes = new Set<number>();
+
+  for (let specIndex = 0; specIndex < specChildren.length; specIndex += 1) {
+    const childSpec = specChildren[specIndex];
+    const namedIndex = children.findIndex(
+      (child, childIndex) =>
+        !usedChildIndexes.has(childIndex) && child.name === childSpec.name,
+    );
+    const fallbackIndex =
+      specIndex < children.length && !usedChildIndexes.has(specIndex) ? specIndex : -1;
+    const childIndex = namedIndex >= 0 ? namedIndex : fallbackIndex;
+    if (childIndex < 0) continue;
+
+    usedChildIndexes.add(childIndex);
+    applyTextAlignmentFromSpec(
+      children[childIndex],
+      childSpec,
+      options,
+      `${path}/${childSpec.name}`,
+    );
+  }
+}
+
+const brokerIconLabelTexts = new Set(["口袋", "我的", "元大", "國泰", "新光", "大昌"]);
+
+function forceBrokerIconTextAlignment(node: SceneNode): void {
+  const isBrokerIconLabel =
+    node.type === "TEXT" &&
+    brokerIconLabelTexts.has(node.characters) &&
+    node.name.includes("broker-icon");
+
+  if (isBrokerIconLabel) {
+    try {
+      node.textAlignHorizontal = "CENTER";
+    } catch (error) {
+      console.warn(
+        `Could not force broker icon text alignment for ${node.name}: ${formatError(error)}`,
+      );
+    }
+
+    try {
+      node.textAlignVertical = "CENTER";
+    } catch (error) {
+      console.warn(
+        `Could not force broker icon vertical alignment for ${node.name}: ${formatError(error)}`,
+      );
+    }
+
+    try {
+      node.layoutAlign = "STRETCH";
+    } catch (error) {
+      console.warn(
+        `Could not force broker icon layoutAlign for ${node.name}: ${formatError(error)}`,
+      );
+    }
+
+    try {
+      node.layoutGrow = 1;
+    } catch (error) {
+      console.warn(
+        `Could not force broker icon layoutGrow for ${node.name}: ${formatError(error)}`,
+      );
+    }
+  }
+
+  if (!("children" in node)) return;
+
+  for (const child of node.children) {
+    if ("visible" in child) forceBrokerIconTextAlignment(child);
+  }
+}
+
+type VariantComponentSpec = {
+  component: FigmaComponentReference;
+  depth: number;
+  path: string;
+  spec: FigmaExportNode;
+};
+
+type ComponentDefinitionRecord = {
+  component: FigmaComponentReference;
+  node: ComponentNode;
+};
+
+type ComponentSetRecord = {
+  component: FigmaComponentReference;
+  node: ComponentSetNode;
+};
+
+type ComponentSectionMetadata = {
+  componentTitle?: string;
+  storyId?: string;
+  storyName?: string;
+};
+
+type ComponentSectionTarget = {
+  key: string;
+  metadata?: ComponentSectionMetadata;
+  name: string;
+  node: ComponentNode | ComponentSetNode;
+  role: "dependency" | "root";
+};
+
+// Bump this on every behavior change so the Figma UI badge confirms which
+// build is running (Figma re-reads code.js per run, but the badge removes doubt).
+const PLUGIN_VERSION = "1.1.7 (2026-06-22)";
+
+const SUPPORTED_PAYLOAD_VERSIONS = [1, 2] as const;
+const CM_CSS_TOKEN_PLUGIN_DATA_KEY = "cmCssToken";
+const STORYBOOK_COMPONENT_PLUGIN_DATA_KEY = "storybookComponentKey";
+const COMPONENT_SET_GRID_GAP = 32;
+const COMPONENT_SET_GRID_MIN_CELL_WIDTH = 96;
+const COMPONENT_SET_GRID_MIN_CELL_HEIGHT = 72;
+const COMPONENT_SET_GRID_COMPACT_MAX_SIZE = 96;
+const COMPONENT_SET_GRID_MEDIUM_MAX_SIZE = 180;
+const COMPONENT_SET_GRID_COMPACT_COLUMNS = 8;
+const COMPONENT_SET_GRID_MEDIUM_COLUMNS = 4;
+const COMPONENTS_PAGE_NAME = "Components";
+const COMPONENT_SECTION_GAP = 160;
+const COMPONENT_SECTION_MIN_HEIGHT = 160;
+const COMPONENT_SECTION_MIN_WIDTH = 240;
+const COMPONENT_SECTION_PADDING = 64;
+const COMPONENT_SECTION_PLUGIN_DATA_KEY = "storybookComponentSectionKey";
+const COMPONENT_SPEC_HASH_PLUGIN_DATA_KEY = "storybookComponentSpecHash";
+const COMPONENT_SECTION_ROLE_PLUGIN_DATA_KEY = "storybookComponentSectionRole";
+const STORYBOOK_STORY_PLUGIN_DATA_KEY = "storybookStoryId";
+const COLLECTION_NAMES: Record<TokenCollection, string> = {
+  comp: "comp",
+  ref: "ref",
+  sys: "sys",
+};
+const COLLECTION_ORDER: Record<TokenCollection, number> = {
+  ref: 0,
+  sys: 1,
+  comp: 2,
+};
+const INDIVIDUAL_RADIUS_BINDING_FIELDS = [
+  "topLeftRadius",
+  "topRightRadius",
+  "bottomLeftRadius",
+  "bottomRightRadius",
+];
+
+figma.showUI(__html__, {
+  height: 600,
+  themeColors: true,
+  width: 440,
+});
+figma.ui.postMessage({ type: "plugin-version", version: PLUGIN_VERSION });
+
+figma.ui.onmessage = (msg: ImportMessage) => {
+  if (msg.type === "cancel") {
+    figma.closePlugin();
+    return;
+  }
+
+  if (msg.type === "import-json") {
+    void importFromJson(msg.json);
+  }
+};
+
+async function importFromJson(json: string): Promise<void> {
+  figma.ui.postMessage({ status: "importing", type: "import-status" });
+
+  try {
+    const payload = parsePayload(json);
+    const stats = await importStorybookDesign(payload);
+
+    figma.ui.postMessage({
+      stats,
+      type: "import-complete",
+    });
+    figma.notify(
+      `Imported ${payload.componentTitle} / ${payload.storyName} as ${stats.rootType ?? "node"}: ${stats.nodesCreated} nodes, ${stats.tokensChecked} variables checked. (plugin v${PLUGIN_VERSION})`,
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    figma.ui.postMessage({
+      message,
+      type: "import-error",
+    });
+    figma.notify(`Storybook Code To Design import failed: ${message}`, { error: true });
+  }
+}
+
+async function importStorybookDesign(payload: FigmaExportPayload): Promise<ImportStats> {
+  await figma.loadAllPagesAsync();
+  const artifactKind = getPayloadArtifactKind(payload);
+  const shouldImportAsComponent = artifactKind === "component";
+  const targetPage = shouldImportAsComponent
+    ? await getOrCreateComponentsPage()
+    : await getPageArtifactTargetPage(payload);
+  await setCurrentPageIfNeeded(targetPage);
+
+  const context = createImportContext(payload);
+  await context.upsertVariables();
+  if (!shouldImportAsComponent) {
+    await context.preparePageComponentDefinitions(payload.root);
+  }
+
+  const rootComponent = getPayloadRootComponent(payload, artifactKind);
+  const rootNode: SceneNode =
+    shouldImportAsComponent &&
+    rootComponent &&
+    context.canCreateComponentDefinition(payload.root)
+      ? await context.ensureComponentDefinition(
+          payload.root,
+          rootComponent,
+          payload.root.name,
+          { reuseComponents: true },
+        )
+      : shouldImportAsComponent
+        ? await context.createComponentSetFromVariants(
+            payload.root,
+            payload.componentTitle,
+          )
+      : await context.createNode(payload.root, payload.root.name, {
+          isRoot: true,
+          reuseComponents: true,
+        });
+
+  forceBrokerIconTextAlignment(rootNode);
+
+  if (shouldImportAsComponent && rootComponent) {
+    rootNode.name = getComponentDisplayName(rootComponent);
+  } else if (rootNode.type !== "COMPONENT_SET") {
+    rootNode.name = `${payload.componentTitle} / ${payload.storyName}`;
+  }
+
+  const componentViewportNode = shouldImportAsComponent
+    ? getComponentImportViewportNode(rootNode)
+    : rootNode;
+  const viewportNode = shouldImportAsComponent
+    ? placeComponentImportInSection(componentViewportNode, payload, targetPage)
+    : rootNode;
+  const componentDefinitionsPage = shouldImportAsComponent
+    ? targetPage
+    : context.getComponentDefinitionParentPage();
+  const dependencySections = context.organizeComponentDependencySections(
+    rootNode,
+    componentDefinitionsPage,
+  );
+
+  if (!shouldImportAsComponent) {
+    rootNode.x = 0;
+    rootNode.y = 0;
+  }
+  if (!rootNode.parent) figma.currentPage.appendChild(rootNode);
+  if (viewportNode.parent === figma.currentPage) {
+    figma.currentPage.selection = [viewportNode];
+  }
+  cleanupEmptyManagedSections(componentDefinitionsPage);
+  figma.viewport.scrollAndZoomIntoView([viewportNode]);
+
+  context.stats.artifactKind = artifactKind;
+  context.stats.importedAsComponent = shouldImportAsComponent;
+  context.stats.componentSectionsOrganized =
+    dependencySections.length + (viewportNode.type === "SECTION" ? 1 : 0);
+  context.stats.rootName = rootNode.name;
+  context.stats.rootType = rootNode.type;
+  context.stats.targetPageName = targetPage.name;
+  if (viewportNode.type === "SECTION") {
+    context.stats.sectionName = viewportNode.name;
+  }
+
+  return context.stats;
+}
+
+function getPayloadArtifactKind(payload: FigmaExportPayload): FigmaExportArtifactKind {
+  if (payload.artifactKind) return payload.artifactKind;
+  if (payload.storyTitle?.startsWith("Pages/")) return "page";
+  return "component";
+}
+
+function getPayloadRootComponent(
+  payload: FigmaExportPayload,
+  artifactKind: FigmaExportArtifactKind,
+): FigmaComponentReference | undefined {
+  if (artifactKind !== "component") return undefined;
+  return payload.component ?? payload.root.component;
+}
+
+async function getOrCreateComponentsPage(): Promise<PageNode> {
+  const existing = figma.root.children.find(
+    (page) => page.name === COMPONENTS_PAGE_NAME,
+  );
+  if (existing) return existing;
+
+  const page = figma.createPage();
+  page.name = COMPONENTS_PAGE_NAME;
+  return page;
+}
+
+async function setCurrentPageIfNeeded(page: PageNode): Promise<void> {
+  if (figma.currentPage.id === page.id) return;
+  await figma.setCurrentPageAsync(page);
+}
+
+async function getPageArtifactTargetPage(
+  payload: FigmaExportPayload,
+): Promise<PageNode> {
+  const componentsPageName =
+    payload.componentSystem?.componentsPageName?.trim() || COMPONENTS_PAGE_NAME;
+  if (figma.currentPage.name.toLowerCase() !== componentsPageName.toLowerCase()) {
+    return figma.currentPage;
+  }
+
+  const pageName = getPageArtifactPageName(payload);
+  const existing = figma.root.children.find(
+    (page) => page.name.toLowerCase() === pageName.toLowerCase(),
+  );
+  if (existing) return existing;
+
+  const page = figma.createPage();
+  page.name = pageName;
+  return page;
+}
+
+function getPageArtifactPageName(payload: FigmaExportPayload): string {
+  const title = (payload.storyTitle || payload.componentTitle || "").trim();
+  const normalizedTitle = title.startsWith("Pages/")
+    ? title.slice("Pages/".length)
+    : title;
+  return normalizedTitle.replace(/\//g, " / ") || "Storybook Pages";
+}
+
+function placeComponentImportInSection(
+  rootNode: SceneNode,
+  payload: FigmaExportPayload,
+  targetPage: PageNode,
+): SectionNode {
+  const rootComponent = getComponentImportSectionReference(rootNode, payload);
+  const shouldUseComponentSection = Boolean(
+    rootComponent && (rootComponent.variant || rootNode.type === "COMPONENT_SET"),
+  );
+
+  return placeNodeInComponentSection(rootNode, targetPage, {
+    key:
+      shouldUseComponentSection && rootComponent
+        ? getComponentReferenceSectionKey(rootComponent)
+        : getRootComponentSectionKey(payload),
+    metadata: {
+      componentTitle: payload.componentTitle,
+      storyId: payload.storyId,
+      storyName: payload.storyName,
+    },
+    name:
+      shouldUseComponentSection && rootComponent
+        ? getComponentReferenceSectionName(rootComponent)
+        : getComponentSectionName(payload),
+    role: "root",
+  });
+}
+
+function getComponentImportSectionReference(
+  rootNode: SceneNode,
+  payload: FigmaExportPayload,
+): FigmaComponentReference | undefined {
+  const rootComponent = getPayloadRootComponent(payload, "component");
+  if (rootComponent) return rootComponent;
+  if (rootNode.type !== "COMPONENT_SET") return undefined;
+
+  const name =
+    getNodePluginData(rootNode, "storybookComponentName") ||
+    payload.componentTitle ||
+    rootNode.name ||
+    "Component";
+  const sourceName = getNodePluginData(rootNode, "storybookComponentSource") || name;
+
+  return {
+    key: `component:${sourceName}`,
+    name,
+    sourceName,
+  };
+}
+
+function getComponentImportViewportNode(rootNode: SceneNode): SceneNode {
+  if (rootNode.type === "COMPONENT" && rootNode.parent?.type === "COMPONENT_SET") {
+    return rootNode.parent;
+  }
+  return rootNode;
+}
+
+function placeNodeInComponentSection(
+  node: ComponentNode | ComponentSetNode | SceneNode,
+  targetPage: PageNode,
+  target: Omit<ComponentSectionTarget, "node">,
+): SectionNode {
+  const { created, section } = getOrCreateComponentSection(
+    targetPage,
+    target.name,
+    target.key,
+  );
+
+  configureComponentSection(section, target);
+
+  if (created) {
+    positionNewComponentSection(section, targetPage);
+  }
+
+  for (const child of [...section.children]) {
+    if (child.id !== node.id) child.remove();
+  }
+
+  if (node.parent !== section) {
+    section.appendChild(node);
+  }
+
+  node.x = COMPONENT_SECTION_PADDING;
+  node.y = COMPONENT_SECTION_PADDING;
+  resizeSectionToChild(section, node);
+
+  return section;
+}
+
+function getOrCreateComponentSection(
+  targetPage: PageNode,
+  sectionName: string,
+  sectionKey: string,
+): { created: boolean; section: SectionNode } {
+  const existing = targetPage.children.find((node): node is SectionNode => {
+    return (
+      node.type === "SECTION" &&
+      (getNodePluginData(node, COMPONENT_SECTION_PLUGIN_DATA_KEY) === sectionKey ||
+        getNodePluginData(node, STORYBOOK_STORY_PLUGIN_DATA_KEY) === sectionKey ||
+        node.name === sectionName)
+    );
+  });
+
+  if (existing) return { created: false, section: existing };
+
+  const section = figma.createSection();
+  if (section.parent !== targetPage) {
+    targetPage.appendChild(section);
+  }
+  return { created: true, section };
+}
+
+function configureComponentSection(
+  section: SectionNode,
+  target: Omit<ComponentSectionTarget, "node">,
+): void {
+  section.name = target.name;
+  section.fills = [whitePaint()];
+  section.strokes = [];
+  setNodePluginData(section, COMPONENT_SECTION_PLUGIN_DATA_KEY, target.key);
+  setNodePluginData(section, COMPONENT_SECTION_ROLE_PLUGIN_DATA_KEY, target.role);
+
+  if (target.metadata?.storyId) {
+    setNodePluginData(section, STORYBOOK_STORY_PLUGIN_DATA_KEY, target.metadata.storyId);
+  }
+  if (target.metadata?.componentTitle) {
+    setNodePluginData(
+      section,
+      "storybookComponentTitle",
+      target.metadata.componentTitle,
+    );
+  }
+  if (target.metadata?.storyName) {
+    setNodePluginData(section, "storybookStoryName", target.metadata.storyName);
+  }
+}
+
+function getComponentSectionName(payload: FigmaExportPayload): string {
+  const componentTitle = payload.componentTitle.trim() || "Component";
+  const storyName = payload.storyName.trim();
+  return storyName ? `${componentTitle} / ${storyName}` : componentTitle;
+}
+
+function getRootComponentSectionKey(payload: FigmaExportPayload): string {
+  return `story:${payload.storyId}`;
+}
+
+function getComponentReferenceSectionKey(component: FigmaComponentReference): string {
+  const source = String(component.sourceName || component.name || component.key).trim();
+  return `component:${source || component.key}`;
+}
+
+function getComponentReferenceSectionName(component: FigmaComponentReference): string {
+  return component.name || component.sourceName || "Component";
+}
+
+function cleanupEmptyManagedSections(targetPage: PageNode): void {
+  for (const node of [...targetPage.children]) {
+    if (node.type !== "SECTION") continue;
+    const isManagedSection = Boolean(
+      getNodePluginData(node, COMPONENT_SECTION_PLUGIN_DATA_KEY) ||
+        getNodePluginData(node, STORYBOOK_STORY_PLUGIN_DATA_KEY),
+    );
+    if (isManagedSection && node.children.length === 0) {
+      node.remove();
+    }
+  }
+}
+
+function collectSceneNodeIds(node: SceneNode, ids = new Set<string>()): Set<string> {
+  ids.add(node.id);
+
+  if (!("children" in node)) return ids;
+
+  for (const child of node.children) {
+    if ("visible" in child) collectSceneNodeIds(child, ids);
+  }
+
+  return ids;
+}
+
+function positionNewComponentSection(section: SectionNode, targetPage: PageNode): void {
+  const existingSections = targetPage.children.filter(
+    (node): node is SectionNode => node.type === "SECTION" && node.id !== section.id,
+  );
+  const nextY =
+    existingSections.length === 0
+      ? 0
+      : Math.max(
+          ...existingSections.map((node) => node.y + safeNumber(node.height, 0)),
+        ) + COMPONENT_SECTION_GAP;
+
+  section.x = 0;
+  section.y = nextY;
+}
+
+function resizeSectionToChild(section: SectionNode, child: SceneNode): void {
+  section.resizeWithoutConstraints(
+    Math.max(
+      COMPONENT_SECTION_MIN_WIDTH,
+      getSceneNodeWidth(child) + COMPONENT_SECTION_PADDING * 2,
+    ),
+    Math.max(
+      COMPONENT_SECTION_MIN_HEIGHT,
+      getSceneNodeHeight(child) + COMPONENT_SECTION_PADDING * 2,
+    ),
+  );
+}
+
+function getSceneNodeWidth(node: SceneNode): number {
+  return safeNumber((node as SceneNode & { width?: number }).width, 1);
+}
+
+function getSceneNodeHeight(node: SceneNode): number {
+  return safeNumber((node as SceneNode & { height?: number }).height, 1);
+}
+
+function whitePaint(): SolidPaint {
+  return {
+    color: { b: 1, g: 1, r: 1 },
+    opacity: 1,
+    type: "SOLID",
+  };
+}
+
+function createImportContext(payload: FigmaExportPayload) {
+  const artifactKind = getPayloadArtifactKind(payload);
+  const tokens = payload.tokens;
+  const collectionNames = {
+    ...COLLECTION_NAMES,
+    ...(payload.tokenSystem?.collections ?? {}),
+  };
+  const tokenPluginDataKey =
+    payload.tokenSystem?.pluginDataKey ?? CM_CSS_TOKEN_PLUGIN_DATA_KEY;
+  const componentPluginDataKey =
+    payload.componentSystem?.pluginDataKey ?? STORYBOOK_COMPONENT_PLUGIN_DATA_KEY;
+  const tokenByCssName = new Map(tokens.map((token) => [token.cssName, token]));
+  const registry = new Map<string, Variable>();
+  const componentRegistry = new Map<string, ComponentNode>();
+  const componentDefinitionRecords = new Map<string, ComponentDefinitionRecord>();
+  const componentSetRecords = new Map<string, ComponentSetRecord>();
+  const warnedVariantPropertyNodeIds = new Set<string>();
+  let componentDefinitionOffsetY = 0;
+  const stats: ImportStats = {
+    componentDefinitionsPrepared: 0,
+    componentsCreated: 0,
+    nodesCreated: 0,
+    reusedComponents: 0,
+    reusedVariables: 0,
+    tokensChecked: tokens.length,
+    variablesCreated: 0,
+    warnings: [],
+  };
+
+  function warn(message: string): void {
+    stats.warnings.push(message);
+  }
+
+  async function upsertVariables(): Promise<void> {
+    const sorted = [...tokens].sort((a, b) => {
+      const byCollection =
+        COLLECTION_ORDER[a.collection] - COLLECTION_ORDER[b.collection];
+      return byCollection || a.figmaName.localeCompare(b.figmaName);
+    });
+
+    for (const token of sorted) {
+      await upsertVariable(token, []);
+    }
+  }
+
+  async function upsertVariable(
+    spec: FigmaExportToken,
+    stack: string[],
+  ): Promise<Variable> {
+    const registered = registry.get(spec.cssName);
+    if (registered) return registered;
+
+    if (stack.includes(spec.cssName)) {
+      throw new Error(`Circular token alias detected: ${[...stack, spec.cssName].join(" -> ")}`);
+    }
+
+    let aliasTarget: Variable | undefined;
+    if (spec.alias) {
+      const aliasSpec = tokenByCssName.get(spec.alias);
+      aliasTarget = aliasSpec
+        ? await upsertVariable(aliasSpec, [...stack, spec.cssName])
+        : await findVariableByCssToken(spec.alias, tokenPluginDataKey);
+
+      if (!aliasTarget) {
+        throw new Error(`Missing alias target ${spec.alias} for ${spec.cssName}`);
+      }
+    }
+
+    const collection = await getCollection(spec.collection, collectionNames);
+    const modeId = collection.modes[0].modeId;
+    let variable = await findExistingVariable(collection, spec, tokenPluginDataKey);
+
+    if (variable && variable.resolvedType !== spec.type) {
+      throw new Error(
+        `Variable type mismatch for ${spec.cssName}: existing ${variable.resolvedType}, export ${spec.type}`,
+      );
+    }
+
+    if (variable) {
+      stats.reusedVariables += 1;
+    } else {
+      variable = figma.variables.createVariable(spec.figmaName, collection, spec.type);
+      stats.variablesCreated += 1;
+    }
+
+    setVariableMetadata(variable, spec);
+    setVariableValue(variable, modeId, spec, aliasTarget);
+    registry.set(spec.cssName, variable);
+
+    return variable;
+  }
+
+  function setVariableMetadata(variable: Variable, spec: FigmaExportToken): void {
+    if (Array.isArray(spec.scopes) && spec.scopes.length > 0) {
+      try {
+        variable.scopes = spec.scopes as VariableScope[];
+      } catch (error) {
+        warn(`Could not set scopes for ${spec.cssName}: ${formatError(error)}`);
+      }
+    }
+
+    try {
+      (variable as VariableWithCodeSyntax).setVariableCodeSyntax?.(
+        "WEB",
+        `var(${spec.cssName})`,
+      );
+    } catch (error) {
+      warn(`Could not set code syntax for ${spec.cssName}: ${formatError(error)}`);
+    }
+
+    try {
+      setVariablePluginData(variable, tokenPluginDataKey, spec.cssName);
+      if (tokenPluginDataKey !== CM_CSS_TOKEN_PLUGIN_DATA_KEY) {
+        setVariablePluginData(variable, CM_CSS_TOKEN_PLUGIN_DATA_KEY, spec.cssName);
+      }
+    } catch (error) {
+      warn(`Could not set plugin data for ${spec.cssName}: ${formatError(error)}`);
+    }
+  }
+
+  function setVariableValue(
+    variable: Variable,
+    modeId: string,
+    spec: FigmaExportToken,
+    aliasTarget: Variable | undefined,
+  ): void {
+    if (spec.alias) {
+      if (!aliasTarget) {
+        throw new Error(`Missing alias target ${spec.alias} for ${spec.cssName}`);
+      }
+      variable.setValueForMode(modeId, {
+        id: aliasTarget.id,
+        type: "VARIABLE_ALIAS",
+      });
+      return;
+    }
+
+    variable.setValueForMode(modeId, normalizeVariableValue(spec));
+  }
+
+  async function createNode(
+    spec: FigmaExportNode,
+    path: string,
+    options: CreateNodeOptions = {},
+  ): Promise<SceneNode> {
+    if (
+      options.reuseComponents &&
+      !options.isRoot &&
+      spec.component?.key &&
+      canCreateComponentDefinition(spec)
+    ) {
+      const existing = await findLocalComponent(spec.component);
+      if (
+        !existing ||
+        getNodePluginData(existing, COMPONENT_SPEC_HASH_PLUGIN_DATA_KEY) ===
+          getComponentSpecHash(spec)
+      ) {
+        const instance = await createComponentInstance(spec, spec.component, path, options);
+        stats.nodesCreated += 1;
+        return instance;
+      }
+      // The shared definition was built from different content. Instancing it
+      // would show the wrong text/structure, so build a plain subtree instead.
+    }
+
+    const node =
+      spec.kind === "text"
+        ? await createTextNode(spec, path, options)
+        : spec.kind === "image" || spec.kind === "svg"
+          ? createImageNode(spec, path)
+          : await createFrameNode(spec, path, options, false);
+
+    node.x = safeNumber(spec.styles.x, 0);
+    node.y = safeNumber(spec.styles.y, 0);
+    stats.nodesCreated += 1;
+    return node;
+  }
+
+  async function createFrameNode(
+    spec: FigmaExportNode,
+    path: string,
+    options: CreateNodeOptions,
+    asComponent: boolean,
+  ): Promise<FrameLikeNode> {
+    const node = asComponent ? figma.createComponent() : figma.createFrame();
+    const styles = spec.styles;
+    const bindings = spec.bindings ?? {};
+
+    node.name = spec.name || "frame";
+    safeResize(node, styles.width, styles.height, path);
+    node.clipsContent = styles.overflow === "hidden" || styles.overflow === "clip";
+    node.opacity = clamp(safeNumber(styles.opacity, 1), 0, 1);
+    setFrameFills(node, styles, bindings, path);
+    setStrokes(node, styles, bindings, path);
+    applyRadius(node, styles, bindings, path);
+    applyAutoLayout(node, styles, bindings, path);
+
+    safeBind(node, "width", bindings.width, path);
+    safeBind(node, "height", bindings.height, path);
+    safeBind(node, "opacity", bindings.opacity, path);
+    if (!styles.borderSides) {
+      safeBind(node, "strokeWeight", bindings.borderWidth, path);
+    }
+
+    for (const childSpec of spec.children ?? []) {
+      const childOptions = {
+        ...options,
+        inferredTextAlignHorizontal:
+          childSpec.kind === "text"
+            ? getInferredChildTextAlignHorizontal(node)
+            : undefined,
+        isRoot: false,
+      };
+      const child = await createNode(
+        childSpec,
+        `${path}/${childSpec.name}`,
+        childOptions,
+      );
+      node.appendChild(child);
+      applyAutoLayoutChildSizing(node, child, childSpec, `${path}/${childSpec.name}`);
+      applyChildPlacement(node, child, childSpec, `${path}/${childSpec.name}`);
+      if (child.type === "TEXT") {
+        applyTextAlignHorizontal(
+          child,
+          childSpec,
+          childOptions,
+          `${path}/${childSpec.name}`,
+        );
+      }
+      if (node.layoutMode === "NONE") {
+        child.x = safeNumber(childSpec.styles.x, 0);
+        child.y = safeNumber(childSpec.styles.y, 0);
+      }
+    }
+
+    return node;
+  }
+
+  async function ensureComponentDefinition(
+    spec: FigmaExportNode,
+    component: FigmaComponentReference,
+    path: string,
+    options: CreateNodeOptions = {},
+  ): Promise<ComponentNode> {
+    const existing = await findLocalComponent(component);
+    if (existing) {
+      if (
+        componentDefinitionRecords.has(component.key) &&
+        getNodePluginData(existing, COMPONENT_SPEC_HASH_PLUGIN_DATA_KEY) !==
+          getComponentSpecHash(spec)
+      ) {
+        warn(
+          `Duplicate variant name "${getComponentDisplayName(component)}" with different content at ${path}; the later design overwrote the earlier one. Give each export item a distinct figmaVariant.`,
+        );
+      }
+      syncExistingFrameFromSpec(existing, spec, path);
+      await syncExistingFrameChildrenFromSpec(existing, spec, path, {
+        ...options,
+        isRoot: false,
+        reuseComponents: true,
+      });
+      applyTextAlignmentFromSpec(existing, spec, options, path);
+      setNodePluginData(
+        existing,
+        COMPONENT_SPEC_HASH_PLUGIN_DATA_KEY,
+        getComponentSpecHash(spec),
+      );
+      trackComponentDefinition(existing, component);
+      if (component.variant && options.autoAttachComponentSet !== false) {
+        const componentSet = await attachVariantComponentToSet(existing, component);
+        if (componentSet) {
+          trackComponentSet(componentSet, component);
+        }
+      }
+      moveExistingComponentDefinitionToTargetPage(existing);
+      stats.reusedComponents += 1;
+      return existing;
+    }
+
+    const componentNode =
+      (spec.kind === "image" || spec.kind === "svg") && spec.svgText
+        ? figma.createComponentFromNode(createSvgSceneNode(spec, path))
+        : ((await createFrameNode(
+            spec,
+            path,
+            { ...options, autoAttachComponentSet: true, reuseComponents: true },
+            true,
+          )) as ComponentNode);
+    componentNode.name = getComponentDisplayName(component);
+    tagComponentNode(componentNode, component);
+    setNodePluginData(
+      componentNode,
+      COMPONENT_SPEC_HASH_PLUGIN_DATA_KEY,
+      getComponentSpecHash(spec),
+    );
+    componentRegistry.set(component.key, componentNode);
+    trackComponentDefinition(componentNode, component);
+    stats.componentsCreated += 1;
+    stats.nodesCreated += 1;
+
+    if (component.variant && options.autoAttachComponentSet !== false) {
+      const componentSet = await attachVariantComponentToSet(componentNode, component);
+      if (componentSet) {
+        trackComponentSet(componentSet, component);
+        return componentNode;
+      }
+    }
+
+    parkComponentDefinition(componentNode);
+    return componentNode;
+  }
+
+  async function createComponentInstance(
+    spec: FigmaExportNode,
+    component: FigmaComponentReference,
+    path: string,
+    options: CreateNodeOptions,
+  ): Promise<InstanceNode> {
+    const componentNode = await ensureComponentDefinition(spec, component, path, options);
+    const instance = componentNode.createInstance();
+    instance.name = component.name;
+    safeResize(instance, spec.styles.width, spec.styles.height, path);
+    instance.x = safeNumber(spec.styles.x, 0);
+    instance.y = safeNumber(spec.styles.y, 0);
+    return instance;
+  }
+
+  async function createComponentSetFromVariants(
+    root: FigmaExportNode,
+    fallbackName: string,
+  ): Promise<SceneNode> {
+    const componentSpecs = collectComponentDefinitionSpecs(root, root.name);
+    const variantSpecs = componentSpecs.filter((entry) =>
+      Boolean(entry.component.variant),
+    );
+    const variantGroups = groupVariantComponentSpecs(variantSpecs);
+    const variantGroup = chooseVariantGroup(variantGroups, fallbackName);
+
+    if (!variantGroup) {
+      const componentSpec = chooseComponentDefinitionSpec(componentSpecs, fallbackName);
+      if (componentSpec) {
+        return ensureComponentDefinition(
+          componentSpec.spec,
+          componentSpec.component,
+          componentSpec.path,
+          { autoAttachComponentSet: true, reuseComponents: true },
+        );
+      }
+
+      return createNode(root, root.name, {
+        isRoot: true,
+        reuseComponents: false,
+      });
+    }
+
+    const existingSet = await findExistingComponentSet(
+      variantGroup.map((entry) => entry.component),
+    );
+    if (existingSet) {
+      for (const entry of variantGroup) {
+        await ensureComponentDefinition(entry.spec, entry.component, entry.path, {
+          autoAttachComponentSet: true,
+          reuseComponents: true,
+        });
+      }
+      attachStandaloneVariantComponentsToSet(existingSet, variantGroup[0].component);
+      tagVariantComponentSet(existingSet, variantGroup[0].component);
+      normalizeComponentSetVariantNames(existingSet, variantGroup[0].component);
+      layoutVariantComponentSet(existingSet);
+      forceBrokerIconTextAlignment(existingSet);
+      trackComponentSet(existingSet, variantGroup[0].component);
+      return existingSet;
+    }
+
+    const componentNodes: ComponentNode[] = [];
+    for (const entry of variantGroup) {
+      const componentNode = await ensureComponentDefinition(
+        entry.spec,
+        entry.component,
+        entry.path,
+        {
+          autoAttachComponentSet: false,
+          reuseComponents: true,
+        },
+      );
+      prepareVariantNodeForComponentSet(componentNode, entry.component);
+      componentNodes.push(componentNode);
+    }
+
+    try {
+      const componentSet = figma.combineAsVariants(
+        getStandaloneVariantNodesForNewSet(componentNodes, variantGroup[0].component),
+        figma.currentPage,
+      );
+      componentSet.name = variantGroup[0].component.name || fallbackName;
+      tagVariantComponentSet(componentSet, variantGroup[0].component);
+      normalizeComponentSetVariantNames(componentSet, variantGroup[0].component);
+      layoutVariantComponentSet(componentSet);
+      forceBrokerIconTextAlignment(componentSet);
+      trackComponentSet(componentSet, variantGroup[0].component);
+      return componentSet;
+    } catch (error) {
+      warn(`Could not combine component variants: ${formatError(error)}`);
+      return createNode(root, root.name, {
+        isRoot: true,
+        reuseComponents: true,
+      });
+    }
+  }
+
+  function syncExistingFrameFromSpec(
+    node: FrameLikeNode,
+    spec: FigmaExportNode,
+    path: string,
+  ): void {
+    if (spec.kind !== "frame") return;
+
+    const styles = spec.styles;
+    const bindings = spec.bindings ?? {};
+
+    safeResize(node, styles.width, styles.height, path);
+    node.clipsContent = styles.overflow === "hidden" || styles.overflow === "clip";
+    node.opacity = clamp(safeNumber(styles.opacity, 1), 0, 1);
+    setFrameFills(node, styles, bindings, path);
+    setStrokes(node, styles, bindings, path);
+    applyRadius(node, styles, bindings, path);
+    applyAutoLayout(node, styles, bindings, path);
+
+    safeBind(node, "width", bindings.width, path);
+    safeBind(node, "height", bindings.height, path);
+    safeBind(node, "opacity", bindings.opacity, path);
+    if (!styles.borderSides) {
+      safeBind(node, "strokeWeight", bindings.borderWidth, path);
+    }
+  }
+
+  async function syncExistingFrameChildrenFromSpec(
+    node: FrameLikeNode,
+    spec: FigmaExportNode,
+    path: string,
+    options: CreateNodeOptions,
+  ): Promise<void> {
+    if (spec.kind !== "frame") return;
+
+    for (const child of [...node.children]) {
+      child.remove();
+    }
+
+    for (const childSpec of spec.children ?? []) {
+      const childOptions = {
+        ...options,
+        inferredTextAlignHorizontal:
+          childSpec.kind === "text"
+            ? getInferredChildTextAlignHorizontal(node)
+            : undefined,
+        isRoot: false,
+      };
+      const childPath = `${path}/${childSpec.name}`;
+      const child = await createNode(childSpec, childPath, childOptions);
+
+      node.appendChild(child);
+      applyAutoLayoutChildSizing(node, child, childSpec, childPath);
+      applyChildPlacement(node, child, childSpec, childPath);
+      if (child.type === "TEXT") {
+        applyTextAlignHorizontal(child, childSpec, childOptions, childPath);
+      }
+      if (node.layoutMode === "NONE") {
+        child.x = safeNumber(childSpec.styles.x, 0);
+        child.y = safeNumber(childSpec.styles.y, 0);
+      }
+    }
+  }
+
+  function collectComponentDefinitionSpecs(
+    node: FigmaExportNode,
+    path: string,
+    depth = 0,
+  ): VariantComponentSpec[] {
+    const entries: VariantComponentSpec[] = [];
+    if (node.component?.key && canCreateComponentDefinition(node)) {
+      entries.push({ component: node.component, depth, path, spec: node });
+    }
+
+    for (const child of node.children ?? []) {
+      entries.push(
+        ...collectComponentDefinitionSpecs(child, `${path}/${child.name}`, depth + 1),
+      );
+    }
+
+    return entries;
+  }
+
+  function collectPageComponentDefinitionSpecs(
+    root: FigmaExportNode,
+  ): VariantComponentSpec[] {
+    const seen = new Set<string>();
+    return collectComponentDefinitionSpecs(root, root.name).filter((entry) => {
+      if (entry.depth === 0) return false;
+      if (seen.has(entry.component.key)) return false;
+      seen.add(entry.component.key);
+      return true;
+    });
+  }
+
+  async function preparePageComponentDefinitions(root: FigmaExportNode): Promise<void> {
+    if (artifactKind !== "page") return;
+
+    for (const entry of collectPageComponentDefinitionSpecs(root)) {
+      await ensureComponentDefinition(entry.spec, entry.component, entry.path, {
+        reuseComponents: true,
+      });
+      stats.componentDefinitionsPrepared =
+        safeNumber(stats.componentDefinitionsPrepared, 0) + 1;
+    }
+  }
+
+  function chooseComponentDefinitionSpec(
+    entries: VariantComponentSpec[],
+    fallbackName: string,
+  ): VariantComponentSpec | undefined {
+    return [...entries].sort((a, b) => {
+      const preferredDelta =
+        Number(componentDefinitionMatchesFallback(b, fallbackName)) -
+        Number(componentDefinitionMatchesFallback(a, fallbackName));
+      if (preferredDelta !== 0) return preferredDelta;
+
+      const depthDelta = a.depth - b.depth;
+      if (depthDelta !== 0) return depthDelta;
+
+      return getComponentSpecArea(b) - getComponentSpecArea(a);
+    })[0];
+  }
+
+  function componentDefinitionMatchesFallback(
+    entry: VariantComponentSpec,
+    fallbackName: string,
+  ): boolean {
+    const expectedName = normalizeComponentIdentity(fallbackName);
+    if (!expectedName) return false;
+
+    return (
+      normalizeComponentIdentity(entry.component.name) === expectedName ||
+      normalizeComponentIdentity(entry.component.sourceName) === expectedName
+    );
+  }
+
+  function getComponentSpecArea(entry: VariantComponentSpec): number {
+    return (
+      Math.max(1, safeNumber(entry.spec.styles.width, 1)) *
+      Math.max(1, safeNumber(entry.spec.styles.height, 1))
+    );
+  }
+
+  function chooseVariantGroup(
+    groups: VariantComponentSpec[][],
+    fallbackName: string,
+  ): VariantComponentSpec[] | undefined {
+    return groups
+      .filter((group) => group.length >= 2)
+      .sort((a, b) => {
+        const preferredDelta =
+          Number(isPreferredVariantGroup(b, fallbackName)) -
+          Number(isPreferredVariantGroup(a, fallbackName));
+        if (preferredDelta !== 0) return preferredDelta;
+
+        const depthDelta = getVariantGroupDepth(a) - getVariantGroupDepth(b);
+        if (depthDelta !== 0) return depthDelta;
+
+        return b.length - a.length;
+      })[0];
+  }
+
+  function isPreferredVariantGroup(
+    group: VariantComponentSpec[],
+    fallbackName: string,
+  ): boolean {
+    const expectedName = normalizeComponentIdentity(fallbackName);
+    if (!expectedName) return false;
+
+    return group.some((entry) => {
+      return (
+        normalizeComponentIdentity(entry.component.name) === expectedName ||
+        normalizeComponentIdentity(entry.component.sourceName) === expectedName
+      );
+    });
+  }
+
+  function getVariantGroupDepth(group: VariantComponentSpec[]): number {
+    return Math.min(...group.map((entry) => entry.depth));
+  }
+
+  function normalizeComponentIdentity(value: string | undefined): string {
+    return String(value ?? "")
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "");
+  }
+
+  function groupVariantComponentSpecs(
+    entries: VariantComponentSpec[],
+  ): VariantComponentSpec[][] {
+    const groups = new Map<string, VariantComponentSpec[]>();
+    for (const entry of entries) {
+      const groupKey = entry.component.sourceName || entry.component.name;
+      const group = groups.get(groupKey) ?? [];
+      group.push(entry);
+      groups.set(groupKey, group);
+    }
+    return Array.from(groups.values());
+  }
+
+  async function findExistingComponentSet(
+    components: FigmaComponentReference[],
+  ): Promise<ComponentSetNode | undefined> {
+    for (const component of components) {
+      const existing = await findLocalComponent(component);
+      if (existing?.parent?.type === "COMPONENT_SET") {
+        return existing.parent;
+      }
+    }
+    return components[0] ? findVariantComponentSet(components[0]) : undefined;
+  }
+
+  async function findLocalComponent(
+    component: FigmaComponentReference,
+  ): Promise<ComponentNode | undefined> {
+    const cached = componentRegistry.get(component.key);
+    if (cached) return cached;
+
+    await figma.loadAllPagesAsync();
+    const found = collectComponentNodes(figma.root).find((node) => {
+        if (getNodePluginData(node, componentPluginDataKey) === component.key) {
+          return true;
+        }
+        return componentNodeMatchesReference(node, component);
+      });
+
+    if (found) componentRegistry.set(component.key, found);
+    return found;
+  }
+
+  function organizeComponentDependencySections(
+    rootNode: SceneNode,
+    targetPage: PageNode,
+  ): SectionNode[] {
+    const excludedNodeIds = collectSceneNodeIds(rootNode);
+    const targets = collectDependencySectionTargets(excludedNodeIds);
+    return targets.map((target) =>
+      placeNodeInComponentSection(target.node, targetPage, target),
+    );
+  }
+
+  function collectDependencySectionTargets(
+    excludedNodeIds: Set<string>,
+  ): ComponentSectionTarget[] {
+    const targets = new Map<string, ComponentSectionTarget>();
+
+    for (const record of Array.from(componentDefinitionRecords.values())) {
+      const node = getComponentDefinitionSectionNode(record.node);
+      if (shouldSkipComponentSectionNode(node, excludedNodeIds)) continue;
+
+      const sectionKey = getComponentReferenceSectionKey(record.component);
+      const existing = targets.get(sectionKey);
+      if (existing?.node.type === "COMPONENT_SET") continue;
+
+      targets.set(sectionKey, {
+        key: sectionKey,
+        name: getComponentReferenceSectionName(record.component),
+        node,
+        role: "dependency",
+      });
+    }
+
+    for (const record of Array.from(componentSetRecords.values())) {
+      if (shouldSkipComponentSectionNode(record.node, excludedNodeIds)) continue;
+
+      const sectionKey = getComponentReferenceSectionKey(record.component);
+      targets.set(sectionKey, {
+        key: sectionKey,
+        name: getComponentReferenceSectionName(record.component),
+        node: record.node,
+        role: "dependency",
+      });
+    }
+
+    return Array.from(targets.values()).sort((a, b) =>
+      a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }),
+    );
+  }
+
+  function trackComponentDefinition(
+    node: ComponentNode,
+    component: FigmaComponentReference,
+  ): void {
+    componentDefinitionRecords.set(component.key, { component, node });
+    if (node.parent?.type === "COMPONENT_SET") {
+      trackComponentSet(node.parent, component);
+    }
+  }
+
+  function trackComponentSet(
+    node: ComponentSetNode,
+    component: FigmaComponentReference,
+  ): void {
+    componentSetRecords.set(getComponentReferenceSectionKey(component), {
+      component,
+      node,
+    });
+  }
+
+  function getComponentDefinitionSectionNode(
+    node: ComponentNode,
+  ): ComponentNode | ComponentSetNode {
+    return node.parent?.type === "COMPONENT_SET" ? node.parent : node;
+  }
+
+  function shouldSkipComponentSectionNode(
+    node: ComponentNode | ComponentSetNode,
+    excludedNodeIds: Set<string>,
+  ): boolean {
+    return node.removed || excludedNodeIds.has(node.id);
+  }
+
+  async function attachVariantComponentToSet(
+    componentNode: ComponentNode,
+    component: FigmaComponentReference,
+  ): Promise<ComponentSetNode | undefined> {
+    const existingSet = await findVariantComponentSet(component);
+    if (existingSet) {
+      prepareVariantNodeForComponentSet(componentNode, component);
+      if (componentNode.parent === existingSet) {
+        tagVariantComponentSet(existingSet, component);
+        normalizeComponentSetVariantNames(existingSet, component);
+        layoutVariantComponentSet(existingSet);
+        forceBrokerIconTextAlignment(existingSet);
+        moveComponentDefinitionNodeToTargetPage(existingSet);
+        return existingSet;
+      }
+
+      try {
+        existingSet.appendChild(componentNode);
+        tagVariantComponentSet(existingSet, component);
+        normalizeComponentSetVariantNames(existingSet, component);
+        layoutVariantComponentSet(existingSet);
+        forceBrokerIconTextAlignment(existingSet);
+        moveComponentDefinitionNodeToTargetPage(existingSet);
+        return existingSet;
+      } catch (error) {
+        warn(
+          `Could not append ${component.key} to component set ${existingSet.name}: ${formatError(error)}`,
+        );
+      }
+    }
+
+    if (artifactKind === "page") {
+      moveComponentDefinitionNodeToTargetPage(componentNode);
+    }
+    const siblingComponents = findStandaloneVariantComponents(component).filter(
+      (node) => node !== componentNode,
+    );
+    if (siblingComponents.length === 0) return undefined;
+
+    try {
+      const targetParent = getAncestorPage(componentNode) ?? figma.currentPage;
+      const variantNodes = [...siblingComponents, componentNode];
+      for (const node of variantNodes) {
+        prepareVariantNodeForComponentSet(
+          node,
+          getStoredComponentReference(node, component),
+        );
+        if (node.parent !== targetParent) {
+          targetParent.appendChild(node);
+        }
+      }
+      const componentSet = figma.combineAsVariants(
+        variantNodes,
+        targetParent,
+      );
+      componentSet.name = component.name;
+      tagVariantComponentSet(componentSet, component);
+      normalizeComponentSetVariantNames(componentSet, component);
+      layoutVariantComponentSet(componentSet);
+      forceBrokerIconTextAlignment(componentSet);
+      moveComponentDefinitionNodeToTargetPage(componentSet);
+      return componentSet;
+    } catch (error) {
+      warn(
+        `Could not combine ${component.name} variants into a component set: ${formatError(error)}`,
+      );
+      return undefined;
+    }
+  }
+
+  async function findVariantComponentSet(
+    component: FigmaComponentReference,
+  ): Promise<ComponentSetNode | undefined> {
+    await figma.loadAllPagesAsync();
+    return collectComponentSetNodes(figma.root).find((node) =>
+      componentSetMatchesVariantGroup(node, component),
+    );
+  }
+
+  function findStandaloneVariantComponents(
+    component: FigmaComponentReference,
+  ): ComponentNode[] {
+    return collectComponentNodes(figma.root).filter((node) => {
+      return (
+        node.parent?.type !== "COMPONENT_SET" &&
+        componentNodeMatchesVariantGroup(node, component)
+      );
+    });
+  }
+
+  function collectComponentNodes(node: BaseNode): ComponentNode[] {
+    const components: ComponentNode[] = [];
+    if (node.type === "COMPONENT") {
+      components.push(node as ComponentNode);
+    }
+
+    const children = (node as NodeWithChildren).children;
+    if (children) {
+      for (const child of children) {
+        components.push(...collectComponentNodes(child));
+      }
+    }
+
+    return components;
+  }
+
+  function collectComponentSetNodes(node: BaseNode): ComponentSetNode[] {
+    const componentSets: ComponentSetNode[] = [];
+    if (node.type === "COMPONENT_SET") {
+      componentSets.push(node as ComponentSetNode);
+    }
+
+    const children = (node as NodeWithChildren).children;
+    if (children) {
+      for (const child of children) {
+        componentSets.push(...collectComponentSetNodes(child));
+      }
+    }
+
+    return componentSets;
+  }
+
+  function componentSetMatchesVariantGroup(
+    node: ComponentSetNode,
+    component: FigmaComponentReference,
+  ): boolean {
+    if (
+      normalizeComponentIdentity(getNodePluginData(node, "storybookComponentSource")) ===
+        normalizeComponentIdentity(component.sourceName || component.name) ||
+      normalizeComponentIdentity(getNodePluginData(node, "storybookComponentName")) ===
+        normalizeComponentIdentity(component.name)
+    ) {
+      return true;
+    }
+
+    if (
+      normalizeComponentIdentity(node.name) ===
+        normalizeComponentIdentity(component.name) ||
+      normalizeComponentIdentity(node.name) ===
+        normalizeComponentIdentity(component.sourceName)
+    ) {
+      return true;
+    }
+
+    return node.children.some((child) => {
+      return (
+        child.type === "COMPONENT" &&
+        componentNodeMatchesVariantGroup(child, component)
+      );
+    });
+  }
+
+  function componentNodeMatchesReference(
+    node: ComponentNode,
+    component: FigmaComponentReference,
+  ): boolean {
+    const variantDisplayName = getVariantPropertyDisplayName(component);
+    return (
+      node.name === getComponentDisplayName(component) ||
+      (Boolean(variantDisplayName) &&
+        node.name === variantDisplayName &&
+        node.parent?.type === "COMPONENT_SET" &&
+        componentSetMatchesVariantGroup(node.parent, component)) ||
+      (!component.variant && node.name === component.name)
+    );
+  }
+
+  function componentNodeMatchesVariantGroup(
+    node: ComponentNode,
+    component: FigmaComponentReference,
+  ): boolean {
+    const expectedSource = normalizeComponentIdentity(
+      component.sourceName || component.name,
+    );
+    const expectedName = normalizeComponentIdentity(component.name);
+    const source = normalizeComponentIdentity(
+      getNodePluginData(node, "storybookComponentSource"),
+    );
+    const name = normalizeComponentIdentity(
+      getNodePluginData(node, "storybookComponentName"),
+    );
+
+    if (source && source === expectedSource) return true;
+    if (name && name === expectedName) return true;
+
+    const baseName = normalizeComponentIdentity(node.name.split(",")[0]);
+    return baseName === expectedName || baseName === expectedSource;
+  }
+
+  function tagComponentNode(
+    node: ComponentNode,
+    component: FigmaComponentReference,
+  ): void {
+    setNodePluginData(node, componentPluginDataKey, component.key);
+    setNodePluginData(node, "storybookComponentName", component.name);
+    setNodePluginData(
+      node,
+      "storybookComponentSource",
+      component.sourceName || component.key,
+    );
+    if (component.variant) {
+      setNodePluginData(node, "storybookComponentVariant", component.variant);
+    }
+    if (component.variantProperties) {
+      setNodePluginData(
+        node,
+        "storybookComponentVariantProperties",
+        JSON.stringify(component.variantProperties),
+      );
+    }
+  }
+
+  function tagVariantComponentSet(
+    node: ComponentSetNode,
+    component: FigmaComponentReference,
+  ): void {
+    setNodePluginData(node, "storybookComponentName", component.name);
+    setNodePluginData(
+      node,
+      "storybookComponentSource",
+      component.sourceName || component.name,
+    );
+  }
+
+  function attachStandaloneVariantComponentsToSet(
+    componentSet: ComponentSetNode,
+    component: FigmaComponentReference,
+  ): void {
+    const existingVariantIdentities = getComponentSetVariantIdentities(componentSet);
+
+    for (const node of findStandaloneVariantComponents(component)) {
+      const nodeComponent = getStoredComponentReference(node, component);
+      const variantIdentity = getComponentVariantIdentity(nodeComponent);
+      if (variantIdentity && existingVariantIdentities.has(variantIdentity)) continue;
+
+      try {
+        prepareVariantNodeForComponentSet(node, nodeComponent);
+        componentSet.appendChild(node);
+        if (variantIdentity) existingVariantIdentities.add(variantIdentity);
+      } catch (error) {
+        warn(
+          `Could not attach existing standalone variant ${node.name} to ${componentSet.name}: ${formatError(error)}`,
+        );
+      }
+    }
+  }
+
+  function getStandaloneVariantNodesForNewSet(
+    componentNodes: ComponentNode[],
+    component: FigmaComponentReference,
+  ): ComponentNode[] {
+    const nodes = uniqueComponentNodes([
+      ...findStandaloneVariantComponents(component),
+      ...componentNodes,
+    ]);
+
+    for (const node of nodes) {
+      prepareVariantNodeForComponentSet(
+        node,
+        getStoredComponentReference(node, component),
+      );
+      if (node.parent !== figma.currentPage) {
+        figma.currentPage.appendChild(node);
+      }
+    }
+
+    return nodes;
+  }
+
+  function uniqueComponentNodes(nodes: ComponentNode[]): ComponentNode[] {
+    const seen = new Set<string>();
+    const result: ComponentNode[] = [];
+    for (const node of nodes) {
+      if (seen.has(node.id)) continue;
+      seen.add(node.id);
+      result.push(node);
+    }
+    return result;
+  }
+
+  function normalizeComponentSetVariantNames(
+    componentSet: ComponentSetNode,
+    fallbackComponent: FigmaComponentReference,
+  ): void {
+    for (const child of componentSet.children) {
+      if (child.type !== "COMPONENT") continue;
+      prepareVariantNodeForComponentSet(
+        child,
+        getStoredComponentReference(child, fallbackComponent),
+      );
+    }
+  }
+
+  function prepareVariantNodeForComponentSet(
+    node: ComponentNode,
+    component: FigmaComponentReference,
+  ): void {
+    const variantName = getVariantPropertyDisplayName(component);
+    if (variantName) {
+      node.name = variantName;
+    }
+    tagComponentNode(node, component);
+  }
+
+  function getStoredComponentReference(
+    node: ComponentNode,
+    fallbackComponent: FigmaComponentReference,
+  ): FigmaComponentReference {
+    const key = getNodePluginData(node, componentPluginDataKey) || fallbackComponent.key;
+    const name =
+      getNodePluginData(node, "storybookComponentName") || fallbackComponent.name;
+    const sourceName =
+      getNodePluginData(node, "storybookComponentSource") ||
+      fallbackComponent.sourceName ||
+      name;
+    const variant =
+      getNodePluginData(node, "storybookComponentVariant") ||
+      fallbackComponent.variant;
+    const variantProperties =
+      getStoredVariantProperties(node) || fallbackComponent.variantProperties;
+
+    return {
+      key,
+      name,
+      sourceName,
+      variant,
+      variantProperties,
+    };
+  }
+
+  function getComponentSetVariantIdentities(
+    componentSet: ComponentSetNode,
+  ): Set<string> {
+    const identities = new Set<string>();
+    for (const child of componentSet.children) {
+      if (child.type !== "COMPONENT") continue;
+      const identity = getComponentVariantIdentity(
+        getStoredComponentReference(child, {
+          key: "",
+          name: componentSet.name,
+          sourceName: componentSet.name,
+        }),
+      );
+      if (identity) identities.add(identity);
+    }
+    return identities;
+  }
+
+  function getComponentVariantIdentity(
+    component: FigmaComponentReference,
+  ): string | undefined {
+    const variantProperties =
+      component.variantProperties && Object.keys(component.variantProperties).length > 0
+        ? component.variantProperties
+        : component.variant
+          ? { Variant: component.variant }
+          : undefined;
+
+    if (!variantProperties) return undefined;
+
+    return Object.keys(variantProperties)
+      .sort((a, b) => a.localeCompare(b))
+      .map((name) => `${name}:${variantProperties[name]}`)
+      .join("|");
+  }
+
+  function layoutVariantComponentSet(node: ComponentSetNode): void {
+    const variantNodes = sortVariantComponents(
+      node.children.filter((child): child is ComponentNode => child.type === "COMPONENT"),
+    );
+    if (variantNodes.length === 0) return;
+
+    const grid = getComponentSetGridMetrics(variantNodes);
+    const rows = Math.ceil(variantNodes.length / grid.columns);
+    const width = grid.columns * grid.cellWidth + (grid.columns - 1) * grid.gap;
+    const height = rows * grid.cellHeight + (rows - 1) * grid.gap;
+
+    for (let index = 0; index < variantNodes.length; index += 1) {
+      const child = variantNodes[index];
+      const column = index % grid.columns;
+      const row = Math.floor(index / grid.columns);
+      const offsetX = Math.max(0, (grid.cellWidth - safeNumber(child.width, 0)) / 2);
+      const offsetY = Math.max(0, (grid.cellHeight - safeNumber(child.height, 0)) / 2);
+      child.x = column * (grid.cellWidth + grid.gap) + offsetX;
+      child.y = row * (grid.cellHeight + grid.gap) + offsetY;
+    }
+
+    safeResizeWithoutConstraints(
+      node,
+      Math.max(1, width),
+      Math.max(1, height),
+      `${node.name}.componentSetGrid`,
+    );
+  }
+
+  function sortVariantComponents(children: ComponentNode[]): ComponentNode[] {
+    return [...children].sort((a, b) =>
+      getVariantComponentSortKey(a).localeCompare(
+        getVariantComponentSortKey(b),
+        undefined,
+        { numeric: true, sensitivity: "base" },
+      ),
+    );
+  }
+
+  function getVariantComponentSortKey(node: ComponentNode): string {
+    const variantProperties = getReadableVariantProperties(node);
+    if (variantProperties) {
+      return Object.keys(variantProperties)
+        .sort((a, b) => a.localeCompare(b))
+        .map((name) => `${name}:${variantProperties[name]}`)
+        .join("|");
+    }
+
+    return getNodePluginData(node, "storybookComponentVariant") || node.name;
+  }
+
+  function getReadableVariantProperties(
+    node: ComponentNode,
+  ): Record<string, string> | undefined {
+    const storedVariantProperties = getStoredVariantProperties(node);
+
+    try {
+      return node.variantProperties ?? storedVariantProperties;
+    } catch (error) {
+      if (!warnedVariantPropertyNodeIds.has(node.id)) {
+        warnedVariantPropertyNodeIds.add(node.id);
+        warn(
+          `Could not read Figma variant properties for ${node.name}; using Storybook variant metadata instead: ${formatError(error)}`,
+        );
+      }
+      return storedVariantProperties;
+    }
+  }
+
+  function getStoredVariantProperties(
+    node: ComponentNode,
+  ): Record<string, string> | undefined {
+    const rawValue = getNodePluginData(node, "storybookComponentVariantProperties");
+    if (!rawValue) return undefined;
+
+    try {
+      const parsed = JSON.parse(rawValue);
+      if (!isRecord(parsed)) return undefined;
+
+      const result: Record<string, string> = {};
+      for (const [key, value] of Object.entries(parsed)) {
+        if (typeof value === "string") {
+          result[key] = value;
+        }
+      }
+
+      return Object.keys(result).length > 0 ? result : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  function getComponentSetGridMetrics(children: ComponentNode[]): {
+    cellHeight: number;
+    cellWidth: number;
+    columns: number;
+    gap: number;
+  } {
+    const maxWidth = Math.max(...children.map((child) => safeNumber(child.width, 1)));
+    const maxHeight = Math.max(...children.map((child) => safeNumber(child.height, 1)));
+    const maxSize = Math.max(maxWidth, maxHeight);
+    const maxColumns =
+      maxSize <= COMPONENT_SET_GRID_COMPACT_MAX_SIZE
+        ? COMPONENT_SET_GRID_COMPACT_COLUMNS
+        : maxSize <= COMPONENT_SET_GRID_MEDIUM_MAX_SIZE
+          ? COMPONENT_SET_GRID_MEDIUM_COLUMNS
+          : 1;
+
+    return {
+      cellHeight: Math.max(COMPONENT_SET_GRID_MIN_CELL_HEIGHT, maxHeight),
+      cellWidth: Math.max(COMPONENT_SET_GRID_MIN_CELL_WIDTH, maxWidth),
+      columns: Math.max(1, Math.min(maxColumns, children.length)),
+      gap: COMPONENT_SET_GRID_GAP,
+    };
+  }
+
+  function parkComponentDefinition(node: ComponentNode): void {
+    if (artifactKind === "page") {
+      moveComponentDefinitionNodeToTargetPage(getComponentDefinitionSectionNode(node));
+      return;
+    }
+
+    const rootWidth = safeNumber(payload.root.styles.width, 0);
+    node.x = rootWidth + 80;
+    node.y = stats.componentsCreated * 24;
+  }
+
+  function getComponentDefinitionParentPage(): PageNode {
+    if (artifactKind !== "page") return figma.currentPage;
+
+    const pageName =
+      payload.componentSystem?.componentsPageName?.trim() || COMPONENTS_PAGE_NAME;
+    const existing = figma.root.children.find(
+      (page) => page.name.toLowerCase() === pageName.toLowerCase(),
+    );
+    if (existing) return existing;
+
+    const page = figma.createPage();
+    page.name = pageName;
+    return page;
+  }
+
+  function getNextComponentDefinitionY(page: PageNode): number {
+    if (componentDefinitionOffsetY === 0 && page.children.length > 0) {
+      componentDefinitionOffsetY = page.children.reduce((maxBottom, child) => {
+        const childNode = child as SceneNode & { height?: number; y?: number };
+        const bottom = safeNumber(childNode.y, 0) + safeNumber(childNode.height, 0);
+        return Math.max(maxBottom, bottom);
+      }, 0);
+      if (componentDefinitionOffsetY > 0) componentDefinitionOffsetY += 24;
+    }
+
+    return componentDefinitionOffsetY;
+  }
+
+  function moveComponentDefinitionNodeToTargetPage(
+    node: ComponentNode | ComponentSetNode,
+  ): void {
+    if (artifactKind !== "page") return;
+
+    const parentPage = getComponentDefinitionParentPage();
+    if (getAncestorPage(node)?.id === parentPage.id) return;
+
+    const nextY = getNextComponentDefinitionY(parentPage);
+    parentPage.appendChild(node);
+    node.x = 0;
+    node.y = nextY;
+    componentDefinitionOffsetY = nextY + safeNumber(node.height, 0) + 24;
+  }
+
+  function moveExistingComponentDefinitionToTargetPage(
+    componentNode: ComponentNode,
+  ): void {
+    if (artifactKind !== "page") return;
+    moveComponentDefinitionNodeToTargetPage(getComponentDefinitionSectionNode(componentNode));
+  }
+
+  function getAncestorPage(node: BaseNode): PageNode | undefined {
+    let parent: BaseNode | null = node.parent;
+    while (parent) {
+      if (parent.type === "PAGE") return parent as PageNode;
+      parent = parent.parent;
+    }
+    return undefined;
+  }
+
+  async function createTextNode(
+    spec: FigmaExportNode,
+    path: string,
+    options: CreateNodeOptions,
+  ): Promise<TextNode> {
+    const node = figma.createText();
+    const styles = spec.styles;
+    const bindings = spec.bindings ?? {};
+
+    node.name = spec.name || "text";
+    node.fontName = await loadTextFont(styles, path);
+    node.characters = spec.text ?? "";
+    node.fontSize = safeNumber(styles.fontSize, 14);
+    node.textAutoResize = "NONE";
+    applyTextAlignHorizontal(node, spec, options, path);
+    applyTextAlignVertical(node, styles.textAlignVertical, path);
+    if (typeof styles.lineHeight === "number") {
+      node.lineHeight = {
+        unit: "PIXELS",
+        value: styles.lineHeight,
+      };
+    }
+    node.fills = [solidPaint(styles.color, bindings.textColor, `${path}.textColor`)];
+    safeResize(node, styles.width, styles.height, path);
+    applyTextAutoResize(node, styles.textAutoResize, path);
+    applyTextTruncation(node, styles, path);
+    applyTextAlignHorizontal(node, spec, options, path);
+
+    safeBind(node, "width", bindings.width, path);
+    safeBind(node, "height", bindings.height, path);
+    await safeBindFontFamily(
+      node,
+      bindings.fontFamily,
+      styles.fontWeight ?? 400,
+      path,
+    );
+    safeBind(node, "fontSize", bindings.fontSize, path);
+    safeBind(node, "fontWeight", bindings.fontWeight, path);
+    safeBind(node, "lineHeight", bindings.lineHeight, path);
+
+    return node;
+  }
+
+  function createImageNode(spec: FigmaExportNode, path: string): FrameNode {
+    const wrapper = figma.createFrame();
+    const bindings = spec.bindings ?? {};
+
+    wrapper.name = spec.name || "image";
+    wrapper.fills = [];
+    wrapper.clipsContent = spec.styles.overflow === "hidden" || spec.styles.overflow === "clip";
+    safeResize(wrapper, spec.styles.width, spec.styles.height, path);
+    safeBind(wrapper, "width", bindings.width, path);
+    safeBind(wrapper, "height", bindings.height, path);
+    safeBind(wrapper, "opacity", bindings.opacity, path);
+
+    if (spec.svgText) {
+      try {
+        const svgNode = figma.createNodeFromSvg(spec.svgText);
+        svgNode.name = `${wrapper.name}/svg`;
+        safeResize(svgNode, spec.styles.width, spec.styles.height, `${path}/svg`);
+        svgNode.x = 0;
+        svgNode.y = 0;
+        wrapper.appendChild(svgNode);
+        stats.nodesCreated += 1;
+      } catch (error) {
+        warn(`Could not create SVG for ${path}: ${formatError(error)}`);
+      }
+    } else {
+      warn(`Image ${path} has no SVG payload; created an empty image frame.`);
+    }
+
+    return wrapper;
+  }
+
+  function createSvgSceneNode(spec: FigmaExportNode, path: string): FrameNode {
+    const svgNode = figma.createNodeFromSvg(spec.svgText || "");
+    svgNode.name = spec.name || "svg";
+    safeResize(svgNode, spec.styles.width, spec.styles.height, path);
+    svgNode.x = safeNumber(spec.styles.x, 0);
+    svgNode.y = safeNumber(spec.styles.y, 0);
+    return svgNode;
+  }
+
+  function canCreateComponentDefinition(spec: FigmaExportNode): boolean {
+    return (
+      spec.kind === "frame" ||
+      ((spec.kind === "image" || spec.kind === "svg") && Boolean(spec.svgText))
+    );
+  }
+
+  function setFrameFills(
+    node: FrameLikeNode,
+    styles: FigmaExportNode["styles"],
+    bindings: Partial<Record<FigmaBindingName, string>>,
+    path: string,
+  ): void {
+    if (styles.backgroundLinearGradient) {
+      node.fills = [linearGradientPaint(styles.backgroundLinearGradient, path)];
+      return;
+    }
+
+    if (!styles.backgroundColor && !bindings.backgroundColor) {
+      node.fills = [];
+      return;
+    }
+
+    node.fills = [
+      solidPaint(styles.backgroundColor, bindings.backgroundColor, `${path}.fill`),
+    ];
+  }
+
+  function getLinearGradientTransform(angle: number): Transform {
+    const normalized = ((angle % 360) + 360) % 360;
+    if (normalized === 270) return [[-1, 0, 1], [0, 1, 0]];
+    if (normalized === 180) return [[0, 1, 0], [-1, 0, 1]];
+    if (normalized === 0) return [[0, -1, 1], [1, 0, 0]];
+    return [[1, 0, 0], [0, 1, 0]];
+  }
+
+  function linearGradientPaint(
+    gradient: FigmaExportLinearGradient,
+    path: string,
+  ): GradientPaint {
+    return {
+      gradientStops: gradient.stops.map((stop, index) =>
+        linearGradientStop(stop, index, gradient.stops.length, path),
+      ),
+      gradientTransform: getLinearGradientTransform(safeNumber(gradient.angle, 90)),
+      type: "GRADIENT_LINEAR",
+    };
+  }
+
+  function linearGradientStop(
+    stop: FigmaExportGradientStop,
+    index: number,
+    stopCount: number,
+    path: string,
+  ): ColorStop {
+    const colorStop: ColorStop = {
+      color: cloneColor(colorFromCss(stop.color)),
+      position:
+        typeof stop.position === "number"
+          ? clamp(stop.position, 0, 1)
+          : stopCount > 1
+            ? index / (stopCount - 1)
+            : 0,
+    };
+
+    if (!stop.token) return colorStop;
+
+    const variable = registry.get(stop.token);
+    if (!variable) {
+      warn(`Missing variable for ${path}.fill.gradientStops.${index}: ${stop.token}`);
+      return colorStop;
+    }
+
+    if (variable.resolvedType !== "COLOR") {
+      warn(
+        `Cannot bind ${path}.fill.gradientStops.${index} to non-color variable ${stop.token}`,
+      );
+      return colorStop;
+    }
+
+    return {
+      ...colorStop,
+      boundVariables: {
+        color: figma.variables.createVariableAlias(variable),
+      },
+    };
+  }
+
+  function setStrokes(
+    node: FrameLikeNode,
+    styles: FigmaExportNode["styles"],
+    bindings: Partial<Record<FigmaBindingName, string>>,
+    path: string,
+  ): void {
+    if (styles.borderSides) {
+      setBorderSideStrokes(node, styles.borderSides, bindings, path);
+      return;
+    }
+
+    if (!styles.borderColor && !bindings.borderColor) return;
+
+    node.strokes = [
+      solidPaint(styles.borderColor, bindings.borderColor, `${path}.stroke`),
+    ];
+    node.strokeAlign = "INSIDE";
+    if (typeof styles.borderWidth === "number") {
+      node.strokeWeight = styles.borderWidth;
+    }
+  }
+
+  function setBorderSideStrokes(
+    node: FrameLikeNode,
+    sides: FigmaExportBorderSides,
+    bindings: Partial<Record<FigmaBindingName, string>>,
+    path: string,
+  ): void {
+    const sideNames: FigmaBorderSideName[] = ["top", "right", "bottom", "left"];
+    const firstSide = sideNames
+      .map((side) => sides[side])
+      .find((side): side is FigmaExportBorderSide => Boolean(side));
+    if (!firstSide) return;
+
+    node.strokes = [
+      solidPaint(firstSide.color, bindings.borderColor, `${path}.stroke`),
+    ];
+    node.strokeAlign = "INSIDE";
+    node.strokeTopWeight = safeNumber(sides.top?.width, 0);
+    node.strokeRightWeight = safeNumber(sides.right?.width, 0);
+    node.strokeBottomWeight = safeNumber(sides.bottom?.width, 0);
+    node.strokeLeftWeight = safeNumber(sides.left?.width, 0);
+
+    if (bindings.borderWidth) {
+      if (sides.top) safeBind(node, "strokeTopWeight", bindings.borderWidth, path);
+      if (sides.right) safeBind(node, "strokeRightWeight", bindings.borderWidth, path);
+      if (sides.bottom) {
+        safeBind(node, "strokeBottomWeight", bindings.borderWidth, path);
+      }
+      if (sides.left) safeBind(node, "strokeLeftWeight", bindings.borderWidth, path);
+    }
+  }
+
+  function solidPaint(
+    cssValue: string | undefined,
+    tokenName: string | undefined,
+    path: string,
+  ): SolidPaint {
+    const cssColor = colorFromCss(cssValue);
+    const paint: SolidPaint = {
+      color: {
+        b: cssColor.b,
+        g: cssColor.g,
+        r: cssColor.r,
+      },
+      opacity: cssColor.a,
+      type: "SOLID",
+    };
+
+    if (!tokenName) return paint;
+
+    const variable = registry.get(tokenName);
+    if (!variable) {
+      warn(`Missing variable for ${path}: ${tokenName}`);
+      return paint;
+    }
+
+    if (variable.resolvedType !== "COLOR") {
+      warn(`Cannot bind ${path} to non-color variable ${tokenName}`);
+      return paint;
+    }
+
+    try {
+      return figma.variables.setBoundVariableForPaint(paint, "color", variable);
+    } catch (error) {
+      warn(`Could not bind paint ${path} to ${tokenName}: ${formatError(error)}`);
+      return paint;
+    }
+  }
+
+  function applyRadius(
+    node: FrameLikeNode,
+    styles: FigmaExportNode["styles"],
+    bindings: Partial<Record<FigmaBindingName, string>>,
+    path: string,
+  ): void {
+    if (typeof styles.radius === "number") {
+      node.cornerRadius = styles.radius;
+    }
+
+    safeBindRadius(node, bindings.cornerRadius, path);
+  }
+
+  function applyAutoLayout(
+    node: FrameLikeNode,
+    styles: FigmaExportNode["styles"],
+    bindings: Partial<Record<FigmaBindingName, string>>,
+    path: string,
+  ): void {
+    if (!String(styles.display ?? "").includes("flex")) return;
+
+    const primaryAxisAlignItems = mapAxisAlignment(styles.justifyContent);
+
+    node.layoutMode = String(styles.flexDirection ?? "").startsWith("column")
+      ? "VERTICAL"
+      : "HORIZONTAL";
+    const isHorizontalLayout = node.layoutMode === "HORIZONTAL";
+    const horizontalSizingMode =
+      styles.layoutSizingHorizontal === "HUG" ? "AUTO" : "FIXED";
+    const verticalSizingMode =
+      styles.layoutSizingVertical === "HUG" ? "AUTO" : "FIXED";
+    node.primaryAxisSizingMode = isHorizontalLayout
+      ? horizontalSizingMode
+      : verticalSizingMode;
+    node.counterAxisSizingMode = isHorizontalLayout
+      ? verticalSizingMode
+      : horizontalSizingMode;
+    node.counterAxisAlignItems = mapCounterAlignment(styles.alignItems);
+    node.itemSpacing =
+      primaryAxisAlignItems === "SPACE_BETWEEN" ? 0 : safeNumber(styles.gap, 0);
+    node.paddingLeft = safeNumber(styles.paddingLeft, 0);
+    node.paddingRight = safeNumber(styles.paddingRight, 0);
+    node.paddingTop = safeNumber(styles.paddingTop, 0);
+    node.paddingBottom = safeNumber(styles.paddingBottom, 0);
+    node.primaryAxisAlignItems = primaryAxisAlignItems;
+
+    if (primaryAxisAlignItems !== "SPACE_BETWEEN") {
+      safeBind(node, "itemSpacing", bindings.gap, path);
+    }
+    safeBind(node, "paddingLeft", bindings.paddingLeft, path);
+    safeBind(node, "paddingRight", bindings.paddingRight, path);
+    safeBind(node, "paddingTop", bindings.paddingTop, path);
+    safeBind(node, "paddingBottom", bindings.paddingBottom, path);
+  }
+
+  function applyChildPlacement(
+    parent: FrameLikeNode,
+    child: SceneNode,
+    spec: FigmaExportNode,
+    path: string,
+  ): void {
+    if (spec.styles.outOfFlow && parent.layoutMode !== "NONE") {
+      try {
+        (child as SceneNode & { layoutPositioning: "ABSOLUTE" | "AUTO" }).layoutPositioning =
+          "ABSOLUTE";
+        child.x = safeNumber(spec.styles.x, 0);
+        child.y = safeNumber(spec.styles.y, 0);
+      } catch (error) {
+        warn(`Could not absolutely position ${path}: ${formatError(error)}`);
+      }
+    }
+
+    applyConstraints(child, spec.styles.constraints, path);
+  }
+
+  function applyConstraints(
+    child: SceneNode,
+    constraints: FigmaExportConstraints | undefined,
+    path: string,
+  ): void {
+    if (!constraints) return;
+
+    try {
+      (child as SceneNode & { constraints: Constraints }).constraints = {
+        horizontal: constraints.horizontal,
+        vertical: constraints.vertical,
+      };
+    } catch (error) {
+      warn(`Could not set constraints for ${path}: ${formatError(error)}`);
+    }
+  }
+
+  function applyAutoLayoutChildSizing(
+    parent: FrameLikeNode,
+    child: SceneNode,
+    spec: FigmaExportNode,
+    path: string,
+  ): void {
+    if (parent.layoutMode === "NONE") return;
+    if (spec.styles.outOfFlow) return;
+
+    if (spec.styles.layoutAlign === "STRETCH") {
+      try {
+        (child as SceneNode & { layoutAlign: "STRETCH" }).layoutAlign = "STRETCH";
+      } catch (error) {
+        warn(`Could not set ${path}.layoutAlign to STRETCH: ${formatError(error)}`);
+      }
+    }
+
+    if (spec.styles.layoutGrow === 1) {
+      try {
+        (child as SceneNode & { layoutGrow: number }).layoutGrow = 1;
+      } catch (error) {
+        warn(`Could not set ${path}.layoutGrow to 1: ${formatError(error)}`);
+      }
+    }
+  }
+
+  function safeBind(
+    node: SceneNode,
+    field: string,
+    tokenName: string | undefined,
+    path: string,
+  ): boolean {
+    if (!tokenName) return false;
+
+    const variable = registry.get(tokenName);
+    if (!variable) {
+      warn(`Missing variable for ${path}.${field}: ${tokenName}`);
+      return false;
+    }
+
+    const target = node as BoundVariableTarget;
+    if (typeof target.setBoundVariable !== "function") {
+      warn(`Node ${path} does not support variable binding for ${field}`);
+      return false;
+    }
+
+    try {
+      target.setBoundVariable(field, variable);
+      return true;
+    } catch (error) {
+      warn(`Could not bind ${path}.${field} to ${tokenName}: ${formatError(error)}`);
+      return false;
+    }
+  }
+
+  async function safeBindFontFamily(
+    node: SceneNode,
+    tokenName: string | undefined,
+    fontWeight: number,
+    path: string,
+  ): Promise<boolean> {
+    if (!tokenName) return false;
+    const loaded = await loadBoundFontFamily(tokenName, fontWeight, path);
+    if (!loaded) return false;
+    return safeBind(node, "fontFamily", tokenName, path);
+  }
+
+  function safeBindRadius(
+    node: SceneNode,
+    tokenName: string | undefined,
+    path: string,
+  ): void {
+    if (!tokenName) return;
+
+    const variable = registry.get(tokenName);
+    if (!variable) {
+      warn(`Missing variable for ${path}.radius: ${tokenName}`);
+      return;
+    }
+
+    const target = node as BoundVariableTarget;
+    if (typeof target.setBoundVariable !== "function") {
+      warn(`Node ${path} does not support radius variable binding`);
+      return;
+    }
+
+    try {
+      target.setBoundVariable("cornerRadius", variable);
+      return;
+    } catch {
+      // Some Figma runtimes only support per-corner radius bindings.
+    }
+
+    const failures: string[] = [];
+    let successCount = 0;
+    for (const field of INDIVIDUAL_RADIUS_BINDING_FIELDS) {
+      try {
+        target.setBoundVariable(field, variable);
+        successCount += 1;
+      } catch (error) {
+        failures.push(`${field}: ${formatError(error)}`);
+      }
+    }
+
+    if (successCount === 0) {
+      warn(`Could not bind ${path}.radius to ${tokenName}: ${failures.join("; ")}`);
+    } else if (failures.length > 0) {
+      warn(
+        `Partially bound ${path}.radius to ${tokenName}; unsupported fields: ${failures.join("; ")}`,
+      );
+    }
+  }
+
+  function safeResize(
+    node: SceneNode,
+    width: number | undefined,
+    height: number | undefined,
+    path: string,
+  ): void {
+    if (typeof (node as LayoutMixin).resize !== "function") return;
+
+    try {
+      (node as LayoutMixin).resize(
+        Math.max(1, safeNumber(width, 1)),
+        Math.max(1, safeNumber(height, 1)),
+      );
+    } catch (error) {
+      warn(`Could not resize ${path}: ${formatError(error)}`);
+    }
+  }
+
+  function safeResizeWithoutConstraints(
+    node: SceneNode,
+    width: number | undefined,
+    height: number | undefined,
+    path: string,
+  ): void {
+    const layoutNode = node as LayoutMixin;
+    const resize = layoutNode.resizeWithoutConstraints ?? layoutNode.resize;
+    if (typeof resize !== "function") return;
+
+    try {
+      resize.call(
+        layoutNode,
+        Math.max(1, safeNumber(width, 1)),
+        Math.max(1, safeNumber(height, 1)),
+      );
+    } catch (error) {
+      warn(`Could not resize ${path}: ${formatError(error)}`);
+    }
+  }
+
+  function applyTextAutoResize(
+    node: TextNode,
+    mode: TextAutoResizeMode | undefined,
+    path: string,
+  ): void {
+    if (!mode) return;
+
+    try {
+      node.textAutoResize = mode;
+    } catch (error) {
+      warn(`Could not set text auto-resize for ${path}: ${formatError(error)}`);
+    }
+  }
+
+  function applyTextTruncation(
+    node: TextNode,
+    styles: FigmaExportNode["styles"],
+    path: string,
+  ): void {
+    if (styles.textTruncation !== "ENDING") return;
+
+    try {
+      node.textTruncation = "ENDING";
+      if (typeof styles.maxLines === "number" && styles.maxLines >= 1) {
+        node.maxLines = Math.round(styles.maxLines);
+      }
+    } catch (error) {
+      warn(`Could not set text truncation for ${path}: ${formatError(error)}`);
+    }
+  }
+
+  async function loadTextFont(
+    styles: FigmaExportNode["styles"],
+    path: string,
+  ): Promise<FontName> {
+    const family = getFontFamily(styles.fontFamily);
+    const styleCandidates = getFontStyleCandidates(styles.fontWeight ?? 400);
+
+    for (const style of styleCandidates) {
+      const candidate = { family, style };
+      try {
+        await figma.loadFontAsync(candidate);
+        return candidate;
+      } catch {
+        // Try the next style for the same family before falling back to Inter.
+      }
+    }
+
+    const fallback = { family: "Inter", style: "Regular" };
+    try {
+      await figma.loadFontAsync(fallback);
+      warn(
+        `Loaded fallback font for ${path}; ${family} (${styleCandidates.join(", ")}) was unavailable.`,
+      );
+      return fallback;
+    } catch (error) {
+      warn(`Could not load fallback font for ${path}: ${formatError(error)}`);
+      throw error;
+    }
+  }
+
+  function resolveTokenValue(
+    tokenName: string | undefined,
+    visited = new Set<string>(),
+  ): FigmaVariableValue | undefined {
+    if (!tokenName) return undefined;
+    if (visited.has(tokenName)) return undefined;
+    visited.add(tokenName);
+
+    const token = tokenByCssName.get(tokenName);
+    if (!token) return undefined;
+    if (token.alias) return resolveTokenValue(token.alias, visited);
+    return token.value ?? token.rawValue;
+  }
+
+  function getFontFamilyFromToken(tokenName: string | undefined): string | undefined {
+    const value = resolveTokenValue(tokenName);
+    return typeof value === "string" ? getFontFamily(value) : undefined;
+  }
+
+  async function loadBoundFontFamily(
+    tokenName: string,
+    fontWeight: number,
+    path: string,
+  ): Promise<boolean> {
+    const family = getFontFamilyFromToken(tokenName);
+    if (!family) {
+      warn(`Could not resolve font family token for ${path}.fontFamily: ${tokenName}`);
+      return false;
+    }
+
+    const styleCandidates = getFontStyleCandidates(fontWeight);
+    for (const style of styleCandidates) {
+      try {
+        await figma.loadFontAsync({ family, style });
+        return true;
+      } catch {
+        // Try the next style for the same family before skipping the binding.
+      }
+    }
+
+    warn(
+      `Skipped fontFamily binding for ${path}; ${family} (${styleCandidates.join(", ")}) could not be loaded.`,
+    );
+    return false;
+  }
+
+  return {
+    canCreateComponentDefinition,
+    createComponentSetFromVariants,
+    createNode,
+    ensureComponentDefinition,
+    getComponentDefinitionParentPage,
+    organizeComponentDependencySections,
+    preparePageComponentDefinitions,
+    stats,
+    upsertVariables,
+  };
+}
+
+async function getCollection(
+  layer: TokenCollection,
+  collectionNames: Record<TokenCollection, string>,
+): Promise<VariableCollection> {
+  const collectionName = collectionNames[layer];
+  const collections = await figma.variables.getLocalVariableCollectionsAsync();
+  const existing = collections.find((collection) => collection.name === collectionName);
+  if (existing) return existing;
+
+  const created = figma.variables.createVariableCollection(collectionName);
+  if (created.modes[0] && created.modes[0].name !== "Default") {
+    created.renameMode(created.modes[0].modeId, "Default");
+  }
+  return created;
+}
+
+async function findExistingVariable(
+  collection: VariableCollection,
+  spec: FigmaExportToken,
+  pluginDataKey: string,
+): Promise<Variable | undefined> {
+  const variables = await figma.variables.getLocalVariablesAsync();
+  const collectionVariables = variables.filter(
+    (variable) => variable.variableCollectionId === collection.id,
+  );
+
+  const byPluginData = collectionVariables.find(
+    (variable) =>
+      getVariablePluginData(variable, pluginDataKey) === spec.cssName ||
+      getVariablePluginData(variable, CM_CSS_TOKEN_PLUGIN_DATA_KEY) === spec.cssName,
+  );
+  if (byPluginData) return byPluginData;
+
+  return collectionVariables.find((variable) => variable.name === spec.figmaName);
+}
+
+async function findVariableByCssToken(
+  cssName: string,
+  pluginDataKey: string,
+): Promise<Variable | undefined> {
+  const variables = await figma.variables.getLocalVariablesAsync();
+  const byPluginData = variables.find(
+    (variable) =>
+      getVariablePluginData(variable, pluginDataKey) === cssName ||
+      getVariablePluginData(variable, CM_CSS_TOKEN_PLUGIN_DATA_KEY) === cssName,
+  );
+  if (byPluginData) return byPluginData;
+
+  const figmaName = cssTokenToFigmaVariableName(cssName);
+  return variables.find((variable) => variable.name === figmaName);
+}
+
+function getVariablePluginData(variable: Variable, key: string): string {
+  try {
+    return (variable as VariablePluginData).getPluginData?.(key) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function setVariablePluginData(variable: Variable, key: string, value: string): void {
+  (variable as VariablePluginData).setPluginData?.(key, value);
+}
+
+function getNodePluginData(node: BaseNode, key: string): string {
+  try {
+    return (node as NodePluginData).getPluginData?.(key) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function setNodePluginData(node: BaseNode, key: string, value: string): void {
+  try {
+    (node as NodePluginData).setPluginData?.(key, value);
+  } catch {
+    // Component metadata is best-effort and only used for future reuse.
+  }
+}
+
+function getComponentSpecHash(spec: FigmaExportNode): string {
+  const normalized = {
+    ...spec,
+    styles: { ...spec.styles, x: 0, y: 0 },
+  };
+  const json = JSON.stringify(normalized);
+  let hash = 5381;
+  for (let index = 0; index < json.length; index += 1) {
+    hash = ((hash << 5) + hash + json.charCodeAt(index)) | 0;
+  }
+  return String(hash >>> 0);
+}
+
+function getComponentDisplayName(component: FigmaComponentReference): string {
+  const variantDisplayName = getVariantPropertyDisplayName(component);
+  if (variantDisplayName) return `${component.name}, ${variantDisplayName}`;
+  return component.name;
+}
+
+function getVariantPropertyDisplayName(component: FigmaComponentReference): string {
+  const variantProperties =
+    component.variantProperties && Object.keys(component.variantProperties).length > 0
+      ? component.variantProperties
+      : component.variant
+        ? { Variant: component.variant }
+        : undefined;
+
+  if (!variantProperties) return "";
+  return Object.entries(variantProperties)
+    .map(([name, value]) => `${name}=${value}`)
+    .join(", ");
+}
+
+function cssTokenToFigmaVariableName(cssName: string): string {
+  return cssName.replace(/^--/, "").replace(/-/g, "/");
+}
+
+function normalizeVariableValue(spec: FigmaExportToken): VariableValue {
+  const value = spec.value ?? parseRawTokenValue(spec.rawValue, spec.type);
+
+  if (spec.type === "COLOR") {
+    return cloneColor(value);
+  }
+  if (spec.type === "FLOAT") {
+    return safeNumber(value, 0);
+  }
+  if (spec.type === "BOOLEAN") {
+    return Boolean(value);
+  }
+  return String(value ?? "");
+}
+
+function parseRawTokenValue(
+  rawValue: string | undefined,
+  type: FigmaVariableType,
+): FigmaVariableValue {
+  const raw = String(rawValue ?? "").trim();
+
+  if (type === "COLOR") return colorFromCss(raw);
+  if (type === "FLOAT") {
+    const number = raw.match(/^-?\d+(?:\.\d+)?/);
+    return number ? Number(number[0]) : 0;
+  }
+  if (type === "BOOLEAN") return raw === "true";
+  return raw.replace(/^["']|["']$/g, "");
+}
+
+function cloneColor(value: unknown): RGBA {
+  const color = isColor(value) ? value : colorFromCss(String(value ?? ""));
+  return {
+    a: clamp(safeNumber(color.a, 1), 0, 1),
+    b: clamp(safeNumber(color.b, 0), 0, 1),
+    g: clamp(safeNumber(color.g, 0), 0, 1),
+    r: clamp(safeNumber(color.r, 0), 0, 1),
+  };
+}
+
+function colorFromCss(cssValue: string | undefined): RgbaColor {
+  if (!cssValue) return { a: 1, b: 0, g: 0, r: 0 };
+
+  const value = cssValue.trim();
+  const hex = value.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+  if (hex) {
+    const expanded =
+      hex[1].length === 3
+        ? hex[1]
+            .split("")
+            .map((part) => `${part}${part}`)
+            .join("")
+        : hex[1];
+    const intValue = Number.parseInt(expanded, 16);
+    return {
+      a: 1,
+      b: (intValue & 255) / 255,
+      g: ((intValue >> 8) & 255) / 255,
+      r: ((intValue >> 16) & 255) / 255,
+    };
+  }
+
+  const rgb = value.match(/rgba?\(([^)]+)\)/i);
+  if (rgb) {
+    const parts = rgb[1].split(",").map((part) => Number(part.trim()));
+    return {
+      a: clamp(safeNumber(parts[3], 1), 0, 1),
+      b: clamp(safeNumber(parts[2], 0) / 255, 0, 1),
+      g: clamp(safeNumber(parts[1], 0) / 255, 0, 1),
+      r: clamp(safeNumber(parts[0], 0) / 255, 0, 1),
+    };
+  }
+
+  return { a: 1, b: 0, g: 0, r: 0 };
+}
+
+function parsePayload(json: string): FigmaExportPayload {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(json);
+  } catch (error) {
+    throw new Error(`Invalid JSON. Use Storybook's Copy JSON output. ${formatError(error)}`);
+  }
+
+  if (!isRecord(parsed)) {
+    throw new Error("Invalid payload: expected a JSON object.");
+  }
+
+  if (
+    typeof parsed.version !== "number" ||
+    !SUPPORTED_PAYLOAD_VERSIONS.includes(
+      parsed.version as (typeof SUPPORTED_PAYLOAD_VERSIONS)[number],
+    )
+  ) {
+    throw new Error(
+      `Unsupported payload version ${String(parsed.version)}. Expected version 1 or 2.`,
+    );
+  }
+
+  if (!Array.isArray(parsed.tokens)) {
+    throw new Error("Invalid payload: tokens must be an array.");
+  }
+
+  if (!isRecord(parsed.root)) {
+    throw new Error("Invalid payload: root node tree is missing.");
+  }
+
+  if (typeof parsed.componentTitle !== "string") {
+    throw new Error("Invalid payload: componentTitle must be a string.");
+  }
+
+  if (typeof parsed.storyId !== "string" || typeof parsed.storyName !== "string") {
+    throw new Error("Invalid payload: story metadata is missing.");
+  }
+  if (
+    parsed.artifactKind !== undefined &&
+    parsed.artifactKind !== "component" &&
+    parsed.artifactKind !== "page"
+  ) {
+    throw new Error("Invalid payload: artifactKind must be component or page.");
+  }
+  if (parsed.storyTitle !== undefined && typeof parsed.storyTitle !== "string") {
+    throw new Error("Invalid payload: storyTitle must be a string.");
+  }
+  if (parsed.component !== undefined) {
+    validateComponentReference(parsed.component, "component");
+  }
+
+  for (const token of parsed.tokens) {
+    validateToken(token);
+  }
+  validateNode(parsed.root, "root");
+
+  return parsed as FigmaExportPayload;
+}
+
+function validateToken(token: unknown): void {
+  if (!isRecord(token)) throw new Error("Invalid token: expected object.");
+  if (
+    token.collection !== "ref" &&
+    token.collection !== "sys" &&
+    token.collection !== "comp"
+  ) {
+    throw new Error(`Invalid token collection for ${String(token.cssName)}.`);
+  }
+  if (typeof token.cssName !== "string" || !token.cssName.startsWith("--cm-")) {
+    throw new Error("Invalid token: cssName must be a supported CSS token.");
+  }
+  if (typeof token.figmaName !== "string" || token.figmaName.length === 0) {
+    throw new Error(`Invalid token ${token.cssName}: figmaName is missing.`);
+  }
+  if (
+    token.type !== "BOOLEAN" &&
+    token.type !== "COLOR" &&
+    token.type !== "FLOAT" &&
+    token.type !== "STRING"
+  ) {
+    throw new Error(`Invalid token ${token.cssName}: unsupported type.`);
+  }
+  if ("alias" in token && typeof token.alias !== "string") {
+    throw new Error(`Invalid token ${token.cssName}: alias must be a string.`);
+  }
+}
+
+function validateNode(node: unknown, path: string): void {
+  if (!isRecord(node)) throw new Error(`Invalid node ${path}: expected object.`);
+  if (
+    node.kind !== "frame" &&
+    node.kind !== "image" &&
+    node.kind !== "svg" &&
+    node.kind !== "text"
+  ) {
+    throw new Error(`Invalid node ${path}: unsupported kind.`);
+  }
+  if (typeof node.name !== "string") {
+    throw new Error(`Invalid node ${path}: name must be a string.`);
+  }
+  if (!isRecord(node.styles)) {
+    throw new Error(`Invalid node ${path}: styles are missing.`);
+  }
+  if (
+    typeof node.styles.width !== "number" ||
+    typeof node.styles.height !== "number" ||
+    typeof node.styles.x !== "number" ||
+    typeof node.styles.y !== "number"
+  ) {
+    throw new Error(`Invalid node ${path}: width, height, x, and y must be numbers.`);
+  }
+  if (
+    node.styles.textAutoResize !== undefined &&
+    node.styles.textAutoResize !== "WIDTH_AND_HEIGHT"
+  ) {
+    throw new Error(`Invalid node ${path}: unsupported textAutoResize value.`);
+  }
+  if (
+    node.styles.textTruncation !== undefined &&
+    node.styles.textTruncation !== "ENDING"
+  ) {
+    throw new Error(`Invalid node ${path}: unsupported textTruncation value.`);
+  }
+  if (node.styles.maxLines !== undefined && typeof node.styles.maxLines !== "number") {
+    throw new Error(`Invalid node ${path}: maxLines must be a number.`);
+  }
+  if (node.styles.textAlign !== undefined && typeof node.styles.textAlign !== "string") {
+    throw new Error(`Invalid node ${path}: textAlign must be a string.`);
+  }
+  if (
+    node.styles.layoutAlign !== undefined &&
+    node.styles.layoutAlign !== "STRETCH"
+  ) {
+    throw new Error(`Invalid node ${path}: unsupported layoutAlign value.`);
+  }
+  if (
+    node.styles.layoutGrow !== undefined &&
+    node.styles.layoutGrow !== 1
+  ) {
+    throw new Error(`Invalid node ${path}: unsupported layoutGrow value.`);
+  }
+  if (
+    node.styles.layoutSizingHorizontal !== undefined &&
+    node.styles.layoutSizingHorizontal !== "HUG"
+  ) {
+    throw new Error(`Invalid node ${path}: unsupported layoutSizingHorizontal value.`);
+  }
+  if (
+    node.styles.layoutSizingVertical !== undefined &&
+    node.styles.layoutSizingVertical !== "HUG"
+  ) {
+    throw new Error(`Invalid node ${path}: unsupported layoutSizingVertical value.`);
+  }
+  if (
+    node.styles.textAlignVertical !== undefined &&
+    node.styles.textAlignVertical !== "CENTER"
+  ) {
+    throw new Error(`Invalid node ${path}: unsupported textAlignVertical value.`);
+  }
+  if (node.styles.backgroundLinearGradient !== undefined) {
+    validateLinearGradient(node.styles.backgroundLinearGradient, `${path}.backgroundLinearGradient`);
+  }
+  if (node.styles.borderSides !== undefined) {
+    validateBorderSides(node.styles.borderSides, `${path}.borderSides`);
+  }
+  if (node.styles.outOfFlow !== undefined && typeof node.styles.outOfFlow !== "boolean") {
+    throw new Error(`Invalid node ${path}: outOfFlow must be a boolean.`);
+  }
+  if (node.styles.constraints !== undefined) {
+    validateConstraints(node.styles.constraints, `${path}.constraints`);
+  }
+  if (node.component !== undefined) {
+    validateComponentReference(node.component, `${path}.component`);
+  }
+  if (node.children !== undefined) {
+    if (!Array.isArray(node.children)) {
+      throw new Error(`Invalid node ${path}: children must be an array.`);
+    }
+    node.children.forEach((child, index) => validateNode(child, `${path}/${index}`));
+  }
+}
+
+const CONSTRAINT_VALUES = ["CENTER", "MAX", "MIN", "SCALE", "STRETCH"];
+
+function validateConstraints(constraints: unknown, path: string): void {
+  if (!isRecord(constraints)) {
+    throw new Error(`Invalid node ${path}: expected object.`);
+  }
+  if (
+    !CONSTRAINT_VALUES.includes(String(constraints.horizontal)) ||
+    !CONSTRAINT_VALUES.includes(String(constraints.vertical))
+  ) {
+    throw new Error(`Invalid node ${path}: unsupported constraint value.`);
+  }
+}
+
+function validateBorderSides(borderSides: unknown, path: string): void {
+  if (!isRecord(borderSides)) {
+    throw new Error(`Invalid node ${path}: expected object.`);
+  }
+
+  for (const side of ["top", "right", "bottom", "left"]) {
+    const value = borderSides[side];
+    if (value === undefined) continue;
+    if (!isRecord(value) || typeof value.width !== "number") {
+      throw new Error(`Invalid node ${path}.${side}: width must be a number.`);
+    }
+    if (value.color !== undefined && typeof value.color !== "string") {
+      throw new Error(`Invalid node ${path}.${side}: color must be a string.`);
+    }
+  }
+}
+
+function validateLinearGradient(gradient: unknown, path: string): void {
+  if (!isRecord(gradient)) {
+    throw new Error(`Invalid node ${path}: expected object.`);
+  }
+  if (typeof gradient.angle !== "number") {
+    throw new Error(`Invalid node ${path}: angle must be a number.`);
+  }
+  if (!Array.isArray(gradient.stops) || gradient.stops.length < 2) {
+    throw new Error(`Invalid node ${path}: stops must contain at least two colors.`);
+  }
+
+  gradient.stops.forEach((stop, index) => {
+    if (!isRecord(stop)) {
+      throw new Error(`Invalid node ${path}.stops.${index}: expected object.`);
+    }
+    if (typeof stop.color !== "string") {
+      throw new Error(`Invalid node ${path}.stops.${index}: color must be a string.`);
+    }
+    if (typeof stop.position !== "number") {
+      throw new Error(`Invalid node ${path}.stops.${index}: position must be a number.`);
+    }
+    if (stop.token !== undefined && typeof stop.token !== "string") {
+      throw new Error(`Invalid node ${path}.stops.${index}: token must be a string.`);
+    }
+  });
+}
+
+function validateComponentReference(component: unknown, path: string): void {
+  if (!isRecord(component)) {
+    throw new Error(`Invalid ${path}: expected object.`);
+  }
+  if (
+    typeof component.key !== "string" ||
+    typeof component.name !== "string" ||
+    typeof component.sourceName !== "string"
+  ) {
+    throw new Error(`Invalid ${path}: key, name, and sourceName are required.`);
+  }
+  if (component.variant !== undefined && typeof component.variant !== "string") {
+    throw new Error(`Invalid ${path}: variant must be a string.`);
+  }
+}
+
+function getInferredChildTextAlignHorizontal(
+  parent: FrameLikeNode,
+): TextHorizontalAlign | undefined {
+  if (parent.layoutMode === "HORIZONTAL") {
+    if (parent.primaryAxisAlignItems === "CENTER") return "CENTER";
+    if (parent.primaryAxisAlignItems === "MAX") return "RIGHT";
+  }
+
+  if (parent.layoutMode === "VERTICAL") {
+    if (parent.counterAxisAlignItems === "CENTER") return "CENTER";
+    if (parent.counterAxisAlignItems === "MAX") return "RIGHT";
+  }
+
+  return undefined;
+}
+
+function mapTextAlignHorizontal(value: string | undefined): TextHorizontalAlign | undefined {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (!normalized) return undefined;
+  if (normalized === "center" || normalized === "-webkit-center") return "CENTER";
+  if (normalized === "right" || normalized === "end") return "RIGHT";
+  if (normalized === "justify") return "JUSTIFIED";
+  if (normalized === "left" || normalized === "start") return "LEFT";
+  return undefined;
+}
+
+function mapAxisAlignment(value: string | undefined): "CENTER" | "MAX" | "MIN" | "SPACE_BETWEEN" {
+  if (value === "center") return "CENTER";
+  if (value === "flex-end" || value === "end") return "MAX";
+  if (value === "space-between") return "SPACE_BETWEEN";
+  return "MIN";
+}
+
+function mapCounterAlignment(value: string | undefined): "BASELINE" | "CENTER" | "MAX" | "MIN" {
+  if (value === "center") return "CENTER";
+  if (value === "flex-end" || value === "end") return "MAX";
+  return "MIN";
+}
+
+function getFontStyleCandidates(weight: number): string[] {
+  if (weight >= 700) return ["Bold", "Semibold", "Semi Bold", "SemiBold", "Medium", "Regular"];
+  if (weight >= 600) return ["Semi Bold", "Semibold", "SemiBold", "Medium", "Regular"];
+  if (weight >= 500) return ["Medium", "Regular"];
+  return ["Regular"];
+}
+
+function getFontFamily(fontFamily: string | undefined): string {
+  const first = String(fontFamily || "Inter").split(",")[0]?.trim();
+  return first ? first.replace(/^["']|["']$/g, "") : "Inter";
+}
+
+function safeNumber(value: unknown, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function isColor(value: unknown): value is RgbaColor {
+  return (
+    isRecord(value) &&
+    typeof value.r === "number" &&
+    typeof value.g === "number" &&
+    typeof value.b === "number"
+  );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function formatError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}

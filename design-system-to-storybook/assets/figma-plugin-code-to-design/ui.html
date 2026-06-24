@@ -1,0 +1,610 @@
+<main class="app">
+  <header class="header">
+    <div class="brand">
+      <span aria-hidden="true" class="brand-mark">S</span>
+      <div class="brand-copy">
+        <h1>Import Storybook JSON</h1>
+        <p>Paste an export payload into Figma</p>
+      </div>
+    </div>
+    <span style="display: flex; flex-direction: column; gap: 4px; align-items: flex-end;">
+      <span class="badge">v1/v2 JSON</span>
+      <span class="badge" id="plugin-version" title="Plugin build version">build 1.1.6</span>
+    </span>
+  </header>
+
+  <section class="file-import" id="file-drop-zone" tabindex="0">
+    <span aria-hidden="true" class="file-import-icon">JSON</span>
+    <span class="file-import-copy">
+      <strong>Import from file</strong>
+      <span id="file-name">Choose or drop a .sbfx.json export file.</span>
+    </span>
+    <label class="file-import-action" for="file-input">Choose file</label>
+    <input
+      id="file-input"
+      accept=".json,.sbfx.json,application/json"
+      class="file-input"
+      type="file"
+    />
+  </section>
+
+  <label class="field">
+    <span class="field-header">
+      <span>Storybook export JSON</span>
+      <span class="field-hint">Required</span>
+    </span>
+    <textarea
+      id="payload"
+      placeholder='{"version":2,"artifactKind":"component","storyId":"components-switch--all-variants","tokens":[...],"root":{...}}'
+      spellcheck="false"
+    ></textarea>
+  </label>
+
+  <section aria-live="polite" class="status" id="status">
+    <span aria-hidden="true" class="status-dot"></span>
+    <span class="status-copy">
+      <strong id="status-title">Ready</strong>
+      <span id="status-body">Waiting for Storybook export JSON.</span>
+    </span>
+    <pre id="status-detail"></pre>
+  </section>
+
+  <div class="actions">
+    <button id="import" type="button">Import to Figma</button>
+    <button id="cancel" class="secondary" type="button">Cancel</button>
+  </div>
+</main>
+
+<style>
+  :root {
+    --sctd-bg: #f7f8fc;
+    --sctd-border: #d9def0;
+    --sctd-border-strong: #b8c1e4;
+    --sctd-error: #b42318;
+    --sctd-muted: #667085;
+    --sctd-primary: #4945FF;
+    --sctd-primary-strong: #3430d9;
+    --sctd-primary-soft: #eef0ff;
+    --sctd-purple: #7762ff;
+    --sctd-success: #16855f;
+    --sctd-surface: #ffffff;
+    --sctd-surface-raised: #fbfcff;
+    --sctd-text: #182033;
+  }
+
+  html,
+  body {
+    height: 100%;
+    width: 100%;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+    min-width: 0;
+  }
+
+  body {
+    margin: 0;
+    color: var(--figma-color-text, var(--sctd-text));
+    background: var(--figma-color-bg, var(--sctd-bg));
+    font: 12px/1.45 Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+
+  .app {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    width: min(100vw, 440px);
+    max-width: 440px;
+    height: 100vh;
+    min-height: 0;
+    box-sizing: border-box;
+    overflow: hidden;
+    padding: 16px 16px 86px;
+    background:
+      linear-gradient(180deg, rgba(73, 69, 255, 0.08), rgba(119, 98, 255, 0) 180px),
+      var(--figma-color-bg, var(--sctd-bg));
+  }
+
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-width: 0;
+    gap: 12px;
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    gap: 10px;
+  }
+
+  .brand-mark {
+    display: grid;
+    flex: 0 0 auto;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    color: #ffffff;
+    background: linear-gradient(135deg, var(--sctd-primary), var(--sctd-purple));
+    border-radius: 8px;
+    box-shadow: 0 8px 18px rgba(73, 69, 255, 0.24);
+    font-size: 14px;
+    font-weight: 760;
+    line-height: 1;
+  }
+
+  .brand-copy {
+    display: grid;
+    min-width: 0;
+    gap: 1px;
+  }
+
+  h1 {
+    overflow: hidden;
+    margin: 0;
+    color: var(--figma-color-text, var(--sctd-text));
+    font-size: 14px;
+    font-weight: 680;
+    line-height: 20px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  p {
+    margin: 0;
+    color: var(--figma-color-text-secondary, var(--sctd-muted));
+    font-size: 11px;
+    line-height: 16px;
+  }
+
+  .badge {
+    flex: 0 0 auto;
+    padding: 4px 8px;
+    color: var(--sctd-primary-strong);
+    background: var(--sctd-primary-soft);
+    border: 1px solid rgba(73, 69, 255, 0.16);
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 14px;
+  }
+
+  .field {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    flex: 1 1 auto;
+    gap: 8px;
+    min-width: 0;
+    min-height: 0;
+    color: var(--figma-color-text, var(--sctd-text));
+    font-weight: 600;
+  }
+
+  .file-import {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    min-width: 0;
+    gap: 10px;
+    padding: 10px;
+    background: var(--figma-color-bg-secondary, var(--sctd-surface-raised));
+    border: 1px solid var(--figma-color-border, var(--sctd-border));
+    border-radius: 8px;
+  }
+
+  .file-import[data-dragging="true"] {
+    border-color: var(--sctd-primary);
+    outline: 3px solid rgba(73, 69, 255, 0.14);
+  }
+
+  .file-import[data-disabled="true"] {
+    opacity: 0.64;
+  }
+
+  .file-import:focus-visible {
+    border-color: var(--sctd-primary);
+    outline: 3px solid rgba(73, 69, 255, 0.18);
+    outline-offset: 0;
+  }
+
+  .file-import-icon {
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    color: var(--sctd-primary-strong);
+    background: var(--sctd-primary-soft);
+    border: 1px solid rgba(73, 69, 255, 0.16);
+    border-radius: 7px;
+    font-size: 9px;
+    font-weight: 760;
+  }
+
+  .file-import-copy {
+    display: grid;
+    min-width: 0;
+    gap: 1px;
+  }
+
+  .file-import-copy strong {
+    overflow: hidden;
+    color: var(--figma-color-text, var(--sctd-text));
+    font-size: 12px;
+    line-height: 17px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .file-import-copy span {
+    overflow: hidden;
+    color: var(--figma-color-text-secondary, var(--sctd-muted));
+    font-size: 11px;
+    line-height: 16px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .file-import-action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 30px;
+    padding: 0 11px;
+    color: var(--figma-color-text, var(--sctd-text));
+    background: var(--figma-color-bg, var(--sctd-surface));
+    border: 1px solid var(--figma-color-border, var(--sctd-border));
+    border-radius: 7px;
+    font-size: 11px;
+    font-weight: 680;
+    line-height: 16px;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+
+  .file-import-action:hover {
+    border-color: var(--sctd-primary);
+  }
+
+  .file-input {
+    display: none;
+  }
+
+  .field-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-width: 0;
+    gap: 8px;
+  }
+
+  .field-hint {
+    color: var(--figma-color-text-secondary, var(--sctd-muted));
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+  }
+
+  textarea {
+    height: 100%;
+    min-height: 160px;
+    resize: none;
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    padding: 12px;
+    color: var(--figma-color-text, var(--sctd-text));
+    background: var(--figma-color-bg, var(--sctd-surface));
+    border: 1px solid var(--figma-color-border, var(--sctd-border));
+    border-radius: 8px;
+    box-shadow:
+      0 1px 2px rgba(24, 32, 51, 0.05),
+      inset 0 0 0 1px rgba(255, 255, 255, 0.4);
+    font: 11px/1.5 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  }
+
+  textarea:focus {
+    border-color: var(--sctd-primary);
+    outline: 3px solid rgba(73, 69, 255, 0.18);
+    outline-offset: 0;
+  }
+
+  .actions {
+    display: flex;
+    position: fixed;
+    z-index: 10;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    min-width: 0;
+    width: min(100vw, 440px);
+    margin: 0 auto;
+    padding: 12px 16px 16px;
+    gap: 10px;
+    background: var(--figma-color-bg, var(--sctd-bg));
+    border-top: 1px solid var(--figma-color-border, var(--sctd-border));
+    box-shadow: 0 -8px 18px rgba(24, 32, 51, 0.08);
+  }
+
+  button {
+    min-height: 34px;
+    padding: 0 16px;
+    color: #ffffff;
+    background: linear-gradient(135deg, var(--sctd-primary), var(--sctd-purple));
+    border: 0;
+    border-radius: 7px;
+    box-shadow: 0 7px 16px rgba(73, 69, 255, 0.22);
+    font: inherit;
+    font-weight: 680;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+
+  button:hover {
+    background: linear-gradient(135deg, var(--sctd-primary-strong), #6250e8);
+  }
+
+  button:disabled {
+    opacity: 0.55;
+    cursor: wait;
+  }
+
+  button.secondary {
+    color: var(--figma-color-text, var(--sctd-text));
+    background: var(--figma-color-bg, var(--sctd-surface));
+    border: 1px solid var(--figma-color-border, var(--sctd-border));
+    box-shadow: none;
+  }
+
+  .status {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 2px 9px;
+    min-height: 76px;
+    box-sizing: border-box;
+    min-width: 0;
+    padding: 11px 12px;
+    background: var(--figma-color-bg-secondary, var(--sctd-surface-raised));
+    border: 1px solid var(--figma-color-border, var(--sctd-border));
+    border-radius: 8px;
+  }
+
+  .status-dot {
+    width: 8px;
+    height: 8px;
+    margin-top: 6px;
+    background: var(--sctd-primary);
+    border-radius: 999px;
+    box-shadow: 0 0 0 4px rgba(73, 69, 255, 0.12);
+  }
+
+  .status-copy {
+    display: grid;
+    gap: 1px;
+    min-width: 0;
+  }
+
+  .status strong {
+    color: var(--figma-color-text, var(--sctd-text));
+    font-size: 12px;
+    line-height: 17px;
+  }
+
+  .status[data-state="importing"] .status-dot {
+    background: var(--sctd-purple);
+    box-shadow: 0 0 0 4px rgba(119, 98, 255, 0.12);
+  }
+
+  .status[data-state="complete"] .status-dot {
+    background: var(--sctd-success);
+    box-shadow: 0 0 0 4px rgba(22, 133, 95, 0.12);
+  }
+
+  .status[data-state="error"] {
+    border-color: var(--figma-color-border-danger-strong, var(--sctd-error));
+  }
+
+  .status[data-state="error"] .status-dot {
+    background: var(--sctd-error);
+    box-shadow: 0 0 0 4px rgba(180, 35, 24, 0.12);
+  }
+
+  .status[data-state="error"] strong {
+    color: var(--figma-color-text-danger, var(--sctd-error));
+  }
+
+  #status-body {
+    color: var(--figma-color-text-secondary, var(--sctd-muted));
+  }
+
+  #status-detail {
+    grid-column: 2;
+    overflow: auto;
+    max-height: 88px;
+    margin: 4px 0 0;
+    color: var(--figma-color-text-secondary, var(--sctd-muted));
+    font: 10.5px/1.45 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    white-space: pre-wrap;
+  }
+</style>
+
+<script>
+  const payload = document.getElementById("payload");
+  const fileInput = document.getElementById("file-input");
+  const fileDropZone = document.getElementById("file-drop-zone");
+  const fileName = document.getElementById("file-name");
+  const importButton = document.getElementById("import");
+  const cancelButton = document.getElementById("cancel");
+  const statusBox = document.getElementById("status");
+  const statusTitle = document.getElementById("status-title");
+  const statusBody = document.getElementById("status-body");
+  const statusDetail = document.getElementById("status-detail");
+
+  function setStatus(state, title, body, detail) {
+    statusBox.dataset.state = state;
+    statusTitle.textContent = title;
+    statusBody.textContent = body || "";
+    statusDetail.textContent = detail || "";
+  }
+
+  function setImporting(importing) {
+    importButton.disabled = importing;
+    fileInput.disabled = importing;
+    fileDropZone.dataset.disabled = importing ? "true" : "false";
+    importButton.textContent = importing ? "Importing..." : "Import to Figma";
+    if (!importing) {
+      syncImportButton();
+    }
+  }
+
+  function syncImportButton() {
+    importButton.disabled = payload.value.trim().length === 0;
+  }
+
+  payload.addEventListener("input", syncImportButton);
+  syncImportButton();
+
+  function formatFileSize(bytes) {
+    if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  function isJsonExportFile(file) {
+    return (
+      file.name.toLowerCase().endsWith(".json") ||
+      file.name.toLowerCase().endsWith(".sbfx.json") ||
+      file.type === "application/json"
+    );
+  }
+
+  async function loadExportFile(file) {
+    if (!file) return;
+
+    if (!isJsonExportFile(file)) {
+      setStatus(
+        "error",
+        "Unsupported file",
+        "Choose a .json or .sbfx.json Storybook export file.",
+      );
+      return;
+    }
+
+    try {
+      const text = await file.text();
+      JSON.parse(text);
+      payload.value = text.trim();
+      syncImportButton();
+      fileName.textContent = `${file.name} (${formatFileSize(file.size)})`;
+      setStatus(
+        "ready",
+        "File loaded",
+        "Review the JSON or import it directly into Figma.",
+      );
+    } catch (error) {
+      setStatus(
+        "error",
+        "Invalid JSON file",
+        error instanceof Error ? error.message : "Unable to read the selected file.",
+      );
+    }
+  }
+
+  fileInput.addEventListener("change", () => {
+    loadExportFile(fileInput.files && fileInput.files[0]);
+    fileInput.value = "";
+  });
+
+  fileDropZone.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      fileInput.click();
+    }
+  });
+
+  fileDropZone.addEventListener("dragover", (event) => {
+    event.preventDefault();
+    if (!fileInput.disabled) {
+      fileDropZone.dataset.dragging = "true";
+    }
+  });
+
+  fileDropZone.addEventListener("dragleave", () => {
+    delete fileDropZone.dataset.dragging;
+  });
+
+  fileDropZone.addEventListener("drop", (event) => {
+    event.preventDefault();
+    delete fileDropZone.dataset.dragging;
+    if (fileInput.disabled) return;
+    loadExportFile(event.dataTransfer.files && event.dataTransfer.files[0]);
+  });
+
+  importButton.onclick = () => {
+    const json = payload.value.trim();
+    if (!json) {
+      setStatus("error", "Missing JSON", "Paste the Storybook Copy JSON output before importing.");
+      return;
+    }
+
+    setImporting(true);
+    setStatus("importing", "Importing", "Parsing JSON and creating Figma layers.");
+    parent.postMessage({ pluginMessage: { type: "import-json", json } }, "*");
+  };
+
+  cancelButton.onclick = () => {
+    parent.postMessage({ pluginMessage: { type: "cancel" } }, "*");
+  };
+
+  window.onmessage = (event) => {
+    const message = event.data.pluginMessage;
+    if (!message) return;
+
+    if (message.type === "plugin-version") {
+      document.getElementById("plugin-version").textContent = `build ${message.version}`;
+      return;
+    }
+
+    if (message.type === "import-status") {
+      setImporting(true);
+      setStatus("importing", "Importing", "Upserting variables and creating nodes.");
+      return;
+    }
+
+    if (message.type === "import-complete") {
+      const stats = message.stats;
+      const warningCount = stats.warnings.length;
+      const componentSummary = stats.componentsCreated || stats.reusedComponents
+        ? ` ${stats.componentsCreated} components created, ${stats.reusedComponents} reused.`
+        : "";
+      const rootSummary = stats.rootType
+        ? ` Root: ${stats.rootType}${stats.rootName ? ` (${stats.rootName})` : ""}.`
+        : "";
+      const importSummary = stats.artifactKind
+        ? ` Artifact: ${stats.artifactKind}${stats.importedAsComponent ? " component import" : ""}.`
+        : "";
+      const summary = `${stats.nodesCreated} nodes created.${componentSummary} ${stats.variablesCreated} variables created, ${stats.reusedVariables} reused.${rootSummary}${importSummary}`;
+      const detail = warningCount
+        ? `${warningCount} warnings:\n${stats.warnings.slice(0, 12).join("\n")}`
+        : "No warnings.";
+      setImporting(false);
+      setStatus("complete", "Import complete", summary, detail);
+      return;
+    }
+
+    if (message.type === "import-error") {
+      setImporting(false);
+      setStatus("error", "Import failed", message.message);
+    }
+  };
+</script>
