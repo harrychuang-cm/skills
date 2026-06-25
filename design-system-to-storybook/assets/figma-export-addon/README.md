@@ -57,8 +57,8 @@ import type { FigmaExportAddonOptions } from "@harrychuang/storybook-addon-figma
 import "@harrychuang/storybook-addon-figma-export/styles.css";
 
 const figmaExportOptions = {
-  componentClassPrefixes: ["md-"],
-  storyTitlePrefix: "Components/",
+  componentClassPrefixes: ["your-prefix-"],
+  storyTitlePrefix: false,
 } satisfies FigmaExportAddonOptions;
 
 const preview: Preview = {
@@ -73,6 +73,8 @@ const preview: Preview = {
 
 export default preview;
 ```
+
+Replace `your-prefix-` with the class prefix used by your component library, or use an empty array when you want the exporter to derive layer names without a project prefix. `storyTitlePrefix: false` keeps the addon available for every story; set it to a string or string array only when your project wants to filter exports.
 
 Adjust `figmaExportOptions` for your design tokens and story naming.
 
@@ -159,7 +161,7 @@ registerFigmaExportTool();
 
 ## Token prefix detection
 
-By default, the exporter auto-detects the token prefix from CSS custom properties:
+By default, the exporter auto-detects the token prefix from CSS custom properties that match the configured token layer segments:
 
 ```txt
 --{prefix}-ref-*
@@ -167,7 +169,7 @@ By default, the exporter auto-detects the token prefix from CSS custom propertie
 --{prefix}-comp-*
 ```
 
-If auto-detection fails, set `tokenPrefix` (for example `"md"`).
+Projects do not need all three default layers to export. The detector chooses the prefix with the broadest layer coverage and then the most matching tokens. If auto-detection fails, set `tokenPrefix` (for example `"your-prefix"`), and use `tokenLayers` when your layer segment names are not `ref`, `sys`, and `comp`.
 
 ## Options
 

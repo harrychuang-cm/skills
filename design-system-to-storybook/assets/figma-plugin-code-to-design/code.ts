@@ -295,55 +295,6 @@ function applyTextAlignmentFromSpec(
   }
 }
 
-const brokerIconLabelTexts = new Set(["口袋", "我的", "元大", "國泰", "新光", "大昌"]);
-
-function forceBrokerIconTextAlignment(node: SceneNode): void {
-  const isBrokerIconLabel =
-    node.type === "TEXT" &&
-    brokerIconLabelTexts.has(node.characters) &&
-    node.name.includes("broker-icon");
-
-  if (isBrokerIconLabel) {
-    try {
-      node.textAlignHorizontal = "CENTER";
-    } catch (error) {
-      console.warn(
-        `Could not force broker icon text alignment for ${node.name}: ${formatError(error)}`,
-      );
-    }
-
-    try {
-      node.textAlignVertical = "CENTER";
-    } catch (error) {
-      console.warn(
-        `Could not force broker icon vertical alignment for ${node.name}: ${formatError(error)}`,
-      );
-    }
-
-    try {
-      node.layoutAlign = "STRETCH";
-    } catch (error) {
-      console.warn(
-        `Could not force broker icon layoutAlign for ${node.name}: ${formatError(error)}`,
-      );
-    }
-
-    try {
-      node.layoutGrow = 1;
-    } catch (error) {
-      console.warn(
-        `Could not force broker icon layoutGrow for ${node.name}: ${formatError(error)}`,
-      );
-    }
-  }
-
-  if (!("children" in node)) return;
-
-  for (const child of node.children) {
-    if ("visible" in child) forceBrokerIconTextAlignment(child);
-  }
-}
-
 type VariantComponentSpec = {
   component: FigmaComponentReference;
   depth: number;
@@ -377,10 +328,11 @@ type ComponentSectionTarget = {
 
 // Bump this on every behavior change so the Figma UI badge confirms which
 // build is running (Figma re-reads code.js per run, but the badge removes doubt).
-const PLUGIN_VERSION = "1.1.7 (2026-06-22)";
+const PLUGIN_VERSION = "1.1.8 (2026-06-25)";
 
 const SUPPORTED_PAYLOAD_VERSIONS = [1, 2] as const;
-const CM_CSS_TOKEN_PLUGIN_DATA_KEY = "cmCssToken";
+const DEFAULT_TOKEN_PLUGIN_DATA_KEY = "storybookCssToken";
+const LEGACY_CM_TOKEN_PLUGIN_DATA_KEY = "cmCssToken";
 const STORYBOOK_COMPONENT_PLUGIN_DATA_KEY = "storybookComponentKey";
 const COMPONENT_SET_GRID_GAP = 32;
 const COMPONENT_SET_GRID_MIN_CELL_WIDTH = 96;
@@ -492,8 +444,6 @@ async function importStorybookDesign(payload: FigmaExportPayload): Promise<Impor
           isRoot: true,
           reuseComponents: true,
         });
-
-  forceBrokerIconTextAlignment(rootNode);
 
   if (shouldImportAsComponent && rootComponent) {
     rootNode.name = getComponentDisplayName(rootComponent);
@@ -831,7 +781,7 @@ function createImportContext(payload: FigmaExportPayload) {
     ...(payload.tokenSystem?.collections ?? {}),
   };
   const tokenPluginDataKey =
-    payload.tokenSystem?.pluginDataKey ?? CM_CSS_TOKEN_PLUGIN_DATA_KEY;
+    payload.tokenSystem?.pluginDataKey ?? DEFAULT_TOKEN_PLUGIN_DATA_KEY;
   const componentPluginDataKey =
     payload.componentSystem?.pluginDataKey ?? STORYBOOK_COMPONENT_PLUGIN_DATA_KEY;
   const tokenByCssName = new Map(tokens.map((token) => [token.cssName, token]));
@@ -935,8 +885,8 @@ function createImportContext(payload: FigmaExportPayload) {
 
     try {
       setVariablePluginData(variable, tokenPluginDataKey, spec.cssName);
-      if (tokenPluginDataKey !== CM_CSS_TOKEN_PLUGIN_DATA_KEY) {
-        setVariablePluginData(variable, CM_CSS_TOKEN_PLUGIN_DATA_KEY, spec.cssName);
+      if (tokenPluginDataKey !== LEGACY_CM_TOKEN_PLUGIN_DATA_KEY) {
+        setVariablePluginData(variable, LEGACY_CM_TOKEN_PLUGIN_DATA_KEY, spec.cssName);
       }
     } catch (error) {
       warn(`Could not set plugin data for ${spec.cssName}: ${formatError(error)}`);
@@ -1192,7 +1142,6 @@ function createImportContext(payload: FigmaExportPayload) {
       tagVariantComponentSet(existingSet, variantGroup[0].component);
       normalizeComponentSetVariantNames(existingSet, variantGroup[0].component);
       layoutVariantComponentSet(existingSet);
-      forceBrokerIconTextAlignment(existingSet);
       trackComponentSet(existingSet, variantGroup[0].component);
       return existingSet;
     }
@@ -1221,7 +1170,6 @@ function createImportContext(payload: FigmaExportPayload) {
       tagVariantComponentSet(componentSet, variantGroup[0].component);
       normalizeComponentSetVariantNames(componentSet, variantGroup[0].component);
       layoutVariantComponentSet(componentSet);
-      forceBrokerIconTextAlignment(componentSet);
       trackComponentSet(componentSet, variantGroup[0].component);
       return componentSet;
     } catch (error) {
@@ -1557,7 +1505,6 @@ function createImportContext(payload: FigmaExportPayload) {
         tagVariantComponentSet(existingSet, component);
         normalizeComponentSetVariantNames(existingSet, component);
         layoutVariantComponentSet(existingSet);
-        forceBrokerIconTextAlignment(existingSet);
         moveComponentDefinitionNodeToTargetPage(existingSet);
         return existingSet;
       }
@@ -1567,7 +1514,6 @@ function createImportContext(payload: FigmaExportPayload) {
         tagVariantComponentSet(existingSet, component);
         normalizeComponentSetVariantNames(existingSet, component);
         layoutVariantComponentSet(existingSet);
-        forceBrokerIconTextAlignment(existingSet);
         moveComponentDefinitionNodeToTargetPage(existingSet);
         return existingSet;
       } catch (error) {
@@ -1605,7 +1551,6 @@ function createImportContext(payload: FigmaExportPayload) {
       tagVariantComponentSet(componentSet, component);
       normalizeComponentSetVariantNames(componentSet, component);
       layoutVariantComponentSet(componentSet);
-      forceBrokerIconTextAlignment(componentSet);
       moveComponentDefinitionNodeToTargetPage(componentSet);
       return componentSet;
     } catch (error) {
@@ -2752,7 +2697,7 @@ async function findExistingVariable(
   const byPluginData = collectionVariables.find(
     (variable) =>
       getVariablePluginData(variable, pluginDataKey) === spec.cssName ||
-      getVariablePluginData(variable, CM_CSS_TOKEN_PLUGIN_DATA_KEY) === spec.cssName,
+      getVariablePluginData(variable, LEGACY_CM_TOKEN_PLUGIN_DATA_KEY) === spec.cssName,
   );
   if (byPluginData) return byPluginData;
 
@@ -2767,7 +2712,7 @@ async function findVariableByCssToken(
   const byPluginData = variables.find(
     (variable) =>
       getVariablePluginData(variable, pluginDataKey) === cssName ||
-      getVariablePluginData(variable, CM_CSS_TOKEN_PLUGIN_DATA_KEY) === cssName,
+      getVariablePluginData(variable, LEGACY_CM_TOKEN_PLUGIN_DATA_KEY) === cssName,
   );
   if (byPluginData) return byPluginData;
 
@@ -2985,8 +2930,8 @@ function validateToken(token: unknown): void {
   ) {
     throw new Error(`Invalid token collection for ${String(token.cssName)}.`);
   }
-  if (typeof token.cssName !== "string" || !token.cssName.startsWith("--cm-")) {
-    throw new Error("Invalid token: cssName must be a supported CSS token.");
+  if (!isCssCustomPropertyName(token.cssName)) {
+    throw new Error("Invalid token: cssName must be a CSS custom property name.");
   }
   if (typeof token.figmaName !== "string" || token.figmaName.length === 0) {
     throw new Error(`Invalid token ${token.cssName}: figmaName is missing.`);
@@ -3002,6 +2947,10 @@ function validateToken(token: unknown): void {
   if ("alias" in token && typeof token.alias !== "string") {
     throw new Error(`Invalid token ${token.cssName}: alias must be a string.`);
   }
+}
+
+function isCssCustomPropertyName(value: unknown): value is string {
+  return typeof value === "string" && /^--[A-Za-z0-9_-]+$/.test(value);
 }
 
 function validateNode(node: unknown, path: string): void {

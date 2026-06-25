@@ -127,10 +127,13 @@ function detectTokenPrefix(tokenNames, options) {
       candidates.set(prefix, candidate);
     }
   }
-  const completeCandidates = Array.from(candidates.entries()).filter(([, candidate]) => tokenLayers.every((layer) => candidate.layers.has(layer))).sort(([, a], [, b]) => b.count - a.count);
-  if (completeCandidates.length > 0) return completeCandidates[0][0];
+  const rankedCandidates = Array.from(candidates.entries()).sort(([, a], [, b]) => {
+    const byLayerCoverage = b.layers.size - a.layers.size;
+    return byLayerCoverage || b.count - a.count;
+  });
+  if (rankedCandidates.length > 0) return rankedCandidates[0][0];
   throw new Error(
-    "Unable to detect a ref/sys/comp token prefix. Pass tokenPrefix in the Storybook Figma export addon options."
+    "Unable to detect a CSS token prefix. Pass tokenPrefix in the Storybook Figma export addon options."
   );
 }
 function detectTokenSystem(options) {

@@ -2,7 +2,7 @@
 
 Figma development plugin for importing Storybook Code To Design JSON exports. The plugin parses JSON only; it does not evaluate pasted JavaScript.
 
-Version: `1.1.6`
+Version: `1.1.8`
 
 ## Build
 
@@ -22,7 +22,7 @@ npm run build
 
 ## Copy JSON From Storybook
 
-1. In Storybook, open a `Components/*` story, for example `Components/Valuation Label`.
+1. In Storybook, open any story included by your Figma export addon options.
 2. Enable the `Figma export` toolbar item.
 3. Click `Copy JSON`. This is the primary importer flow.
 4. `Copy Console Script` is kept only as a legacy fallback for plugin-console experiments.
@@ -48,9 +48,11 @@ The JSON payload includes:
 
 The importer avoids duplicate variables by:
 
-1. Finding collections named `ref`, `sys`, and `comp`.
-2. Looking for an existing variable in that collection by plugin data key `cmCssToken`.
+1. Finding collections from the payload `tokenSystem.collections`, falling back to `ref`, `sys`, and `comp`.
+2. Looking for an existing variable in that collection by the payload `tokenSystem.pluginDataKey`, falling back to `storybookCssToken`.
 3. Falling back to `variable.name`.
 4. Creating a variable only when neither lookup finds one.
+
+The importer also reads and writes the legacy `cmCssToken` plugin data key so older files continue to deduplicate correctly. CSS token names only need to be valid CSS custom property names beginning with `--`; no project-specific prefix is required.
 
 If an existing variable has the same token identity but a different Figma variable type, the import stops with an error. Alias tokens are written as Figma `VARIABLE_ALIAS` values, so `comp -> sys -> ref` chains are preserved instead of flattened to raw values.
