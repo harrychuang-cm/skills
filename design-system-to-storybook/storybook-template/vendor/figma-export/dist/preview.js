@@ -1728,15 +1728,17 @@ function createFigmaPluginCode(payload) {
 const STORYBOOK_FIGMA_EXPORT = ${serializedPayload};
 
 void (async function importStorybookStory(payload) {
-  const COLLECTION_NAMES = payload.tokenSystem?.collections || {
+  const tokenSystem = payload.tokenSystem || {};
+  const componentSystem = payload.componentSystem || {};
+  const COLLECTION_NAMES = tokenSystem.collections || {
     ref: "ref",
     sys: "sys",
     comp: "comp",
   };
   const PLUGIN_DATA_TOKEN_KEY =
-    payload.tokenSystem?.pluginDataKey || "storybookCssToken";
+    tokenSystem.pluginDataKey || "storybookCssToken";
   const PLUGIN_DATA_COMPONENT_KEY =
-    payload.componentSystem?.pluginDataKey || "storybookComponentKey";
+    componentSystem.pluginDataKey || "storybookComponentKey";
 
   const BINDABLE_RADIUS_FIELDS = [
     "topLeftRadius",
@@ -1757,12 +1759,17 @@ void (async function importStorybookStory(payload) {
     return Math.min(max, Math.max(min, value));
   }
 
+  function valueOr(value, fallback) {
+    return value === undefined || value === null ? fallback : value;
+  }
+
   function cloneColor(color) {
+    const source = color || {};
     return {
-      r: clamp(Number(color.r) || 0, 0, 1),
-      g: clamp(Number(color.g) || 0, 0, 1),
-      b: clamp(Number(color.b) || 0, 0, 1),
-      a: clamp(Number(color.a ?? 1), 0, 1),
+      r: clamp(Number(source.r) || 0, 0, 1),
+      g: clamp(Number(source.g) || 0, 0, 1),
+      b: clamp(Number(source.b) || 0, 0, 1),
+      a: clamp(Number(valueOr(source.a, 1)), 0, 1),
     };
   }
 
@@ -1789,7 +1796,7 @@ void (async function importStorybookStory(payload) {
         r: clamp((parts[0] || 0) / 255, 0, 1),
         g: clamp((parts[1] || 0) / 255, 0, 1),
         b: clamp((parts[2] || 0) / 255, 0, 1),
-        a: clamp(parts[3] ?? 1, 0, 1),
+        a: clamp(valueOr(parts[3], 1), 0, 1),
       };
     }
 
@@ -1797,19 +1804,19 @@ void (async function importStorybookStory(payload) {
   }
 
   function solidPaint(cssValue, variable) {
-    const color = variable?.resolvedType === "COLOR" && variable.valuesByMode
+    const color = variable && variable.resolvedType === "COLOR" && variable.valuesByMode
       ? { r: 0, g: 0, b: 0 }
       : colorFromCss(cssValue);
     const paint = {
       type: "SOLID",
       color: { r: color.r, g: color.g, b: color.b },
-      opacity: color.a ?? 1,
+      opacity: valueOr(color.a, 1),
     };
 
-    if (variable && figma.variables?.setBoundVariableForPaint) {
+    if (variable && figma.variables && figma.variables.setBoundVariableForPaint) {
       try {
         return figma.variables.setBoundVariableForPaint(paint, "color", variable);
-      } catch {
+      } catch (_error) {
         return paint;
       }
     }
@@ -1824,7 +1831,7 @@ void (async function importStorybookStory(payload) {
     if (existing) return existing;
 
     const created = figma.variables.createVariableCollection(name);
-    if (created.modes[0]?.name !== "Default") {
+    if (created.modes[0] && created.modes[0].name !== "Default") {
       created.renameMode(created.modes[0].modeId, "Default");
     }
     return created;
@@ -1833,7 +1840,7 @@ void (async function importStorybookStory(payload) {
   function getVariablePluginData(variable, key) {
     try {
       return typeof variable.getPluginData === "function" ? variable.getPluginData(key) : "";
-    } catch {
+    } catch (_error) {
       return "";
     }
   }
@@ -1843,7 +1850,7 @@ void (async function importStorybookStory(payload) {
       if (typeof variable.setPluginData === "function") {
         variable.setPluginData(key, value);
       }
-    } catch {
+    } catch (_error) {
       // Older Figma runtimes may not support plugin data on variables.
     }
   }
@@ -1851,7 +1858,7 @@ void (async function importStorybookStory(payload) {
   function getNodePluginData(node, key) {
     try {
       return typeof node.getPluginData === "function" ? node.getPluginData(key) : "";
-    } catch {
+    } catch (_error) {
       return "";
     }
   }
@@ -1861,7 +1868,7 @@ void (async function importStorybookStory(payload) {
       if (typeof node.setPluginData === "function") {
         node.setPluginData(key, value);
       }
-    } catch {
+    } catch (_error) {
       // Plugin data is metadata only; continue if unsupported.
     }
   }
@@ -1875,7 +1882,7 @@ void (async function importStorybookStory(payload) {
   }
 
   function findLocalComponent(component) {
-    if (!component?.key) return undefined;
+    if (!component || !component.key) return undefined;
     const cached = componentRegistry.get(component.key);
     if (cached) return cached;
 
@@ -1891,7 +1898,7 @@ void (async function importStorybookStory(payload) {
 
       const nodeSource = getNodePluginData(node, "storybookComponentSource");
       const parentSource =
-        node.parent?.type === "COMPONENT_SET"
+        node.parent && node.parent.type === "COMPONENT_SET"
           ? getNodePluginData(node.parent, "storybookComponentSource")
           : "";
       const knownSource = nodeSource || parentSource;
@@ -1906,7 +1913,7 @@ void (async function importStorybookStory(payload) {
   }
 
   function tagComponentNode(node, component) {
-    if (!component?.key) return;
+    if (!component || !component.key) return;
     setNodePluginData(node, PLUGIN_DATA_COMPONENT_KEY, component.key);
     setNodePluginData(node, "storybookComponentName", component.name);
     setNodePluginData(node, "storybookComponentSource", component.sourceName || component.key);
@@ -1925,11 +1932,11 @@ void (async function importStorybookStory(payload) {
   }
 
   function getComponentsPageName() {
-    return payload.componentSystem?.componentsPageName || "Components";
+    return componentSystem.componentsPageName || "Components";
   }
 
   function isComponentsPage(page) {
-    return String(page?.name || "").toLowerCase() ===
+    return String((page && page.name) || "").toLowerCase() ===
       String(getComponentsPageName()).toLowerCase();
   }
 
@@ -1966,7 +1973,7 @@ void (async function importStorybookStory(payload) {
     const parentPage = getComponentDefinitionParentPage();
     const nextY = getNextComponentDefinitionY(parentPage);
     if (node.parent !== parentPage) parentPage.appendChild(node);
-    const rootWidth = payload.root?.styles?.width || 0;
+    const rootWidth = (payload.root && payload.root.styles && payload.root.styles.width) || 0;
     node.x = payload.artifactKind === "page" ? 0 : rootWidth + 80;
     node.y = nextY;
     componentDefinitionOffsetY += (node.height || 0) + 24;
@@ -2006,8 +2013,8 @@ void (async function importStorybookStory(payload) {
   function linearGradientPaint(gradient) {
     return {
       type: "GRADIENT_LINEAR",
-      gradientTransform: getLinearGradientTransform(gradient?.angle ?? 90),
-      gradientStops: (gradient?.stops || []).map((stop, index, stops) => {
+      gradientTransform: getLinearGradientTransform(valueOr(gradient && gradient.angle, 90)),
+      gradientStops: ((gradient && gradient.stops) || []).map((stop, index, stops) => {
         const variable = registry.get(stop.token);
         const colorStop = {
           position:
@@ -2018,7 +2025,7 @@ void (async function importStorybookStory(payload) {
                 : 0,
           color: cloneColor(colorFromCss(stop.color)),
         };
-        if (variable?.id) {
+        if (variable && variable.id) {
           colorStop.boundVariables = {
             color: { type: "VARIABLE_ALIAS", id: variable.id },
           };
@@ -2037,7 +2044,8 @@ void (async function importStorybookStory(payload) {
     return (
       importContext.reuseComponents !== false &&
       importContext.isRoot !== true &&
-      spec.component?.key &&
+      spec.component &&
+      spec.component.key &&
       canCreateComponentDefinition(spec)
     );
   }
@@ -2049,7 +2057,8 @@ void (async function importStorybookStory(payload) {
 
     const component = spec.component;
     if (
-      component?.key &&
+      component &&
+      component.key &&
       component.name === componentTitle &&
       canCreateComponentDefinition(spec) &&
       !seenKeys.has(component.key)
@@ -2074,7 +2083,8 @@ void (async function importStorybookStory(payload) {
     const component = spec.component;
     if (
       !isRootNode &&
-      component?.key &&
+      component &&
+      component.key &&
       canCreateComponentDefinition(spec) &&
       !seenKeys.has(component.key)
     ) {
@@ -2089,7 +2099,7 @@ void (async function importStorybookStory(payload) {
   }
 
   function getComponentSetParent(node) {
-    return node?.parent?.type === "COMPONENT_SET" ? node.parent : undefined;
+    return node && node.parent && node.parent.type === "COMPONENT_SET" ? node.parent : undefined;
   }
 
   async function importComponentVariantSet(specs) {
@@ -2127,7 +2137,7 @@ void (async function importStorybookStory(payload) {
       setNodePluginData(
         componentSet,
         "storybookComponentSource",
-        specs[0]?.component?.sourceName || payload.componentTitle,
+        (specs[0] && specs[0].component && specs[0].component.sourceName) || payload.componentTitle,
       );
       return componentSet;
     }
@@ -2145,14 +2155,14 @@ void (async function importStorybookStory(payload) {
         node.characters = nextText;
       }
 
-      if (spec.styles?.textAutoResize && "textAutoResize" in node) {
+      if (spec.styles && spec.styles.textAutoResize && "textAutoResize" in node) {
         try {
           node.textAutoResize = spec.styles.textAutoResize;
-        } catch {
+        } catch (_error) {
           // Some instance text overrides cannot change auto-resize mode.
         }
       } else {
-        safeResize(node, spec.styles?.width, spec.styles?.height);
+        safeResize(node, spec.styles && spec.styles.width, spec.styles && spec.styles.height);
       }
       applyTextTruncation(node, spec.styles || {});
       return;
@@ -2188,7 +2198,7 @@ void (async function importStorybookStory(payload) {
       const bindings = spec.bindings || {};
       safeResize(node, styles.width, styles.height);
       if ("clipsContent" in node) node.clipsContent = styles.overflow === "hidden";
-      if ("opacity" in node) node.opacity = styles.opacity ?? 1;
+      if ("opacity" in node) node.opacity = valueOr(styles.opacity, 1);
       setFrameFills(node, styles, bindings);
       setStrokes(node, styles, bindings);
       applyRadius(node, styles, bindings);
@@ -2258,14 +2268,14 @@ void (async function importStorybookStory(payload) {
     if (Array.isArray(spec.scopes)) {
       try {
         variable.scopes = spec.scopes;
-      } catch {
+      } catch (_error) {
         // Scope support differs by variable type and Figma runtime.
       }
     }
 
     try {
       variable.setVariableCodeSyntax("WEB", "var(" + spec.cssName + ")");
-    } catch {
+    } catch (_error) {
       // Code syntax is metadata only; continue if unsupported.
     }
 
@@ -2289,7 +2299,7 @@ void (async function importStorybookStory(payload) {
 
   async function upsertVariables(tokens) {
     const sorted = [...tokens].sort((a, b) => {
-      const byLayer = (layerOrder[a.collection] ?? 9) - (layerOrder[b.collection] ?? 9);
+      const byLayer = valueOr(layerOrder[a.collection], 9) - valueOr(layerOrder[b.collection], 9);
       if (byLayer !== 0) return byLayer;
       return a.figmaName.localeCompare(b.figmaName);
     });
@@ -2303,7 +2313,7 @@ void (async function importStorybookStory(payload) {
     if (typeof node.resize !== "function") return;
     try {
       node.resize(Math.max(1, width || 1), Math.max(1, height || 1));
-    } catch {
+    } catch (_error) {
       // Some imported nodes do not allow direct resize.
     }
   }
@@ -2314,7 +2324,7 @@ void (async function importStorybookStory(payload) {
 
     try {
       node.setBoundVariable(field, variable);
-    } catch {
+    } catch (_error) {
       // Not every node supports every variable binding field.
     }
   }
@@ -2324,17 +2334,17 @@ void (async function importStorybookStory(payload) {
 
     try {
       node.layoutMode = mode;
-    } catch {
+    } catch (_error) {
       // Some nodes cannot change layout mode after import.
     }
   }
 
   function isBorderFallbackNode(spec) {
-    return String(spec?.name || "").includes("__border-");
+    return String((spec && spec.name) || "").includes("__border-");
   }
 
   function isAbsoluteLayoutNodeSpec(spec) {
-    return spec?.layoutStrategy === "absolute" || isBorderFallbackNode(spec);
+    return (spec && spec.layoutStrategy) === "absolute" || isBorderFallbackNode(spec);
   }
 
   function applyNodeConstraints(child, constraints) {
@@ -2342,13 +2352,13 @@ void (async function importStorybookStory(payload) {
 
     try {
       child.constraints = constraints;
-    } catch {
+    } catch (_error) {
       // Some Figma nodes do not support constraints.
     }
   }
 
   function getAbsoluteChildX(parent, child, childSpec, styles) {
-    const name = String(childSpec?.name || "");
+    const name = String((childSpec && childSpec.name) || "");
     if (!name.includes("__border-right")) return styles.x || 0;
 
     const parentWidth = typeof parent.width === "number" ? parent.width : 0;
@@ -2357,7 +2367,7 @@ void (async function importStorybookStory(payload) {
   }
 
   function getAbsoluteChildY(parent, child, childSpec, styles) {
-    const name = String(childSpec?.name || "");
+    const name = String((childSpec && childSpec.name) || "");
     if (!name.includes("__border-bottom")) return styles.y || 0;
 
     const parentHeight = typeof parent.height === "number" ? parent.height : 0;
@@ -2373,7 +2383,7 @@ void (async function importStorybookStory(payload) {
       if ("layoutPositioning" in child) {
         try {
           child.layoutPositioning = "ABSOLUTE";
-        } catch {
+        } catch (_error) {
           // Older Figma nodes may not allow absolute positioning.
         }
       }
@@ -2386,7 +2396,7 @@ void (async function importStorybookStory(payload) {
     if ("layoutPositioning" in child) {
       try {
         child.layoutPositioning = "AUTO";
-      } catch {
+      } catch (_error) {
         // Older Figma nodes may not allow layout positioning changes.
       }
     }
@@ -2420,11 +2430,11 @@ void (async function importStorybookStory(payload) {
       node.strokes = [solidPaint(firstSide.color, colorVariable)];
       try {
         node.strokeAlign = "INSIDE";
-        node.strokeTopWeight = styles.borderSides.top?.width ?? 0;
-        node.strokeRightWeight = styles.borderSides.right?.width ?? 0;
-        node.strokeBottomWeight = styles.borderSides.bottom?.width ?? 0;
-        node.strokeLeftWeight = styles.borderSides.left?.width ?? 0;
-      } catch {
+        node.strokeTopWeight = valueOr(styles.borderSides.top && styles.borderSides.top.width, 0);
+        node.strokeRightWeight = valueOr(styles.borderSides.right && styles.borderSides.right.width, 0);
+        node.strokeBottomWeight = valueOr(styles.borderSides.bottom && styles.borderSides.bottom.width, 0);
+        node.strokeLeftWeight = valueOr(styles.borderSides.left && styles.borderSides.left.width, 0);
+      } catch (_error) {
         // Per-side stroke weights are unsupported on some node types.
       }
       return;
@@ -2501,11 +2511,11 @@ void (async function importStorybookStory(payload) {
       : horizontalSizingMode;
     node.primaryAxisAlignItems = mapAxisAlignment(styles.justifyContent);
     node.counterAxisAlignItems = mapCounterAlignment(styles.alignItems);
-    node.itemSpacing = styles.gap ?? 0;
-    node.paddingLeft = styles.paddingLeft ?? 0;
-    node.paddingRight = styles.paddingRight ?? 0;
-    node.paddingTop = styles.paddingTop ?? 0;
-    node.paddingBottom = styles.paddingBottom ?? 0;
+    node.itemSpacing = valueOr(styles.gap, 0);
+    node.paddingLeft = valueOr(styles.paddingLeft, 0);
+    node.paddingRight = valueOr(styles.paddingRight, 0);
+    node.paddingTop = valueOr(styles.paddingTop, 0);
+    node.paddingBottom = valueOr(styles.paddingBottom, 0);
 
     safeBind(node, "itemSpacing", bindings.gap);
     safeBind(node, "paddingLeft", bindings.paddingLeft);
@@ -2522,7 +2532,7 @@ void (async function importStorybookStory(payload) {
     if (layoutGrow > 0 && "layoutGrow" in child) {
       try {
         child.layoutGrow = 1;
-      } catch {
+      } catch (_error) {
         // Some Figma nodes do not support fill-container sizing.
       }
     }
@@ -2531,7 +2541,7 @@ void (async function importStorybookStory(payload) {
 
     try {
       child.layoutAlign = "STRETCH";
-    } catch {
+    } catch (_error) {
       // Some Figma nodes do not support auto-layout child sizing.
     }
   }
@@ -2558,8 +2568,9 @@ void (async function importStorybookStory(payload) {
   }
 
   function getFontFamily(fontFamily) {
-    const first = String(fontFamily || "Inter").split(",")[0]?.trim();
-    return first ? first.replace(/^["']|["']$/g, "") : "Inter";
+    const first = String(fontFamily || "Inter").split(",")[0];
+    const trimmed = first ? first.trim() : "";
+    return trimmed ? trimmed.replace(/^["']|["']$/g, "") : "Inter";
   }
 
   function normalizeFontName(fontName) {
@@ -2588,7 +2599,7 @@ void (async function importStorybookStory(payload) {
     const token = rawTokenByName.get(tokenName);
     if (!token) return undefined;
     if (token.alias) return resolveTokenValue(token.alias, visited);
-    return token.value ?? token.rawValue;
+    return valueOr(token.value, token.rawValue);
   }
 
   function getFontFamilyFromToken(tokenName) {
@@ -2618,7 +2629,7 @@ void (async function importStorybookStory(payload) {
       try {
         await loadFont({ family, style });
         return true;
-      } catch {
+      } catch (_error) {
         // Try next style before skipping the font-family binding.
       }
     }
@@ -2635,7 +2646,7 @@ void (async function importStorybookStory(payload) {
       try {
         await loadFont(fontName);
         return fontName;
-      } catch {
+      } catch (_error) {
         // Try the next style for the same family before falling back.
       }
     }
@@ -2655,7 +2666,7 @@ void (async function importStorybookStory(payload) {
     if (typeof node.getRangeAllFontNames === "function" && node.characters.length > 0) {
       try {
         fonts.push(...node.getRangeAllFontNames(0, node.characters.length));
-      } catch {
+      } catch (_error) {
         // Some runtimes do not allow range font inspection before insertion.
       }
     }
@@ -2663,7 +2674,7 @@ void (async function importStorybookStory(payload) {
     for (const fontName of fonts) {
       try {
         await loadFont(fontName);
-      } catch {
+      } catch (_error) {
         const fallback = { family: "Inter", style: "Regular" };
         await loadFont(fallback);
         node.fontName = fallback;
@@ -2691,7 +2702,7 @@ void (async function importStorybookStory(payload) {
     if (styles.maxLines !== undefined && "maxLines" in node) {
       try {
         node.maxLines = styles.maxLines;
-      } catch {
+      } catch (_error) {
         // Some Figma runtimes may not support max line limits.
       }
     }
@@ -2699,7 +2710,7 @@ void (async function importStorybookStory(payload) {
     if (styles.textTruncation && "textTruncation" in node) {
       try {
         node.textTruncation = styles.textTruncation;
-      } catch {
+      } catch (_error) {
         // Some Figma runtimes may not support text truncation.
       }
     }
@@ -2716,7 +2727,7 @@ void (async function importStorybookStory(payload) {
     if ("textAutoResize" in node) {
       try {
         node.textAutoResize = "NONE";
-      } catch {
+      } catch (_error) {
         // Keep default text sizing if fixed text resize is not supported.
       }
     }
@@ -2729,14 +2740,14 @@ void (async function importStorybookStory(payload) {
     if (styles.textAlign && "textAlignHorizontal" in node) {
       try {
         node.textAlignHorizontal = mapTextAlignHorizontal(styles.textAlign);
-      } catch {
+      } catch (_error) {
         // Some imported text nodes may not allow text alignment changes.
       }
     }
     if (styles.textAutoResize && "textAutoResize" in node) {
       try {
         node.textAutoResize = styles.textAutoResize;
-      } catch {
+      } catch (_error) {
         // Some imported text nodes may not allow auto-resize changes.
       }
     }
@@ -2769,7 +2780,7 @@ void (async function importStorybookStory(payload) {
         svgNode.y = 0;
         await loadNodeFonts(svgNode);
         wrapper.appendChild(svgNode);
-      } catch {
+      } catch (_error) {
         // Keep an empty wrapper if SVG import fails.
       }
     }
@@ -2784,7 +2795,7 @@ void (async function importStorybookStory(payload) {
     node.name = spec.name;
     safeResize(node, styles.width, styles.height);
     node.clipsContent = styles.overflow === "hidden";
-    node.opacity = styles.opacity ?? 1;
+    node.opacity = valueOr(styles.opacity, 1);
     setFrameFills(node, styles, bindings);
     setStrokes(node, styles, bindings);
     applyRadius(node, styles, bindings);
@@ -2797,7 +2808,7 @@ void (async function importStorybookStory(payload) {
     const childContext = {
       ...(context || {}),
       isRoot: false,
-      reuseComponents: context?.reuseComponents !== false,
+      reuseComponents: !context || context.reuseComponents !== false,
     };
     for (const childSpec of spec.children || []) {
       const child = await createNode(childSpec, childContext);
@@ -2817,7 +2828,7 @@ void (async function importStorybookStory(payload) {
   async function ensureComponentDefinition(spec, component, context) {
     const existing = findLocalComponent(component);
     if (existing) {
-      if (context?.updateExistingComponent !== false) {
+      if (!context || context.updateExistingComponent !== false) {
         await updateExistingComponentDefinition(existing, spec);
         tagComponentNode(existing, component);
         moveExistingComponentDefinitionToTargetPage(existing);
@@ -2875,7 +2886,7 @@ void (async function importStorybookStory(payload) {
 
   await upsertVariables(payload.tokens || []);
   const shouldImportAsComponent = payload.artifactKind === "component";
-  const rootComponent = payload.component || payload.root?.component;
+  const rootComponent = payload.component || (payload.root && payload.root.component);
   const componentVariantSpecs =
     shouldImportAsComponent && !rootComponent
       ? collectComponentDefinitionSpecs(payload.root, payload.componentTitle)
@@ -2927,7 +2938,7 @@ void (async function importStorybookStory(payload) {
   );
 })(STORYBOOK_FIGMA_EXPORT).catch((error) => {
   console.error(error);
-  figma.notify("Storybook import failed: " + (error?.message || String(error)));
+  figma.notify("Storybook import failed: " + ((error && error.message) || String(error)));
 });
 `;
 }

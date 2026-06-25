@@ -1261,13 +1261,14 @@ function createFigmaPluginCode(payload) {
 const STORYBOOK_FIGMA_EXPORT = ${serializedPayload};
 
 void (async function importStorybookStory(payload) {
-  const COLLECTION_NAMES = payload.tokenSystem?.collections || {
+  const tokenSystem = payload.tokenSystem || {};
+  const COLLECTION_NAMES = tokenSystem.collections || {
     ref: "ref",
     sys: "sys",
     comp: "comp",
   };
   const PLUGIN_DATA_TOKEN_KEY =
-    payload.tokenSystem?.pluginDataKey || "storybookCssToken";
+    tokenSystem.pluginDataKey || "storybookCssToken";
 
   const BINDABLE_RADIUS_FIELDS = [
     "topLeftRadius",
@@ -1286,12 +1287,17 @@ void (async function importStorybookStory(payload) {
     return Math.min(max, Math.max(min, value));
   }
 
+  function nullish(value, fallback) {
+    return value === null || value === undefined ? fallback : value;
+  }
+
   function cloneColor(color) {
+    const source = color || {};
     return {
-      r: clamp(Number(color.r) || 0, 0, 1),
-      g: clamp(Number(color.g) || 0, 0, 1),
-      b: clamp(Number(color.b) || 0, 0, 1),
-      a: clamp(Number(color.a ?? 1), 0, 1),
+      r: clamp(Number(source.r) || 0, 0, 1),
+      g: clamp(Number(source.g) || 0, 0, 1),
+      b: clamp(Number(source.b) || 0, 0, 1),
+      a: clamp(Number(nullish(source.a, 1)), 0, 1),
     };
   }
 
@@ -1318,7 +1324,7 @@ void (async function importStorybookStory(payload) {
         r: clamp((parts[0] || 0) / 255, 0, 1),
         g: clamp((parts[1] || 0) / 255, 0, 1),
         b: clamp((parts[2] || 0) / 255, 0, 1),
-        a: clamp(parts[3] ?? 1, 0, 1),
+        a: clamp(nullish(parts[3], 1), 0, 1),
       };
     }
 
@@ -1326,19 +1332,19 @@ void (async function importStorybookStory(payload) {
   }
 
   function solidPaint(cssValue, variable) {
-    const color = variable?.resolvedType === "COLOR" && variable.valuesByMode
+    const color = variable && variable.resolvedType === "COLOR" && variable.valuesByMode
       ? { r: 0, g: 0, b: 0 }
       : colorFromCss(cssValue);
     const paint = {
       type: "SOLID",
       color: { r: color.r, g: color.g, b: color.b },
-      opacity: color.a ?? 1,
+      opacity: nullish(color.a, 1),
     };
 
-    if (variable && figma.variables?.setBoundVariableForPaint) {
+    if (variable && figma.variables && figma.variables.setBoundVariableForPaint) {
       try {
         return figma.variables.setBoundVariableForPaint(paint, "color", variable);
-      } catch {
+      } catch (_error) {
         return paint;
       }
     }
@@ -1353,7 +1359,7 @@ void (async function importStorybookStory(payload) {
     if (existing) return existing;
 
     const created = figma.variables.createVariableCollection(name);
-    if (created.modes[0]?.name !== "Default") {
+    if (created.modes[0] && created.modes[0].name !== "Default") {
       created.renameMode(created.modes[0].modeId, "Default");
     }
     return created;
@@ -1362,7 +1368,7 @@ void (async function importStorybookStory(payload) {
   function getVariablePluginData(variable, key) {
     try {
       return typeof variable.getPluginData === "function" ? variable.getPluginData(key) : "";
-    } catch {
+    } catch (_error) {
       return "";
     }
   }
@@ -1372,7 +1378,7 @@ void (async function importStorybookStory(payload) {
       if (typeof variable.setPluginData === "function") {
         variable.setPluginData(key, value);
       }
-    } catch {
+    } catch (_error) {
       // Older Figma runtimes may not support plugin data on variables.
     }
   }
@@ -1405,14 +1411,14 @@ void (async function importStorybookStory(payload) {
     if (Array.isArray(spec.scopes)) {
       try {
         variable.scopes = spec.scopes;
-      } catch {
+      } catch (_error) {
         // Scope support differs by variable type and Figma runtime.
       }
     }
 
     try {
       variable.setVariableCodeSyntax("WEB", "var(" + spec.cssName + ")");
-    } catch {
+    } catch (_error) {
       // Code syntax is metadata only; continue if unsupported.
     }
 
@@ -1436,7 +1442,7 @@ void (async function importStorybookStory(payload) {
 
   async function upsertVariables(tokens) {
     const sorted = [...tokens].sort((a, b) => {
-      const byLayer = (layerOrder[a.collection] ?? 9) - (layerOrder[b.collection] ?? 9);
+      const byLayer = nullish(layerOrder[a.collection], 9) - nullish(layerOrder[b.collection], 9);
       if (byLayer !== 0) return byLayer;
       return a.figmaName.localeCompare(b.figmaName);
     });
@@ -1450,7 +1456,7 @@ void (async function importStorybookStory(payload) {
     if (typeof node.resize !== "function") return;
     try {
       node.resize(Math.max(1, width || 1), Math.max(1, height || 1));
-    } catch {
+    } catch (_error) {
       // Some imported nodes do not allow direct resize.
     }
   }
@@ -1461,7 +1467,7 @@ void (async function importStorybookStory(payload) {
 
     try {
       node.setBoundVariable(field, variable);
-    } catch {
+    } catch (_error) {
       // Not every node supports every variable binding field.
     }
   }
@@ -1471,7 +1477,7 @@ void (async function importStorybookStory(payload) {
 
     try {
       node.layoutMode = mode;
-    } catch {
+    } catch (_error) {
       // Some nodes cannot change layout mode after import.
     }
   }
@@ -1483,7 +1489,7 @@ void (async function importStorybookStory(payload) {
       if ("layoutPositioning" in child) {
         try {
           child.layoutPositioning = "ABSOLUTE";
-        } catch {
+        } catch (_error) {
           // Older Figma nodes may not allow absolute positioning.
         }
       }
@@ -1564,11 +1570,11 @@ void (async function importStorybookStory(payload) {
     node.counterAxisSizingMode = "FIXED";
     node.primaryAxisAlignItems = mapAxisAlignment(styles.justifyContent);
     node.counterAxisAlignItems = mapCounterAlignment(styles.alignItems);
-    node.itemSpacing = styles.gap ?? 0;
-    node.paddingLeft = styles.paddingLeft ?? 0;
-    node.paddingRight = styles.paddingRight ?? 0;
-    node.paddingTop = styles.paddingTop ?? 0;
-    node.paddingBottom = styles.paddingBottom ?? 0;
+    node.itemSpacing = nullish(styles.gap, 0);
+    node.paddingLeft = nullish(styles.paddingLeft, 0);
+    node.paddingRight = nullish(styles.paddingRight, 0);
+    node.paddingTop = nullish(styles.paddingTop, 0);
+    node.paddingBottom = nullish(styles.paddingBottom, 0);
 
     safeBind(node, "itemSpacing", bindings.gap);
     safeBind(node, "paddingLeft", bindings.paddingLeft);
@@ -1599,7 +1605,8 @@ void (async function importStorybookStory(payload) {
   }
 
   function getFontFamily(fontFamily) {
-    const first = String(fontFamily || "Inter").split(",")[0]?.trim();
+    const firstPart = String(fontFamily || "Inter").split(",")[0];
+    const first = firstPart ? firstPart.trim() : "";
     return first ? first.replace(/^["']|["']$/g, "") : "Inter";
   }
 
@@ -1629,7 +1636,7 @@ void (async function importStorybookStory(payload) {
     const token = rawTokenByName.get(tokenName);
     if (!token) return undefined;
     if (token.alias) return resolveTokenValue(token.alias, visited);
-    return token.value ?? token.rawValue;
+    return nullish(token.value, token.rawValue);
   }
 
   function getFontFamilyFromToken(tokenName) {
@@ -1659,7 +1666,7 @@ void (async function importStorybookStory(payload) {
       try {
         await loadFont({ family, style });
         return true;
-      } catch {
+      } catch (_error) {
         // Try next style before skipping the font-family binding.
       }
     }
@@ -1676,7 +1683,7 @@ void (async function importStorybookStory(payload) {
       try {
         await loadFont(fontName);
         return fontName;
-      } catch {
+      } catch (_error) {
         // Try the next style for the same family before falling back.
       }
     }
@@ -1696,7 +1703,7 @@ void (async function importStorybookStory(payload) {
     if (typeof node.getRangeAllFontNames === "function" && node.characters.length > 0) {
       try {
         fonts.push(...node.getRangeAllFontNames(0, node.characters.length));
-      } catch {
+      } catch (_error) {
         // Some runtimes do not allow range font inspection before insertion.
       }
     }
@@ -1704,7 +1711,7 @@ void (async function importStorybookStory(payload) {
     for (const fontName of fonts) {
       try {
         await loadFont(fontName);
-      } catch {
+      } catch (_error) {
         const fallback = { family: "Inter", style: "Regular" };
         await loadFont(fallback);
         node.fontName = fallback;
@@ -1768,7 +1775,7 @@ void (async function importStorybookStory(payload) {
         svgNode.y = 0;
         await loadNodeFonts(svgNode);
         wrapper.appendChild(svgNode);
-      } catch {
+      } catch (_error) {
         // Keep an empty wrapper if SVG import fails.
       }
     }
@@ -1783,7 +1790,7 @@ void (async function importStorybookStory(payload) {
     node.name = spec.name;
     safeResize(node, styles.width, styles.height);
     node.clipsContent = styles.overflow === "hidden";
-    node.opacity = styles.opacity ?? 1;
+    node.opacity = nullish(styles.opacity, 1);
     setFrameFills(node, styles, bindings);
     setStrokes(node, styles, bindings);
     applyRadius(node, styles, bindings);
@@ -1833,7 +1840,7 @@ void (async function importStorybookStory(payload) {
   );
 })(STORYBOOK_FIGMA_EXPORT).catch((error) => {
   console.error(error);
-  figma.notify("Storybook import failed: " + (error?.message || String(error)));
+  figma.notify("Storybook import failed: " + ((error && error.message) || String(error)));
 });
 `;
 }
