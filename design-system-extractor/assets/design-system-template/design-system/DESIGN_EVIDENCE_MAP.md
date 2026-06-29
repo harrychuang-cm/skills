@@ -21,6 +21,13 @@ Use this table when the input is an AI-generated or vibe-coded project. Record w
 | Source | Classification | Visible in rendered UI | Token/component used | Keep / ignore decision | Rationale |
 |---|---|---|---|---|---|
 
+## Native App Project Review
+
+Use this table when the input is a native iOS or Android app project. Record whether native evidence is native-capture, native-preview, screenshot-test, native-token-used, native-component-used, native-source-only, native-capture-blocked, native-contradictory, out-of-scope, or explicitly kept/ignored before it influences confidence.
+
+| Source | Classification | Visible in native capture / screenshot / preview | Token / component / resource used | Keep / ignore decision | Rationale |
+|---|---|---|---|---|---|
+
 ## Route / State Manifest
 
 Use this table when extracting from a project folder with runnable routes or Storybook stories.
@@ -28,12 +35,26 @@ Use this table when extracting from a project folder with runnable routes or Sto
 | Route or story | Viewport | State | Render command | Screenshot path | Source files | Capture status | Keep / ignore | Notes |
 |---|---|---|---|---|---|---|---|---|
 
+## Native Screen / State Manifest
+
+Use this table when extracting from native iOS or Android screens, previews, screenshot tests, simulators, emulators, or supplied app captures.
+
+| Platform | Screen or component | Source entrypoint | Device / viewport | State | Render/capture command | Screenshot path | Source files | Capture status | Keep / ignore | Notes |
+|---|---|---|---|---|---|---|---|---|---|---|
+
 ## Rendered UI Capture Attempts
 
 Record every browser capture attempt for runnable projects, including blocked captures.
 
 | Capture ID | Route or story | Viewport | State | URL | Screenshot path | DOM/CSS inspected | Source files linked | Status | Confidence impact |
 |---|---|---|---|---|---|---|---|---|---|
+
+## Native UI Capture Attempts
+
+Record every native capture attempt for simulator, emulator, device, preview, screenshot-test, or demo/gallery output, including blocked captures.
+
+| Capture ID | Platform | Screen/component | Device | OS/API | Orientation | State | Command | Screenshot path | Source files linked | Status | Confidence impact |
+|---|---|---|---|---|---|---|---|---|---|---|---|
 
 ## Evidence
 

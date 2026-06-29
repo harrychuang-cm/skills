@@ -1,6 +1,6 @@
 # Design System Extractor Skill
 
-`design-system-extractor` is a reusable skill for extracting and collaboratively reviewing a token-backed design-system package from screenshots, graphic/brand/editorial references, Figma references, branch diffs, an existing project/prototype folder, or an AI-generated/vibe-coded prototype project.
+`design-system-extractor` is a reusable skill for extracting and collaboratively reviewing a token-backed design-system package from screenshots, graphic/brand/editorial references, Figma references, branch diffs, an existing web or native iOS/Android project folder, or an AI-generated/vibe-coded prototype project.
 
 It does not implement product screens by default. It produces design-system documentation, token files, component inventory, component token specs, anti-AI style rules, static HTML documentation, and a checkpoint for the next step.
 
@@ -18,6 +18,7 @@ Use this skill when you have one or more of these inputs:
 - Graphic design, brand, editorial, poster, social, or marketing image references
 - Figma URL, Figma node, Figma exports, or Figma Variables
 - Existing project folder with app code, CSS, tokens, or Storybook
+- Native iOS or Android project folder with SwiftUI, UIKit, Jetpack Compose, Android Views/XML, previews, screenshot tests, simulator/emulator captures, app resources, or component modules
 - AI-generated or vibe-coded project where rendered UI should be treated as stronger evidence than source-only code
 - Prototype folder that should be treated as visual/reference material
 - Mixed references that need to become a reusable design-system package
@@ -38,6 +39,10 @@ Use $design-system-extractor to extract a reusable visual system from these bran
 
 ```txt
 Use $design-system-extractor to extract a reusable design system from this project folder. Treat prototype code as reference only.
+```
+
+```txt
+Use $design-system-extractor to extract a reusable design system from this native iOS/Android app project. Inspect screenshots, previews, screenshot tests, simulator/emulator captures when available, native token/resource files, and design-system modules before treating source-only components as evidence.
 ```
 
 ```txt
@@ -128,9 +133,31 @@ Do not raise confidence from source-only artifacts. Classify project evidence as
 
 If the product cannot be started or a route is blocked by auth/data/setup, record the blocker and keep affected source-only design rules Low confidence unless the user supplies screenshots or confirms the pattern.
 
+## Native Mobile Project Intake
+
+For native iOS or Android project folders, the extractor should read `references/native-mobile-projects.md` before extraction. It should identify the platform/framework, app targets or modules, available capture surfaces, native token/resource files, and likely design-system modules before writing design decisions.
+
+Native evidence should be ranked by default as:
+
+1. Production Figma component library, design tokens, or named design-system package.
+2. Supplied production screenshots or QA captures.
+3. Simulator, emulator, or device captures with platform/device/state metadata.
+4. Screenshot-test artifacts, SwiftUI Previews, Compose Previews, preview galleries, or demo screens intended to represent product UI.
+5. Native theme, resource, or token files used by captured screens.
+6. UI components reachable from navigation, previews, screenshot tests, or app entrypoints.
+7. Source-only views, generated samples, unused previews, starter code, or comments.
+
+For iOS, inspect SwiftUI views, UIKit views/controllers/cells, asset catalogs, named colors, typography wrappers, `ViewModifier`s, Swift packages, and candidate modules such as `DesignSystem`, `UIComponents`, `Theme`, or `Tokens`.
+
+For Android, inspect Compose `@Composable` and `@Preview` functions, Android Views/XML layouts, navigation graphs, `res/values`, vector drawables, theme files, Gradle modules, and candidate modules such as `:designsystem`, `:core-ui`, `:theme`, or `:components`.
+
+When possible, run a Native UI Capture Pass using existing screenshots, screenshot tests, previews, demo/gallery screens, simulator, emulator, or device output. Record platform, device, OS/API level, orientation, state, command, screenshot path, source files, blockers, and confidence impact in `DESIGN_EVIDENCE_MAP.md`. Do not modify signing, provisioning, package names, bundle IDs, secrets, or destructive data just to capture UI.
+
+Native component names, composable names, view names, asset names, and XML style names are clues, not proof. Verify reusable components through screenshots, previews, screenshot tests, simulator/emulator captures, navigation reachability, imports/usages, or explicit user confirmation.
+
 ## Standard Workflow
 
-1. Discover inputs: screenshots, Figma data, rendered UI, project code, tokens, Storybook, rendered capture attempts, and review duplicate sources.
+1. Discover inputs: screenshots, Figma data, rendered UI, native captures/previews, project code, tokens/resources, Storybook, rendered capture attempts, native capture attempts, and review duplicate sources.
 2. Build `DESIGN_EVIDENCE_MAP.md` so design decisions trace back to source evidence.
 3. Extract 5-7 design principles with evidence and implementation rules.
 4. Define design elements: color, type, typographic composition, spacing, density, shape, elevation, iconography, imagery.
@@ -352,10 +379,11 @@ Add this to `CLAUDE.md`:
 ```md
 # Design System Extraction
 
-Use `skills/design-system-extractor/SKILL.md` when extracting a design system from screenshots, Figma references, or project code.
+Use `skills/design-system-extractor/SKILL.md` when extracting a design system from screenshots, Figma references, rendered UI, native iOS/Android captures/previews/screenshot tests, or project code.
 Start with `design-system/SESSION_STATE.md` when it exists.
 Use `design-system/INTEGRATION_REVIEW.md` when reviewing or integrating parallel extraction branches.
 Use `design-system/` and `tokens/` as source of truth before product UI code.
+For native iOS/Android projects, read `skills/design-system-extractor/references/native-mobile-projects.md`, record native screen/state coverage, and verify source-only Swift/Kotlin/XML through screenshots, previews, screenshot tests, captures, navigation reachability, or user confirmation.
 Maintain token inheritance: ref -> sys -> comp.
 Keep reference color scales ordered as 100 lightest to 0 darkest.
 Document duplicate source reuse/ignore/keep-distinct decisions in `DESIGN_EVIDENCE_MAP.md`.
@@ -410,10 +438,11 @@ description: Design-system extraction and governance
 alwaysApply: true
 ---
 
-Use `skills/design-system-extractor/SKILL.md` for design-system extraction from screenshots, Figma references, rendered UI, or project code.
+Use `skills/design-system-extractor/SKILL.md` for design-system extraction from screenshots, Figma references, rendered UI, native iOS/Android captures/previews/screenshot tests, or project code.
 Read `design-system/SESSION_STATE.md` before continuing existing work.
 Use `design-system/INTEGRATION_REVIEW.md` when reviewing or integrating parallel extraction branches.
 Fill or update `design-system/` and `tokens/` before product UI code.
+For native iOS/Android projects, read `skills/design-system-extractor/references/native-mobile-projects.md`, record native screen/state coverage, and verify source-only Swift/Kotlin/XML through screenshots, previews, screenshot tests, captures, navigation reachability, or user confirmation.
 Maintain token inheritance: ref -> sys -> comp.
 Keep reference color scales ordered as 100 lightest to 0 darkest.
 Document duplicate source reuse/ignore/keep-distinct decisions in `DESIGN_EVIDENCE_MAP.md`.
@@ -465,8 +494,9 @@ Add this to `AGENTS.md`:
 ```md
 # Design System Agent Instructions
 
-Use `skills/design-system-extractor/SKILL.md` when extracting a design system from screenshots, Figma references, rendered UI, or project code.
-Use all reference screenshots, Figma data, rendered UI, and `design-system/` docs as source evidence.
+Use `skills/design-system-extractor/SKILL.md` when extracting a design system from screenshots, Figma references, rendered UI, native iOS/Android captures/previews/screenshot tests, or project code.
+Use all reference screenshots, Figma data, rendered UI, native captures/previews/screenshot tests, and `design-system/` docs as source evidence.
+For native iOS/Android projects, read `skills/design-system-extractor/references/native-mobile-projects.md`, record native screen/state coverage, and verify source-only Swift/Kotlin/XML through screenshots, previews, screenshot tests, captures, navigation reachability, or user confirmation.
 Start with `design-system/SESSION_STATE.md`.
 Use `design-system/INTEGRATION_REVIEW.md` when reviewing or integrating parallel extraction branches.
 Keep token inheritance strict: ref -> sys -> comp.
@@ -490,7 +520,7 @@ Use $design-system-extractor to extract a reusable design-system package from de
 If the skill is only project-local and not installed globally:
 
 ```txt
-Use skills/design-system-extractor/SKILL.md to extract a reusable design-system package from this project. Treat screenshots, Figma data, and prototype code as evidence. Fill design-system/ and tokens/, generate docs/design-system/index.html and docs/design-system/review.html, run the audits, and stop at the checkpoint.
+Use skills/design-system-extractor/SKILL.md to extract a reusable design-system package from this project. Treat screenshots, Figma data, native captures/previews/screenshot tests, and prototype code as evidence. Fill design-system/ and tokens/, generate docs/design-system/index.html and docs/design-system/review.html, run the audits, and stop at the checkpoint.
 ```
 
 For collaborative branch review:

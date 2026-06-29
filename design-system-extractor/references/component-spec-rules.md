@@ -74,6 +74,8 @@ Each component spec must include:
 - Do / Don't
 - Implementation notes
 
+For native iOS/Android sources, also include platform mapping in the implementation notes: SwiftUI view/modifier names, UIKit class or style names, Compose composable/modifier names, Android XML layout/style/view names, resource files, and source screenshots/previews/captures that prove usage.
+
 ## Component Fingerprint
 
 Before creating a new component spec, summarize the candidate as a fingerprint:
@@ -86,6 +88,7 @@ Before creating a new component spec, summarize the candidate as a fingerprint:
 | Token contract summary | main color, type, spacing, radius, elevation, size, state, hierarchy, and slot relationship tokens |
 | Layout / density | height, padding, gap, alignment, truncation, responsive behavior, line breaks, max line length, and text wrapping behavior |
 | Visual reference | Figma node preview/screenshot or screenshot crop; schematic SVG only as labeled fallback |
+| Native platform mapping | iOS/Android source symbols, resource names, preview/screenshot-test/capture evidence, and reachability when applicable |
 | Similar components reviewed | matching existing components and final decision |
 
 Similarity review compares purpose, behavior, and composition role first. Visual similarity alone is not enough to merge components; different behavior, content structure, or typographic hierarchy may require separate components or variants.

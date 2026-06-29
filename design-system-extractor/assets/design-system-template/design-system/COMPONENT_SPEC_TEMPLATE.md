@@ -19,6 +19,7 @@ Copy this template to `design-system/components/<component-name>.md` for each ex
 | Token contract summary | |
 | Layout / density | |
 | Visual reference | |
+| Native platform mapping | |
 | Similar components reviewed | |
 
 ## Anatomy
@@ -45,3 +46,5 @@ Include slot order, hierarchy ratio, alignment, line count, max line length, lin
 ## Do / Don't
 
 ## Implementation Notes
+
+For native iOS/Android sources, include SwiftUI/UIKit/Compose/Android View/XML names, resource files, preview/screenshot-test/capture evidence, and platform accessibility or dynamic type/font-scale notes when applicable.

@@ -44,6 +44,13 @@ Use this table when candidate reference tokens are visually or numerically close
 | Candidate A | Candidate B | Difference | Decision (`merge` / `keep distinct`) | Rationale | Confirmed by |
 |---|---|---|---|---|---|
 
+## Native Unit And Source Mapping
+
+Use this table for native iOS/Android projects when source values use platform units or platform token/resource files.
+
+| Canonical token | Native source token/resource | Platform/unit | Source file | Evidence screen/capture | Mapping or conversion note |
+|---|---|---|---|---|---|
+
 ## Required Audit
 
 - No component token references a reference token directly.
@@ -53,3 +60,4 @@ Use this table when candidate reference tokens are visually or numerically close
 - Near reference colors and numbers have a documented merge or keep-distinct decision.
 - Every background-like system color has a matching foreground pair.
 - For vibe-coded projects, values found only in unused CSS, demo-only components, dead code, or blocked captures are not promoted to tokens unless a keep decision is recorded in `DESIGN_EVIDENCE_MAP.md`.
+- For native app projects, values found only in source-only views, unused previews, blocked captures, or unverified resources are not promoted to tokens unless a keep decision is recorded in `DESIGN_EVIDENCE_MAP.md`.

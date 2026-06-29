@@ -1,6 +1,6 @@
 ---
 name: design-system-extractor
-description: Extract a reusable design-system specification from UI screenshots/images, graphic/brand/editorial references, Figma URLs or exports, Figma Variables, existing app/project folders, runnable rendered UI captures, AI-generated or vibe-coded prototype projects, or prototype code, and review or integrate parallel design-system extraction branches. Use when Codex must produce evidence-backed design principles, design elements, token architecture, component inventory, component token specs including typographic/text-lockup components, anti-AI style constraints, collaborative branch review records, static HTML documentation for developers, cross-agent handoff guidance for Claude Code/Cursor/Codex, and a checkpoint before any product implementation.
+description: Extract a reusable design-system specification from UI screenshots/images, graphic/brand/editorial references, Figma URLs or exports, Figma Variables, existing web or native iOS/Android app project folders, SwiftUI/UIKit/Jetpack Compose/Android Views code, runnable rendered UI captures, simulator/emulator/device captures, AI-generated or vibe-coded prototype projects, or prototype code, and review or integrate parallel design-system extraction branches. Use when Codex must produce evidence-backed design principles, design elements, token architecture, component inventory, component token specs including typographic/text-lockup components, anti-AI style constraints, collaborative branch review records, static HTML documentation for developers, cross-agent handoff guidance for Claude Code/Cursor/Codex, and a checkpoint before any product implementation.
 ---
 
 # Design System Extractor
@@ -12,7 +12,8 @@ Act as a Design System Architect. Extract a reusable design-system package from 
 - **Images / screenshots:** use all provided screenshots, graphic exports, brand/editorial samples, posters, social visuals, and marketing captures as source of truth. Prefer concrete observed regions over general style impressions.
 - **Figma URL / Figma exports:** use available Figma tools or exported screenshots/metadata. Treat selected nodes, variables, and component names as evidence, but still record where each decision came from.
 - **Project / prototype folder:** inspect rendered UI, screenshots, tokens, CSS, Storybook, and components. Treat prototype code as reference-only unless the user asks to migrate code. For AI-generated or vibe-coded projects, apply the intake rules below before trusting source code patterns.
-- **Mixed input:** rank evidence in this order unless user says otherwise: production Figma/component library, production screenshots, rendered project UI, prototype code, descriptive prompt.
+- **Native app project folder:** inspect iOS/Android screenshots, simulator/emulator captures, SwiftUI Previews, Compose Previews, screenshot tests, native theme/token resources, component modules, and reachable screens before trusting source-only UI code.
+- **Mixed input:** rank evidence in this order unless user says otherwise: production Figma/component library, production screenshots, native simulator/emulator/device captures, rendered project UI, native preview/screenshot-test captures, prototype code, descriptive prompt.
 
 ## Vibe Coding Project Intake
 
@@ -27,9 +28,22 @@ When a source project appears AI-generated, vibe-coded, exploratory, or prototyp
 7. Use confidence conservatively: High requires repeated rendered evidence plus used token/component agreement; Medium fits clear rendered evidence with noisy code/tokens; Low fits source-only, blocked capture, or inferred patterns.
 8. Record route coverage, keep/ignore decisions, noise classifications, capture blockers, and gaps in `design-system/SESSION_STATE.md` and `design-system/DESIGN_EVIDENCE_MAP.md`.
 
+## Native Mobile Project Intake
+
+When a source project is a native iOS or Android app:
+
+1. Read `references/native-mobile-projects.md` before extraction.
+2. Identify platform, framework, app targets/modules, and available render surfaces: SwiftUI, UIKit, Jetpack Compose, Android Views/XML, screenshot tests, previews, simulator/emulator, or supplied captures.
+3. Locate native design-system sources such as `DesignSystem`, `UIComponents`, Swift packages, asset catalogs, `UIColor`/`Color` wrappers, `UIFont`/`Font` styles, Compose `ui/theme`, `Color.kt`, `Typography.kt`, `Shape.kt`, `res/values/*.xml`, vector drawables, and shared component modules.
+4. Build a screen/state manifest from navigation files, app entrypoints, previews, screenshot tests, UI test fixtures, story/gallery screens, supplied screenshots, and user-provided state notes.
+5. Run the Native UI Capture Pass when dependencies, build setup, signing, simulators/emulators, and permissions allow. If capture is blocked, record the blocker and continue with lower-confidence evidence.
+6. Count native source code as supporting evidence only when the component or style appears in supplied screenshots, simulator/emulator/device captures, previews, screenshot tests, reachable navigation, or is explicitly marked intentional by the user.
+7. Treat component filenames, composable names, view names, asset names, and XML style names as clues, not proof of reusable components.
+8. Record platform coverage, screen/state coverage, build or capture blockers, native token/resource usage, and keep/ignore decisions in `SESSION_STATE.md` and `DESIGN_EVIDENCE_MAP.md`.
+
 ## Rendered UI Capture Pass
 
-For runnable project folders, inspect the actual product before extracting design decisions:
+For runnable web/prototype project folders, inspect the actual product before extracting design decisions:
 
 1. Identify install, dev server, Storybook, preview, and test-data commands from package scripts, docs, or existing agent rules.
 2. Build a route/story capture plan from router files, app directories, Storybook entries, screenshots, or user-provided route/state notes.
@@ -40,6 +54,18 @@ For runnable project folders, inspect the actual product before extracting desig
 7. Inspect DOM/computed styles or rendered component source when available to connect visible UI to used tokens, CSS variables, components, and route imports.
 8. Record every capture attempt in `DESIGN_EVIDENCE_MAP.md`, including route/story, viewport, state, command, screenshot path, source files, observed UI, and confidence impact.
 9. Treat failed or blocked capture as an evidence result, not a reason to guess. Mark affected source-only rules Low confidence unless the user supplies screenshots or confirms the pattern.
+
+## Native UI Capture Pass
+
+For runnable native app projects, capture the actual app or preview output before extracting high-confidence native design decisions:
+
+1. Identify build, preview, screenshot-test, UI-test, simulator, emulator, and demo/gallery commands from Xcode schemes, Swift Package manifests, Fastlane, Gradle tasks, docs, or existing agent rules.
+2. Prefer existing production screenshots, generated screenshot-test artifacts, preview snapshots, and demo/gallery screens before trying to modify build configuration.
+3. When running the app is feasible, capture representative screens and states on target devices or close defaults. Record platform, device, OS/API level, orientation, screen, state, command, screenshot path, and capture status.
+4. Exercise non-destructive reachable states such as selected, expanded, loading, empty, validation error, disabled, modal/sheet open, navigation active, light/dark mode, and dynamic type/font-scale when available.
+5. Save captures under `design-system/assets/rendered-captures/` with filenames that include platform, screen, device, state, and orientation.
+6. Link visible UI back to native source files and resources when available: SwiftUI `View`, UIKit `UIView`/`UIViewController`, Compose `@Composable`, Android XML layout/View, asset catalog, `res/values`, theme, typography, shape, and component modules.
+7. Record every native capture attempt in `DESIGN_EVIDENCE_MAP.md`. If capture is blocked by signing, provisioning, missing simulators, Gradle/Xcode setup, data, auth, or credentials, record the blocker and mark affected source-only rules Low confidence unless screenshots or user confirmation support them.
 
 ## First Actions
 
@@ -55,7 +81,7 @@ For runnable project folders, inspect the actual product before extracting desig
 
 Record source types, paths/URLs, confidence, and known gaps in `design-system/SESSION_STATE.md`.
 
-For screenshots, list every image. For Figma, list node/page names or variable collections when available. For project folders, list token files, component directories, Storybook entries, and screenshot/render routes if available. For vibe-coded projects, complete the route/state manifest, rendered capture pass, and evidence classification before using project code to raise confidence.
+For screenshots, list every image. For Figma, list node/page names or variable collections when available. For project folders, list token files, component directories, Storybook entries, screenshot/render routes, native app modules, preview/screenshot-test fixtures, simulator/emulator captures, and native theme/resource files if available. For vibe-coded projects, complete the route/state manifest, rendered capture pass, and evidence classification before using project code to raise confidence. For native app projects, complete the native screen/state manifest, Native UI Capture Pass where feasible, and native source classification before using source code to raise confidence.
 
 Before using sources as evidence, run a source duplicate review:
 
@@ -79,7 +105,7 @@ Each important decision needs an evidence row with:
 - affected tokens or components
 - confidence: High, Medium, or Low
 
-Use `references/visual-analysis-rubric.md` when evaluating screenshots or rendered UI.
+Use `references/visual-analysis-rubric.md` when evaluating screenshots, native captures/previews, or rendered UI.
 
 ### 3. Design Foundations
 
@@ -108,7 +134,7 @@ Use `references/token-architecture.md` before creating or changing token layers.
 
 Before finalizing token files, run a token candidate review:
 
-1. Collect raw color, spacing, radius, typography, opacity, shadow, and motion values from evidence. For vibe-coded projects, do not promote values found only in unused CSS, demo-only components, or dead code unless the user marks them intentional.
+1. Collect raw color, spacing, radius, typography, opacity, shadow, and motion values from evidence. For vibe-coded projects, do not promote values found only in unused CSS, demo-only components, or dead code unless the user marks them intentional. For native app projects, collect values from asset catalogs, theme files, resource XML, Swift/Kotlin token wrappers, and component code only after connecting them to screenshots, previews, captures, reachable screens, or explicit user confirmation.
 2. Normalize reference colors into palette families with numeric steps where `100` is lightest and `0` is darkest.
 3. Check each palette family so higher numbers are visually lighter than lower numbers.
 4. Cluster very close reference colors and very close reference numbers in the same value family.
@@ -120,7 +146,7 @@ Before finalizing token files, run a token candidate review:
 
 Fill `design-system/COMPONENT_INVENTORY.md`.
 
-Inventory repeated UI, graphic, layout, and typographic patterns from the references. Mark each component as `extracted`, `planned`, `blocked`, or `out-of-scope`. Include priority, observed sources, required token groups, missing states or `not applicable` for display-only components, and implementation notes. For vibe-coded projects, component filenames are not proof of reusable components; verify usage through rendered routes, Storybook stories, imports, or user keep/ignore notes.
+Inventory repeated UI, graphic, layout, and typographic patterns from the references. Mark each component as `extracted`, `planned`, `blocked`, or `out-of-scope`. Include priority, observed sources, required token groups, missing states or `not applicable` for display-only components, and implementation notes. For vibe-coded projects, component filenames are not proof of reusable components; verify usage through rendered routes, Storybook stories, imports, or user keep/ignore notes. For native app projects, verify candidate components through screenshots, previews, screenshot tests, simulator/emulator captures, navigation reachability, imports/usages, or explicit user confirmation before treating them as reusable.
 
 Always consider typographic component candidates across all source types, not only graphic design sources. Promote a text composition to a component only when it has reusable structure, clear slots, evidence-backed hierarchy, tokenizable spacing/type/color relationships, and a role beyond a one-off decorative treatment.
 
@@ -198,6 +224,7 @@ Update `design-system/SESSION_STATE.md` with:
 - source duplicate review result
 - vibe project intake result when applicable
 - rendered UI capture result when applicable
+- native app intake and Native UI Capture Pass result when applicable
 - component similarity review result
 - integration review result when collaborating across branches or PRs
 - recommended next prompt
@@ -282,7 +309,8 @@ If the user wants to use the extraction package with Claude Code, Cursor, or Cod
 
 ## Resource Map
 
-- `references/visual-analysis-rubric.md`: how to analyze images, Figma, and rendered UI.
+- `references/visual-analysis-rubric.md`: how to analyze images, Figma, native captures/previews, and rendered UI.
+- `references/native-mobile-projects.md`: how to inspect iOS/Android app projects, native tokens/resources, previews, screenshot tests, and simulator/emulator captures.
 - `references/token-architecture.md`: token naming and inheritance rules.
 - `references/component-spec-rules.md`: component anatomy, state, accessibility, and token spec rules.
 - `references/page-composition-rules.md`: layout, density, page shell, and composition rules.

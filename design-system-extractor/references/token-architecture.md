@@ -75,6 +75,16 @@ Record the decision in `design-system/TOKEN_ARCHITECTURE.md` under `Near Token D
 
 Do not silently round, merge, or split close values. The review step exists to protect design intent and prevent accidental token sprawl.
 
+## Native Unit And Source Mapping
+
+For native iOS/Android projects, preserve source-unit evidence in `TOKEN_ARCHITECTURE.md` even when token files use CSS custom properties as the exchange/documentation format.
+
+- Record source units and files for iOS points, Android dp, Android sp, CSS px/rem, font scale, and platform typography styles.
+- Use a documented canonical unit when writing CSS-compatible reference tokens. Do not silently equate `pt`, `dp`, `sp`, and `px`.
+- Add a near-token review row when close values appear across platforms or units, such as `15pt` and `16sp`, unless the user or source design system already defines the mapping.
+- Treat native theme/resource files as token evidence only when they are used by captured, previewed, screenshot-tested, reachable, or user-confirmed canonical UI.
+- Record platform export notes when a token should later become Swift, Kotlin, XML, or asset-catalog output.
+
 ## Reference Tokens
 
 Reference tokens describe values. They do not describe purpose.

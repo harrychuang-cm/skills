@@ -6,7 +6,8 @@ Use this reference when generating files for Claude Code, Cursor, or Codex.
 
 All agents should follow the same rules:
 
-- Treat screenshots, Figma, rendered UI, and design-system docs as source evidence.
+- Treat screenshots, Figma, rendered UI, native captures/previews/screenshot tests, and design-system docs as source evidence.
+- For native iOS/Android projects, read `references/native-mobile-projects.md`, record native screen/state coverage and capture blockers, and treat source-only Swift/Kotlin/XML as Low confidence until visually confirmed or user-confirmed.
 - Read `design-system/SESSION_STATE.md` before continuing.
 - Record source fingerprints in `DESIGN_EVIDENCE_MAP.md` and document reuse/ignore/keep-distinct decisions before counting duplicate sources as separate evidence.
 - Use `tokens/tokens.css` import order: ref, sys, comp.
@@ -32,6 +33,7 @@ Create or update `CLAUDE.md` with:
 
 Start with `design-system/SESSION_STATE.md`.
 Use `design-system/` and `tokens/` as the source of truth before editing product UI.
+For native iOS/Android projects, read `skills/design-system-extractor/references/native-mobile-projects.md`, record native screen/state coverage, and verify source-only components through screenshots, previews, screenshot tests, captures, navigation reachability, or user confirmation.
 Maintain token inheritance: ref -> sys -> comp.
 Keep color steps ordered 100 lightest to 0 darkest.
 Document duplicate source reuse/ignore/keep-distinct decisions in DESIGN_EVIDENCE_MAP.md.
@@ -60,6 +62,7 @@ alwaysApply: true
 
 Read `design-system/SESSION_STATE.md` before UI work.
 Use `tokens/` and component specs before writing component CSS.
+For native iOS/Android projects, read `skills/design-system-extractor/references/native-mobile-projects.md` and verify source-only Swift/Kotlin/XML through screenshots, previews, screenshot tests, captures, navigation reachability, or user confirmation.
 No hardcoded visual values when tokens exist.
 Component tokens may reference only system tokens.
 Reference color steps run 100 lightest to 0 darkest.
@@ -82,7 +85,8 @@ Create or update `AGENTS.md` with:
 ```md
 # Design System Agent Instructions
 
-Use all reference screenshots, Figma data, rendered UI, and `design-system/` docs as source evidence.
+Use all reference screenshots, Figma data, rendered UI, native captures/previews/screenshot tests, and `design-system/` docs as source evidence.
+For native iOS/Android projects, read `skills/design-system-extractor/references/native-mobile-projects.md`, record native screen/state coverage, and verify source-only Swift/Kotlin/XML through screenshots, previews, screenshot tests, captures, navigation reachability, or user confirmation.
 Start with `design-system/SESSION_STATE.md`.
 Keep token inheritance strict: ref -> sys -> comp.
 Use 100 lightest to 0 darkest for reference color scales.

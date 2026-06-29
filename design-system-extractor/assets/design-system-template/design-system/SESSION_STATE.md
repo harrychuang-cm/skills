@@ -59,6 +59,25 @@ Update this file at every checkpoint.
 - Demo-only / unused / dead-code / capture-blocked / auth-blocked / contradictory sources found:
 - Confidence impact:
 
+## Native App Intake
+
+- Applies:
+- Platforms/frameworks:
+- App targets/modules inspected:
+- Native design-system modules found:
+- Native screen/state manifest:
+- Native UI Capture Pass:
+- Capture commands:
+- Devices / OS/API levels covered:
+- Screens, previews, screenshot tests, or supplied captures covered:
+- Capture assets path:
+- Capture blockers:
+- Native token/resource files inspected:
+- Native component usage verification:
+- Keep/ignore decisions recorded in `DESIGN_EVIDENCE_MAP.md`:
+- Native source-only / capture-blocked / contradictory sources found:
+- Confidence impact:
+
 ## Token Review
 
 - Near token candidates found:
