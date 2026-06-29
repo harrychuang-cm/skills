@@ -71,7 +71,7 @@ export const storybookTemplateProjectConfig =
     "stories": [
       "../src/stories/governance/*.stories.@(js|jsx|mjs|ts|tsx)",
       "../src/stories/foundations/TemplateFoundation.stories.@(js|jsx|mjs|ts|tsx)",
-      "../src/components/example-card/ExampleCard.stories.@(js|jsx|mjs|ts|tsx)",
+      "../src/components/**/*.stories.@(js|jsx|mjs|ts|tsx)",
       "../src/pages/prototypes/example-prototype/*.stories.@(js|jsx|mjs|ts|tsx)"
     ],
     "staticDirs": [
@@ -138,6 +138,6 @@ export const storybookTemplateProjectConfig =
     "routePreviewSelector": "[data-prototype-route-preview=\"true\"]"
   },
   "catalog": {
-    "componentStoriesRoot": "src/components/example-card"
+    "componentStoriesRoot": "src/components"
   }
 });

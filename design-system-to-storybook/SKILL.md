@@ -195,6 +195,7 @@ Use folder co-location for new implementation files. Do not create a separate ro
 - Shared components live in the product's component root, normally `src/components/<ComponentName>/`.
 - Each component folder contains the component source, styles, and story together: `<ComponentName>.tsx`, `<ComponentName>.css`, and `<ComponentName>.stories.tsx`. Add `index.ts`, tests, or helpers only when the product convention calls for them.
 - Component stories must be co-located with their component. Avoid `stories/<ComponentName>.stories.*`, `src/stories/<ComponentName>.stories.*`, or other detached component-story targets for new files.
+- Component story meta must opt into Storybook Autodocs with `tags: ["autodocs"]` or the repo's exact equivalent. Prefer an explicit meta-level tag for every shared component even when the project also has global docs settings.
 - Foundation guides/docs may live in the Storybook docs area, normally `stories/` or `src/stories/`, because they document tokens rather than a single component implementation.
 - Page or screen implementations requested by the user live outside the shared component root, normally `src/pages/<PageName>/`.
 - Each page folder contains the page source, styles, and story together: `<PageName>.tsx`, `<PageName>.css`, and `<PageName>.stories.tsx`.
@@ -448,7 +449,7 @@ parameters: {
 
 Set this at the story meta level when all variants share the same source. Set it per story only when variants, states, or display modes map to different Figma nodes or source URLs. The bundled review helper reads `parameters.figmaSourceUrl`, `parameters.figma.url`, and `parameters.design.url` automatically for the Open source action.
 
-Prefer existing story conventions inside the co-located component or page folder. Use Autodocs or MDX only when the repo already uses them or the user asks for docs pages. Root `stories/` or `src/stories/` is reserved for foundation guides/docs, not new component stories.
+Prefer existing story conventions inside the co-located component or page folder, but keep Autodocs enabled for every shared component story. In CSF stories, add `tags: ["autodocs"]` at the meta level unless the repo has a stricter local convention that produces an equivalent Autodocs page for that component. Use MDX only when the repo already uses it or the user asks for authored docs pages. Root `stories/` or `src/stories/` is reserved for foundation guides/docs, not new component stories.
 
 When the Figma export addon is installed, every new or changed component should also have at least one export-ready story with a stable root, fixed/default state, realistic content, source URL parameters, and no preview-only wrapper inside the exported component bounds.
 
@@ -588,6 +589,8 @@ Do not copy local template development artifacts such as `.git`, `node_modules`,
 Do not mark a shared component implementation complete without a story, example, or documented catalog entry covering its main states or display modes.
 
 Do not mark a component or page complete until its story is co-located in that component/page folder, unless the implementation map records an explicit product-convention exception.
+
+Do not mark a shared component complete until its Storybook story opts into Autodocs, normally with `tags: ["autodocs"]` on the component story meta. If the project uses a global or MDX-based Autodocs convention instead, record the equivalent mechanism in the implementation map and verify the component has a generated docs entry.
 
 ### Documentation Gate
 

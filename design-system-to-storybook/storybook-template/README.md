@@ -43,10 +43,10 @@ The command updates `.storybook/project.config.ts`, `package.json`, and starter 
 
 1. Create the component under `src/components/<component-id>/`.
 2. Add or update the component catalog entry in `src/storybook/componentCatalog.ts`.
-3. Add a colocated `*.stories.tsx` file with a literal title matching the catalog entry.
-4. Run `npm run check:storybook-catalog`.
+3. Add a colocated `*.stories.tsx` file with a literal title matching the catalog entry and `tags: ["autodocs"]` on the story meta.
+4. Run `npm run check:storybook-catalog`; it fails when a component story is missing catalog metadata or Autodocs.
 
-The starter template ships with `src/components/example-card` as the smallest catalog-backed component.
+All component stories under `src/components/**/*.stories.*` are included by default. The starter template ships with `src/components/example-card` as the smallest catalog-backed component.
 
 ## Add A Prototype
 

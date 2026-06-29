@@ -28,6 +28,10 @@ const storyFiles = execFileSync(
 const storyIds = storyFiles.map((file) => basename(dirname(file)));
 const issues = [];
 
+function hasAutodocsTag(source) {
+  return /tags\s*:\s*\[[^\]]*["']autodocs["'][^\]]*\]/s.test(source);
+}
+
 for (const file of storyFiles) {
   const id = basename(dirname(file));
   const source = readFileSync(file, "utf8");
@@ -48,6 +52,10 @@ for (const file of storyFiles) {
     issues.push(
       `${file}: getComponentStoryParameters id is "${parameterId ?? "missing"}"; expected "${id}".`,
     );
+  }
+
+  if (!hasAutodocsTag(source)) {
+    issues.push(`${file}: missing Storybook Autodocs tag "autodocs" in story meta.`);
   }
 }
 

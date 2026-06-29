@@ -6,6 +6,7 @@ import { ExampleCard } from "./ExampleCard";
 const meta = {
   title: "Components/Examples/Example Card",
   component: ExampleCard,
+  tags: ["autodocs"],
   parameters: getComponentStoryParameters("example-card"),
   args: {
     eyebrow: "Starter component",
