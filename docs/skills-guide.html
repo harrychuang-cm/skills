@@ -6,142 +6,317 @@
     <title>CM Skills Guide</title>
     <style>
       :root {
-        --bg: #f7f7f4;
-        --surface: #ffffff;
-        --surface-soft: #f0f3ee;
-        --text: #1e2522;
-        --muted: #5f6c66;
-        --line: #d8ded8;
-        --accent: #246b5a;
-        --accent-strong: #16483d;
-        --accent-soft: #dcebe5;
-        --warn: #8a5a18;
-        --warn-soft: #f5ead8;
-        --code: #24302c;
-        --shadow: 0 16px 40px rgba(32, 45, 39, 0.1);
+        --color-page: #f6f7f9;
+        --color-surface: #ffffff;
+        --color-surface-soft: #eef3f5;
+        --color-surface-strong: #17211f;
+        --color-text: #17211f;
+        --color-muted: #5d6a67;
+        --color-line: #d9e0df;
+        --color-line-strong: #bbc8c5;
+        --color-accent: #0f766e;
+        --color-accent-strong: #064e49;
+        --color-accent-soft: #d9f0ed;
+        --color-indigo: #4338ca;
+        --color-indigo-soft: #e5e7ff;
+        --color-rose: #be3455;
+        --color-rose-soft: #fde3ea;
+        --color-amber: #a15c08;
+        --color-amber-soft: #faecd1;
+        --color-code: #111c1a;
+        --color-code-text: #effaf7;
+        --color-code-muted: #d5e3df;
+        --color-code-overlay-line: rgba(239, 250, 247, 0.18);
+        --color-code-overlay-soft: rgba(239, 250, 247, 0.08);
+        --color-notice-line: #efc56f;
+        --color-topbar-line: rgba(217, 224, 223, 0.86);
+        --color-topbar-surface: rgba(246, 247, 249, 0.94);
+        --shadow-card: 0 12px 30px rgba(23, 33, 31, 0.08);
+        --shadow-hero: 0 24px 60px rgba(23, 33, 31, 0.13);
+        --space-1: 4px;
+        --space-2: 8px;
+        --space-3: 12px;
+        --space-4: 16px;
+        --space-5: 20px;
+        --space-6: 24px;
+        --space-7: 32px;
+        --space-8: 40px;
+        --radius-card: 8px;
+        --radius-control: 8px;
+        --font-body: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        --font-code: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
       }
 
       * {
         box-sizing: border-box;
       }
 
+      html {
+        scroll-behavior: smooth;
+      }
+
       body {
         margin: 0;
-        background: var(--bg);
-        color: var(--text);
-        font-family:
-          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
-          "Segoe UI", sans-serif;
-        line-height: 1.65;
+        background: var(--color-page);
+        color: var(--color-text);
+        font-family: var(--font-body);
+        line-height: 1.62;
       }
 
       a {
-        color: var(--accent-strong);
+        color: var(--color-accent-strong);
         text-decoration-thickness: 1px;
         text-underline-offset: 3px;
       }
 
+      button:focus-visible,
+      a:focus-visible {
+        outline: 3px solid var(--color-indigo);
+        outline-offset: 3px;
+      }
+
+      code {
+        border: 1px solid var(--color-line);
+        border-radius: 6px;
+        padding: 1px 5px;
+        background: var(--color-surface-soft);
+        color: var(--color-accent-strong);
+        font-family: var(--font-code);
+        font-size: 0.9em;
+      }
+
       .page {
-        max-width: 1120px;
+        max-width: 1220px;
         margin: 0 auto;
-        padding: 30px 24px 64px;
+        padding: var(--space-4) var(--space-6) 72px;
       }
 
       .topbar {
-        display: flex;
+        position: sticky;
+        z-index: 10;
+        top: 0;
+        display: grid;
+        grid-template-columns: auto 1fr auto;
+        gap: var(--space-4);
         align-items: center;
-        justify-content: flex-end;
-        padding: 0 0 18px;
+        margin: 0 calc(var(--space-6) * -1) var(--space-5);
+        padding: var(--space-3) var(--space-6);
+        border-bottom: 1px solid var(--color-topbar-line);
+        background: var(--color-topbar-surface);
+        backdrop-filter: blur(16px);
+      }
+
+      .brand {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--space-2);
+        color: var(--color-text);
+        font-size: 14px;
+        font-weight: 800;
+        text-decoration: none;
+        white-space: nowrap;
+      }
+
+      .brand-mark {
+        display: inline-grid;
+        width: 34px;
+        height: 34px;
+        place-items: center;
+        border-radius: 8px;
+        background: var(--color-surface-strong);
+        color: var(--color-code-text);
+        font-size: 12px;
+      }
+
+      .section-nav {
+        display: flex;
+        gap: var(--space-1);
+        justify-content: center;
+        overflow-x: auto;
+        scrollbar-width: none;
+      }
+
+      .section-nav::-webkit-scrollbar {
+        display: none;
+      }
+
+      .section-nav a {
+        border-radius: var(--radius-control);
+        padding: 8px 10px;
+        color: var(--color-muted);
+        font-size: 13px;
+        font-weight: 750;
+        text-decoration: none;
+        white-space: nowrap;
+      }
+
+      .section-nav a:hover {
+        background: var(--color-accent-soft);
+        color: var(--color-accent-strong);
       }
 
       .language-switcher {
         display: inline-flex;
-        gap: 4px;
-        padding: 4px;
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        background: var(--surface);
+        gap: var(--space-1);
+        padding: var(--space-1);
+        border: 1px solid var(--color-line);
+        border-radius: var(--radius-control);
+        background: var(--color-surface);
+        box-shadow: var(--shadow-card);
       }
 
       .language-switcher button {
-        min-width: 52px;
+        min-width: 50px;
         border: 0;
         border-radius: 6px;
         padding: 7px 10px;
         background: transparent;
-        color: var(--muted);
+        color: var(--color-muted);
         cursor: pointer;
         font: inherit;
         font-size: 13px;
-        font-weight: 700;
+        font-weight: 800;
+      }
+
+      .language-switcher button:hover {
+        background: var(--color-surface-soft);
+        color: var(--color-text);
       }
 
       .language-switcher button[aria-pressed="true"] {
-        background: var(--accent);
-        color: #ffffff;
+        background: var(--color-accent);
+        color: var(--color-surface);
       }
 
-      header {
-        padding: 18px 0 28px;
-        border-bottom: 1px solid var(--line);
+      .hero {
+        display: grid;
+        grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.65fr);
+        gap: var(--space-7);
+        align-items: stretch;
+        padding: var(--space-8);
+        border: 1px solid var(--color-line);
+        border-radius: var(--radius-card);
+        background: var(--color-surface);
+        box-shadow: var(--shadow-hero);
       }
 
-      .eyebrow {
-        margin: 0 0 10px;
-        color: var(--accent);
+      .hero-copy {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+      }
+
+      .hero-card {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-4);
+        padding: var(--space-6);
+        border: 1px solid var(--color-line-strong);
+        border-radius: var(--radius-card);
+        background: var(--color-surface-strong);
+        color: var(--color-code-text);
+      }
+
+      .hero-card p,
+      .hero-card li {
+        color: var(--color-code-muted);
+      }
+
+      .hero-card code {
+        border-color: var(--color-code-overlay-line);
+        background: var(--color-code-overlay-soft);
+        color: var(--color-code-text);
+      }
+
+      .eyebrow,
+      .card-label {
+        margin: 0;
+        color: var(--color-accent);
         font-size: 13px;
-        font-weight: 700;
+        font-weight: 850;
         letter-spacing: 0;
         text-transform: uppercase;
+      }
+
+      .card-label {
+        color: var(--color-amber-soft);
       }
 
       h1,
       h2,
       h3 {
         margin: 0;
-        line-height: 1.2;
+        line-height: 1.18;
         letter-spacing: 0;
       }
 
       h1 {
-        max-width: 790px;
-        font-size: 56px;
+        max-width: 820px;
+        margin-top: var(--space-2);
+        font-size: 58px;
       }
 
       h2 {
-        margin-bottom: 16px;
-        font-size: 28px;
+        font-size: 30px;
       }
 
       h3 {
-        font-size: 20px;
+        font-size: 19px;
       }
 
       p {
         margin: 0;
       }
 
-      code {
-        font-family:
-          "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
-        font-size: 0.95em;
-      }
-
       .lead {
-        max-width: 800px;
-        margin-top: 18px;
-        color: var(--muted);
+        max-width: 780px;
+        margin-top: var(--space-5);
+        color: var(--color-muted);
         font-size: 18px;
       }
 
+      .meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-2);
+        margin-top: var(--space-6);
+      }
+
+      .pill {
+        border: 1px solid var(--color-line);
+        border-radius: 999px;
+        padding: 7px 11px;
+        background: var(--color-surface-soft);
+        color: var(--color-text);
+        font-size: 13px;
+        font-weight: 750;
+      }
+
       .section {
-        padding: 34px 0;
-        border-bottom: 1px solid var(--line);
+        scroll-margin-top: 96px;
+        padding: 46px 0 0;
+      }
+
+      .section-header {
+        display: flex;
+        align-items: end;
+        justify-content: space-between;
+        gap: var(--space-5);
+        margin-bottom: var(--space-5);
+      }
+
+      .section-header::after {
+        display: block;
+        flex: 1;
+        min-width: 80px;
+        height: 1px;
+        background: var(--color-line);
+        content: "";
       }
 
       .grid {
         display: grid;
-        gap: 18px;
+        gap: var(--space-4);
       }
 
       .grid.two {
@@ -156,22 +331,67 @@
       .skill,
       .step,
       .prompt {
-        background: var(--surface);
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        box-shadow: var(--shadow);
+        border: 1px solid var(--color-line);
+        border-radius: var(--radius-card);
+        background: var(--color-surface);
+        box-shadow: var(--shadow-card);
       }
 
       .panel {
-        padding: 22px;
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-4);
+        padding: var(--space-6);
+      }
+
+      .panel p,
+      .skill p,
+      .step p {
+        color: var(--color-muted);
+      }
+
+      .panel ul,
+      .skill ul,
+      .hero-card ul {
+        margin: 0;
+        padding-left: 20px;
+        color: var(--color-muted);
+      }
+
+      .panel li + li,
+      .skill li + li,
+      .hero-card li + li {
+        margin-top: var(--space-2);
       }
 
       .skill {
+        position: relative;
         display: flex;
         min-height: 100%;
         flex-direction: column;
-        gap: 16px;
-        padding: 20px;
+        gap: var(--space-4);
+        overflow: hidden;
+        padding: var(--space-5);
+      }
+
+      .skill::before {
+        position: absolute;
+        inset: 0 0 auto;
+        height: 4px;
+        background: var(--color-accent);
+        content: "";
+      }
+
+      .skill:nth-child(2n)::before {
+        background: var(--color-indigo);
+      }
+
+      .skill:nth-child(3n)::before {
+        background: var(--color-rose);
+      }
+
+      .skill:nth-child(4n)::before {
+        background: var(--color-amber);
       }
 
       .skill .tag,
@@ -181,114 +401,201 @@
         align-items: center;
         border-radius: 6px;
         font-size: 12px;
-        font-weight: 700;
+        font-weight: 800;
       }
 
       .skill .tag {
-        padding: 3px 8px;
-        background: var(--accent-soft);
-        color: var(--accent-strong);
+        padding: 4px 8px;
+        background: var(--color-accent-soft);
+        color: var(--color-accent-strong);
+        word-break: break-word;
       }
 
-      .skill p,
-      .step p,
-      .panel p {
-        color: var(--muted);
-      }
-
-      .skill ul,
-      .panel ul {
-        margin: 0;
-        padding-left: 20px;
-        color: var(--muted);
-      }
-
-      .step {
-        padding: 18px;
-      }
-
-      .step .number {
-        margin-bottom: 10px;
-        padding: 2px 7px;
-        background: var(--surface-soft);
-        color: var(--accent-strong);
+      .skill h3 {
+        min-height: 46px;
       }
 
       .flow {
         display: grid;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
-        gap: 14px;
+        grid-template-columns: repeat(7, minmax(0, 1fr));
+        gap: var(--space-3);
+      }
+
+      .step {
+        position: relative;
+        display: flex;
+        min-height: 196px;
+        flex-direction: column;
+        gap: var(--space-3);
+        padding: var(--space-5);
+      }
+
+      .step .number {
+        padding: 3px 8px;
+        background: var(--color-indigo-soft);
+        color: var(--color-indigo);
+      }
+
+      .chain {
+        display: grid;
+        gap: var(--space-2);
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .chain li {
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+      }
+
+      .chain li + li::before {
+        display: inline-grid;
+        width: 22px;
+        height: 22px;
+        place-items: center;
+        border-radius: 999px;
+        background: var(--color-accent-soft);
+        color: var(--color-accent-strong);
+        content: "↓";
+        font-size: 13px;
+        font-weight: 900;
+      }
+
+      .pairing-route {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-2);
+        align-items: center;
+      }
+
+      .pairing-arrow {
+        color: var(--color-muted);
+        font-weight: 900;
       }
 
       .prompt-list {
         display: grid;
-        gap: 12px;
+        gap: var(--space-3);
       }
 
       .prompt {
-        padding: 14px 16px;
+        margin: 0;
+        padding: var(--space-4);
         overflow: auto;
-        background: var(--code);
-        color: #f5fbf8;
-        font-family:
-          "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+        background: var(--color-code);
+        color: var(--color-code-text);
+        font-family: var(--font-code);
         font-size: 13px;
         line-height: 1.55;
         white-space: pre-wrap;
       }
 
+      .prompt code {
+        border-color: var(--color-code-overlay-line);
+        background: var(--color-code-overlay-soft);
+        color: var(--color-code-text);
+      }
+
       .notice {
-        border-color: #ead7b5;
-        background: var(--warn-soft);
+        border-color: var(--color-notice-line);
+        background: var(--color-amber-soft);
       }
 
       .notice strong {
-        color: var(--warn);
+        color: var(--color-amber);
       }
 
-      .meta {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 10px;
-        margin-top: 24px;
-      }
-
-      .pill {
-        border: 1px solid var(--line);
-        border-radius: 999px;
-        padding: 7px 11px;
-        background: var(--surface);
-        color: var(--muted);
-        font-size: 13px;
+      .output-grid {
+        align-items: stretch;
       }
 
       footer {
-        padding-top: 28px;
-        color: var(--muted);
+        margin-top: var(--space-8);
+        padding: var(--space-5) 0 0;
+        color: var(--color-muted);
         font-size: 14px;
       }
 
-      @media (max-width: 860px) {
+      @media (max-width: 1120px) {
+        .topbar {
+          grid-template-columns: 1fr auto;
+        }
+
+        .section-nav {
+          grid-column: 1 / -1;
+          justify-content: flex-start;
+          order: 3;
+        }
+
+        .hero {
+          grid-template-columns: 1fr;
+        }
+
+        .grid.four,
+        .flow {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+
+      @media (max-width: 720px) {
+        .page {
+          padding: var(--space-3) var(--space-4) 52px;
+        }
+
+        .topbar {
+          margin: 0 calc(var(--space-4) * -1) var(--space-4);
+          padding: var(--space-3) var(--space-4);
+        }
+
+        .brand span:last-child {
+          display: none;
+        }
+
+        .language-switcher button {
+          min-width: 44px;
+          padding: 7px 8px;
+        }
+
+        .hero {
+          gap: var(--space-5);
+          padding: var(--space-5);
+        }
+
+        h1 {
+          font-size: 38px;
+        }
+
+        h2 {
+          font-size: 24px;
+        }
+
+        .lead {
+          font-size: 16px;
+        }
+
         .grid.two,
         .grid.four,
         .flow {
           grid-template-columns: 1fr;
         }
 
-        .page {
-          padding: 20px 18px 44px;
+        .section {
+          padding-top: var(--space-8);
         }
 
-        .topbar {
-          justify-content: flex-start;
+        .section-header {
+          align-items: start;
+          flex-direction: column;
         }
 
-        header {
-          padding-top: 14px;
+        .section-header::after {
+          width: 100%;
         }
 
-        h1 {
-          font-size: 38px;
+        .step {
+          min-height: auto;
         }
       }
     </style>
@@ -296,6 +603,11 @@
   <body>
     <main class="page">
       <div class="topbar">
+        <a class="brand" href="#agent-usage" aria-label="CM Skills Guide">
+          <span class="brand-mark">CM</span>
+          <span>Skills Guide</span>
+        </a>
+        <nav id="section-nav" class="section-nav" aria-label="Sections"></nav>
         <nav class="language-switcher" aria-label="Language">
           <button type="button" data-lang="en">EN</button>
           <button type="button" data-lang="ja">JP</button>
@@ -413,6 +725,27 @@
           },
         },
         {
+          tag: "$design-system-governance",
+          key: "governance",
+          bullets: {
+            en: [
+              "Discover tokens and components first",
+              "Block hardcoded visual values",
+              "Ask before missing tokens or components",
+            ],
+            ja: [
+              "先に tokens と components を確認",
+              "ハードコードされた見た目を防ぐ",
+              "不足 token / component は先に確認",
+            ],
+            "zh-Hant": [
+              "先檢查 tokens 和元件",
+              "避免硬寫視覺樣式",
+              "缺 token 或元件時先詢問",
+            ],
+          },
+        },
+        {
           tag: "$ui-compare-to-reference",
           key: "compare",
           bullets: {
@@ -461,12 +794,29 @@
           title: "Design System and UI Implementation Skill Guide",
           eyebrow: "CM Skills",
           lead:
-            "This project provides reusable Codex / Cursor / Claude Code skills that connect design references, design-system documentation, Storybook components, and visual comparison into a clear workflow.",
+            "This project provides reusable, tool-agnostic AI coding skills that connect design references, design-system documentation, Storybook components, and visual comparison into a clear workflow for Cursor, Claude Code, Codex, or another capable coding agent.",
           pills: [
+            "Works across AI coding agents",
             "Extract the design system first",
-            "Then implement Storybook",
             "Component-first",
             "Token-first",
+          ],
+          agentTitle: "Use with Cursor, Claude Code, Codex, or another AI coding agent",
+          agentBody:
+            "The durable contract is the skill folder and its SKILL.md. If your tool supports installed skills, invoke the skill by name. If it does not, point the agent to the matching SKILL.md and ask it to follow that workflow.",
+          agentSteps: [
+            "Name the skill and the goal.",
+            "Provide exact paths for the repo, design-system docs, Storybook, reference images, or handoff docs.",
+            "For UI implementation, include $design-system-governance.",
+            "If $skill-name is not recognized, ask the agent to read <skill folder>/SKILL.md first.",
+          ],
+          navItems: [
+            { href: "#agent-usage", label: "Use" },
+            { href: "#quick-choice", label: "Choose" },
+            { href: "#recommended-flow", label: "Flow" },
+            { href: "#workflow-combinations", label: "Combos" },
+            { href: "#examples", label: "Requests" },
+            { href: "#outputs", label: "Outputs" },
           ],
           quickChoice: "Which skill should I use?",
           skills: {
@@ -494,6 +844,11 @@
               title: "Build frontend product code from handoff docs",
               body:
                 "Use this after prototype or handoff docs exist. It inspects the target repo and design system, then implements greenfield or existing-product frontend features with governed tokens and components.",
+            },
+            governance: {
+              title: "Keep UI work under design-system rules",
+              body:
+                "Use this with any UI implementation skill. It discovers tokens, grids, motion, i18n, and shared components before coding, then stops for approval when tokens or components are missing.",
             },
             compare: {
               title: "Compare implementation with a reference",
@@ -544,7 +899,83 @@
                 "Use $ui-pixel-align-report when review or handoff requires cropped evidence, source links, ownership, and recommended fixes.",
             },
           ],
-          examples: "Common prompt examples",
+          workflowTitle: "Common ways to combine skills",
+          workflows: [
+            {
+              title: "Design reference to component library",
+              steps: [
+                "$design-system-extractor",
+                "$design-system-to-storybook",
+                "$ui-compare-to-reference",
+              ],
+              body:
+                "Start from screenshots, Figma, or an existing app; extract tokens and components; build Storybook; then compare the implementation with references.",
+            },
+            {
+              title: "Product idea to frontend feature",
+              steps: [
+                "$storybook-product-prototype",
+                "$frontend-product-implementation",
+                "$ui-compare-to-reference",
+              ],
+              body:
+                "Turn a feature idea into PRD, flow, data, and handoff docs; implement it in the product repo; then visually check the result.",
+            },
+            {
+              title: "One screenshot to product screen",
+              steps: [
+                "$ui-screenshot-to-storybook-product",
+                "$frontend-product-implementation",
+                "$ui-compare-to-reference",
+              ],
+              body:
+                "Split one screenshot into reusable UI blocks, wire it into a product route or screen, and verify visual parity.",
+            },
+            {
+              title: "Existing product feature",
+              steps: [
+                "$frontend-product-implementation",
+                "$design-system-governance",
+                "$ui-compare-to-reference",
+              ],
+              body:
+                "Inspect the existing repo, reuse tokens and shared components, add the feature, and compare it with the reference.",
+            },
+          ],
+          pairingsTitle: "Skills that continue or pair well together",
+          pairings: [
+            {
+              from: "$design-system-extractor",
+              to: "$design-system-to-storybook",
+              body:
+                "Use extracted docs and tokens as the source for the Storybook component library.",
+            },
+            {
+              from: "$design-system-to-storybook",
+              to: "$storybook-product-prototype",
+              body:
+                "Use the component catalog when building clickable product prototypes.",
+            },
+            {
+              from: "$storybook-product-prototype",
+              to: "$frontend-product-implementation",
+              body:
+                "Use prototype docs as the input for real frontend routes, screens, states, and mock adapters.",
+            },
+            {
+              from: "$design-system-governance",
+              to: "All UI implementation skills",
+              body:
+                "Apply token-first and component-first gates whenever building UI.",
+            },
+            {
+              from: "$ui-pixel-align-report",
+              to: "$ui-compare-to-reference",
+              body:
+                "Use the report to document drift, then apply targeted visual fixes.",
+            },
+          ],
+          examples: "Reusable AI coding agent request examples",
           prompts: [
             "Use $design-system-extractor to extract a reusable design-system package from ./reference screenshots.",
             "Use $design-system-to-storybook with design system at ./design-system and product repo at ./apps/web.",
@@ -553,6 +984,7 @@
             "Use $ui-screenshot-to-storybook-product on reference/dashboard.png and implement it through reusable Storybook components.",
             "Use $ui-compare-to-reference on reference/dashboard.png and http://localhost:3000/dashboard.",
             "Use $ui-pixel-align-report on reference/dashboard.png and http://localhost:3000/dashboard.",
+            "If $frontend-product-implementation is not recognized, read ./frontend-product-implementation/SKILL.md and follow that workflow. Also read ./design-system-governance/SKILL.md for UI governance.",
           ],
           principleTitle: "Usage principle",
           principleStrong: "Do not skip the design-system layer.",
@@ -594,12 +1026,29 @@
           title: "デザインシステムと UI 実装の Skill ガイド",
           eyebrow: "CM Skills",
           lead:
-            "このプロジェクトは、デザイン参照、デザインシステム文書、Storybook コンポーネント、ビジュアル比較を一つの流れにつなぐ Codex / Cursor / Claude Code 用 skills を提供します。",
+            "このプロジェクトは、デザイン参照、デザインシステム文書、Storybook コンポーネント、ビジュアル比較を一つの流れにつなぐ、Cursor、Claude Code、Codex、その他の AI coding agent 向けの汎用 skills を提供します。",
           pills: [
+            "AI coding agent 共通",
             "先にデザインシステムを抽出",
-            "次に Storybook へ実装",
             "コンポーネント優先",
             "Token 優先",
+          ],
+          agentTitle: "Cursor、Claude Code、Codex、その他の AI coding agent で使う",
+          agentBody:
+            "安定した契約は skill フォルダとその SKILL.md です。tool が installed skills をサポートしている場合は skill 名で呼び出し、対応していない場合は対象の SKILL.md を読ませて、その workflow に従うよう依頼します。",
+          agentSteps: [
+            "使う skill と目的を明確に伝えます。",
+            "repo、design-system docs、Storybook、reference images、handoff docs の正確な path を渡します。",
+            "UI 実装では $design-system-governance も含めます。",
+            "$skill-name が認識されない場合は、先に <skill folder>/SKILL.md を読むよう依頼します。",
+          ],
+          navItems: [
+            { href: "#agent-usage", label: "使い方" },
+            { href: "#quick-choice", label: "選ぶ" },
+            { href: "#recommended-flow", label: "Flow" },
+            { href: "#workflow-combinations", label: "組み合わせ" },
+            { href: "#examples", label: "依頼例" },
+            { href: "#outputs", label: "成果物" },
           ],
           quickChoice: "どの skill を使うべき？",
           skills: {
@@ -627,6 +1076,11 @@
               title: "Handoff 文書から frontend product code を実装",
               body:
                 "prototype または handoff 文書がある状態で使います。target repo と design system を確認し、greenfield または既存 product の frontend feature を token/component governance に沿って実装します。",
+            },
+            governance: {
+              title: "UI 実装をデザインシステムのルールに沿わせる",
+              body:
+                "UI 実装系 skill と一緒に使います。coding 前に tokens、grid、motion、i18n、共通コンポーネントを確認し、不足 token や component がある場合は先に確認します。",
             },
             compare: {
               title: "実装と参照画像を比較",
@@ -677,7 +1131,83 @@
                 "$ui-pixel-align-report で crop 証拠、source link、責任範囲、推奨修正をレビュー用に残します。",
             },
           ],
-          examples: "よく使う prompt 例",
+          workflowTitle: "よく使う skill の組み合わせ",
+          workflows: [
+            {
+              title: "デザイン参照から component library へ",
+              steps: [
+                "$design-system-extractor",
+                "$design-system-to-storybook",
+                "$ui-compare-to-reference",
+              ],
+              body:
+                "スクリーンショット、Figma、既存アプリから始め、tokens と components を抽出し、Storybook に実装してから参照と比較します。",
+            },
+            {
+              title: "Product idea から frontend feature へ",
+              steps: [
+                "$storybook-product-prototype",
+                "$frontend-product-implementation",
+                "$ui-compare-to-reference",
+              ],
+              body:
+                "機能アイデアを PRD、flow、data、handoff 文書に整理し、product repo に実装して、最後に見た目を確認します。",
+            },
+            {
+              title: "1 枚の screenshot から product screen へ",
+              steps: [
+                "$ui-screenshot-to-storybook-product",
+                "$frontend-product-implementation",
+                "$ui-compare-to-reference",
+              ],
+              body:
+                "1 枚の画面を再利用可能な UI ブロックへ分解し、product route や screen に組み込み、visual parity を確認します。",
+            },
+            {
+              title: "既存 product への機能追加",
+              steps: [
+                "$frontend-product-implementation",
+                "$design-system-governance",
+                "$ui-compare-to-reference",
+              ],
+              body:
+                "既存 repo を確認し、tokens と shared components を再利用して機能を追加し、参照との差分を確認します。",
+            },
+          ],
+          pairingsTitle: "続けて使える、または相性のよい skills",
+          pairings: [
+            {
+              from: "$design-system-extractor",
+              to: "$design-system-to-storybook",
+              body:
+                "抽出された docs と tokens を Storybook component library の source として使います。",
+            },
+            {
+              from: "$design-system-to-storybook",
+              to: "$storybook-product-prototype",
+              body:
+                "component catalog を使って clickable product prototype を作ります。",
+            },
+            {
+              from: "$storybook-product-prototype",
+              to: "$frontend-product-implementation",
+              body:
+                "prototype docs を real frontend routes、screens、states、mock adapters の入力として使います。",
+            },
+            {
+              from: "$design-system-governance",
+              to: "すべての UI 実装系 skills",
+              body:
+                "UI を作る時は token-first、component-first の gate として一緒に使います。",
+            },
+            {
+              from: "$ui-pixel-align-report",
+              to: "$ui-compare-to-reference",
+              body:
+                "report で drift を記録し、その後に絞り込んだ visual fix を適用します。",
+            },
+          ],
+          examples: "AI coding agent への依頼例",
           prompts: [
             "Use $design-system-extractor to extract a reusable design-system package from ./reference screenshots.",
             "Use $design-system-to-storybook with design system at ./design-system and product repo at ./apps/web.",
@@ -686,6 +1216,7 @@
             "Use $ui-screenshot-to-storybook-product on reference/dashboard.png and implement it through reusable Storybook components.",
             "Use $ui-compare-to-reference on reference/dashboard.png and http://localhost:3000/dashboard.",
             "Use $ui-pixel-align-report on reference/dashboard.png and http://localhost:3000/dashboard.",
+            "$frontend-product-implementation が認識されない場合は、./frontend-product-implementation/SKILL.md を読み、その workflow に従ってください。UI governance は ./design-system-governance/SKILL.md も読んでください。",
           ],
           principleTitle: "使用原則",
           principleStrong: "デザインシステム層を飛ばさない。",
@@ -727,8 +1258,25 @@
           title: "設計系統與 UI 實作工作流指南",
           eyebrow: "CM Skills",
           lead:
-            "這個專案提供一組可重複使用的 Codex / Cursor / Claude Code skills，目標是把設計稿、設計系統文件、Storybook 元件和畫面比對串成清楚的流程。",
-          pills: ["先萃取設計系統", "再落地 Storybook", "元件優先", "Token 優先"],
+            "這個專案提供一組可重複使用、工具中立的 AI coding skills，目標是讓 Cursor、Claude Code、Codex 或其他 AI coding agent 都能把設計稿、設計系統文件、Storybook 元件和畫面比對串成清楚的開發流程。",
+          pills: ["跨 AI coding agent 使用", "先萃取設計系統", "元件優先", "Token 優先"],
+          agentTitle: "在 Cursor、Claude Code、Codex 或其他 AI coding agent 中使用",
+          agentBody:
+            "最穩定的規格是 skill 資料夾和裡面的 SKILL.md。如果工具支援 installed skills，可以直接用 skill 名稱；如果不支援，就明確請 AI 先讀對應的 SKILL.md，再依照該 workflow 執行。",
+          agentSteps: [
+            "說清楚要用哪個 skill，以及要完成什麼目標。",
+            "提供 repo、design-system docs、Storybook、reference images 或 handoff docs 的明確路徑。",
+            "如果是 UI 實作，請同時要求遵循 $design-system-governance。",
+            "如果工具不認得 $skill-name，請改成要求它先讀 <skill folder>/SKILL.md。",
+          ],
+          navItems: [
+            { href: "#agent-usage", label: "使用方式" },
+            { href: "#quick-choice", label: "快速選擇" },
+            { href: "#recommended-flow", label: "流程" },
+            { href: "#workflow-combinations", label: "搭配" },
+            { href: "#examples", label: "請求範例" },
+            { href: "#outputs", label: "成果物" },
+          ],
           quickChoice: "我該用哪個 skill？",
           skills: {
             extractor: {
@@ -755,6 +1303,11 @@
               title: "從 handoff 文件實作前端產品功能",
               body:
                 "適合已經有 prototype 或 handoff 文件後，讀取 target repo 與設計系統，依照 design-system governance 實作 0 到 1 或既有產品的新功能。",
+            },
+            governance: {
+              title: "讓 UI 實作遵循設計系統規範",
+              body:
+                "適合搭配任何 UI 實作 skill 使用。它會先檢查 tokens、grid、motion、i18n 和 shared components，缺少 token 或元件時先停下來確認。",
             },
             compare: {
               title: "比對實作與參考圖",
@@ -805,7 +1358,83 @@
                 "用 $ui-pixel-align-report 保留 crop 證據、來源連結、歸屬層級和建議修正，方便設計審查與交接。",
             },
           ],
-          examples: "常用 prompt 範例",
+          workflowTitle: "常見的 skill 搭配方式",
+          workflows: [
+            {
+              title: "從設計參考到元件庫",
+              steps: [
+                "$design-system-extractor",
+                "$design-system-to-storybook",
+                "$ui-compare-to-reference",
+              ],
+              body:
+                "從 screenshots、Figma 或既有 app 開始，先萃取 tokens 和元件，再落地到 Storybook，最後跟參考畫面比對。",
+            },
+            {
+              title: "從產品想法到前端功能",
+              steps: [
+                "$storybook-product-prototype",
+                "$frontend-product-implementation",
+                "$ui-compare-to-reference",
+              ],
+              body:
+                "把功能想法整理成 PRD、流程、資料與 handoff 文件，接著實作到 product repo，最後確認畫面品質。",
+            },
+            {
+              title: "從單張截圖到產品畫面",
+              steps: [
+                "$ui-screenshot-to-storybook-product",
+                "$frontend-product-implementation",
+                "$ui-compare-to-reference",
+              ],
+              body:
+                "先把單張畫面拆成可重用 UI blocks，再接到產品 route 或 screen，最後檢查 visual parity。",
+            },
+            {
+              title: "既有產品新增功能",
+              steps: [
+                "$frontend-product-implementation",
+                "$design-system-governance",
+                "$ui-compare-to-reference",
+              ],
+              body:
+                "先理解既有 repo，重用 tokens 與 shared components，新增功能後再和 reference 比對。",
+            },
+          ],
+          pairingsTitle: "可以延續或搭配使用的 skills",
+          pairings: [
+            {
+              from: "$design-system-extractor",
+              to: "$design-system-to-storybook",
+              body:
+                "用萃取出的 docs 和 tokens 作為 Storybook 元件庫的來源。",
+            },
+            {
+              from: "$design-system-to-storybook",
+              to: "$storybook-product-prototype",
+              body:
+                "用 Storybook component catalog 建立可點擊的產品 prototype。",
+            },
+            {
+              from: "$storybook-product-prototype",
+              to: "$frontend-product-implementation",
+              body:
+                "用 prototype docs 作為真實前端 routes、screens、states 和 mock adapters 的輸入。",
+            },
+            {
+              from: "$design-system-governance",
+              to: "所有 UI 實作類 skills",
+              body:
+                "每次做 UI 時都作為 token-first、component-first 的檢查 gate。",
+            },
+            {
+              from: "$ui-pixel-align-report",
+              to: "$ui-compare-to-reference",
+              body:
+                "先用 report 記錄偏差，再用比對 skill 進行聚焦修正。",
+            },
+          ],
+          examples: "給 AI coding agent 的請求範例",
           prompts: [
             "Use $design-system-extractor to extract a reusable design-system package from ./reference screenshots.",
             "Use $design-system-to-storybook with design system at ./design-system and product repo at ./apps/web.",
@@ -814,6 +1443,7 @@
             "Use $ui-screenshot-to-storybook-product on reference/dashboard.png and implement it through reusable Storybook components.",
             "Use $ui-compare-to-reference on reference/dashboard.png and http://localhost:3000/dashboard.",
             "Use $ui-pixel-align-report on reference/dashboard.png and http://localhost:3000/dashboard.",
+            "如果 $frontend-product-implementation 沒有被辨識，請先閱讀 ./frontend-product-implementation/SKILL.md 並依照該 workflow 執行。UI governance 請同時閱讀 ./design-system-governance/SKILL.md。",
           ],
           principleTitle: "使用原則",
           principleStrong: "不要跳過設計系統層。",
@@ -882,6 +1512,18 @@
           .join("")}</ul>`;
       }
 
+      function renderNav(lang) {
+        return copy[lang].navItems
+          .map((item) => `<a href="${escapeHtml(item.href)}">${escapeHtml(item.label)}</a>`)
+          .join("");
+      }
+
+      function renderChain(items) {
+        return `<ol class="chain">${items
+          .map((item) => `<li><code>${escapeHtml(item)}</code></li>`)
+          .join("")}</ol>`;
+      }
+
       function renderSkillCards(lang) {
         return skillData
           .map((skill) => {
@@ -912,6 +1554,37 @@
           .join("");
       }
 
+      function renderWorkflows(lang) {
+        return copy[lang].workflows
+          .map(
+            (item) => `
+              <article class="panel">
+                <h3>${escapeHtml(item.title)}</h3>
+                <p>${escapeHtml(item.body)}</p>
+                ${renderChain(item.steps)}
+              </article>
+            `,
+          )
+          .join("");
+      }
+
+      function renderPairings(lang) {
+        return copy[lang].pairings
+          .map(
+            (item) => `
+              <article class="panel">
+                <h3 class="pairing-route">
+                  <code>${escapeHtml(item.from)}</code>
+                  <span class="pairing-arrow" aria-hidden="true">&rarr;</span>
+                  <code>${escapeHtml(item.to)}</code>
+                </h3>
+                <p>${escapeHtml(item.body)}</p>
+              </article>
+            `,
+          )
+          .join("");
+      }
+
       function renderPrompts(lang) {
         return copy[lang].prompts
           .map((prompt) => `<pre class="prompt">${escapeHtml(prompt)}</pre>`)
@@ -925,28 +1598,56 @@
         document.querySelectorAll("[data-lang]").forEach((button) => {
           button.setAttribute("aria-pressed", String(button.dataset.lang === lang));
         });
+        document.getElementById("section-nav").innerHTML = renderNav(lang);
         document.getElementById("content").innerHTML = `
-          <header>
-            <p class="eyebrow">${escapeHtml(text.eyebrow)}</p>
-            <h1>${escapeHtml(text.title)}</h1>
-            <p class="lead">${escapeHtml(text.lead)}</p>
-            <div class="meta" aria-label="Highlights">
-              ${text.pills.map((pill) => `<span class="pill">${escapeHtml(pill)}</span>`).join("")}
+          <header id="agent-usage" class="hero">
+            <div class="hero-copy">
+              <p class="eyebrow">${escapeHtml(text.eyebrow)}</p>
+              <h1>${escapeHtml(text.title)}</h1>
+              <p class="lead">${escapeHtml(text.lead)}</p>
+              <div class="meta" aria-label="Highlights">
+                ${text.pills.map((pill) => `<span class="pill">${escapeHtml(pill)}</span>`).join("")}
+              </div>
             </div>
+            <aside class="hero-card" aria-labelledby="agent-usage-card">
+              <p id="agent-usage-card" class="card-label">${escapeHtml(text.agentTitle)}</p>
+              <p>${escapeHtml(text.agentBody)}</p>
+              ${renderList(text.agentSteps)}
+            </aside>
           </header>
 
           <section class="section" aria-labelledby="quick-choice">
-            <h2 id="quick-choice">${escapeHtml(text.quickChoice)}</h2>
+            <div class="section-header">
+              <h2 id="quick-choice">${escapeHtml(text.quickChoice)}</h2>
+            </div>
             <div class="grid four">${renderSkillCards(lang)}</div>
           </section>
 
           <section class="section" aria-labelledby="recommended-flow">
-            <h2 id="recommended-flow">${escapeHtml(text.recommendedFlow)}</h2>
+            <div class="section-header">
+              <h2 id="recommended-flow">${escapeHtml(text.recommendedFlow)}</h2>
+            </div>
             <div class="flow">${renderFlow(lang)}</div>
           </section>
 
+          <section class="section" aria-labelledby="workflow-combinations">
+            <div class="section-header">
+              <h2 id="workflow-combinations">${escapeHtml(text.workflowTitle)}</h2>
+            </div>
+            <div class="grid two">${renderWorkflows(lang)}</div>
+          </section>
+
+          <section class="section" aria-labelledby="skill-pairings">
+            <div class="section-header">
+              <h2 id="skill-pairings">${escapeHtml(text.pairingsTitle)}</h2>
+            </div>
+            <div class="grid two">${renderPairings(lang)}</div>
+          </section>
+
           <section class="section" aria-labelledby="examples">
-            <h2 id="examples">${escapeHtml(text.examples)}</h2>
+            <div class="section-header">
+              <h2 id="examples">${escapeHtml(text.examples)}</h2>
+            </div>
             <div class="grid two">
               <div class="prompt-list" aria-label="Prompt examples">
                 ${renderPrompts(lang)}
@@ -959,8 +1660,10 @@
           </section>
 
           <section class="section" aria-labelledby="outputs">
-            <h2 id="outputs">${escapeHtml(text.outputs)}</h2>
-            <div class="grid two">
+            <div class="section-header">
+              <h2 id="outputs">${escapeHtml(text.outputs)}</h2>
+            </div>
+            <div class="grid two output-grid">
               <article class="panel">
                 <h3>${escapeHtml(text.extractOutputTitle)}</h3>
                 ${renderList(text.extractOutputs, true)}
