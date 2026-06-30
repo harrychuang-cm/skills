@@ -75,14 +75,26 @@ Use this after `design-system-extractor` when the extraction is complete and you
 
 ### `storybook-product-prototype`
 
-Create PRD-led product prototypes in Storybook:
+Create PRD-led product prototypes and frontend handoff docs in Storybook:
 
-1. Turn a product idea into PRD, Flow Spec, UI Spec, Data Spec, and Acceptance Criteria.
+1. Turn a product idea into PRD, Flow Spec, UI Spec, Data Spec, Production Handoff, and Acceptance Criteria.
 2. Scaffold a prototype folder with typed route metadata, deterministic fixtures, and Storybook story files.
 3. Attach `parameters.prototype` metadata for Story, Docs, Data, and UI Flow review.
-4. Validate that docs, flow routes, transition metadata, fixtures, and story wiring stay consistent.
+4. Validate that docs, frontend handoff, flow routes, transition metadata, fixtures, and story wiring stay consistent.
 
-Use this when a team wants a clickable Storybook prototype for product review before production implementation.
+Use this when a team wants a clickable Storybook prototype and frontend implementation handoff before production repo work.
+
+### `frontend-product-implementation`
+
+Implement frontend products and features from handoff docs:
+
+1. Read PRD, Flow Spec, UI Spec, Data Spec, Production Handoff, Acceptance, and Implementation Guide docs.
+2. Inspect the target repo to detect routes/screens, design tokens, shared components, Storybook, i18n, data patterns, and tests.
+3. Follow `design-system-governance`: reuse tokens/components first, and stop for approval before creating missing tokens or shared components.
+4. Build greenfield products or add features to existing products with deterministic fixtures and mock data adapters when real integration is out of scope.
+5. Verify with the repo's typecheck, tests, build, Storybook, or app preview commands.
+
+Use this after `storybook-product-prototype` or any equivalent handoff when you want the docs to become frontend product code while preserving design-system governance.
 
 ## Usage
 
@@ -166,6 +178,10 @@ The generated report is a static HTML + CSS artifact, usually under `reports/des
 │   ├── assets/
 │   ├── references/
 │   └── scripts/
+├── frontend-product-implementation/
+│   ├── SKILL.md
+│   ├── agents/
+│   └── references/
 ├── storybook-product-prototype/
 │   ├── SKILL.md
 │   ├── agents/

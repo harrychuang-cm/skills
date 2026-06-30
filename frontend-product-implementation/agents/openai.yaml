@@ -1,0 +1,4 @@
+interface:
+  display_name: "Frontend Product Implementation"
+  short_description: "Build frontend from handoff docs"
+  default_prompt: "Use $frontend-product-implementation to implement a frontend product or feature from PRD, UI Flow, Data Spec, and Frontend Handoff docs while following design-system governance."

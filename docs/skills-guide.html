@@ -371,6 +371,48 @@
           },
         },
         {
+          tag: "$storybook-product-prototype",
+          key: "prototype",
+          bullets: {
+            en: [
+              "Create PRD-led prototype docs",
+              "Model routes, states, and fixtures",
+              "Prepare frontend handoff",
+            ],
+            ja: [
+              "PRD 起点の prototype 文書を作成",
+              "routes、states、fixtures を設計",
+              "frontend handoff を準備",
+            ],
+            "zh-Hant": [
+              "建立 PRD-led prototype 文件",
+              "定義 routes、states 和 fixtures",
+              "準備 frontend handoff",
+            ],
+          },
+        },
+        {
+          tag: "$frontend-product-implementation",
+          key: "implementation",
+          bullets: {
+            en: [
+              "Read handoff docs",
+              "Inspect tokens and component library",
+              "Implement frontend routes or screens",
+            ],
+            ja: [
+              "handoff 文書を読む",
+              "tokens と component library を確認",
+              "frontend routes / screens を実装",
+            ],
+            "zh-Hant": [
+              "讀取 handoff 文件",
+              "檢查 tokens 與元件庫",
+              "實作 frontend routes 或 screens",
+            ],
+          },
+        },
+        {
           tag: "$ui-compare-to-reference",
           key: "compare",
           bullets: {
@@ -443,6 +485,16 @@
               body:
                 "Use this when you have a screenshot or Figma export and want to split it into reusable UI blocks before composing the product screen.",
             },
+            prototype: {
+              title: "Prototype a product flow and handoff",
+              body:
+                "Use this to create PRD-led Storybook prototypes with route metadata, deterministic fixtures, UI Flow, and frontend implementation handoff docs.",
+            },
+            implementation: {
+              title: "Build frontend product code from handoff docs",
+              body:
+                "Use this after prototype or handoff docs exist. It inspects the target repo and design system, then implements greenfield or existing-product frontend features with governed tokens and components.",
+            },
             compare: {
               title: "Compare implementation with a reference",
               body:
@@ -472,6 +524,16 @@
                 "Use $design-system-to-storybook to build Storybook foundations, components, and stories from the docs.",
             },
             {
+              title: "Prototype",
+              body:
+                "Use $storybook-product-prototype to turn product scope into PRD, UI Flow, deterministic fixtures, and frontend handoff docs.",
+            },
+            {
+              title: "Build",
+              body:
+                "Use $frontend-product-implementation to implement routes, screens, states, and mock data adapters in the product repo while following design-system governance.",
+            },
+            {
               title: "Compare",
               body:
                 "Use $ui-compare-to-reference to inspect the final UI and fix drift at the token, component, or composition layer.",
@@ -486,6 +548,8 @@
           prompts: [
             "Use $design-system-extractor to extract a reusable design-system package from ./reference screenshots.",
             "Use $design-system-to-storybook with design system at ./design-system and product repo at ./apps/web.",
+            "Use $storybook-product-prototype to create a checkout flow prototype and frontend handoff docs.",
+            "Use $frontend-product-implementation to implement the checkout flow from ./src/pages/prototypes/checkout/docs into ./apps/web.",
             "Use $ui-screenshot-to-storybook-product on reference/dashboard.png and implement it through reusable Storybook components.",
             "Use $ui-compare-to-reference on reference/dashboard.png and http://localhost:3000/dashboard.",
             "Use $ui-pixel-align-report on reference/dashboard.png and http://localhost:3000/dashboard.",
@@ -554,6 +618,16 @@
               body:
                 "スクリーンショットや Figma export があり、プロダクト画面を作る前に再利用可能な UI ブロックへ分解したい時に使います。",
             },
+            prototype: {
+              title: "Product flow と handoff を prototype 化",
+              body:
+                "PRD 起点の Storybook prototype、route metadata、deterministic fixtures、UI Flow、frontend handoff 文書を作成する時に使います。",
+            },
+            implementation: {
+              title: "Handoff 文書から frontend product code を実装",
+              body:
+                "prototype または handoff 文書がある状態で使います。target repo と design system を確認し、greenfield または既存 product の frontend feature を token/component governance に沿って実装します。",
+            },
             compare: {
               title: "実装と参照画像を比較",
               body:
@@ -583,6 +657,16 @@
                 "$design-system-to-storybook で文書をもとに Storybook foundations、components、stories を作成します。",
             },
             {
+              title: "Prototype",
+              body:
+                "$storybook-product-prototype で product scope を PRD、UI Flow、deterministic fixtures、frontend handoff 文書に変換します。",
+            },
+            {
+              title: "Build",
+              body:
+                "$frontend-product-implementation で product repo に routes、screens、states、mock data adapters を design-system governance に沿って実装します。",
+            },
+            {
               title: "比較",
               body:
                 "$ui-compare-to-reference で最終 UI を確認し、token、component、composition の層で差分を修正します。",
@@ -597,6 +681,8 @@
           prompts: [
             "Use $design-system-extractor to extract a reusable design-system package from ./reference screenshots.",
             "Use $design-system-to-storybook with design system at ./design-system and product repo at ./apps/web.",
+            "Use $storybook-product-prototype to create a checkout flow prototype and frontend handoff docs.",
+            "Use $frontend-product-implementation to implement the checkout flow from ./src/pages/prototypes/checkout/docs into ./apps/web.",
             "Use $ui-screenshot-to-storybook-product on reference/dashboard.png and implement it through reusable Storybook components.",
             "Use $ui-compare-to-reference on reference/dashboard.png and http://localhost:3000/dashboard.",
             "Use $ui-pixel-align-report on reference/dashboard.png and http://localhost:3000/dashboard.",
@@ -660,6 +746,16 @@
               body:
                 "適合你有一張 screenshot 或 Figma export，希望先拆出可重用元件，再用 Storybook 或專案的元件目錄組成產品畫面。",
             },
+            prototype: {
+              title: "建立產品流程 prototype 與 handoff",
+              body:
+                "適合把產品想法整理成 PRD-led Storybook prototype、route metadata、deterministic fixtures、UI Flow 和 frontend handoff 文件。",
+            },
+            implementation: {
+              title: "從 handoff 文件實作前端產品功能",
+              body:
+                "適合已經有 prototype 或 handoff 文件後，讀取 target repo 與設計系統，依照 design-system governance 實作 0 到 1 或既有產品的新功能。",
+            },
             compare: {
               title: "比對實作與參考圖",
               body:
@@ -689,6 +785,16 @@
                 "用 $design-system-to-storybook 依照文件建立 Storybook foundations、components 和 stories。",
             },
             {
+              title: "Prototype",
+              body:
+                "用 $storybook-product-prototype 把產品範圍整理成 PRD、UI Flow、deterministic fixtures 和 frontend handoff 文件。",
+            },
+            {
+              title: "Build",
+              body:
+                "用 $frontend-product-implementation 在產品 repo 中實作 routes、screens、states 和 mock data adapters，並遵循 design-system governance。",
+            },
+            {
               title: "比對",
               body:
                 "用 $ui-compare-to-reference 檢查實作結果，把偏差修在 token、元件或組裝層。",
@@ -703,6 +809,8 @@
           prompts: [
             "Use $design-system-extractor to extract a reusable design-system package from ./reference screenshots.",
             "Use $design-system-to-storybook with design system at ./design-system and product repo at ./apps/web.",
+            "Use $storybook-product-prototype to create a checkout flow prototype and frontend handoff docs.",
+            "Use $frontend-product-implementation to implement the checkout flow from ./src/pages/prototypes/checkout/docs into ./apps/web.",
             "Use $ui-screenshot-to-storybook-product on reference/dashboard.png and implement it through reusable Storybook components.",
             "Use $ui-compare-to-reference on reference/dashboard.png and http://localhost:3000/dashboard.",
             "Use $ui-pixel-align-report on reference/dashboard.png and http://localhost:3000/dashboard.",
