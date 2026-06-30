@@ -69,6 +69,17 @@ Create mapping objects before wiring handlers:
 - menu action id to route id
 - sheet action id to route id
 
+## Production Mapping
+
+When preparing frontend handoff, map route ids and transitions to the target platform:
+
+- web routes, nested layouts, modals, sheets, or query params
+- app screens, tabs, navigation stack entries, sheets, or deep links
+- shared component states when no route or screen boundary exists
+- service, permission, or async branch nodes that production must implement
+
+Keep route ids stable across prototype docs and handoff docs so engineers and AI agents can trace behavior without relying on visible labels.
+
 ## Acceptance
 
 - Every visible route appears in route metadata.
@@ -80,3 +91,4 @@ Create mapping objects before wiring handlers:
 - The route preview shell exposes `data-prototype-route-preview="true"` for template-compatible iframe measurement.
 - The prototype root keeps `data-prototype-root="true"` for backward-compatible iframe height measurement.
 - Static Flow export reads saved layout from `prototypeFlowLayout.ts` using the same storage key as the Prototype Inspector.
+- Production handoff maps every route and branch node that must become a web/app surface, service decision, API/data contract expectation, or shared state.

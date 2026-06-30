@@ -31,6 +31,11 @@ const docDefinitions = [
   { docKey: "flowSpec", id: "flow-spec", label: "Flow Spec" },
   { docKey: "dataSpec", id: "data-spec", label: "Data Spec" },
   {
+    docKey: "productionHandoff",
+    id: "production-handoff",
+    label: "Frontend Handoff",
+  },
+  {
     docKey: "implementationGuide",
     id: "implementation-guide",
     label: "Implementation Guide",

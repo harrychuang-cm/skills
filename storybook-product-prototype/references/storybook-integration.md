@@ -42,8 +42,11 @@ The `docs` object should import raw markdown from:
 - `docs/UI_SPEC.md`
 - `docs/FLOW_SPEC.md`
 - `docs/DATA_SPEC.md`
+- `docs/PRODUCTION_HANDOFF.md`
 - `docs/IMPLEMENTATION_GUIDE.md`
 - `docs/ACCEPTANCE.md`
+
+Use `productionHandoff` as the `docs` key for `docs/PRODUCTION_HANDOFF.md`.
 
 The `flow` object should expose:
 
@@ -61,6 +64,8 @@ The `data` object should summarize:
 The `figmaExport` object should expose:
 
 - `flowStoryId`: the Storybook id for the `StaticFlow` export, for example `pages-prototypes-example-prototype--static-flow`.
+
+`PRODUCTION_HANDOFF.md` should be exposed with the other docs so reviewers can inspect frontend implementation guidance without leaving Storybook.
 
 ## UI Flow Viewer Boundary
 
@@ -80,7 +85,7 @@ If the target project already has a prototype inspector, match its parameter nam
 The bundled addon reads `parameters.prototype` and provides a Storybook toolbar with:
 
 - `Story`: the original story.
-- `Docs`: PRD, UI Spec, Flow Spec, Data Spec, Implementation Guide, and Acceptance markdown.
+- `Docs`: PRD, UI Spec, Flow Spec, Data Spec, Frontend Handoff, Implementation Guide, and Acceptance markdown.
 - `UI Flow`: route cards, flow-only nodes, key transition lines, zoom, drag, pan, layout import, and layout export.
 - `Data`: fixture summary, API replacement points, source ownership, route data map, state rules, and raw metadata.
 - `Open Static Flow`: when `parameters.prototype.figmaExport.flowStoryId` is present, open the Figma-ready static flow story that uses the same saved layout.

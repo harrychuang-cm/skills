@@ -14,6 +14,7 @@ REQUIRED_DOCS = [
     "FLOW_SPEC.md",
     "UI_SPEC.md",
     "DATA_SPEC.md",
+    "PRODUCTION_HANDOFF.md",
     "ACCEPTANCE.md",
     "IMPLEMENTATION_GUIDE.md",
 ]
@@ -23,9 +24,30 @@ REQUIRED_DOC_HEADINGS = {
     "FLOW_SPEC.md": ["Source Of Truth", "Route Map", "Transitions"],
     "UI_SPEC.md": ["Design Principle", "Interaction", "Accessibility"],
     "DATA_SPEC.md": ["Source Of Truth", "Fixture Inventory", "API Replacement Points"],
-    "ACCEPTANCE.md": ["Storybook", "Interaction", "Engineering"],
-    "IMPLEMENTATION_GUIDE.md": ["Implementation Order", "Required Verification"],
+    "PRODUCTION_HANDOFF.md": [
+        "Target Surfaces",
+        "Prototype To Frontend Map",
+        "Web Implementation Notes",
+        "App Implementation Notes",
+        "API And Data Contracts",
+        "Frontend Handoff Acceptance",
+        "Integration Ownership",
+        "Storybook-Only Boundaries",
+    ],
+    "ACCEPTANCE.md": ["Storybook", "Interaction", "Frontend Handoff", "Engineering"],
+    "IMPLEMENTATION_GUIDE.md": [
+        "Implementation Order",
+        "Frontend Transfer Checklist",
+        "Required Verification",
+    ],
 }
+
+PLACEHOLDER_PATTERN = re.compile(
+    r"\[(?:Describe|List|Add|Every|Future|Route|Required|Expected|Primary|Next|Name|Owner|Decision|"
+    r"Web|App|Reusable|Feature|Shape|Team|Endpoint|Request|Response|Error|Permission|"
+    r"Service|Fields|Loading|Cache|URL|Breakpoints|Keyboard|Stack|Safe|Dismissal|"
+    r"Production|Document|Unknown|Route|Screen)[^\]\n]*\]"
+)
 
 
 def find_one(folder: Path, pattern: str) -> Path | None:
@@ -81,7 +103,7 @@ def extract_string_property(object_text: str, key: str) -> str | None:
     return match.group(2) if match else None
 
 
-def validate_docs(folder: Path, errors: list[str]) -> None:
+def validate_docs(folder: Path, errors: list[str], handoff_ready: bool = False) -> None:
     docs_dir = folder / "docs"
     check(docs_dir.is_dir(), "missing docs/ directory", errors)
     if not docs_dir.is_dir():
@@ -98,6 +120,13 @@ def validate_docs(folder: Path, errors: list[str]) -> None:
                 re.search(rf"^#+\s+{re.escape(heading)}\s*$", text, re.MULTILINE)
                 is not None,
                 f"docs/{doc_name} missing heading '{heading}'",
+                errors,
+            )
+        if handoff_ready:
+            placeholders = PLACEHOLDER_PATTERN.findall(text)
+            check(
+                not placeholders,
+                f"docs/{doc_name} still has unresolved bracket placeholder text",
                 errors,
             )
 
@@ -192,7 +221,15 @@ def validate_meta(path: Path | None, errors: list[str]) -> None:
     if path is None or not path.is_file():
         return
     text = read(path)
-    for doc_name in ["ACCEPTANCE", "DATA_SPEC", "FLOW_SPEC", "IMPLEMENTATION_GUIDE", "PRD", "UI_SPEC"]:
+    for doc_name in [
+        "ACCEPTANCE",
+        "DATA_SPEC",
+        "FLOW_SPEC",
+        "IMPLEMENTATION_GUIDE",
+        "PRD",
+        "PRODUCTION_HANDOFF",
+        "UI_SPEC",
+    ]:
         check(doc_name in text, f"meta missing raw import for docs/{doc_name}.md", errors)
     check("flow:" in text, "meta missing flow field", errors)
     check("data:" in text, "meta missing data field", errors)
@@ -284,6 +321,18 @@ def validate_flow(path: Path | None, errors: list[str]) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("prototype_folder", help="Path to a generated prototype folder.")
+    parser.add_argument(
+        "--handoff-ready",
+        dest="handoff_ready",
+        action="store_true",
+        help="Also fail docs that still contain scaffold placeholder guidance.",
+    )
+    parser.add_argument(
+        "--production-ready",
+        dest="handoff_ready",
+        action="store_true",
+        help="Deprecated alias for --handoff-ready.",
+    )
     args = parser.parse_args()
 
     folder = Path(args.prototype_folder).resolve()
@@ -291,7 +340,7 @@ def main() -> int:
 
     check(folder.is_dir(), f"{folder} is not a directory", errors)
     if folder.is_dir():
-        validate_docs(folder, errors)
+        validate_docs(folder, errors, args.handoff_ready)
         files = validate_files(folder, errors)
         validate_story(files["story"], errors)
         validate_static_flow_story(files["static flow story"], errors)

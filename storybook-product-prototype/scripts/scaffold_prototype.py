@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Scaffold a PRD-led Storybook product prototype from bundled templates."""
+"""Scaffold a PRD-led Storybook product prototype and frontend handoff."""
 
 from __future__ import annotations
 
