@@ -1,0 +1,35 @@
+{
+  "name": "component-coverage-tool",
+  "version": "0.1.0",
+  "description": "Storybook Component Coverage Analyzer — template manifest. The installer copies this file to outputs/component-coverage/TEMPLATE_MANIFEST.json in the target project so update runs can compare versions.",
+  "files": {
+    "verbatim": [
+      "src/storybook/component-coverage/ComponentCoverageAnalyzer.tsx",
+      "src/storybook/component-coverage/IntakeForm.tsx",
+      "src/storybook/component-coverage/ReportView.tsx",
+      "src/storybook/component-coverage/coverageApi.ts",
+      "src/storybook/component-coverage/coverageTypes.ts",
+      "src/storybook/component-coverage/index.ts",
+      "scripts/component-coverage/vite-plugin.mjs",
+      "scripts/component-coverage/vite-plugin.d.mts",
+      "scripts/check-component-coverage-reports.mjs",
+      "scripts/check-component-catalog.mjs",
+      "skills/component-coverage-analyze/SKILL.md",
+      "skills/component-coverage-implement/SKILL.md"
+    ],
+    "adaptable": [
+      "src/storybook/component-coverage/component-coverage.css",
+      "src/stories/tools/ComponentCoverageAnalyzer.stories.tsx"
+    ],
+    "generated": [
+      "src/storybook/componentCatalog.template.ts"
+    ]
+  },
+  "pathContracts": {
+    "apiPath": "/__component-coverage",
+    "staticBase": "/component-coverage",
+    "dataDir": "outputs/component-coverage",
+    "catalog": "src/storybook/componentCatalog.ts",
+    "contractTypes": "src/storybook/component-coverage/coverageTypes.ts"
+  }
+}

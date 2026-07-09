@@ -96,6 +96,17 @@ Implement frontend products and features from handoff docs:
 
 Use this after `storybook-product-prototype` or any equivalent handoff when you want the docs to become frontend product code while preserving design-system governance.
 
+### `component-coverage-install`
+
+Install and bind the Storybook「Component Coverage Analyzer」tool into any React + Vite Storybook project:
+
+1. Copy the bundled template verbatim: tool UI (Storybook Tools page), dev API vite plugin, check scripts, and the companion `component-coverage-analyze` / `component-coverage-implement` project skills.
+2. Generate a project-specific component catalog by reading the target project's components and stories (the AI binding step — see `references/catalog-authoring.md`).
+3. Wire `.storybook/main.ts` (`viteFinal` plugin + `staticDirs`), create the `outputs/component-coverage/` data directory, and verify end to end (checks, typecheck, dev API, tool page, static build).
+4. Update a previously installed copy via the `TEMPLATE_MANIFEST.json` version, overwriting only template-owned files.
+
+Use this to bring the UI-image/PRD → coverage report → developer review → implementation workflow to a new Storybook project.
+
 ## Usage
 
 Install or reference these folders as agent skills in Claude Code, Codex, or Cursor. Each skill lives in its own directory and exposes a `SKILL.md` with frontmatter metadata and workflow instructions.
@@ -166,6 +177,10 @@ The generated report is a static HTML + CSS artifact, usually under `reports/des
 
 ```text
 .
+├── component-coverage-install/
+│   ├── SKILL.md
+│   ├── references/
+│   └── template/
 ├── design-system-extractor/
 │   ├── SKILL.md
 │   ├── agents/
