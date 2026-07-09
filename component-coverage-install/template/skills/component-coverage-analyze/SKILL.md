@@ -19,7 +19,7 @@ Process pending analysis requests from the Storybook「Component Coverage Analyz
 
    For each pending request directory:
    - Read `request.json` (`id`, `title`, `prdText`, `images`, `createdAt`)
-   - Read every file listed in `images` with the Read tool (they are image files in the same directory)
+   - Read every file listed in `images` (they are image files in the same directory) with whatever file/image reading capability your agent has
 
 3. **Inventory the UI blocks**
 
@@ -73,9 +73,11 @@ Process pending analysis requests from the Storybook「Component Coverage Analyz
      "sourceSummary": "<one-paragraph description of the analyzed input>",
      "blocks": [ ... ],
      "summary": { "reusable": 0, "extend": 0, "missing": 0 },
-     "analyzer": { "engine": "claude-code", "catalogEntryCount": <count of catalog entries> }
+     "analyzer": { "engine": "<agent-that-ran-this>", "catalogEntryCount": <count of catalog entries> }
    }
    ```
+
+   Set `analyzer.engine` to the coding agent producing the report — e.g. `"claude-code"`, `"cursor"`, or `"codex"` (any non-empty string; the tool surfaces it as「分析引擎」). Use `"claude-code"` if you cannot tell.
 
    `summary` counts MUST equal the block-derived classification: a block is `missing` when `gap.status` is `missing`; `extend` when `gap.status` is `extend` or no match has fit `exact`; otherwise `reusable`. (`classifyCoverageBlock` in `coverageTypes.ts` is the reference implementation.)
 

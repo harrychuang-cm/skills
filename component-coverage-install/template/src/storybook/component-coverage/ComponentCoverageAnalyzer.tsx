@@ -16,7 +16,7 @@ const pendingPollIntervalMs = 5000;
 
 const workflowSteps = [
   { hint: "上傳 UI 圖或 PRD", title: "送出請求" },
-  { hint: "複製指令給 Claude Code", title: "執行分析" },
+  { hint: "複製指令給 AI agent", title: "執行分析" },
   { hint: "逐區塊決定怎麼做", title: "覆核報告" },
   { hint: "複製指令開始實作", title: "交接實作" },
 ] as const;

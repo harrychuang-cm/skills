@@ -59,6 +59,29 @@ export function analyzeCommandFor(requestId: string) {
 }
 
 /**
+ * Self-contained analysis prompt, portable to any AI coding agent (Claude
+ * Code, Cursor, Codex…). It points at the agent-neutral instruction file and
+ * the request / catalog / report locations, so an agent with repo file access
+ * can run the analysis without this project's slash-command wiring.
+ */
+export function analyzePromptFor(requestId: string) {
+  return [
+    `分析 Component Coverage 請求 ${requestId}。`,
+    "",
+    "## 指示",
+    "請讀取並完整遵循 `.claude/skills/component-coverage-analyze/SKILL.md`（分析流程的單一事實來源；任何具備檔案存取能力的 agent 皆可讀取此檔）。",
+    "",
+    "## 位置",
+    `- 待分析請求：outputs/component-coverage/requests/${requestId}/（request.json 含 PRD 文字與圖片清單，圖片檔在同目錄，請一併讀取）`,
+    "- 比對元件庫：src/storybook/componentCatalog.ts，以及各 entry componentPath 下的元件原始碼與 stories",
+    `- 產出報告：outputs/component-coverage/reports/${requestId}.json（契約定義於 src/storybook/component-coverage/coverageTypes.ts）`,
+    "",
+    "## 完成後",
+    "執行 `node scripts/check-component-coverage-reports.mjs`（或專案對應的 npm alias）確認報告契約通過，並將該請求 request.json 的 status 由 pending 改為 analyzed。",
+  ].join("\n");
+}
+
+/**
  * One row of the unified request/report pipeline list. Valid requests join
  * their report by requestId; reports without a matching request (the normal
  * case in read-only mode) become orphan rows; invalid files become error rows.
@@ -689,16 +712,16 @@ function ReviewProgress({
           <span className="cm-coverage__handoff-title">開始實作</span>
           <div className="cm-coverage__handoff-actions">
             <CopyTextButton
-              label="複製實作指令"
+              label="複製指令（Claude Code）"
               text={`/component-coverage-implement ${report.requestId}`}
             />
             <CopyTextButton
-              label="複製完整需求提示詞"
+              label="複製完整提示詞（任何 agent）"
               text={buildImplementationPrompt(report)}
             />
           </div>
           <span className="cm-coverage__handoff-hint">
-            預設用 Claude Code 執行實作指令；完整提示詞可貼給任何 agent。
+            斜線指令供 Claude Code 使用；完整提示詞可貼給 Cursor、Codex 或任何 AI coding agent。
           </span>
         </div>
       ) : null}
@@ -1122,7 +1145,14 @@ function AnalyzeGuidance({
   return (
     <div className="cm-coverage__guidance">
       <span className="cm-coverage__guidance-text">{text}</span>
-      <CopyTextButton label="複製指令" text={analyzeCommandFor(requestId)} />
+      <CopyTextButton
+        label="複製指令（Claude Code）"
+        text={analyzeCommandFor(requestId)}
+      />
+      <CopyTextButton
+        label="複製完整提示詞（任何 agent）"
+        text={analyzePromptFor(requestId)}
+      />
       {note ? <span className="cm-coverage__guidance-note">{note}</span> : null}
     </div>
   );
@@ -1208,7 +1238,7 @@ function PipelineRowView({
           <AnalyzeGuidance
             note="分析完成後清單會自動更新。"
             requestId={request?.id ?? ""}
-            text="下一步：複製指令，在 Claude Code 執行分析。"
+            text="下一步：複製指令交給 AI coding agent 執行分析。"
           />
         ) : null}
         {stage === "report-missing" ? (

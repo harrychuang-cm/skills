@@ -5,7 +5,7 @@ import {
   submitCoverageRequest,
   type CoverageImagePayload,
 } from "./coverageApi";
-import { analyzeCommandFor, CopyTextButton } from "./ReportView";
+import { analyzeCommandFor, analyzePromptFor, CopyTextButton } from "./ReportView";
 
 const maxImageBytes = 5 * 1024 * 1024;
 
@@ -350,9 +350,16 @@ export function IntakeForm({ isDevMode, onSubmitted }: IntakeFormProps) {
         {submitted ? (
           <div className="cm-coverage__form-success" role="status">
             <span className="cm-coverage__form-success-text">
-              已送出「{submitted.title}」。下一步：在 Claude Code 執行分析指令。
+              已送出「{submitted.title}」。下一步：複製指令交給 AI coding agent 執行分析。
             </span>
-            <CopyTextButton label="複製指令" text={analyzeCommandFor(submitted.id)} />
+            <CopyTextButton
+              label="複製指令（Claude Code）"
+              text={analyzeCommandFor(submitted.id)}
+            />
+            <CopyTextButton
+              label="複製完整提示詞（任何 agent）"
+              text={analyzePromptFor(submitted.id)}
+            />
           </div>
         ) : null}
         <div className="cm-coverage__form-actions">

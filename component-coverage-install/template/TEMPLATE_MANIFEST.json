@@ -1,6 +1,6 @@
 {
   "name": "component-coverage-tool",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Storybook Component Coverage Analyzer — template manifest. The installer copies this file to outputs/component-coverage/TEMPLATE_MANIFEST.json in the target project so update runs can compare versions.",
   "files": {
     "verbatim": [

@@ -89,7 +89,7 @@ Path contracts live in `template/TEMPLATE_MANIFEST.json` and are mirrored in cod
 5. The `Tools/Component Coverage Analyzer` page renders with the intake form (submit stays disabled until an image or PRD text is provided).
 6. A production build (`storybook build`) succeeds — confirms the static-mode fallback bundle.
 
-Report to the user: files installed, catalog entry count, adaptations made, and how to use the workflow (submit in the tool → `/component-coverage-analyze` → review in the tool → `/component-coverage-implement`).
+Report to the user: files installed, catalog entry count, adaptations made, and how to use the workflow (submit in the tool → run analysis → review in the tool → hand off implementation). The analyze/implement handoffs are agent-agnostic: the tool offers both a Claude Code slash command (`/component-coverage-analyze`, `/component-coverage-implement`) and a「複製完整提示詞」button whose self-contained prompt can be pasted into Cursor, Codex, or any AI coding agent with repo file access — the copied skills under `.claude/skills/` are the single instruction source those prompts point to.
 
 ## Update mode
 

@@ -9,7 +9,7 @@ const meta = {
     docs: {
       description: {
         component:
-          "上傳 UI 圖片或輸入產品功能文字（PRD），由 Claude Code 的 component-coverage-analyze skill 比對 `componentCatalog.ts` 與元件原始碼後產出覆蓋度報告：可直接使用、需擴充 variant、缺少需新建。請求與報告契約定義於 `src/storybook/component-coverage/coverageTypes.ts`。",
+          "上傳 UI 圖片或輸入產品功能文字（PRD），由 AI coding agent（Claude Code / Cursor / Codex 等）依 `component-coverage-analyze` 指示比對 `componentCatalog.ts` 與元件原始碼後產出覆蓋度報告：可直接使用、需擴充 variant、缺少需新建。送出後可複製斜線指令或「完整提示詞」交給任一 agent 執行。請求與報告契約定義於 `src/storybook/component-coverage/coverageTypes.ts`。",
       },
     },
     layout: "fullscreen",

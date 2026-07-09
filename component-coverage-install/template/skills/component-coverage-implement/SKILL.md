@@ -13,8 +13,8 @@ Implement the UI described by a **confirmed** component-coverage report produced
 
 1. **Load the report and its sources**
 
-   - Read `outputs/component-coverage/reports/<request-id>.json`. If it does not exist, stop and tell the user to run `/component-coverage-analyze <request-id>` first.
-   - Read the originating request at `outputs/component-coverage/requests/<request-id>/`: `request.json` for `prdText`, and every listed image with the Read tool. These are the visual/functional ground truth for composition.
+   - Read `outputs/component-coverage/reports/<request-id>.json`. If it does not exist, stop and tell the user to run the analysis first (`/component-coverage-analyze <request-id>` in Claude Code, or copy the tool's「完整提示詞」into any AI coding agent).
+   - Read the originating request at `outputs/component-coverage/requests/<request-id>/`: `request.json` for `prdText`, and every listed image (using whatever file/image reading capability your agent has). These are the visual/functional ground truth for composition.
 
 2. **Verify the review gate**
 
