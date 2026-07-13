@@ -1,20 +1,15 @@
 ---
 name: design-system-to-storybook
 description: >-
-  Build or update token-backed Storybook foundations, shared UI components, and
-  stories from an extracted design-system package, including optional bootstrap
-  of a new React/Vite Storybook from the bundled storybook-template after
-  asking the user. Use after
-  design-system-extractor, or when Codex must read design-system Markdown and
-  token files, automatically trace original design sources such as Figma
-  URLs/nodes, UI or graphic images, rendered routes, and frontend folders,
-  infer component dependency order so foundations, primitives, typographic
-  lockups, and composed components are built in the right order, map component
-  specs into a product repo, create or update Storybook docs, synchronize or
-  backfill design-system component documentation, plan component batches, and
-  verify implementation with the bundled Figma export addon and paired Figma
-  import plugin while keeping Storybook components export-ready for editable
-  Figma JSON/importer output without bypassing tokens.
+  Build or update framework-native, token-backed Storybook foundations, shared
+  UI components, and stories from an extracted design-system package. Use after
+  design-system-extractor, or when Codex must adapt design-system Markdown,
+  tokens, and traced Figma/image/code/route evidence to an existing or new
+  React, Vue, Angular, Svelte, Web Components, meta-framework, monorepo, or
+  other frontend target; select the correct app root, renderer, builder, file
+  conventions, and optional tooling; infer component dependency order; sync
+  component documentation; plan batches; or bootstrap Storybook without
+  silently imposing React/Vite or migrating the product framework.
 ---
 
 # Design System to Storybook
@@ -28,16 +23,17 @@ This is a downstream implementation skill. Do not re-extract a design system her
 - **Design-system package:** usually contains `design-system/`, `tokens/`, and generated docs under `docs/design-system/`.
 - **Product repo:** the codebase where Storybook, shared UI components, and token imports should be created or updated.
 - **Implementation scope:** specific components, typographic/text-lockup components, all extracted components, foundations only, or a product-owned component library.
-- **Runtime constraints:** framework, package manager, styling system, existing Storybook setup, and test commands.
+- **Runtime constraints:** target app/workspace root, framework and meta-framework, rendering mode, language, package manager, Storybook renderer/builder/version, styling system, and test commands.
+- **Framework decision:** explicit current-user or approved target-specific handoff choice when present; otherwise the selected target root's evidence and any ambiguity that must be resolved before setup.
 - **Storybook bootstrap preference:** when Storybook must be created, whether to use the bundled `storybook-template`, use a product-native Storybook setup, or create a separate template workspace.
 - **Batch budget:** optional number of components to implement in the current pass.
 - **Extractor source evidence:** `DESIGN_EVIDENCE_MAP.md`, `SESSION_STATE.md`, component spec `Evidence` tables, component-review image links, and any Figma URLs/nodes, UI screenshots, graphic/brand/editorial image references, rendered routes, or frontend folders listed there.
 - **Documentation sync inputs:** existing component folders, co-located Storybook stories, component CSS token usage, explicit user component briefs, `COMPONENT_INVENTORY.md`, and component-review status JSON when design-system docs need auditing or backfilling.
-- **Bundled Figma export addon:** enabled by default for compatible React Storybook 10 projects.
-- **Bundled Figma import plugin:** copied into product repos so developers can load the paired importer from Figma Desktop.
-- **Bundled Storybook template:** ask before using it when Storybook needs to be created.
+- **Bundled Figma export addon:** auto-install only against its verified React + Storybook 10 baseline; other renderers require compatibility evidence or an explicit validation pass.
+- **Bundled Figma import plugin:** pair with a compatible exporter payload; it is not a renderer or exporter by itself.
+- **Bundled Storybook template:** optional React + Vite + Storybook 10 workspace; ask before using it and never treat it as the universal bootstrap.
 - **Figma export readiness:** stable component node naming, token-bindable CSS, auto-layout-friendly DOM, source URL parameters, and export payload validation.
-- **Prototype handoff:** when the user wants PRD-led product prototypes or UI Flow after the design-system Storybook exists, continue with `storybook-product-prototype` using the template's Prototype Inspector and Static Flow contract.
+- **Prototype handoff:** when the user wants PRD-led product prototypes or UI Flow, continue with `storybook-product-prototype`; record whether the template-only Prototype Inspector and Static Flow helpers are actually available.
 
 ## First Actions
 
@@ -46,21 +42,23 @@ This is a downstream implementation skill. Do not re-extract a design system her
 3. Run the source trace script to resolve extractor sources before implementation: `node <skill-root>/scripts/trace_sources.mjs <design-system-package-root> --write`.
 4. Run the component planner before choosing implementation order and queue rows: `node <skill-root>/scripts/plan_component_batches.mjs <design-system-package-root> --write --queue`.
 5. Inspect referenced design sources for the selected scope: use Figma MCP for Figma nodes, inspect local UI or graphic images/crops, and inspect referenced frontend folders/routes when present.
-6. Inspect product conventions before editing: component folders, page folders, story format, token files, theme providers, Storybook config, build scripts, lint/typecheck scripts, and package manager.
-7. If Storybook is absent or the user asked to create a Storybook workspace, ask whether to bootstrap from the bundled `storybook-template` before installing or hand-writing Storybook setup.
-8. Run the component documentation checker for product repos that already contain components: `node <skill-root>/scripts/check_component_docs.mjs <product-repo-root> --design-system-root <design-system-package-root>`. Use `--write` only when the user asked to backfill missing docs or when this pass creates new components.
-9. Record an implementation map before code changes. Prefer `design-system/STORYBOOK_IMPLEMENTATION_MAP.md` when the design-system package lives in the product repo; otherwise use `docs/design-system/storybook-implementation.md`.
-10. Install the bundled Figma export addon, generate project-local addon config, and configure Storybook when the product has a compatible React Storybook 10 setup and the template did not already provide equivalent wiring.
-11. Install or confirm the paired Figma import plugin whenever the Figma export addon or bundled template export workflow is available.
-12. Read `references/figma-export-readiness.md` before implementing components when the Figma export addon is installed or planned.
-13. If implementing more than one component, create or update a component queue before reading every spec or editing code.
-14. If the product has explicit design-system governance instructions, follow them. Otherwise apply the gates in this skill.
+6. Read `references/framework-adaptation.md`, inspect every plausible app/workspace root, and record the selected root, framework/meta-framework, renderer, builder, file conventions, and evidence before scaffolding or dependency installation.
+7. Apply the framework decision gate: inherit an unambiguous existing stack without a redundant framework question; for greenfield, ambiguous, conflicting, multi-root, or migration cases, ask for the missing decision before writing setup files. Never migrate frameworks without explicit approval.
+8. If Storybook is absent or a new workspace is requested, ask whether to initialize product-native Storybook unless that choice is already explicit. Offer the bundled React/Vite template only for a React/Vite target or an explicitly requested separate token/docs or React workspace.
+9. Run the component documentation checker for product repos that already contain components: `node <skill-root>/scripts/check_component_docs.mjs <product-repo-root> --design-system-root <design-system-package-root>`. Use `--write` only when the user asked to backfill missing docs or when this pass creates new components.
+10. Record an implementation map before code changes. Prefer `design-system/STORYBOOK_IMPLEMENTATION_MAP.md` when the design-system package lives in the product repo; otherwise use `docs/design-system/storybook-implementation.md`.
+11. Install the bundled Figma export addon, generate project-local addon config, and configure Storybook only when the verified React + Storybook 10 baseline or separately validated compatibility is present.
+12. Install or confirm the paired Figma import plugin only when a compatible exporter payload is available.
+13. Read `references/figma-export-readiness.md` before implementing components when the Figma export addon is installed or planned.
+14. If implementing more than one component, create or update a component queue before reading every spec or editing code.
+15. If the product has explicit design-system governance instructions, follow them. Otherwise apply the gates in this skill.
 
 ## Scope Modes
 
 Choose the smallest mode that satisfies the user request:
 
-- **Template bootstrap:** create a fresh React/Vite/Storybook verification workspace from the bundled `storybook-template`, then initialize its project name, token prefix, package name, and optional Figma URL.
+- **Product-native Storybook:** create or update Storybook inside the selected app/package using that target's framework, meta-framework, builder, package manager, and source/story conventions.
+- **Template bootstrap:** after approval, create a separate React/Vite/Storybook 10 workspace for shared token/docs verification or a separately requested React implementation; it cannot render or validate Vue or other non-React product components and must not convert or substitute for their product-native Storybook.
 - **Foundations:** import or mirror tokens and add Storybook docs for color, typography, typographic composition, spacing, radius, elevation, and motion.
 - **Typographic component pass:** implement selected text-lockup specs such as hero title lockups, editorial heading stacks, metric lockups, quote lockups, and label/value text groups as token-backed display components with stories.
 - **Component pass:** implement selected `extracted` or `planned` component specs as shared components with stories.
@@ -68,7 +66,7 @@ Choose the smallest mode that satisfies the user request:
 - **Library pass:** build or update a reusable component package from the full component inventory.
 - **Batch pass:** implement one dependency-aligned group from a large component queue.
 - **Adoption pass:** replace ad hoc product UI with documented shared components after the Storybook catalog exists.
-- **Prototype handoff:** stop design-system component work at the Storybook foundation boundary and use `storybook-product-prototype` for PRD, Data Spec, UI Flow, interactive prototype stories, and Static Flow export stories.
+- **Prototype handoff:** stop design-system component work at the Storybook foundation boundary and use `storybook-product-prototype`; use project-native equivalents when template-only Prototype Inspector or Static Flow helpers are unavailable.
 
 Do not compose product screens before the required shared components and stories exist unless the user explicitly asks for a product route first.
 
@@ -141,8 +139,10 @@ Re-run the planner with `--queue` after dependency decisions change. It preserve
 
 ### 4. Product Discovery
 
-Find the local implementation pattern before adding files:
+Read `references/framework-adaptation.md` and find the local implementation pattern before adding files:
 
+- Workspace/app roots: workspace manifests, package boundaries, route/runtime configs, lockfiles, and architecture docs that identify the actual implementation target.
+- Runtime: framework, meta-framework, rendering mode, language, package manager, bundler/builder, and framework-specific plugins.
 - Storybook config: `.storybook/`, `*.stories.*`, `*.mdx`, docs pages, decorators, preview styles.
 - Components: `src/components/`, `components/`, `src/ui/`, `src/design-system/`, `packages/ui/`, or existing exports.
 - Pages and composed screens: `src/pages/`, `pages/`, `src/screens/`, route modules, or existing composed view folders.
@@ -150,19 +150,23 @@ Find the local implementation pattern before adding files:
 - Accessibility and tests: existing interaction tests, visual tests, a11y addons, Playwright, Vitest, Jest, Testing Library.
 - i18n: locale files or message catalogs when stories or components need visible text.
 
-Do not install Storybook or unrelated dependencies unless the user asked for Storybook setup or approves it after discovery. When Storybook is missing, follow the Storybook Template Bootstrap section before any ad hoc setup. The bundled Figma export/import tooling in the next sections is the default dependency exception for compatible projects.
+Use this priority: explicit current-user or approved target-specific handoff choice, then evidence from the selected target root. Inherit a single coherent existing stack without asking the user to repeat it. Ask before scaffolding or installing when the target is greenfield, multiple roots are plausible, evidence conflicts, the framework/builder cannot be established, or the work would migrate frameworks. Do not use a sibling app's clearer stack as evidence for the selected target, and do not migrate merely to gain bundled tooling.
+
+Do not install Storybook or unrelated dependencies unless the user asked for Storybook setup or approves it after discovery. When Storybook is missing, follow the bootstrap section. Core Storybook implementation is renderer-neutral; bundled export/import tooling is conditional capability, not a prerequisite.
 
 ### Storybook Template Bootstrap
 
-Use the bundled template only when Storybook must be created, or when the user explicitly asks for a clean Storybook verification workspace. Do not migrate an existing Storybook project onto the template unless the user approves that larger rewrite.
+Use the bundled template only when the user explicitly selects a React/Vite target or a separate React/Vite workspace. It is one bootstrap option, not the default for every greenfield project. Vue and other non-React products use product-native Storybook. A separate React workspace may verify shared tokens/docs or host a separately requested React implementation, but it cannot render or validate the product's Vue, Angular, Svelte, or Web Component implementation. Do not migrate an existing app or Storybook onto the template without explicit migration approval.
 
-When no `.storybook/` config or Storybook dependency is found, ask one short question before installing:
+When Storybook is absent and the target/stack or workspace choice is not already explicit, ask one short question before installing or scaffolding:
 
 ```text
-This repo does not appear to have Storybook yet. Should I bootstrap it from the bundled design-system-to-storybook/storybook-template, or set up Storybook using the product's native conventions?
+Which app/workspace and frontend stack should Storybook target? I can initialize Storybook with that product-native framework and builder. If you separately need shared token/docs checks or React components, I can also create the bundled React + Vite workspace.
 ```
 
-Recommend the bundled template for a fresh or empty design-system workspace because it already includes React + Vite + Storybook 10, token inheritance checks, foundation docs, component catalog checks, Figma export review wiring, a local Figma importer manifest, and Prototype UI Flow review support. Recommend product-native setup when the product repo already has substantial app source, a non-React framework, a monorepo package boundary, or an existing design-system package where copying template `src/`, `tokens/`, or `package.json` would collide. In those cases, offer a separate target such as `storybook/`, `packages/storybook/`, or a new workspace folder.
+For an existing unambiguous app, state the inferred product-native framework/builder and ask only for unresolved setup approval; do not re-ask which framework it uses or offer a separate React workspace by default for a non-React product. For greenfield, multi-root, conflicting, or migration cases, wait for the consequential decision. Product-native setup is the normal choice when components must be consumed by that product. The bundled template adds React + Vite + Storybook 10, token checks, foundation/catalog checks, Figma review wiring, a local importer manifest, and Prototype UI Flow helpers, but those capabilities apply only inside that separate template workspace.
+
+For product-native setup, prefer the official Storybook CLI's dependency auto-detection inside the selected app root. If it cannot detect the framework or the repo is intentionally custom, inspect the current CLI help and use its supported `--type` fallback. Preserve the selected renderer, builder, meta-framework integration, package manager, and repo-native story/source conventions; record the exact command and evidence. See `references/framework-adaptation.md` for the complete decision flow.
 
 If the user chooses the template, collect or infer:
 
@@ -193,19 +197,19 @@ After the template is installed:
 Use folder co-location for new implementation files. Do not create a separate root `stories/` folder for component stories.
 
 - Shared components live in the product's component root, normally `src/components/<ComponentName>/`.
-- Each component folder contains the component source, styles, and story together: `<ComponentName>.tsx`, `<ComponentName>.css`, and `<ComponentName>.stories.tsx`. Add `index.ts`, tests, or helpers only when the product convention calls for them.
+- Each component folder contains framework-native source, styling when separate, and a story using the repo's extensions—for example `.tsx` for React, `.vue` for Vue, `.component.ts` for Angular, or `.svelte` for Svelte. Never treat `.tsx` or a separate `.css` file as a universal default.
 - Component stories must be co-located with their component. Avoid `stories/<ComponentName>.stories.*`, `src/stories/<ComponentName>.stories.*`, or other detached component-story targets for new files.
 - Component story meta must opt into Storybook Autodocs with `tags: ["autodocs"]` or the repo's exact equivalent. Prefer an explicit meta-level tag for every shared component even when the project also has global docs settings.
 - Foundation guides/docs may live in the Storybook docs area, normally `stories/` or `src/stories/`, because they document tokens rather than a single component implementation.
 - Page or screen implementations requested by the user live outside the shared component root, normally `src/pages/<PageName>/`.
-- Each page folder contains the page source, styles, and story together: `<PageName>.tsx`, `<PageName>.css`, and `<PageName>.stories.tsx`.
+- Each page folder co-locates its framework-native page/view source, local style file only when the repo uses one, and story using the selected renderer's conventions.
 - Pages should compose existing shared components. Do not create page-only primitives inside `pages/` if they belong in the reusable component library.
 
 If the product has an established component or page root, use that root while preserving the co-located folder shape. When editing existing files, avoid moving unrelated stories unless the current component/page needs cleanup for this rollout.
 
 ### 6. Figma Export Addon
 
-Install and configure the bundled `@harrychuang/storybook-addon-figma-export` by default when all requirements are met:
+Auto-install and configure the bundled `@harrychuang/storybook-addon-figma-export` only when its verified baseline requirements are met:
 
 - Storybook exists and is `^10`
 - React is available in the host project
@@ -224,7 +228,7 @@ node <skill-root>/scripts/install_figma_export_addon.mjs <product-repo-root>
 
 The installer copies the vendored addon, detects the package manager, and installs the local `file:` dependency plus `@storybook/icons` when needed. Use `--copy-only` only when you need to inspect or manually install the vendored package. If the bundled addon asset is missing or incomplete, mark `figma-export-addon` as `blocked`; do not fall back to GitHub unless the user explicitly asks to refresh the vendored asset.
 
-If Storybook is missing, not version 10, or the project is not React-based, do not force the addon. Mark `figma-export-addon` as `blocked` in the implementation map with the reason and ask before installing or upgrading Storybook.
+If Storybook is missing, not version 10, or the project is not React-based, do not auto-install or force the addon. A non-React target may proceed only with concrete compatibility evidence or a separately approved validation pass; otherwise mark `figma-export-addon` as `unavailable` or `blocked` with the reason and continue core Storybook implementation. Do not install, upgrade, or migrate the app solely for this addon.
 
 Generate a project-local addon config before editing `.storybook/main.*` or `.storybook/preview.*`:
 
@@ -240,7 +244,7 @@ Read `references/figma-export-readiness.md` before implementing or changing a co
 
 ### 7. Figma Import Plugin
 
-Install or confirm the paired Figma importer whenever the Figma export addon is installed/configured, or when the bundled `storybook-template` provides the export workflow. The developer experience should leave a local manifest path that can be loaded directly in Figma Desktop.
+Install or confirm the paired Figma importer only when the Figma export addon, bundled template, or another validated exporter produces a compatible payload. The importer consumes export JSON; it does not make an otherwise incompatible renderer export-ready. When compatible, leave a local manifest path that can be loaded directly in Figma Desktop.
 
 If the bundled `storybook-template` was installed in this pass and `figma/storybook-code-to-design/manifest.json` exists, treat that importer as the baseline. Record the manifest path and loading instructions; do not run `install_figma_import_plugin.mjs` unless the template importer is missing or the product intentionally uses a different target path.
 
@@ -276,8 +280,9 @@ Before editing code, create or update the implementation map with:
 
 Also record:
 
-- package manager and framework
-- Storybook version or catalog alternative
+- selected app/workspace root; framework, meta-framework, rendering mode, language, package manager, and styling conventions
+- Storybook renderer, builder, version or catalog alternative; source/story extensions and framework-native authoring convention
+- decision source and evidence, unresolved ambiguity, user approval when asked, and whether migration is `none` or explicitly approved
 - Storybook template decision, target root, project name, token prefix, package name, Figma URL, and installer command when template bootstrap is used or declined
 - target layout roots for co-located components, foundation docs, and pages
 - Figma export addon status and options
@@ -293,6 +298,7 @@ Also record:
 - components reused from the product repo
 - current batch, when using a queue
 - open questions and blocked specs
+- capability status for core Storybook, bundled exporter, importer payload path, and template-only Prototype Inspector/Static Flow helpers
 
 ### 9. Component Queue And Batch Planning
 
@@ -380,11 +386,11 @@ For each selected component spec:
    - Rendered route/story for measured layout and states when runnable.
 5. Search for an existing shared component with matching purpose or composition role, anatomy, behavior, and states or display modes.
 6. Prefer reuse or extension over creating a new component.
-7. Implement props, slots, variants, states or display modes, accessibility behavior, and responsive behavior from the spec.
+7. Implement the selected framework's native public API—props/inputs, slots/children/content projection, events/outputs, variants, states or display modes, accessibility behavior, and responsive behavior—from the spec.
 8. Apply the Figma export readiness contract: stable root naming, token-bindable CSS declarations, auto-layout-friendly structure, export-safe SVG/image handling, and explicit absolute-fidelity decisions when needed.
 9. Resolve the story source URL from `STORYBOOK_SOURCE_TRACE.md` for the component.
 10. Keep component styles token-backed. Do not reach directly into reference tokens from component CSS unless the extracted architecture explicitly allows it.
-11. Create or update the component in a co-located folder under the component root: `<ComponentName>.tsx`, `<ComponentName>.css`, and `<ComponentName>.stories.tsx`.
+11. Create or update the component and story in a co-located folder using the selected framework's existing source, style, test, and story extensions.
 12. Export the component through the repo's existing public API.
 
 If the extracted spec lacks a necessary state or display mode, mark it blocked or implement only the documented states/modes. Do not invent undocumented visual variants as normative design-system behavior.
@@ -406,7 +412,7 @@ Use this section only when the user asks for product pages, composed screens, or
 
 1. Confirm the required shared components already exist, are reused, or are explicitly accepted as blocked.
 2. Place each new page in a dedicated page folder, normally `src/pages/<PageName>/`.
-3. Keep the page source, styles, and Storybook story co-located: `<PageName>.tsx`, `<PageName>.css`, and `<PageName>.stories.tsx`.
+3. Keep the framework-native page/view source, optional repo-native styles, and Storybook story co-located using the selected target's extensions.
 4. Compose the page from shared components and page-level layout only. Promote reusable subparts back into `components/<ComponentName>/` before using them in multiple pages.
 5. Record page dependencies and verification separately from shared components in the implementation map and queue.
 
@@ -477,6 +483,7 @@ Treat checker output as an implementation checklist, not as a substitute for rea
 
 Run the cheapest reliable checks available:
 
+- selected framework/meta-framework build, typecheck, or compile check and confirmation that Storybook's configured renderer/builder match the recorded decision
 - Storybook build or relevant story preview
 - Figma export addon config check when installed
 - Figma import plugin manifest check when export tooling is installed: confirm `figma/storybook-code-to-design/manifest.json` and its `main` runtime exist, and confirm `.git` and `node_modules` were not copied
@@ -502,6 +509,7 @@ Update the implementation map and component queue with completed files, blocked 
 Report:
 
 - design-system package path used
+- selected app/workspace root, framework/meta-framework, Storybook renderer/builder, decision evidence or user approval, and migration status
 - source trace path and original sources inspected
 - dependency plan path and current completed/blocked component order
 - product files changed
@@ -514,11 +522,17 @@ Report:
 - components reused, extended, or created
 - stories added or updated
 - batch completed and next queued batch, when applicable
-- prototype handoff readiness: whether the template Prototype Inspector, `prototypeFlowLayout.ts`, and Static Flow contract are available for `storybook-product-prototype`
+- capability matrix outcome: core Storybook status, bundled exporter compatibility, compatible importer payload/manifest status, and whether the template-only Prototype Inspector, `prototypeFlowLayout.ts`, and Static Flow contract are available for `storybook-product-prototype`
 - checks run and any failures
 - next recommended component pass, if the inventory is not complete
 
 ## Gates
+
+### Framework Decision Gate
+
+Honor an explicit current-user or approved target-specific handoff architecture choice before repo inference. Otherwise use evidence from the selected app/workspace root. When one existing stack is coherent, inherit it and record the evidence without asking the user to repeat the framework.
+
+Before any scaffold, install, or architecture-changing edit, ask when the target is greenfield, multiple app roots are plausible, evidence conflicts, framework/renderer/builder remains ambiguous, or migration is proposed. Do not migrate a framework, replace an existing Storybook renderer/builder, or create a separate React verification workspace without explicit approval. Read `references/framework-adaptation.md` for the decision record and capability matrix.
 
 ### Extraction Package Gate
 
@@ -554,7 +568,7 @@ Do not attempt to implement a large inventory in one pass. When implementing mor
 
 ### Figma Export Addon Gate
 
-Do not silently skip addon setup for compatible React Storybook 10 projects. Install and configure it before component implementation unless the user opts out. If the project is incompatible, record the reason and continue with Storybook implementation only after the blocked addon status is explicit.
+Do not silently skip addon setup when the verified React + Storybook 10 baseline is present. Install and configure it before component implementation unless the user opts out. Outside that baseline, require compatibility evidence or an explicit validation pass; otherwise record it as unavailable/blocked and continue renderer-native Storybook implementation.
 
 Use the bundled addon installer instead of GitHub dependency specs. If `@storybook/icons` is missing and package-manager install cannot reach the registry, record the addon as blocked with that dependency reason.
 
@@ -562,7 +576,7 @@ Keep project-specific addon settings in `.storybook/figma-export.config.ts`. Do 
 
 ### Figma Import Plugin Gate
 
-Do not present the Storybook-to-Figma workflow as ready when the export addon or bundled template export workflow is available but no Figma importer manifest path has been installed, confirmed, or explicitly blocked with a reason.
+Do not present the Storybook-to-Figma workflow as ready without both a compatible exporter payload and an importer manifest that is installed, confirmed, or explicitly blocked with a reason. The importer alone does not provide renderer compatibility.
 
 Use the bundled importer installer for non-template projects instead of asking developers to manually copy `assets/figma-plugin-code-to-design/`. If the bundled template already provides `figma/storybook-code-to-design/manifest.json`, record that path and the Figma Desktop loading steps instead of duplicating another importer.
 
@@ -578,7 +592,7 @@ Do not patch generated `.sbfx.json` payloads to hide implementation problems. Fi
 
 ### Storybook Template Gate
 
-Do not copy the bundled `storybook-template` into a product repo without first asking when Storybook is absent or a new Storybook workspace is requested. Do not use it as an implicit replacement for an existing Storybook setup.
+Do not copy the bundled React/Vite `storybook-template` into a product repo without the user selecting that stack or approving a separate workspace. Do not use it as an implicit replacement for product-native Storybook. A separate React workspace does not render or validate Vue or other non-React product components, and it must not be reported as product-component parity evidence.
 
 Do not install the template over existing files unless the user explicitly accepts the overwrite risk. Prefer a fresh target root or subfolder when the product has existing `package.json`, `src/`, `tokens/`, `.storybook/`, or design-system files.
 
@@ -619,6 +633,7 @@ Do not rewrite product screens to use the new library until the relevant shared 
 - `scripts/validate_figma_export_payload.mjs`: validates copied Storybook Figma export JSON for token binding, node naming, bounds, layout strategy, and editability issues.
 - `references/agent-installation.md`: target paths and verification checklist for Claude Code, Codex, and Cursor installation.
 - `references/documentation-sync.md`: detailed rules for auditing, backfilling, provenance-labeling, and closing out design-system component docs.
+- `references/framework-adaptation.md`: framework/root evidence order, ask-vs-infer and migration gates, renderer/builder selection, official CLI fallback, framework-native file conventions, decision record, and capability matrix.
 - `references/figma-export-readiness.md`: component DOM/CSS/token/story rules for editable Figma JSON/importer output.
 - `references/figma-export-review-setup.md`: troubleshooting and required wiring for the review overlay and Open source action.
 - `assets/storybook-component-queue-template.md`: queue template for large component inventories.

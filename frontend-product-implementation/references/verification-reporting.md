@@ -4,7 +4,7 @@ Use this reference before final response or handoff.
 
 ## Verification Order
 
-Run commands that fit the repo:
+Run framework-native commands from the selected target root using its recorded package manager and scripts:
 
 1. formatter or lint for changed files
 2. typecheck
@@ -14,6 +14,19 @@ Run commands that fit the repo:
 6. local dev server or preview smoke test when the user needs to try it
 
 If a command is unavailable, say so and name the closest check that was run.
+
+## Runtime Architecture Verification
+
+Before reporting completion:
+
+- compare the implemented target root, framework/version, rendering model, build tool, language, and package manager with the decision record
+- verify routing/navigation, state, data, i18n, styling/design-system, test, and Storybook integrations through the selected stack's native entry points
+- use the repo's framework-native compiler, type checker, linter, test utilities, and production build rather than substituting React-oriented checks
+- confirm any Storybook config and stories use a renderer compatible with the selected component framework
+- verify SSR/SSG/client boundaries, hydration, server/client-only APIs, or embedded-runtime constraints when applicable
+- report any deviation, its evidence or explicit approval, and its effect on scope
+
+For an existing product, confirm that a feature request did not introduce an unapproved framework or architecture migration. For greenfield work, confirm that generated files match the user-confirmed record.
 
 ## UI Verification
 
@@ -34,7 +47,10 @@ Use browser or screenshot verification when the app can be run locally and visua
 Report:
 
 - handoff docs used
-- target mode: greenfield or existing product
+- target root and mode: greenfield or existing product
+- selected platform, framework/version, rendering model, build tool, language, and package manager
+- selected routing, state, data, i18n, styling/design-system, tests, and Storybook approach
+- architecture decision sources, confidence, unresolved/not-applicable fields, and approved deviations
 - design-system governance findings: token system, shared components, i18n, Storybook
 - existing components reused
 - tokens reused or new token decisions requested
@@ -42,7 +58,7 @@ Report:
 - routes/screens/features implemented
 - data/API contracts implemented as mocks, adapters, or deferred real integrations
 - verification commands run and results
-- open decisions and deferred production integration work
+- open architecture decisions and deferred production integration work
 
 If blocked by design-system governance, lead with the blocking gate and the exact user decision needed.
 
@@ -51,7 +67,10 @@ If blocked by design-system governance, lead with the blocking gate and the exac
 The implementation is complete only when:
 
 - the feature can run or build in the target repo
+- implementation and verification follow the selected framework's native conventions
+- the final architecture matches the inherited or confirmed decision record, except for explicitly approved and reported deviations
 - documented route transitions and UI states are represented
 - real data integration is either implemented by explicit scope or isolated behind typed contracts/mocks
 - no unapproved tokens, unapproved shared components, or hardcoded visual values were added
+- no unapproved framework, renderer, build, package-manager, routing, state, styling, or app-root migration was introduced
 - verification results are reported clearly
