@@ -101,9 +101,10 @@ Use this after `storybook-product-prototype` or any equivalent handoff when you 
 Install and bind the Storybook「Component Coverage Analyzer」tool into any React + Vite Storybook project:
 
 1. Copy the bundled template verbatim: tool UI (Storybook Tools page), dev API vite plugin, check scripts, and the companion `component-coverage-analyze` / `component-coverage-implement` project skills.
-2. Generate a project-specific component catalog by reading the target project's components and stories (the AI binding step — see `references/catalog-authoring.md`).
-3. Wire `.storybook/main.ts` (`viteFinal` plugin + `staticDirs`), create the `outputs/component-coverage/` data directory, and verify end to end (checks, typecheck, dev API, tool page, static build).
-4. Update a previously installed copy via the `TEMPLATE_MANIFEST.json` version, overwriting only template-owned files.
+2. Install both companion skills from one upstream source into shared `.agents/skills/` paths for Cursor/Codex and byte-identical `.claude/skills/` mirrors for Claude Code.
+3. Generate a project-specific component catalog by reading the target project's components and stories (the AI binding step — see `references/catalog-authoring.md`).
+4. Wire `.storybook/main.ts` (`viteFinal` plugin + `staticDirs`), create the `outputs/component-coverage/` data directory, and verify end to end (checks, skill hashes, typecheck, dev API, tool page, static build).
+5. Update a previously installed copy via the `TEMPLATE_MANIFEST.json` version, overwriting only template-owned files and retiring obsolete managed skill mirrors safely.
 
 Use this to bring the UI-image/PRD → coverage report → developer review → implementation workflow to a new Storybook project.
 
@@ -138,6 +139,8 @@ Default install locations:
 | Claude Code | `~/.claude/skills/<skill>/` | `<repo>/.claude/skills/<skill>/` |
 | Codex | `~/.agents/skills/<skill>/` | `<repo>/.agents/skills/<skill>/` |
 | Cursor | `~/.cursor/skills/<skill>/` | `<repo>/.cursor/skills/<skill>/` |
+
+Cursor also discovers project skills from `<repo>/.agents/skills/<skill>/`. The component coverage workflow uses that shared project location for Cursor and Codex, avoiding an unnecessary third `.cursor/skills/` copy; its Claude Code compatibility mirror stays byte-identical and hash-checked.
 
 For `design-system-to-storybook`, use the bundled installer to install the full skill package into Claude Code, Codex, or Cursor:
 

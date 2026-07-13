@@ -64,15 +64,18 @@ export function buildAnalysisPrompt(requestId: string) {
   const requestPath =
     `outputs/component-coverage/requests/${requestId}/request.json`;
   const reportPath = `outputs/component-coverage/reports/${requestId}.json`;
+  const skillPath =
+    ".agents/skills/component-coverage-analyze/SKILL.md";
 
   return [
     `請使用專案的 component-coverage-analyze skill 分析 Component Coverage 請求「${requestId}」。`,
+    `若目前 agent 未自動載入該 skill，請先讀取並完整遵循 \`${skillPath}\`。`,
     "",
     "完成條件：",
     `1. 讀取 ${requestPath} 與其中列出的圖片。`,
     `2. 依 src/storybook/component-coverage/coverageTypes.ts 契約產生 ${reportPath}。`,
     `3. 將 ${requestPath} 的 status 更新為 analyzed。`,
-    "4. 執行 npm run check:coverage-reports，確認驗證通過後回報結果。",
+    "4. 執行 node scripts/check-component-coverage-reports.mjs，確認驗證通過後回報結果。",
   ].join("\n");
 }
 
@@ -132,90 +135,24 @@ function isReportConfirmed(report: CoverageReport) {
   return (report.reviewStatus ?? "draft") === "confirmed";
 }
 
-function primaryMatch(block: CoverageBlock) {
-  return (
-    block.matches.find((match) => match.fit === "variant-needed") ??
-    block.matches[0]
-  );
-}
+/** Portable implementation handoff shared by Cursor, Claude Code, and Codex. */
+function buildImplementationPrompt(requestId: string): string {
+  const reportPath = `outputs/component-coverage/reports/${requestId}.json`;
+  const requestPath = `outputs/component-coverage/requests/${requestId}/`;
+  const skillPath =
+    ".agents/skills/component-coverage-implement/SKILL.md";
 
-/**
- * Self-contained implementation prompt assembled from report data only, so it
- * stays portable to any agent and does not depend on this project's modules.
- */
-function buildImplementationPrompt(report: CoverageReport): string {
-  const reuse: string[] = [];
-  const extend: string[] = [];
-  const build: string[] = [];
-  const skipped: string[] = [];
-
-  for (const block of report.blocks) {
-    const section = classifyCoverageBlock(block);
-    const review = block.review;
-    const note = review?.note ? `；覆核備註：${review.note}` : "";
-    const match = primaryMatch(block);
-    const matchRef = match
-      ? `\`${match.componentId}\`（${match.componentPath}，story：${match.storyTitle}）`
-      : "";
-
-    if (review?.decision === "skip") {
-      skipped.push(`- ${block.label}${note}`);
-    } else if (review?.decision === "use-existing" && review.overrideComponentId) {
-      reuse.push(
-        `- ${block.label}：改用現有元件 \`${review.overrideComponentId}\`（開發者覆核指定，取代原「缺少需新建」判定）${note}`,
-      );
-    } else if (review?.decision === "no-extend") {
-      reuse.push(
-        `- ${block.label}：直接使用 ${matchRef}，開發者覆核判定不需擴充${note}`,
-      );
-    } else if (section === "reusable") {
-      reuse.push(`- ${block.label}：直接使用 ${matchRef}${note}`);
-    } else if (section === "extend") {
-      const rationale =
-        block.gap.status !== "none" ? block.gap.rationale : (match?.reason ?? "");
-
-      extend.push(
-        `- ${block.label}：為 ${matchRef} 新增 variant。分析理由：${rationale}${note}`,
-      );
-    } else if (block.gap.status === "missing") {
-      build.push(
-        `- ${block.label}：新建元件 \`${block.gap.suggestedName}\`（分類 ${block.gap.suggestedCategory}／角色 ${block.gap.suggestedRole}）。理由：${block.gap.rationale}${note}`,
-      );
-    }
-  }
-
-  const lines = [
-    `為請求 ${report.requestId} 實作 UI。以下需求來自 Component Coverage 報告（outputs/component-coverage/reports/${report.requestId}.json）與開發者覆核結論；來源圖片與 PRD 位於 outputs/component-coverage/requests/${report.requestId}/。`,
+  return [
+    `請使用專案的 component-coverage-implement skill 實作 Component Coverage 請求「${requestId}」。`,
+    `若目前 agent 未自動載入該 skill，請先讀取並完整遵循 \`${skillPath}\`。`,
     "",
-    "## 來源摘要",
-    report.sourceSummary,
-    "",
-  ];
-
-  if (reuse.length > 0) {
-    lines.push("## 直接使用現有元件", ...reuse, "");
-  }
-
-  if (extend.length > 0) {
-    lines.push("## 擴充既有元件（新增 variant 與 stories）", ...extend, "");
-  }
-
-  if (build.length > 0) {
-    lines.push("## 新建元件（含元件目錄登錄與 stories）", ...build, "");
-  }
-
-  if (skipped.length > 0) {
-    lines.push("## 排除項目（覆核決定不實作）", ...skipped, "");
-  }
-
-  lines.push(
-    "## 實作順序與守則",
-    "1. 先完成元件層工作（擴充 variant、新建元件），每個元件都要有 stories，並遵循 design token 治理：優先重用既有元件與 tokens，不寫一次性樣式。",
-    "2. 元件層完成後，再依來源圖片與報告區塊組合界面。",
-    "3. 完成後執行專案檢查並確認全數通過。",
-  );
-
-  return lines.join("\n");
+    "完成條件：",
+    `1. 讀取 ${reportPath}、${requestPath}request.json 與其中列出的圖片。`,
+    `2. 確認 ${reportPath} 的 reviewStatus 為 confirmed；否則停止實作。`,
+    "3. 依每個區塊的覆核決定先完成元件與 stories，再組合界面。",
+    "4. 保持報告 JSON 不變，並遵循專案既有的 design-system governance。",
+    "5. 執行 component coverage 檢查與專案 check/typecheck，全部通過後回報結果。",
+  ].join("\n");
 }
 
 export function CopyTextButton({ label, text }: { label: string; text: string }) {
@@ -707,16 +644,12 @@ function ReviewProgress({
           <span className="cm-coverage__handoff-title">開始實作</span>
           <div className="cm-coverage__handoff-actions">
             <CopyTextButton
-              label="複製指令（Claude Code）"
-              text={`/component-coverage-implement ${report.requestId}`}
-            />
-            <CopyTextButton
-              label="複製完整提示詞（任何 agent）"
-              text={buildImplementationPrompt(report)}
+              label="複製實作提示詞"
+              text={buildImplementationPrompt(report.requestId)}
             />
           </div>
           <span className="cm-coverage__handoff-hint">
-            斜線指令供 Claude Code 使用；完整提示詞可貼給 Cursor、Codex 或任何 AI coding agent。
+            貼到 Cursor、Claude Code 或 Codex；agent 會使用 component-coverage-implement skill 執行。
           </span>
         </div>
       ) : null}
@@ -1176,7 +1109,7 @@ function PipelineRowView({
       <div className="cm-coverage__report-item cm-coverage__report-item--invalid">
         <span className="cm-coverage__report-title">{row.fileName}</span>
         <p className="cm-coverage__report-error">
-          格式錯誤（{row.error}），請跑 npm run check:coverage-reports。
+          格式錯誤（{row.error}），請跑 node scripts/check-component-coverage-reports.mjs。
         </p>
         {isDevMode ? (
           <DeleteReportControl fileName={row.fileName} onDelete={onDelete} />

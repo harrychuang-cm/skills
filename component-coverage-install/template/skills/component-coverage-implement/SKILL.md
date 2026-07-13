@@ -1,11 +1,17 @@
 ---
 name: component-coverage-implement
-description: "Implement the UI of a confirmed component-coverage report: derive the work list from developer review decisions, extend or build components with stories first, then compose the screen, honoring design-system governance"
+description: "Implement the UI of a confirmed component-coverage report: derive the work list from developer review decisions, extend or build components with stories first, then compose the screen, honoring design-system governance. Use when a Component Coverage Analyzer report is confirmed and ready for implementation."
 ---
 
 Implement the UI described by a **confirmed** component-coverage report produced by the Storybook「Component Coverage Analyzer」tool. The report plus its developer review decisions are the requirement source; this skill turns them into component and screen work.
 
 **Contract source of truth**: `src/storybook/component-coverage/coverageTypes.ts`. Every shape and enum below mirrors that file — if they disagree, `coverageTypes.ts` wins and this skill must be updated.
+
+**Supported agents**: Cursor, Claude Code, and Codex. The
+`.agents/skills/component-coverage-implement/` copy is the shared project skill
+for Cursor and Codex; `.claude/skills/component-coverage-implement/` is its
+byte-identical Claude Code mirror. Do not add agent-specific command syntax or
+tool names.
 
 **Input**: A request id (required), e.g. `20260708-114102-request`.
 
@@ -13,7 +19,7 @@ Implement the UI described by a **confirmed** component-coverage report produced
 
 1. **Load the report and its sources**
 
-   - Read `outputs/component-coverage/reports/<request-id>.json`. If it does not exist, stop and tell the user to run the analysis first (`/component-coverage-analyze <request-id>` in Claude Code, or copy the tool's「完整提示詞」into any AI coding agent).
+   - Read `outputs/component-coverage/reports/<request-id>.json`. If it does not exist, stop and tell the user to run the `component-coverage-analyze` skill first.
    - Read the originating request at `outputs/component-coverage/requests/<request-id>/`: `request.json` for `prdText`, and every listed image (using whatever file/image reading capability your agent has). These are the visual/functional ground truth for composition.
 
 2. **Verify the review gate**
@@ -56,3 +62,6 @@ Implement the UI described by a **confirmed** component-coverage report produced
 - Never implement from an unconfirmed report — the review gate is the requirement freeze.
 - Never alter the report JSON: analyzer output and review state are version-controlled decision records.
 - Never invent components outside the work list; if implementation reveals the review conclusion is wrong, stop and ask the user to revise the review in the tool instead of silently deviating.
+- Keep `.agents/skills/component-coverage-implement/SKILL.md` and
+  `.claude/skills/component-coverage-implement/SKILL.md` byte-for-byte
+  identical; the `.agents/skills/` copy is the shared canonical source.

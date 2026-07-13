@@ -1,15 +1,17 @@
 ---
 name: component-coverage-analyze
-description: "Analyze pending component-coverage requests (UI images / PRD text) against the component catalog and sources, then write contract-conformant coverage reports for the Storybook Tools page"
+description: "Analyze pending component-coverage requests (UI images / PRD text) against the component catalog and sources, then write contract-conformant coverage reports for the Storybook Tools page. Use when a Component Coverage Analyzer request is pending or the user asks to compare requested UI against the project's reusable components."
 ---
 
 Process pending analysis requests from the Storybook「Component Coverage Analyzer」tool（`Tools/Component Coverage Analyzer`）: compare uploaded UI images and PRD text against the project's component catalog and component sources, then produce coverage reports the tool can render.
 
 **Contract source of truth**: `src/storybook/component-coverage/coverageTypes.ts`. Every shape and enum below mirrors that file — if they disagree, `coverageTypes.ts` wins and this skill must be updated.
 
-**Supported agents**: Cursor, Claude Code, and Codex. This file is mirrored
-byte-for-byte across their project skill directories; do not add
-agent-specific command syntax or tool names.
+**Supported agents**: Cursor, Claude Code, and Codex. The
+`.agents/skills/component-coverage-analyze/` copy is the shared project skill
+for Cursor and Codex; `.claude/skills/component-coverage-analyze/` is its
+byte-identical Claude Code mirror. Do not add agent-specific command syntax or
+tool names.
 
 **Input**: An optional request id. If omitted, process every pending request.
 
@@ -115,7 +117,6 @@ agent-specific command syntax or tool names.
 - Never invent a `componentId` that is not in `componentCatalog.ts`; if nothing matches, use an empty `matches` array with a `missing` gap.
 - Base `fit` judgments on actual component source, not the catalog description alone.
 - Reports are version-controlled knowledge; requests are local working data — never commit `outputs/component-coverage/requests/`.
-- Keep `.agents/skills/component-coverage-analyze/SKILL.md`,
-  `.claude/skills/component-coverage-analyze/SKILL.md`, and
-  `.cursor/skills/component-coverage-analyze/SKILL.md` byte-for-byte
-  identical; the `.agents/skills/` copy is canonical.
+- Keep `.agents/skills/component-coverage-analyze/SKILL.md` and
+  `.claude/skills/component-coverage-analyze/SKILL.md` byte-for-byte
+  identical; the `.agents/skills/` copy is the shared canonical source.

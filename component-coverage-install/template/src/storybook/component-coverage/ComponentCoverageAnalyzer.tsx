@@ -18,7 +18,7 @@ const workflowSteps = [
   { hint: "上傳 UI 圖或 PRD", title: "送出請求" },
   { hint: "貼到 Cursor／Claude Code／Codex", title: "執行分析" },
   { hint: "逐區塊決定怎麼做", title: "覆核報告" },
-  { hint: "複製指令開始實作", title: "交接實作" },
+  { hint: "貼給任一支援的 agent", title: "交接實作" },
 ] as const;
 
 function WorkflowOverview() {

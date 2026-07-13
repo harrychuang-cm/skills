@@ -5,7 +5,7 @@ import type { ComponentDocumentationProvenance } from "../componentCatalog";
  * scripts/check-component-coverage-reports.mjs,
  * .agents/skills/component-coverage-analyze/SKILL.md,
  * .claude/skills/component-coverage-analyze/SKILL.md,
- * .cursor/skills/component-coverage-analyze/SKILL.md, and
+ * .agents/skills/component-coverage-implement/SKILL.md, and
  * .claude/skills/component-coverage-implement/SKILL.md mirror these shapes;
  * any change here must be synchronized with all of them.
  */
