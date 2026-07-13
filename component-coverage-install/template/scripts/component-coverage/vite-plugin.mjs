@@ -3,6 +3,7 @@ import {
   mkdirSync,
   readFileSync,
   readdirSync,
+  rmSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -10,6 +11,12 @@ import { basename, join, resolve } from "node:path";
 
 // API path contract shared with src/storybook/component-coverage/coverageApi.ts.
 export const componentCoverageApiPath = "/__component-coverage";
+
+// Mirrors coverageRequestIdPattern in
+// src/storybook/component-coverage/coverageTypes.ts. Request directories
+// created by this API always use this shape; deletion additionally receives
+// the directory-backed storage id instead of trusting request.json's id.
+const requestIdPattern = /^\d{8}-\d{6}-[a-z0-9][a-z0-9-]*$/;
 
 const maxBodyBytes = 50 * 1024 * 1024;
 const dataUrlPattern = /^data:image\/(png|jpeg|jpg|webp|gif);base64,([A-Za-z0-9+/=]+)$/;
@@ -93,7 +100,13 @@ function classifyBlock(block) {
     : "extend";
 }
 
-function applyReviewUpdate(report, body) {
+export function applyReviewUpdate(report, body) {
+  if (Object.prototype.hasOwnProperty.call(body ?? {}, "composition")) {
+    throw new Error(
+      '"composition" is analyzer-owned and cannot be replaced by a review payload',
+    );
+  }
+
   const reviews = body?.reviews;
   const reviewStatus = body?.reviewStatus;
 
@@ -206,9 +219,15 @@ function collectState(requestsDir, reportsDir) {
       }
 
       try {
-        requests.push(JSON.parse(readFileSync(requestFile, "utf8")));
+        const request = JSON.parse(readFileSync(requestFile, "utf8"));
+
+        requests.push({ ...request, storageId: entry.name });
       } catch (error) {
-        requests.push({ id: entry.name, parseError: error.message });
+        requests.push({
+          id: entry.name,
+          parseError: error.message,
+          storageId: entry.name,
+        });
       }
     }
   }
@@ -386,6 +405,31 @@ export function createComponentCoverageApiPlugin({
 
           unlinkSync(filePath);
           writeRequestIndexManifest(reportsDir);
+          sendJson(res, 200, { ok: true });
+          return;
+        }
+
+        const deleteRequestMatch =
+          req.method === "DELETE" &&
+          (req.url ?? "").split("?")[0].match(/^\/requests\/(.+)$/);
+
+        if (deleteRequestMatch) {
+          const id = decodeURIComponent(deleteRequestMatch[1]);
+          const isValidId = requestIdPattern.test(id) && basename(id) === id;
+
+          if (!isValidId) {
+            sendJson(res, 400, { error: `invalid request id "${id}"` });
+            return;
+          }
+
+          const requestDir = join(requestsDir, id);
+
+          if (!existsSync(requestDir)) {
+            sendJson(res, 404, { error: `request "${id}" not found` });
+            return;
+          }
+
+          rmSync(requestDir, { recursive: true, force: true });
           sendJson(res, 200, { ok: true });
           return;
         }

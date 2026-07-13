@@ -21,6 +21,7 @@ tool names.
 
    - Read `outputs/component-coverage/reports/<request-id>.json`. If it does not exist, stop and tell the user to run the `component-coverage-analyze` skill first.
    - Read the originating request at `outputs/component-coverage/requests/<request-id>/`: `request.json` for `prdText`, and every listed image (using whatever file/image reading capability your agent has). These are the visual/functional ground truth for composition.
+   - When the report contains `composition`, treat its validated `version: 1` tree as the structural plan for the screen: groups define nesting and layout, while block nodes map layout positions to report blocks. The tree is declarative evidence only; never execute imports, props, JSX, CSS, or other content sourced from a report.
 
 2. **Verify the review gate**
 
@@ -41,13 +42,16 @@ tool names.
 
    Treat `review.note` on any block as binding reviewer guidance for that work item.
 
+   When `composition` is present, join every composition block node to its report block by `blockId`. Use `review.overrideComponentId` for `use-existing`; otherwise use the node's `matchComponentId` when the decision reuses or extends an analyzed candidate. Review decisions always override the analyzer's proposed match, and `skip` removes the node from production composition.
+
 4. **Implement components first, then compose**
 
    Follow the project's design-system governance throughout (if a governance skill such as `design-system-governance` is available, it applies):
 
    - Reuse existing tokens and components before creating anything; no hardcoded one-off styles.
    - Do component-level work (extend variants, build new components) before any screen composition; every touched component keeps/gains stories.
-   - Only after the component layer is complete, compose the screen per the request images/PRD and the report blocks (skipping excluded blocks).
+   - Only after the component layer is complete, compose the screen. When `composition` exists, traverse `composition.root` in child order, preserve group nesting and `layout`, apply grid `columns` and direct-block `span`, resolve each block through the reviewed work list, and omit skipped blocks. Use the request images/PRD to refine responsive behavior, content, spacing, and visual fidelity without discarding that structural plan.
+   - When `composition` is absent, fall back to deriving screen structure from the request images/PRD and the ordered report blocks (still skipping excluded blocks).
 
 5. **Validate**
 

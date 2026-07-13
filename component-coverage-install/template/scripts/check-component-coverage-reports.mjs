@@ -3,7 +3,9 @@ import { join } from "node:path";
 
 // Contract source of truth: src/storybook/component-coverage/coverageTypes.ts
 // (this script mirrors it for Node without a TS build step).
-const reportsDir = "outputs/component-coverage/reports";
+const reportsDir =
+  process.env.COMPONENT_COVERAGE_REPORTS_DIR ??
+  "outputs/component-coverage/reports";
 const catalogPath = "src/storybook/componentCatalog.ts";
 const matchFits = new Set(["exact", "variant-needed", "partial"]);
 const gapStatuses = new Set(["none", "extend", "missing"]);
@@ -20,6 +22,12 @@ const reviewDecisionsBySection = {
   extend: new Set(["extend", "no-extend", "skip"]),
   reusable: new Set(["approve"]),
 };
+const compositionViewports = new Set(["mobile", "desktop"]);
+const compositionLayouts = new Set(["stack", "row", "grid"]);
+const compositionColumns = new Set([2, 3, 4]);
+const compositionSpans = new Set([1, 2, 3, 4]);
+const compositionMaxDepth = 6;
+const compositionMaxNodes = 100;
 
 if (!existsSync(catalogPath)) {
   console.error(`Component coverage report check failed: missing ${catalogPath}.`);
@@ -40,6 +48,246 @@ for (const match of catalogSource.matchAll(entryPattern)) {
 
 function isNonEmptyString(value) {
   return typeof value === "string" && value.trim().length > 0;
+}
+
+function isRecord(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function validateComposition(composition, blocks, addIssue) {
+  const nodeIds = new Set();
+  const referencedBlockIds = new Set();
+  const blockById = new Map(blocks.map((block) => [block.id, block]));
+  let nodeCount = 0;
+
+  const compositionIssue = (path, message) => {
+    addIssue(`${path}: ${message}.`);
+  };
+
+  const validateAllowedKeys = (record, allowedKeys, path) => {
+    const allowed = new Set(allowedKeys);
+
+    for (const key of Object.keys(record)) {
+      if (!allowed.has(key)) {
+        compositionIssue(
+          `${path}.${key}`,
+          "field is not allowed in a composition",
+        );
+      }
+    }
+  };
+
+  const validateNonEmptyString = (value, path) => {
+    if (!isNonEmptyString(value)) {
+      compositionIssue(path, "must be a non-empty string");
+      return false;
+    }
+
+    return true;
+  };
+
+  const validateNode = (node, path, depth, parent) => {
+    nodeCount += 1;
+
+    if (nodeCount > compositionMaxNodes) {
+      if (nodeCount === compositionMaxNodes + 1) {
+        compositionIssue(
+          path,
+          `composition exceeds ${compositionMaxNodes} nodes`,
+        );
+      }
+      return;
+    }
+
+    if (depth > compositionMaxDepth) {
+      compositionIssue(
+        path,
+        `composition exceeds maximum depth ${compositionMaxDepth}`,
+      );
+      return;
+    }
+
+    if (!isRecord(node)) {
+      compositionIssue(path, "must be a group or block object");
+      return;
+    }
+
+    if (node.kind !== "group" && node.kind !== "block") {
+      compositionIssue(`${path}.kind`, 'must be either "group" or "block"');
+      return;
+    }
+
+    if (validateNonEmptyString(node.id, `${path}.id`)) {
+      if (nodeIds.has(node.id)) {
+        compositionIssue(`${path}.id`, `duplicate node id "${node.id}"`);
+      } else {
+        nodeIds.add(node.id);
+      }
+    }
+
+    if (node.kind === "group") {
+      validateAllowedKeys(
+        node,
+        ["kind", "id", "label", "layout", "columns", "children"],
+        path,
+      );
+
+      if (node.label !== undefined) {
+        validateNonEmptyString(node.label, `${path}.label`);
+      }
+
+      const layout = compositionLayouts.has(node.layout)
+        ? node.layout
+        : undefined;
+
+      if (!layout) {
+        compositionIssue(
+          `${path}.layout`,
+          'must be one of "stack", "row", or "grid"',
+        );
+      }
+
+      let columns;
+
+      if (layout === "grid") {
+        if (!compositionColumns.has(node.columns)) {
+          compositionIssue(`${path}.columns`, "grid columns must be 2, 3, or 4");
+        } else {
+          columns = node.columns;
+        }
+      } else if (layout && node.columns !== undefined) {
+        compositionIssue(
+          `${path}.columns`,
+          "columns is only allowed when layout is grid",
+        );
+      }
+
+      if (!Array.isArray(node.children) || node.children.length === 0) {
+        compositionIssue(`${path}.children`, "must contain at least one node");
+        return;
+      }
+
+      const childParent = layout ? { layout, columns } : undefined;
+      node.children.forEach((child, index) => {
+        validateNode(child, `${path}.children[${index}]`, depth + 1, childParent);
+      });
+      return;
+    }
+
+    validateAllowedKeys(
+      node,
+      ["kind", "id", "blockId", "matchComponentId", "span"],
+      path,
+    );
+
+    let reportBlock;
+
+    if (validateNonEmptyString(node.blockId, `${path}.blockId`)) {
+      if (referencedBlockIds.has(node.blockId)) {
+        compositionIssue(
+          `${path}.blockId`,
+          `report block "${node.blockId}" is referenced more than once`,
+        );
+      } else {
+        referencedBlockIds.add(node.blockId);
+      }
+
+      reportBlock = blockById.get(node.blockId);
+      if (!reportBlock) {
+        compositionIssue(
+          `${path}.blockId`,
+          `does not reference a report block: "${node.blockId}"`,
+        );
+      }
+    }
+
+    if (reportBlock) {
+      if (reportBlock.matches.length === 0) {
+        if (node.matchComponentId !== undefined) {
+          compositionIssue(
+            `${path}.matchComponentId`,
+            "must be omitted when the report block has no matches",
+          );
+        }
+      } else if (
+        validateNonEmptyString(
+          node.matchComponentId,
+          `${path}.matchComponentId`,
+        ) &&
+        !reportBlock.matches.some(
+          (match) => match.componentId === node.matchComponentId,
+        )
+      ) {
+        compositionIssue(
+          `${path}.matchComponentId`,
+          `does not match a candidate on report block "${reportBlock.id}"`,
+        );
+      }
+    } else if (
+      node.matchComponentId !== undefined &&
+      typeof node.matchComponentId !== "string"
+    ) {
+      compositionIssue(`${path}.matchComponentId`, "must be a string when present");
+    }
+
+    if (parent?.layout === "grid") {
+      if (
+        node.span !== undefined &&
+        (!compositionSpans.has(node.span) ||
+          !parent.columns ||
+          node.span > parent.columns)
+      ) {
+        compositionIssue(
+          `${path}.span`,
+          `must be an integer from 1 to ${parent.columns ?? "the grid columns"}`,
+        );
+      }
+    } else if (node.span !== undefined) {
+      compositionIssue(
+        `${path}.span`,
+        "span is only allowed on a direct block child of a grid",
+      );
+    }
+  };
+
+  if (!isRecord(composition)) {
+    compositionIssue("composition", "must be an object");
+    return;
+  }
+
+  validateAllowedKeys(
+    composition,
+    ["version", "label", "viewport", "root"],
+    "composition",
+  );
+
+  if (composition.version !== 1) {
+    compositionIssue("composition.version", "must equal 1");
+  }
+
+  validateNonEmptyString(composition.label, "composition.label");
+
+  if (!compositionViewports.has(composition.viewport)) {
+    compositionIssue(
+      "composition.viewport",
+      'must be either "mobile" or "desktop"',
+    );
+  }
+
+  if (!isRecord(composition.root) || composition.root.kind !== "group") {
+    compositionIssue("composition.root", "must be a group node");
+  }
+
+  validateNode(composition.root, "composition.root", 1);
+
+  for (const block of blocks) {
+    if (!referencedBlockIds.has(block.id)) {
+      compositionIssue(
+        "composition.root",
+        `report block "${block.id}" must be referenced exactly once`,
+      );
+    }
+  }
 }
 
 function classifyBlock(block) {
@@ -211,6 +459,10 @@ function validateReport(report, addIssue) {
       }
     }
   });
+
+  if (report.composition !== undefined) {
+    validateComposition(report.composition, report.blocks, addIssue);
+  }
 
   const blocksAreClassifiable = report.blocks.every(
     (block) =>

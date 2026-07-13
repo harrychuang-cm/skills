@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
   deleteCoverageReport,
+  deleteCoverageRequest,
   fetchCoverageToolState,
   fetchStoryIndex,
   submitCoverageReview,
@@ -18,7 +19,7 @@ const workflowSteps = [
   { hint: "上傳 UI 圖或 PRD", title: "送出請求" },
   { hint: "貼到 Cursor／Claude Code／Codex", title: "執行分析" },
   { hint: "逐區塊決定怎麼做", title: "覆核報告" },
-  { hint: "貼給任一支援的 agent", title: "交接實作" },
+  { hint: "複製指令開始實作", title: "交接實作" },
 ] as const;
 
 function WorkflowOverview() {
@@ -82,12 +83,14 @@ function buildPipelineRows(state: CoverageToolState): PipelineRow[] {
     }
 
     datedRows.push({
+      compositionIssues: reportEntry?.compositionIssues,
       createdAt: entry.request.createdAt,
-      key: entry.request.id,
+      key: entry.requestStorageId,
       kind: "request",
       report: reportEntry?.report,
       reportFileName: reportEntry?.fileName,
       request: entry.request,
+      requestStorageId: entry.requestStorageId,
     });
   }
 
@@ -97,6 +100,7 @@ function buildPipelineRows(state: CoverageToolState): PipelineRow[] {
     }
 
     datedRows.push({
+      compositionIssues: entry.compositionIssues,
       createdAt: entry.report.createdAt,
       fileName: entry.fileName,
       key: entry.fileName,
@@ -294,9 +298,22 @@ export function ComponentCoverageAnalyzer() {
           ) : (
             <ReportView
               isDevMode={isDevMode}
-              onDelete={async (fileName) => {
-                await deleteCoverageReport(fileName);
-                await refreshState();
+              onDelete={async ({ reportFileName, requestStorageId }) => {
+                // Delete the report before the request so a partial failure
+                // (report gone, request removal fails) degrades the row to the
+                // report-missing stage rather than stranding an orphan report.
+                // refreshState runs even on failure so a retry sees the pruned
+                // target and can finish removing the request.
+                try {
+                  if (reportFileName) {
+                    await deleteCoverageReport(reportFileName);
+                  }
+                  if (requestStorageId) {
+                    await deleteCoverageRequest(requestStorageId);
+                  }
+                } finally {
+                  await refreshState();
+                }
               }}
               onReviewSubmit={async (fileName, payload) => {
                 await submitCoverageReview(fileName, payload);

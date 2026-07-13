@@ -1,8 +1,10 @@
-import type {
-  CoverageBlockReview,
-  CoverageReport,
-  CoverageRequest,
-  CoverageReviewStatus,
+import {
+  validateCoverageComposition,
+  type CoverageBlockReview,
+  type CoverageCompositionIssue,
+  type CoverageReport,
+  type CoverageRequest,
+  type CoverageReviewStatus,
 } from "./coverageTypes";
 
 // Must stay equal to componentCoverageApiPath in
@@ -13,11 +15,20 @@ export const componentCoverageApiPath = "/__component-coverage";
 export const componentCoverageStaticBase = "/component-coverage";
 
 export type CoverageRequestListEntry =
-  | { kind: "request"; request: CoverageRequest }
+  | {
+      kind: "request";
+      request: CoverageRequest;
+      requestStorageId: string;
+    }
   | { kind: "invalid"; id: string; error: string };
 
 export type CoverageReportListEntry =
-  | { kind: "report"; fileName: string; report: CoverageReport }
+  | {
+      kind: "report";
+      fileName: string;
+      report: CoverageReport;
+      compositionIssues?: readonly CoverageCompositionIssue[];
+    }
   | { kind: "invalid"; fileName: string; error: string };
 
 export type CoverageToolState = {
@@ -41,13 +52,17 @@ function toErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
 
-function parseCoverageReportEntry(
+type RawCoverageReport = Omit<CoverageReport, "composition"> & {
+  composition?: unknown;
+};
+
+export function parseCoverageReportEntry(
   fileName: string,
   raw: string,
 ): CoverageReportListEntry {
   try {
     const parsed: unknown = JSON.parse(raw);
-    const report = parsed as CoverageReport;
+    const report = parsed as RawCoverageReport;
 
     if (
       parsed === null ||
@@ -72,14 +87,44 @@ function parseCoverageReportEntry(
       throw new Error("blocks 內容不符合報告契約");
     }
 
-    return { kind: "report", fileName, report };
+    const { composition, ...baseReport } = report;
+
+    if (composition !== undefined) {
+      const compositionResult = validateCoverageComposition(
+        composition,
+        report.blocks,
+      );
+
+      if (compositionResult.ok) {
+        return {
+          kind: "report",
+          fileName,
+          report: {
+            ...baseReport,
+            composition: compositionResult.composition,
+          },
+        };
+      }
+
+      return {
+        kind: "report",
+        fileName,
+        report: baseReport,
+        compositionIssues: compositionResult.issues,
+      };
+    }
+
+    return { kind: "report", fileName, report: baseReport };
   } catch (error) {
     return { kind: "invalid", fileName, error: toErrorMessage(error) };
   }
 }
 
 type DevStatePayload = {
-  requests?: readonly (Partial<CoverageRequest> & { parseError?: string })[];
+  requests?: readonly (Partial<CoverageRequest> & {
+    parseError?: string;
+    storageId?: string;
+  })[];
   reports?: readonly { fileName?: string; raw?: string }[];
 };
 
@@ -87,15 +132,40 @@ function toRequestListEntries(
   requests: DevStatePayload["requests"],
 ): CoverageRequestListEntry[] {
   return (requests ?? []).map((entry) => {
-    if (entry.parseError || typeof entry.id !== "string" || !entry.status) {
+    const requestStorageId =
+      typeof entry.storageId === "string"
+        ? entry.storageId
+        : typeof entry.id === "string"
+          ? entry.id
+          : "";
+    const idDoesNotMatchStorage =
+      typeof entry.id === "string" && entry.id !== requestStorageId;
+
+    if (
+      entry.parseError ||
+      !requestStorageId ||
+      typeof entry.id !== "string" ||
+      idDoesNotMatchStorage ||
+      !entry.status
+    ) {
       return {
         kind: "invalid",
-        id: entry.id ?? "unknown-request",
-        error: entry.parseError ?? "request.json 不符合請求契約",
+        id: requestStorageId || "unknown-request",
+        error:
+          entry.parseError ??
+          (idDoesNotMatchStorage
+            ? "request.json id 與資料夾名稱不一致"
+            : "request.json 不符合請求契約"),
       };
     }
 
-    return { kind: "request", request: entry as CoverageRequest };
+    const { parseError: _parseError, storageId: _storageId, ...request } = entry;
+
+    return {
+      kind: "request",
+      request: request as CoverageRequest,
+      requestStorageId,
+    };
   });
 }
 
@@ -207,6 +277,21 @@ export async function submitCoverageReview(
 export async function deleteCoverageReport(fileName: string): Promise<void> {
   const response = await fetch(
     `${componentCoverageApiPath}/reports/${encodeURIComponent(fileName)}`,
+    { method: "DELETE" },
+  );
+  const body = (await response.json().catch(() => ({}))) as {
+    ok?: boolean;
+    error?: string;
+  };
+
+  if (!response.ok || body.ok !== true) {
+    throw new Error(body.error ?? `刪除失敗（${response.status}）`);
+  }
+}
+
+export async function deleteCoverageRequest(storageId: string): Promise<void> {
+  const response = await fetch(
+    `${componentCoverageApiPath}/requests/${encodeURIComponent(storageId)}`,
     { method: "DELETE" },
   );
   const body = (await response.json().catch(() => ({}))) as {

@@ -1,12 +1,14 @@
 {
   "name": "component-coverage-tool",
-  "version": "0.4.0",
+  "version": "0.5.1",
   "description": "Storybook Component Coverage Analyzer — template manifest. The installer copies this file to outputs/component-coverage/TEMPLATE_MANIFEST.json in the target project so update runs can compare versions.",
   "files": {
     "verbatim": [
       "src/storybook/component-coverage/ComponentCoverageAnalyzer.tsx",
+      "src/storybook/component-coverage/CompositionPreview.tsx",
       "src/storybook/component-coverage/IntakeForm.tsx",
       "src/storybook/component-coverage/ReportView.tsx",
+      "src/storybook/component-coverage/compositionPreviewModel.ts",
       "src/storybook/component-coverage/coverageApi.ts",
       "src/storybook/component-coverage/coverageTypes.ts",
       "src/storybook/component-coverage/index.ts",
@@ -19,6 +21,7 @@
       "skills/component-coverage-implement/SKILL.md"
     ],
     "adaptable": [
+      "src/storybook/component-coverage/compositionPreviewRegistry.tsx",
       "src/storybook/component-coverage/component-coverage.css",
       "src/stories/tools/ComponentCoverageAnalyzer.stories.tsx"
     ],
@@ -37,8 +40,8 @@
     ]
   },
   "skillContentSha256": {
-    "skills/component-coverage-analyze/SKILL.md": "9a49f7acf7eae475a361d4aa5ba929464f54d1d49c18ad7b105b9ae088ac68fd",
-    "skills/component-coverage-implement/SKILL.md": "205790f7b2e9fe90b4e84c41b08d904e2891e13915f70a7815389c0f78eca770"
+    "skills/component-coverage-analyze/SKILL.md": "a38b9fc78361d81a748324f7bb5e3f24e337479758a4fff66224506c7cc6d02c",
+    "skills/component-coverage-implement/SKILL.md": "8497e61435d34ccce0af2cb0a4a20f2ce117e2ad11580d298a7872f497bb0fd3"
   },
   "pathContracts": {
     "apiPath": "/__component-coverage",

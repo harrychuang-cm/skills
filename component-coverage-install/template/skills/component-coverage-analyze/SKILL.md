@@ -100,6 +100,52 @@ tool names.
    already-analyzed request is outside this skill's contract). Shapes mirror
    `coverageTypes.ts`, which stays the single source of truth.
 
+   **Optional review composition（`composition`）**: emit this analyzer-owned
+   field only when the image or PRD gives enough evidence to place **every**
+   report block in one complete layout tree. If order, grouping, viewport, or
+   any block placement is ambiguous, omit the entire `composition` field.
+   Never emit a partial tree or guess missing layout.
+
+   The version 1 contract is:
+
+   - top level: `{ "version": 1, "label": string, "viewport": "mobile" |
+     "desktop", "root": <group> }`
+   - group: `{ "kind": "group", "id": string, "label"?: string,
+     "layout": "stack" | "row" | "grid", "columns"?: 2 | 3 | 4,
+     "children": [...] }`
+   - block: `{ "kind": "block", "id": string, "blockId": string,
+     "matchComponentId"?: string, "span"?: 1 | 2 | 3 | 4 }`
+
+   Composition requirements:
+
+   - `root` is a non-empty group; node ids are unique; maximum depth is 6 and
+     maximum total node count is 100.
+   - Reference every report block exactly once. Do not reference unknown
+     blocks and do not duplicate a `blockId`.
+   - A block with candidates MUST set `matchComponentId` to one component id
+     already present in that block's `matches`. A block with no matches MUST
+     omit `matchComponentId`.
+   - A `grid` MUST set `columns` to 2, 3, or 4. Other layouts MUST omit it.
+     `span` is optional only on a direct block child of a grid and cannot
+     exceed the parent column count.
+   - Encode only structure and match selection. Never emit React props, CSS,
+     styles, class names, HTML, scripts, expressions, event handlers, or any
+     other executable/arbitrary content.
+
+   **Evidence decision examples**:
+
+   - Clear evidence → emit a complete tree: a mobile screenshot visibly shows
+     `portfolio-header` above a two-column `summary-card` / `performance-card`
+     row, followed by `holding-list`; all four report blocks have identifiable
+     regions and the matched blocks each have a chosen candidate. Represent
+     the screen as a root `stack`, a nested two-column `grid`, and the final
+     list block, referencing all four blocks once.
+   - Ambiguous evidence → omit `composition`: PRD text lists a header, cards,
+     and holdings but does not state their order or grouping, or uploaded crops
+     show the blocks separately without a whole-screen layout. Still emit the
+     complete `blocks`, `summary`, and `analyzer` report, but do not include a
+     partial or speculative composition.
+
 6. **Mark the request analyzed**
 
    Update the request's `request.json` `status` from `pending` to `analyzed`.

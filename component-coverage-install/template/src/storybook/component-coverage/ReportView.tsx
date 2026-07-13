@@ -1,4 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from "react";
 
 import {
   componentCatalog,
@@ -9,12 +15,18 @@ import {
   componentCoverageStaticBase,
   type CoverageReviewSubmitPayload,
 } from "./coverageApi";
+import { CompositionPreview } from "./CompositionPreview";
+import {
+  collectCompositionBlockIds,
+  getInitialCompositionBlockId,
+} from "./compositionPreviewModel";
 import {
   canConfirmCoverageReview,
   classifyCoverageBlock,
   getAllowedReviewDecisions,
   type CoverageBlock,
   type CoverageBlockReview,
+  type CoverageCompositionIssue,
   type CoverageEvidenceRegion,
   type CoverageMatch,
   type CoverageReport,
@@ -64,8 +76,7 @@ export function buildAnalysisPrompt(requestId: string) {
   const requestPath =
     `outputs/component-coverage/requests/${requestId}/request.json`;
   const reportPath = `outputs/component-coverage/reports/${requestId}.json`;
-  const skillPath =
-    ".agents/skills/component-coverage-analyze/SKILL.md";
+  const skillPath = ".agents/skills/component-coverage-analyze/SKILL.md";
 
   return [
     `請使用專案的 component-coverage-analyze skill 分析 Component Coverage 請求「${requestId}」。`,
@@ -89,12 +100,30 @@ export type PipelineRow =
       kind: "request";
       key: string;
       request: CoverageRequest;
+      requestStorageId: string;
       report?: CoverageReport;
       reportFileName?: string;
+      compositionIssues?: readonly CoverageCompositionIssue[];
     }
-  | { kind: "orphan-report"; key: string; fileName: string; report: CoverageReport }
+  | {
+      kind: "orphan-report";
+      key: string;
+      fileName: string;
+      report: CoverageReport;
+      compositionIssues?: readonly CoverageCompositionIssue[];
+    }
   | { kind: "invalid-request"; key: string; id: string; error: string }
   | { kind: "invalid-report"; key: string; fileName: string; error: string };
+
+/**
+ * What a row's delete control removes. A request row deletes its request
+ * directory and, when paired, its report file; report-only rows carry just a
+ * `reportFileName`. The container deletes the report before the request.
+ */
+export type DeleteTarget = {
+  requestStorageId?: string;
+  reportFileName?: string;
+};
 
 type PipelineStage = "pending" | "report-missing" | "in-review" | "confirmed";
 
@@ -139,8 +168,7 @@ function isReportConfirmed(report: CoverageReport) {
 function buildImplementationPrompt(requestId: string): string {
   const reportPath = `outputs/component-coverage/reports/${requestId}.json`;
   const requestPath = `outputs/component-coverage/requests/${requestId}/`;
-  const skillPath =
-    ".agents/skills/component-coverage-implement/SKILL.md";
+  const skillPath = ".agents/skills/component-coverage-implement/SKILL.md";
 
   return [
     `請使用專案的 component-coverage-implement skill 實作 Component Coverage 請求「${requestId}」。`,
@@ -400,7 +428,7 @@ function MatchCard({
   );
 }
 
-function BlockReviewPanel({
+export function BlockReviewPanel({
   block,
   editable,
   onSave,
@@ -870,6 +898,7 @@ function SourceImages({
 }
 
 function ReportDetail({
+  compositionIssues,
   fileName,
   isDevMode,
   onOpenImage,
@@ -878,6 +907,7 @@ function ReportDetail({
   report,
   request,
 }: {
+  compositionIssues?: readonly CoverageCompositionIssue[];
   fileName: string;
   isDevMode: boolean;
   onOpenImage: (src: string) => void;
@@ -907,12 +937,47 @@ function ReportDetail({
     missing: null,
     reusable: null,
   });
+  const [activeMode, setActiveMode] = useState<"preview" | "analysis">(() =>
+    report.composition ? "preview" : "analysis",
+  );
+  const [selectedBlockId, setSelectedBlockId] = useState(() =>
+    getInitialCompositionBlockId(report),
+  );
+  const modeTabRefs = useRef<
+    Record<"preview" | "analysis", HTMLButtonElement | null>
+  >({ analysis: null, preview: null });
+  const compositionBlockIds = useMemo(
+    () =>
+      report.composition
+        ? collectCompositionBlockIds(report.composition.root)
+        : [],
+    [report.composition],
+  );
+  const selectedBlock = report.blocks.find(
+    (block) => block.id === selectedBlockId,
+  );
   const reviewEditable = isDevMode && !isReportConfirmed(report);
 
+  useEffect(() => {
+    if (!report.composition) {
+      if (activeMode === "preview") {
+        setActiveMode("analysis");
+      }
+      return;
+    }
+
+    if (!compositionBlockIds.includes(selectedBlockId)) {
+      setSelectedBlockId(getInitialCompositionBlockId(report));
+    }
+  }, [activeMode, compositionBlockIds, report, selectedBlockId]);
+
   const scrollToSection = (section: CoverageSection) => {
-    sectionRefs.current[section]?.scrollIntoView({
-      behavior: "smooth",
-      block: "start",
+    setActiveMode("analysis");
+    window.setTimeout(() => {
+      sectionRefs.current[section]?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
     });
   };
 
@@ -925,6 +990,41 @@ function ReportDetail({
     reviews[blockId] = review;
     await onReviewSubmit(fileName, { reviews, reviewStatus: "draft" });
   };
+  const handleModeTabKeyDown = (
+    event: ReactKeyboardEvent<HTMLButtonElement>,
+    currentMode: "preview" | "analysis",
+  ) => {
+    const availableModes: readonly ("preview" | "analysis")[] = report.composition
+      ? ["preview", "analysis"]
+      : ["analysis"];
+    const currentIndex = availableModes.indexOf(currentMode);
+    let nextMode: "preview" | "analysis" | undefined;
+
+    if (event.key === "Home") {
+      nextMode = availableModes[0];
+    } else if (event.key === "End") {
+      nextMode = availableModes[availableModes.length - 1];
+    } else if (event.key === "ArrowRight") {
+      nextMode = availableModes[(currentIndex + 1) % availableModes.length];
+    } else if (event.key === "ArrowLeft") {
+      nextMode =
+        availableModes[
+          (currentIndex - 1 + availableModes.length) % availableModes.length
+        ];
+    }
+
+    if (!nextMode) {
+      return;
+    }
+
+    event.preventDefault();
+    setActiveMode(nextMode);
+    window.requestAnimationFrame(() => modeTabRefs.current[nextMode]?.focus());
+  };
+  const compositionNoticeId = `coverage-composition-notice-${fileName.replace(
+    /[^a-z0-9]+/gi,
+    "-",
+  )}`;
 
   return (
     <div className="cm-coverage__report-detail">
@@ -935,45 +1035,196 @@ function ReportDetail({
         onSubmit={(payload) => onReviewSubmit(fileName, payload)}
         report={report}
       />
-      {request ? <SourceImages onOpen={onOpenImage} request={request} /> : null}
-      {sectionOrder.map((section) => (
-        <section
-          className="cm-coverage__section"
-          key={section}
-          ref={(element) => {
-            sectionRefs.current[section] = element;
-          }}
+      {compositionIssues && compositionIssues.length > 0 ? (
+        <div
+          className="cm-coverage__composition-notice cm-coverage__composition-notice--warning"
+          id={compositionNoticeId}
+          role="status"
         >
-          <header className="cm-coverage__section-header">
-            <h3
-              className={`cm-coverage__section-heading cm-coverage__section-heading--${section}`}
+          <strong>組裝預覽格式有誤，已保留分析明細與覆核功能。</strong>
+          <ul className="cm-coverage__composition-notice-list">
+            {compositionIssues.slice(0, 3).map((issue) => (
+              <li key={`${issue.path}-${issue.message}`}>
+                <code>{issue.path}</code>：{issue.message}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : !report.composition ? (
+        <div
+          className="cm-coverage__composition-notice"
+          id={compositionNoticeId}
+          role="status"
+        >
+          此報告未包含組裝預覽，已顯示分析明細；既有報告不需要遷移。
+        </div>
+      ) : null}
+      <div aria-label="報告檢視模式" className="cm-coverage__mode-tabs" role="tablist">
+        <button
+          aria-controls={`${compositionNoticeId}-preview-panel`}
+          aria-describedby={!report.composition ? compositionNoticeId : undefined}
+          aria-selected={activeMode === "preview"}
+          className="cm-coverage__mode-tab"
+          disabled={!report.composition}
+          onClick={() => setActiveMode("preview")}
+          onKeyDown={(event) => handleModeTabKeyDown(event, "preview")}
+          id={`${compositionNoticeId}-preview-tab`}
+          ref={(element) => {
+            modeTabRefs.current.preview = element;
+          }}
+          role="tab"
+          tabIndex={activeMode === "preview" ? 0 : -1}
+          type="button"
+        >
+          組裝預覽
+        </button>
+        <button
+          aria-controls={`${compositionNoticeId}-analysis-panel`}
+          aria-selected={activeMode === "analysis"}
+          className="cm-coverage__mode-tab"
+          onClick={() => setActiveMode("analysis")}
+          onKeyDown={(event) => handleModeTabKeyDown(event, "analysis")}
+          id={`${compositionNoticeId}-analysis-tab`}
+          ref={(element) => {
+            modeTabRefs.current.analysis = element;
+          }}
+          role="tab"
+          tabIndex={activeMode === "analysis" ? 0 : -1}
+          type="button"
+        >
+          分析明細
+        </button>
+      </div>
+      {activeMode === "preview" && report.composition ? (
+        <div
+          aria-labelledby={`${compositionNoticeId}-preview-tab`}
+          className="cm-coverage__composition-workspace"
+          id={`${compositionNoticeId}-preview-panel`}
+          role="tabpanel"
+        >
+          <CompositionPreview
+            blocks={report.blocks}
+            composition={report.composition}
+            onSelectBlock={setSelectedBlockId}
+            selectedBlockId={selectedBlockId}
+          />
+          <aside
+            aria-label="已選區塊覆核"
+            className="cm-coverage__composition-inspector"
+          >
+            {selectedBlock ? (
+              <>
+                <header className="cm-coverage__composition-inspector-header">
+                  <span className="cm-coverage__composition-inspector-kicker">
+                    已選區塊
+                  </span>
+                  <h3 className="cm-coverage__composition-inspector-title">
+                    {selectedBlock.label}
+                  </h3>
+                  <span
+                    className="cm-coverage__composition-inspector-classification"
+                    data-section={classifyCoverageBlock(selectedBlock)}
+                  >
+                    {sectionCopy[classifyCoverageBlock(selectedBlock)].heading}
+                  </span>
+                </header>
+                <p className="cm-coverage__composition-inspector-evidence">
+                  辨識依據：{selectedBlock.evidence}
+                </p>
+                {selectedBlock.gap.status !== "none" ? (
+                  <div className="cm-coverage__composition-inspector-gap">
+                    <strong>{selectedBlock.gap.suggestedName}</strong>
+                    <span>
+                      分類 {selectedBlock.gap.suggestedCategory}・角色{" "}
+                      {selectedBlock.gap.suggestedRole}
+                    </span>
+                    <p>{selectedBlock.gap.rationale}</p>
+                  </div>
+                ) : null}
+                <BlockReviewPanel
+                  block={selectedBlock}
+                  editable={reviewEditable}
+                  key={`${selectedBlock.id}-${selectedBlock.review?.reviewedAt ?? "unreviewed"}`}
+                  onSave={handleBlockReview}
+                />
+                {!reviewEditable && !selectedBlock.review ? (
+                  <p className="cm-coverage__composition-inspector-readonly">
+                    {isDevMode
+                      ? "報告已確認；先還原為草稿才可編輯覆核。"
+                      : "唯讀預覽；此區塊尚無已儲存的覆核結果。"}
+                  </p>
+                ) : null}
+              </>
+            ) : (
+              <p className="cm-coverage__composition-inspector-readonly">
+                請在左側選擇一個區塊。
+              </p>
+            )}
+          </aside>
+        </div>
+      ) : (
+        <div
+          aria-labelledby={`${compositionNoticeId}-preview-tab`}
+          hidden
+          id={`${compositionNoticeId}-preview-panel`}
+          role="tabpanel"
+        />
+      )}
+      {activeMode === "analysis" ? (
+        <div
+          aria-labelledby={`${compositionNoticeId}-analysis-tab`}
+          className="cm-coverage__analysis-panel"
+          id={`${compositionNoticeId}-analysis-panel`}
+          role="tabpanel"
+        >
+          {request ? <SourceImages onOpen={onOpenImage} request={request} /> : null}
+          {sectionOrder.map((section) => (
+            <section
+              className="cm-coverage__section"
+              key={section}
+              ref={(element) => {
+                sectionRefs.current[section] = element;
+              }}
             >
-              {sectionCopy[section].heading}
-              <span className="cm-coverage__section-count">
-                {sections[section].length}
-              </span>
-              <span className="cm-coverage__section-hint">
-                {sectionCopy[section].hint}
-              </span>
-            </h3>
-          </header>
-          {sections[section].length === 0 ? (
-            <p className="cm-coverage__section-empty">此分類沒有項目。</p>
-          ) : (
-            sections[section].map((block) => (
-              <BlockCard
-                block={block}
-                key={block.id}
-                onOpenImage={onOpenImage}
-                onSaveReview={handleBlockReview}
-                preview={preview}
-                requestId={report.requestId}
-                reviewEditable={reviewEditable}
-              />
-            ))
-          )}
-        </section>
-      ))}
+              <header className="cm-coverage__section-header">
+                <h3
+                  className={`cm-coverage__section-heading cm-coverage__section-heading--${section}`}
+                >
+                  {sectionCopy[section].heading}
+                  <span className="cm-coverage__section-count">
+                    {sections[section].length}
+                  </span>
+                  <span className="cm-coverage__section-hint">
+                    {sectionCopy[section].hint}
+                  </span>
+                </h3>
+              </header>
+              {sections[section].length === 0 ? (
+                <p className="cm-coverage__section-empty">此分類沒有項目。</p>
+              ) : (
+                sections[section].map((block) => (
+                  <BlockCard
+                    block={block}
+                    key={block.id}
+                    onOpenImage={onOpenImage}
+                    onSaveReview={handleBlockReview}
+                    preview={preview}
+                    requestId={report.requestId}
+                    reviewEditable={reviewEditable}
+                  />
+                ))
+              )}
+            </section>
+          ))}
+        </div>
+      ) : (
+        <div
+          aria-labelledby={`${compositionNoticeId}-analysis-tab`}
+          hidden
+          id={`${compositionNoticeId}-analysis-panel`}
+          role="tabpanel"
+        />
+      )}
       <p className="cm-coverage__report-analyzer">
         分析引擎 {report.analyzer.engine}・比對元件目錄 {report.analyzer.catalogEntryCount} 筆
       </p>
@@ -984,11 +1235,13 @@ function ReportDetail({
 const deleteConfirmTimeoutMs = 3000;
 
 function DeleteReportControl({
-  fileName,
+  label,
   onDelete,
+  target,
 }: {
-  fileName: string;
-  onDelete: (fileName: string) => Promise<void>;
+  label: string;
+  onDelete: (target: DeleteTarget) => Promise<void>;
+  target: DeleteTarget;
 }) {
   const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -1012,7 +1265,7 @@ function DeleteReportControl({
     setDeleting(true);
 
     try {
-      await onDelete(fileName);
+      await onDelete(target);
     } catch (deleteError) {
       setError(
         deleteError instanceof Error ? deleteError.message : String(deleteError),
@@ -1026,7 +1279,7 @@ function DeleteReportControl({
     <span className="cm-coverage__delete">
       {error ? <span className="cm-coverage__delete-error">{error}</span> : null}
       <button
-        aria-label={confirming ? `確認刪除 ${fileName}` : `刪除 ${fileName}`}
+        aria-label={confirming ? `確認刪除 ${label}` : `刪除 ${label}`}
         className={`cm-coverage__delete-button${confirming ? " cm-coverage__delete-button--confirm" : ""}`}
         disabled={deleting}
         onClick={(event) => {
@@ -1090,7 +1343,7 @@ function PipelineRowView({
   selected,
 }: {
   isDevMode: boolean;
-  onDelete: (fileName: string) => Promise<void>;
+  onDelete: (target: DeleteTarget) => Promise<void>;
   onSelect: (fileName: string) => void;
   row: PipelineRow;
   selected: boolean;
@@ -1100,6 +1353,13 @@ function PipelineRowView({
       <div className="cm-coverage__report-item cm-coverage__report-item--invalid">
         <span className="cm-coverage__report-title">{row.id}</span>
         <p className="cm-coverage__report-error">{row.error}</p>
+        {isDevMode ? (
+          <DeleteReportControl
+            label={row.id}
+            onDelete={onDelete}
+            target={{ requestStorageId: row.id }}
+          />
+        ) : null}
       </div>
     );
   }
@@ -1109,10 +1369,14 @@ function PipelineRowView({
       <div className="cm-coverage__report-item cm-coverage__report-item--invalid">
         <span className="cm-coverage__report-title">{row.fileName}</span>
         <p className="cm-coverage__report-error">
-          格式錯誤（{row.error}），請跑 node scripts/check-component-coverage-reports.mjs。
+          格式錯誤（{row.error}），請跑 npm run check:coverage-reports。
         </p>
         {isDevMode ? (
-          <DeleteReportControl fileName={row.fileName} onDelete={onDelete} />
+          <DeleteReportControl
+            label={row.fileName}
+            onDelete={onDelete}
+            target={{ reportFileName: row.fileName }}
+          />
         ) : null}
       </div>
     );
@@ -1135,6 +1399,13 @@ function PipelineRowView({
         ]
       : [row.fileName, formatTimestamp(row.report.createdAt)];
   const expandable = Boolean(report && reportFileName);
+  const deleteTarget: DeleteTarget =
+    row.kind === "request"
+      ? {
+          reportFileName: row.reportFileName,
+          requestStorageId: row.requestStorageId,
+        }
+      : { reportFileName: row.fileName };
 
   const rowBody = (
     <>
@@ -1143,11 +1414,15 @@ function PipelineRowView({
       <span className={`cm-coverage__chip cm-coverage__chip--stage-${stage}`}>
         {stageCopy[stage]}
       </span>
-      {report ? (
+      {report || isDevMode ? (
         <span className="cm-coverage__report-counts">
-          <CoverageBar summary={report.summary} />
-          {isDevMode && reportFileName ? (
-            <DeleteReportControl fileName={reportFileName} onDelete={onDelete} />
+          {report ? <CoverageBar summary={report.summary} /> : null}
+          {isDevMode ? (
+            <DeleteReportControl
+              label={title}
+              onDelete={onDelete}
+              target={deleteTarget}
+            />
           ) : null}
         </span>
       ) : null}
@@ -1196,7 +1471,7 @@ function PipelineRowView({
 
 export type ReportViewProps = {
   isDevMode: boolean;
-  onDelete: (fileName: string) => Promise<void>;
+  onDelete: (target: DeleteTarget) => Promise<void>;
   onReviewSubmit: (
     fileName: string,
     payload: CoverageReviewSubmitPayload,
@@ -1252,6 +1527,11 @@ export function ReportView({
             />
             {report && reportFileName && expanded ? (
               <ReportDetail
+                compositionIssues={
+                  row.kind === "request" || row.kind === "orphan-report"
+                    ? row.compositionIssues
+                    : undefined
+                }
                 fileName={reportFileName}
                 isDevMode={isDevMode}
                 onOpenImage={setLightboxSrc}
