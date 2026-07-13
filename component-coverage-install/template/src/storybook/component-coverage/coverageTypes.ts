@@ -3,7 +3,9 @@ import type { ComponentDocumentationProvenance } from "../componentCatalog";
 /**
  * Single source of truth for the component-coverage file contract.
  * scripts/check-component-coverage-reports.mjs,
- * .claude/skills/component-coverage-analyze/SKILL.md and
+ * .agents/skills/component-coverage-analyze/SKILL.md,
+ * .claude/skills/component-coverage-analyze/SKILL.md,
+ * .cursor/skills/component-coverage-analyze/SKILL.md, and
  * .claude/skills/component-coverage-implement/SKILL.md mirror these shapes;
  * any change here must be synchronized with all of them.
  */

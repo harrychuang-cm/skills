@@ -5,9 +5,11 @@ import {
   submitCoverageRequest,
   type CoverageImagePayload,
 } from "./coverageApi";
-import { analyzeCommandFor, analyzePromptFor, CopyTextButton } from "./ReportView";
+import { buildAnalysisPrompt, CopyTextButton } from "./ReportView";
 
 const maxImageBytes = 5 * 1024 * 1024;
+const submittedAnalysisNextStep =
+  "下一步：複製分析提示詞，貼到 Cursor、Claude Code 或 Codex 執行。";
 
 type PendingImage = CoverageImagePayload & { key: number; size: number };
 
@@ -350,15 +352,11 @@ export function IntakeForm({ isDevMode, onSubmitted }: IntakeFormProps) {
         {submitted ? (
           <div className="cm-coverage__form-success" role="status">
             <span className="cm-coverage__form-success-text">
-              已送出「{submitted.title}」。下一步：複製指令交給 AI coding agent 執行分析。
+              已送出「{submitted.title}」。{submittedAnalysisNextStep}
             </span>
             <CopyTextButton
-              label="複製指令（Claude Code）"
-              text={analyzeCommandFor(submitted.id)}
-            />
-            <CopyTextButton
-              label="複製完整提示詞（任何 agent）"
-              text={analyzePromptFor(submitted.id)}
+              label="複製分析提示詞"
+              text={buildAnalysisPrompt(submitted.id)}
             />
           </div>
         ) : null}

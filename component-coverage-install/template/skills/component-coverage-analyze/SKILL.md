@@ -7,6 +7,10 @@ Process pending analysis requests from the Storybook「Component Coverage Analyz
 
 **Contract source of truth**: `src/storybook/component-coverage/coverageTypes.ts`. Every shape and enum below mirrors that file — if they disagree, `coverageTypes.ts` wins and this skill must be updated.
 
+**Supported agents**: Cursor, Claude Code, and Codex. This file is mirrored
+byte-for-byte across their project skill directories; do not add
+agent-specific command syntax or tool names.
+
 **Input**: An optional request id. If omitted, process every pending request.
 
 **Steps**
@@ -19,7 +23,7 @@ Process pending analysis requests from the Storybook「Component Coverage Analyz
 
    For each pending request directory:
    - Read `request.json` (`id`, `title`, `prdText`, `images`, `createdAt`)
-   - Read every file listed in `images` (they are image files in the same directory) with whatever file/image reading capability your agent has
+   - Inspect every file listed in `images` (they are image files in the same directory)
 
 3. **Inventory the UI blocks**
 
@@ -73,11 +77,13 @@ Process pending analysis requests from the Storybook「Component Coverage Analyz
      "sourceSummary": "<one-paragraph description of the analyzed input>",
      "blocks": [ ... ],
      "summary": { "reusable": 0, "extend": 0, "missing": 0 },
-     "analyzer": { "engine": "<agent-that-ran-this>", "catalogEntryCount": <count of catalog entries> }
+     "analyzer": { "engine": "<cursor|claude-code|codex>", "catalogEntryCount": <count of catalog entries> }
    }
    ```
 
-   Set `analyzer.engine` to the coding agent producing the report — e.g. `"claude-code"`, `"cursor"`, or `"codex"` (any non-empty string; the tool surfaces it as「分析引擎」). Use `"claude-code"` if you cannot tell.
+   Set `analyzer.engine` to the agent executing the analysis: `cursor` for
+   Cursor, `claude-code` for Claude Code, or `codex` for Codex. Do not copy
+   the angle-bracket placeholder into a report.
 
    `summary` counts MUST equal the block-derived classification: a block is `missing` when `gap.status` is `missing`; `extend` when `gap.status` is `extend` or no match has fit `exact`; otherwise `reusable`. (`classifyCoverageBlock` in `coverageTypes.ts` is the reference implementation.)
 
@@ -109,3 +115,7 @@ Process pending analysis requests from the Storybook「Component Coverage Analyz
 - Never invent a `componentId` that is not in `componentCatalog.ts`; if nothing matches, use an empty `matches` array with a `missing` gap.
 - Base `fit` judgments on actual component source, not the catalog description alone.
 - Reports are version-controlled knowledge; requests are local working data — never commit `outputs/component-coverage/requests/`.
+- Keep `.agents/skills/component-coverage-analyze/SKILL.md`,
+  `.claude/skills/component-coverage-analyze/SKILL.md`, and
+  `.cursor/skills/component-coverage-analyze/SKILL.md` byte-for-byte
+  identical; the `.agents/skills/` copy is canonical.

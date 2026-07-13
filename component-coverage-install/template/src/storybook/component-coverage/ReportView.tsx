@@ -53,31 +53,26 @@ const reviewDecisionCopy = {
 } as const satisfies Record<CoverageReviewDecision, string>;
 
 const copiedResetDelayMs = 2000;
+const analysisGuidanceCopy = {
+  copyLabel: "複製分析提示詞",
+  pending: "下一步：複製分析提示詞，貼到 Cursor、Claude Code 或 Codex 執行。",
+  reportMissing:
+    "已分析但找不到報告檔，請將分析提示詞重新貼到 Cursor、Claude Code 或 Codex 執行。",
+} as const;
 
-export function analyzeCommandFor(requestId: string) {
-  return `/component-coverage-analyze ${requestId}`;
-}
+export function buildAnalysisPrompt(requestId: string) {
+  const requestPath =
+    `outputs/component-coverage/requests/${requestId}/request.json`;
+  const reportPath = `outputs/component-coverage/reports/${requestId}.json`;
 
-/**
- * Self-contained analysis prompt, portable to any AI coding agent (Claude
- * Code, Cursor, Codex…). It points at the agent-neutral instruction file and
- * the request / catalog / report locations, so an agent with repo file access
- * can run the analysis without this project's slash-command wiring.
- */
-export function analyzePromptFor(requestId: string) {
   return [
-    `分析 Component Coverage 請求 ${requestId}。`,
+    `請使用專案的 component-coverage-analyze skill 分析 Component Coverage 請求「${requestId}」。`,
     "",
-    "## 指示",
-    "請讀取並完整遵循 `.claude/skills/component-coverage-analyze/SKILL.md`（分析流程的單一事實來源；任何具備檔案存取能力的 agent 皆可讀取此檔）。",
-    "",
-    "## 位置",
-    `- 待分析請求：outputs/component-coverage/requests/${requestId}/（request.json 含 PRD 文字與圖片清單，圖片檔在同目錄，請一併讀取）`,
-    "- 比對元件庫：src/storybook/componentCatalog.ts，以及各 entry componentPath 下的元件原始碼與 stories",
-    `- 產出報告：outputs/component-coverage/reports/${requestId}.json（契約定義於 src/storybook/component-coverage/coverageTypes.ts）`,
-    "",
-    "## 完成後",
-    "執行 `node scripts/check-component-coverage-reports.mjs`（或專案對應的 npm alias）確認報告契約通過，並將該請求 request.json 的 status 由 pending 改為 analyzed。",
+    "完成條件：",
+    `1. 讀取 ${requestPath} 與其中列出的圖片。`,
+    `2. 依 src/storybook/component-coverage/coverageTypes.ts 契約產生 ${reportPath}。`,
+    `3. 將 ${requestPath} 的 status 更新為 analyzed。`,
+    "4. 執行 npm run check:coverage-reports，確認驗證通過後回報結果。",
   ].join("\n");
 }
 
@@ -1146,12 +1141,8 @@ function AnalyzeGuidance({
     <div className="cm-coverage__guidance">
       <span className="cm-coverage__guidance-text">{text}</span>
       <CopyTextButton
-        label="複製指令（Claude Code）"
-        text={analyzeCommandFor(requestId)}
-      />
-      <CopyTextButton
-        label="複製完整提示詞（任何 agent）"
-        text={analyzePromptFor(requestId)}
+        label={analysisGuidanceCopy.copyLabel}
+        text={buildAnalysisPrompt(requestId)}
       />
       {note ? <span className="cm-coverage__guidance-note">{note}</span> : null}
     </div>
@@ -1238,13 +1229,13 @@ function PipelineRowView({
           <AnalyzeGuidance
             note="分析完成後清單會自動更新。"
             requestId={request?.id ?? ""}
-            text="下一步：複製指令交給 AI coding agent 執行分析。"
+            text={analysisGuidanceCopy.pending}
           />
         ) : null}
         {stage === "report-missing" ? (
           <AnalyzeGuidance
             requestId={request?.id ?? ""}
-            text="已分析但找不到報告檔，請重新執行分析指令。"
+            text={analysisGuidanceCopy.reportMissing}
           />
         ) : null}
       </div>

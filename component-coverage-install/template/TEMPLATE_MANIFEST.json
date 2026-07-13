@@ -1,6 +1,6 @@
 {
   "name": "component-coverage-tool",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Storybook Component Coverage Analyzer — template manifest. The installer copies this file to outputs/component-coverage/TEMPLATE_MANIFEST.json in the target project so update runs can compare versions.",
   "files": {
     "verbatim": [
@@ -14,6 +14,7 @@
       "scripts/component-coverage/vite-plugin.d.mts",
       "scripts/check-component-coverage-reports.mjs",
       "scripts/check-component-catalog.mjs",
+      "scripts/check-component-coverage-agent-skills.mjs",
       "skills/component-coverage-analyze/SKILL.md",
       "skills/component-coverage-implement/SKILL.md"
     ],
@@ -23,6 +24,16 @@
     ],
     "generated": [
       "src/storybook/componentCatalog.template.ts"
+    ]
+  },
+  "installTargets": {
+    "skills/component-coverage-analyze/SKILL.md": [
+      ".agents/skills/component-coverage-analyze/SKILL.md",
+      ".claude/skills/component-coverage-analyze/SKILL.md",
+      ".cursor/skills/component-coverage-analyze/SKILL.md"
+    ],
+    "skills/component-coverage-implement/SKILL.md": [
+      ".claude/skills/component-coverage-implement/SKILL.md"
     ]
   },
   "pathContracts": {
