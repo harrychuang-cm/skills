@@ -1,11 +1,14 @@
-import { Component, type CSSProperties, type ReactNode } from "react";
-
 import {
-  getCompositionPreviewRenderer,
-  type CompositionPreviewRenderer,
-} from "./compositionPreviewRegistry";
+  Component,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
+
+import { getCompositionPreviewRenderer } from "./compositionPreviewRegistry";
 import {
   resolveCompositionSlot,
+  type CompositionPreviewOverride,
   type CompositionSlotResolution,
 } from "./compositionPreviewModel";
 import {
@@ -18,11 +21,35 @@ import {
 } from "./coverageTypes";
 
 export type CompositionPreviewProps = {
+  activeReferenceImage?: CompositionReferenceImage;
   blocks: readonly CoverageBlock[];
+  canvasMode: CompositionCanvasMode;
   composition: CoverageComposition;
+  onCanvasModeChange: (mode: CompositionCanvasMode) => void;
+  onClearSelection: () => void;
+  onReferenceImageError: (name: string) => void;
+  onReferenceImageSelect: (name: string) => void;
   onSelectBlock: (blockId: string) => void;
-  selectedBlockId: string;
+  previewOverride?: CompositionPreviewOverride;
+  referenceImages: readonly CompositionReferenceImage[];
+  selectedBlockId?: string;
+  storyIndex: ReadonlyMap<string, string>;
 };
+
+export type CompositionCanvasMode = "assembled" | "reference";
+
+export type CompositionReferenceImage = {
+  name: string;
+  url: string;
+};
+
+const compositionPreviewCopy = {
+  assembled: "組裝 UI",
+  reference: "UI Reference",
+  referenceSelect: "選擇 UI Reference",
+  referenceUnavailable: "沒有可用的 UI Reference，仍可繼續覆核組裝 UI。",
+  reviewOnly: "審核預覽，不是正式畫面",
+} as const;
 
 type CompositionStyle = CSSProperties & {
   "--cca-composition-columns"?: number;
@@ -58,14 +85,6 @@ class CompositionSlotErrorBoundary extends Component<
   render() {
     return this.state.failed ? this.props.fallback : this.props.children;
   }
-}
-
-function RegisteredCompositionPreview({
-  renderer,
-}: {
-  renderer: CompositionPreviewRenderer;
-}) {
-  return <>{renderer()}</>;
 }
 
 function storyDocsPath(storyTitle: string) {
@@ -105,15 +124,29 @@ function PreviewUnavailable({
 
 function ComponentSlotBody({
   resolution,
+  storyIndex,
 }: {
   resolution: Extract<CompositionSlotResolution, { kind: "component" }>;
+  storyIndex: ReadonlyMap<string, string>;
 }) {
   const renderComponent = getCompositionPreviewRenderer(resolution.componentId);
 
   if (!renderComponent) {
+    const storyId = storyIndex.get(resolution.storyTitle);
+
+    if (storyId) {
+      return (
+        <StorybookFallback
+          componentName={resolution.componentName}
+          storyId={storyId}
+          storyTitle={resolution.storyTitle}
+        />
+      );
+    }
+
     return (
       <PreviewUnavailable
-        copy={`「${resolution.componentName}」尚未註冊可信任的組裝預覽 renderer；其他區塊仍可繼續審核。`}
+        copy={`「${resolution.componentName}」尚未註冊可信任的組裝預覽 renderer，且 Storybook index 沒有對應 story；其他區塊仍可繼續審核。`}
         storyTitle={resolution.storyTitle}
       />
     );
@@ -137,9 +170,53 @@ function ComponentSlotBody({
         data-preview-component={resolution.componentId}
         inert
       >
-        <RegisteredCompositionPreview renderer={renderComponent} />
+        {renderComponent()}
       </div>
     </CompositionSlotErrorBoundary>
+  );
+}
+
+function StorybookFallback({
+  componentName,
+  storyId,
+  storyTitle,
+}: {
+  componentName: string;
+  storyId: string;
+  storyTitle: string;
+}) {
+  const [failed, setFailed] = useState(false);
+
+  if (failed) {
+    return (
+      <PreviewUnavailable
+        copy={`「${componentName}」的 Story 預覽載入失敗；其他區塊仍可繼續審核。`}
+        storyTitle={storyTitle}
+      />
+    );
+  }
+
+  return (
+    <div
+      className="cm-coverage__composition-story-fallback"
+      data-story-id={storyId}
+    >
+      <span className="cm-coverage__composition-story-label">Story 預覽</span>
+      <div
+        aria-hidden="true"
+        className="cm-coverage__composition-story-frame"
+        inert
+      >
+        <iframe
+          aria-hidden="true"
+          className="cm-coverage__composition-story-iframe"
+          onError={() => setFailed(true)}
+          src={`iframe.html?id=${encodeURIComponent(storyId)}&viewMode=story`}
+          tabIndex={-1}
+          title={`${componentName} Story 預覽`}
+        />
+      </div>
+    </div>
   );
 }
 
@@ -179,13 +256,17 @@ function CompositionBlockSlot({
   node,
   onSelectBlock,
   selected,
+  storyIndex,
+  previewOverride,
 }: {
   block: CoverageBlock;
   node: CoverageCompositionBlock;
   onSelectBlock: (blockId: string) => void;
   selected: boolean;
+  storyIndex: ReadonlyMap<string, string>;
+  previewOverride?: CompositionPreviewOverride;
 }) {
-  const resolution = resolveCompositionSlot(block, node);
+  const resolution = resolveCompositionSlot(block, node, previewOverride);
   const coverage = classifyCoverageBlock(block);
   const style: CompositionStyle | undefined = node.span
     ? { "--cca-composition-span": node.span }
@@ -193,7 +274,7 @@ function CompositionBlockSlot({
   let body: ReactNode;
 
   if (resolution.kind === "component") {
-    body = <ComponentSlotBody resolution={resolution} />;
+    body = <ComponentSlotBody resolution={resolution} storyIndex={storyIndex} />;
   } else if (resolution.kind === "placeholder") {
     body = <PlaceholderSlotBody resolution={resolution} />;
   } else {
@@ -234,11 +315,15 @@ function CompositionGroupView({
   group,
   onSelectBlock,
   selectedBlockId,
+  storyIndex,
+  previewOverride,
 }: {
   blockById: ReadonlyMap<string, CoverageBlock>;
   group: CoverageCompositionGroup;
   onSelectBlock: (blockId: string) => void;
-  selectedBlockId: string;
+  selectedBlockId?: string;
+  storyIndex: ReadonlyMap<string, string>;
+  previewOverride?: CompositionPreviewOverride;
 }) {
   const style: CompositionStyle | undefined = group.columns
     ? { "--cca-composition-columns": group.columns }
@@ -253,6 +338,8 @@ function CompositionGroupView({
           key={node.id}
           onSelectBlock={onSelectBlock}
           selectedBlockId={selectedBlockId}
+          storyIndex={storyIndex}
+          previewOverride={previewOverride}
         />
       );
     }
@@ -270,6 +357,8 @@ function CompositionGroupView({
         node={node}
         onSelectBlock={onSelectBlock}
         selected={selectedBlockId === block.id}
+        storyIndex={storyIndex}
+        previewOverride={previewOverride}
       />
     );
   };
@@ -289,18 +378,40 @@ function CompositionGroupView({
 }
 
 export function CompositionPreview({
+  activeReferenceImage,
   blocks,
+  canvasMode,
   composition,
+  onCanvasModeChange,
+  onClearSelection,
+  onReferenceImageError,
+  onReferenceImageSelect,
   onSelectBlock,
+  referenceImages,
   selectedBlockId,
+  storyIndex,
+  previewOverride,
 }: CompositionPreviewProps) {
   const blockById = new Map(blocks.map((block) => [block.id, block]));
+  const referenceAvailable = referenceImages.length > 0;
+  const showReference =
+    canvasMode === "reference" && activeReferenceImage !== undefined;
 
   return (
     <div
       aria-label={`${composition.label}，審核預覽，不是正式畫面`}
       className="cm-coverage__composition-canvas"
       data-viewport={composition.viewport}
+      onKeyDown={(event) => {
+        if (
+          event.key === "Escape" &&
+          canvasMode === "assembled" &&
+          selectedBlockId !== undefined
+        ) {
+          event.preventDefault();
+          onClearSelection();
+        }
+      }}
       role="region"
     >
       <header className="cm-coverage__composition-canvas-header">
@@ -308,17 +419,96 @@ export function CompositionPreview({
           {composition.label}
         </span>
         <span className="cm-coverage__composition-review-only">
-          審核預覽，不是正式畫面
+          {compositionPreviewCopy.reviewOnly}
         </span>
       </header>
-      <div className="cm-coverage__composition-screen">
-        <CompositionGroupView
-          blockById={blockById}
-          group={composition.root}
-          onSelectBlock={onSelectBlock}
-          selectedBlockId={selectedBlockId}
-        />
+      <div className="cm-coverage__composition-canvas-toolbar">
+        <div
+          aria-label="預覽畫布"
+          className="cm-coverage__composition-canvas-modes"
+          role="group"
+        >
+          <button
+            aria-pressed={canvasMode === "assembled"}
+            className="cm-coverage__composition-canvas-mode"
+            onClick={() => onCanvasModeChange("assembled")}
+            type="button"
+          >
+            {compositionPreviewCopy.assembled}
+          </button>
+          <button
+            aria-pressed={canvasMode === "reference"}
+            className="cm-coverage__composition-canvas-mode"
+            disabled={!referenceAvailable}
+            onClick={() => onCanvasModeChange("reference")}
+            type="button"
+          >
+            {compositionPreviewCopy.reference}
+          </button>
+        </div>
+        {showReference && referenceImages.length > 1 ? (
+          <label className="cm-coverage__composition-reference-select-label">
+            <span>{compositionPreviewCopy.referenceSelect}</span>
+            <select
+              className="cm-coverage__composition-reference-select"
+              onChange={(event) => onReferenceImageSelect(event.target.value)}
+              value={activeReferenceImage.name}
+            >
+              {referenceImages.map((image) => (
+                <option key={image.name} value={image.name}>
+                  {image.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
       </div>
+      {!referenceAvailable ? (
+        <span
+          className="cm-coverage__composition-reference-unavailable"
+          role="status"
+        >
+          {compositionPreviewCopy.referenceUnavailable}
+        </span>
+      ) : null}
+      {showReference ? (
+        <figure className="cm-coverage__composition-reference">
+          <img
+            alt={`${composition.label} UI Reference ${activeReferenceImage.name}`}
+            className="cm-coverage__composition-reference-image"
+            onError={() => onReferenceImageError(activeReferenceImage.name)}
+            src={activeReferenceImage.url}
+          />
+          <figcaption className="cm-coverage__composition-reference-caption">
+            {activeReferenceImage.name}
+          </figcaption>
+        </figure>
+      ) : (
+        <div
+          className="cm-coverage__composition-screen"
+          onClick={(event) => {
+            const target = event.target;
+
+            if (
+              target instanceof Element &&
+              target.closest(".cm-coverage__composition-slot")
+            ) {
+              return;
+            }
+
+            onClearSelection();
+          }}
+        >
+          <CompositionGroupView
+            blockById={blockById}
+            group={composition.root}
+            onSelectBlock={onSelectBlock}
+            selectedBlockId={selectedBlockId}
+            storyIndex={storyIndex}
+            previewOverride={previewOverride}
+          />
+        </div>
+      )}
     </div>
   );
 }

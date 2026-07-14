@@ -94,7 +94,7 @@ tool names.
    draft）and per-block `review` objects
    （`{ decision, note?, overrideComponentId?, reviewedAt }`，decision 依區塊分類：
    missing → `build-new`｜`use-existing`｜`skip`；extend → `extend`｜`no-extend`｜
-   `skip`；reusable → `approve`）. These are written by developers through the
+   `skip`；reusable → `approve`｜`use-existing`）. These are written by developers through the
    Storybook tool and its dev middleware — analysis never emits them, and
    rewriting a report file resets any review state it carried (re-analyzing an
    already-analyzed request is outside this skill's contract). Shapes mirror

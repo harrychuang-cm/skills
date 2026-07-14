@@ -51,7 +51,7 @@ Path contracts, skill source-to-target mappings, and expected skill hashes live 
    - `src/storybook/component-coverage/` — all 10 files
    - `src/stories/tools/ComponentCoverageAnalyzer.stories.tsx`
    - `scripts/component-coverage/vite-plugin.mjs` + `vite-plugin.d.mts`
-   - `scripts/check-component-coverage-reports.mjs`, `scripts/check-component-catalog.mjs`, `scripts/check-component-coverage-agent-skills.mjs`
+   - `scripts/check-component-coverage-reports.mjs`, `scripts/check-component-catalog.mjs`, `scripts/check-component-coverage-agent-skills.mjs`, `scripts/check-component-coverage-preview-contract.mjs`
    - `template/skills/component-coverage-analyze/` → each target declared by `installTargets`: shared `.agents/skills/` plus the `.claude/skills/` mirror
    - `template/skills/component-coverage-implement/` → the same shared `.agents/skills/` plus `.claude/skills/` mirror pattern
    - `TEMPLATE_MANIFEST.json` → `outputs/component-coverage/TEMPLATE_MANIFEST.json`
@@ -89,19 +89,20 @@ Path contracts, skill source-to-target mappings, and expected skill hashes live 
 
 6. **Wire validation scripts**:
 
-   - Add the required aliases `"check:coverage-reports": "node scripts/check-component-coverage-reports.mjs"` and `"check:coverage-agent-skills": "node scripts/check-component-coverage-agent-skills.mjs"`. Agent handoff prompts call the underlying Node scripts directly, so they remain package-manager-neutral; the aliases keep the checks discoverable to developers and aggregate scripts.
+   - Add the required aliases `"check:coverage-reports": "node scripts/check-component-coverage-reports.mjs"`, `"check:coverage-agent-skills": "node scripts/check-component-coverage-agent-skills.mjs"`, and `"check:coverage-preview": "node scripts/check-component-coverage-preview-contract.mjs"`. Agent handoff prompts call the underlying Node scripts directly, so they remain package-manager-neutral; the aliases keep the checks discoverable to developers and aggregate scripts.
    - Optional alias (ask or follow project convention): `"check:component-catalog": "node scripts/check-component-catalog.mjs"`.
-   - Hook both required aliases into an existing aggregate `check` script. When the optional alias is added, hook it into the same aggregate script as well.
+   - Hook all three required aliases into an existing aggregate `check` script. When the optional alias is added, hook it into the same aggregate script as well.
 
 ## Verify (all must pass before reporting success)
 
 1. `node scripts/check-component-catalog.mjs` passes.
 2. `node scripts/check-component-coverage-reports.mjs` passes.
 3. `node scripts/check-component-coverage-agent-skills.mjs` passes, confirming both analyze and implement skills match their manifest SHA-256 hashes across the shared `.agents` copy and Claude Code mirror.
-4. The project's typecheck (or `tsc --noEmit`) passes with the new files.
-5. Storybook dev starts; `GET http://localhost:<port>/__component-coverage/state` returns JSON (`{"requests":[],"reports":[]}` on a fresh install).
-6. The `Tools/Component Coverage Analyzer` page renders with the intake form (submit stays disabled until an image or PRD text is provided), and the Storybook index contains no redundant `Review Preview` story.
-7. A production build (`storybook build`) succeeds — confirms the static-mode fallback bundle.
+4. `node scripts/check-component-coverage-preview-contract.mjs` passes, confirming the installed preview, Inspector, selection clearing, report disclosure, and new-window documentation affordances remain intact after adaptation.
+5. The project's typecheck (or `tsc --noEmit`) passes with the new files.
+6. Storybook dev starts; `GET http://localhost:<port>/__component-coverage/state` returns JSON (`{"requests":[],"reports":[]}` on a fresh install).
+7. The `Tools/Component Coverage Analyzer` page renders with the intake form (submit stays disabled until an image or PRD text is provided), and the Storybook index contains no redundant `Review Preview` story.
+8. A production build (`storybook build`) succeeds — confirms the static-mode fallback bundle.
 
 Report to the user: files installed, catalog entry count, adaptations made, and how to use the workflow (submit in the tool → copy the analysis prompt to Cursor, Claude Code, or Codex → review in the tool → copy the implementation prompt to the same agent). Both handoffs use agent-neutral prompts with a `.agents/skills/` fallback path, and both project skills are mirrored byte-for-byte for Claude Code.
 
@@ -110,10 +111,10 @@ Report to the user: files installed, catalog entry count, adaptations made, and 
 When `outputs/component-coverage/TEMPLATE_MANIFEST.json` exists in the target:
 
 1. Compare its `version` with the template's. Same version → nothing to do unless the user asks for a reinstall.
-2. Before overwriting the old manifest, compare its `installTargets` with the new manifest. For every retired managed target, compare it with the old first target for the same source; delete it only when byte-identical, otherwise show the local diff and ask before removal. The `0.3.x` → `0.4.x` migration retires `.cursor/skills/component-coverage-analyze/SKILL.md` because Cursor now uses the shared `.agents/skills/` copy. The `0.4.x` → `0.5.x` migration adds the optional composition contract and the adaptable trusted renderer registry; initialize that registry from the target's current catalog rather than copying fixtures from another project.
+2. Before overwriting the old manifest, compare its `installTargets` with the new manifest. For every retired managed target, compare it with the old first target for the same source; delete it only when byte-identical, otherwise show the local diff and ask before removal. The `0.3.x` → `0.4.x` migration retires `.cursor/skills/component-coverage-analyze/SKILL.md` because Cursor now uses the shared `.agents/skills/` copy. The `0.4.x` → `0.5.x` migration adds the optional composition contract and the adaptable trusted renderer registry; initialize that registry from the target's current catalog rather than copying fixtures from another project. The `0.5.x` → `0.6.x` migration extends the reusable review decision set to `approve`｜`use-existing` (developer overrides of the analyzer's exact-match pick, carried by `overrideComponentId`) and adds presentation-only 首選／候選 rank chips on multi-candidate match cards; no data migration is needed because existing reports remain contract-valid. The same release restyles the adaptable CSS baseline to a tiered action hierarchy (filled/tonal/ghost, outlines reserved for form fields), a 16/12/8/6px radius scale with surface-layered depth (--cca-surface-3), and uniform hover/focus-visible/disabled states; when updating, re-apply the target's accent token, preview background token, and theme selector bindings on top of the new baseline. The `0.6.x` → `0.7.x` migration adds the UI Reference switch, multi-image reference fallback, optional canvas selection with blank-canvas/Escape clearing, Inspector metadata plus a new-window Docs link, immediate draft override preview, and a visibly connected expanded report row with an open-state label and disclosure control. Preserve the target's trusted renderer registry and CSS install bindings, copy the new preview contract checker, and add its required package alias; no report data migration is required.
 3. Diff each `files.verbatim` entry between template and its direct target. Entries that are keys in `installTargets` have no direct `skills/…` target: compare that template source with every declared target path and overwrite those mapped targets only. If a target copy was locally modified, show the user the diff being discarded and get confirmation first.
 4. Process every `files.adaptable` entry as an update baseline too. If an adaptable target does not exist yet, copy its template scaffold first (this is required for newly introduced files such as `compositionPreviewRegistry.tsx`). If it exists, preserve or merge only the bindings allowed under *Permitted adaptations*; do not blindly overwrite project-owned adaptations. Then re-apply the project's trusted preview renderers, accent token, preview background token, theme selector, and story import.
-5. Ensure both required validation aliases from the install flow exist; older installations may not have them.
+5. Ensure all three required validation aliases from the install flow exist; older installations may not have the preview contract alias.
 6. NEVER touch `src/storybook/componentCatalog.ts` (project-owned), `outputs/component-coverage/requests/`, or existing reports.
 7. Copy the new manifest over, run the agent-skill checker to confirm every installed skill target matches the new hashes, re-run the full *Verify* list, and summarize what changed.
 

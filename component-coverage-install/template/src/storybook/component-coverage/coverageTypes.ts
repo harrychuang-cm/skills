@@ -76,13 +76,14 @@ export type CoverageReviewStatus = (typeof coverageReviewStatuses)[number];
 /**
  * Allowed review decisions are scoped by the block's coverage classification
  * (see classifyCoverageBlock): reviewing a missing block answers "build it or
- * not", an extend block answers "extend it or not", a reusable block only
- * carries an optional approval.
+ * not", an extend block answers "extend it or not", a reusable block carries
+ * an optional approval or a component override (`use-existing`) when the
+ * analyzer's matched pick is wrong.
  */
 export const coverageReviewDecisionsBySection = {
   missing: ["build-new", "use-existing", "skip"],
   extend: ["extend", "no-extend", "skip"],
-  reusable: ["approve"],
+  reusable: ["approve", "use-existing"],
 } as const;
 
 export type CoverageReviewDecision =

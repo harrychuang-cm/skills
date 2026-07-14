@@ -34,9 +34,10 @@ tool names.
    | Block state | Work item |
    | ----------- | --------- |
    | `review.decision: "skip"` | Excluded — no work, do not compose this block |
-   | `review.decision: "use-existing"` | Compose with the component named by `review.overrideComponentId`; no new component or variant |
+   | `review.decision: "use-existing"` on a missing block | Compose with the component named by `review.overrideComponentId`; no new component or variant |
+   | `review.decision: "use-existing"` on a reusable block | Compose with the component named by `review.overrideComponentId` instead of the analyzer's matched `exact` component — the developer override replaces the analyzer's pick |
    | `review.decision: "no-extend"` | Compose with the block's matched component as-is; no variant work |
-   | classified reusable (with or without `approve` review) | Compose with the matched `exact` component |
+   | classified reusable without an override (no review or `approve` review) | Compose with the matched `exact` component |
    | `review.decision: "extend"` | Add the required variant to the matched component: extend props/CSS per the block's `gap` suggestion and `reason`, and update its stories (and component doc, if the project keeps them) |
    | `review.decision: "build-new"` | Create the new component `gap.suggestedName`: component source + styles + stories, register it in `src/storybook/componentCatalog.ts` (with explicit `storyTitle` and `componentPath`), and add its component doc if the project keeps them |
 

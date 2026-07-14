@@ -7,14 +7,44 @@ import {
   type CoverageBlock,
   type CoverageCompositionBlock,
   type CoverageCompositionNode,
-  type CoverageReport,
   type CoverageReviewDecision,
 } from "./coverageTypes";
 
 export type CompositionSlotState =
   | CoverageReviewDecision
+  | "draft-override"
   | "pending"
   | "reusable";
+
+export type CompositionPreviewOverride = {
+  blockId: string;
+  componentId: string;
+};
+
+export type CompositionPreviewOverrideEvent =
+  | {
+      type: "draft-change";
+      blockId: string;
+      componentId?: string;
+    }
+  | {
+      type: "block-change" | "cancel" | "save-failure" | "save-success";
+    };
+
+export function updateCompositionPreviewOverride(
+  current: CompositionPreviewOverride | undefined,
+  event: CompositionPreviewOverrideEvent,
+): CompositionPreviewOverride | undefined {
+  if (event.type === "save-failure") {
+    return current;
+  }
+
+  if (event.type !== "draft-change" || !event.componentId) {
+    return undefined;
+  }
+
+  return { blockId: event.blockId, componentId: event.componentId };
+}
 
 type CompositionSlotBase = {
   badgeLabel: string;
@@ -27,6 +57,7 @@ export type CompositionComponentSlot = CompositionSlotBase & {
   kind: "component";
   componentId: string;
   componentName: string;
+  componentPath: string;
   storyTitle: string;
 };
 
@@ -66,6 +97,10 @@ function slotState(block: CoverageBlock): CompositionSlotState {
 }
 
 function slotBadgeLabel(state: CompositionSlotState) {
+  if (state === "draft-override") {
+    return "試用中";
+  }
+
   if (state === "pending") {
     return "待覆核";
   }
@@ -103,6 +138,7 @@ function componentSlotFromCatalog(
     kind: "component",
     componentId: entry.id,
     componentName: entry.name,
+    componentPath: entry.componentPath,
     storyTitle: entry.storyTitle,
   };
 }
@@ -143,9 +179,21 @@ function gapPlaceholder(
 export function resolveCompositionSlot(
   block: CoverageBlock,
   node: CoverageCompositionBlock,
+  previewOverride?: CompositionPreviewOverride,
 ): CompositionSlotResolution {
   const state = slotState(block);
   const decision = block.review?.decision;
+
+  if (
+    previewOverride?.blockId === block.id &&
+    previewOverride.componentId.length > 0
+  ) {
+    return componentSlotFromCatalog(
+      block.id,
+      previewOverride.componentId,
+      "draft-override",
+    );
+  }
 
   if (decision === "use-existing") {
     if (!block.review?.overrideComponentId) {
@@ -188,11 +236,31 @@ export function resolveCompositionSlot(
     blockId: block.id,
     componentId: match.componentId,
     componentName: entry?.name ?? match.componentId,
+    componentPath: entry?.componentPath ?? match.componentPath,
     kind: "component",
     skipped: state === "skip",
     state,
     storyTitle: match.storyTitle,
   };
+}
+
+export function findCompositionBlockNode(
+  node: CoverageCompositionNode,
+  blockId: string,
+): CoverageCompositionBlock | undefined {
+  if (node.kind === "block") {
+    return node.blockId === blockId ? node : undefined;
+  }
+
+  for (const child of node.children) {
+    const match = findCompositionBlockNode(child, blockId);
+
+    if (match) {
+      return match;
+    }
+  }
+
+  return undefined;
 }
 
 export function collectCompositionBlockIds(
@@ -203,24 +271,4 @@ export function collectCompositionBlockIds(
   }
 
   return node.children.flatMap(collectCompositionBlockIds);
-}
-
-export function getInitialCompositionBlockId(report: CoverageReport): string {
-  if (!report.composition) {
-    return "";
-  }
-
-  const orderedIds = collectCompositionBlockIds(report.composition.root);
-  const blockById = new Map(report.blocks.map((block) => [block.id, block]));
-  const firstUnreviewedDecision = orderedIds.find((blockId) => {
-    const block = blockById.get(blockId);
-
-    return (
-      block !== undefined &&
-      classifyCoverageBlock(block) !== "reusable" &&
-      !block.review?.decision
-    );
-  });
-
-  return firstUnreviewedDecision ?? orderedIds[0] ?? "";
 }

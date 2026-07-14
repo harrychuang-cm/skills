@@ -20,7 +20,7 @@ const reviewStatuses = new Set(["draft", "confirmed"]);
 const reviewDecisionsBySection = {
   missing: new Set(["build-new", "use-existing", "skip"]),
   extend: new Set(["extend", "no-extend", "skip"]),
-  reusable: new Set(["approve"]),
+  reusable: new Set(["approve", "use-existing"]),
 };
 const compositionViewports = new Set(["mobile", "desktop"]);
 const compositionLayouts = new Set(["stack", "row", "grid"]);

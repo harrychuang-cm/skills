@@ -15,10 +15,17 @@ import {
   componentCoverageStaticBase,
   type CoverageReviewSubmitPayload,
 } from "./coverageApi";
-import { CompositionPreview } from "./CompositionPreview";
+import {
+  CompositionPreview,
+  type CompositionCanvasMode,
+  type CompositionReferenceImage,
+} from "./CompositionPreview";
 import {
   collectCompositionBlockIds,
-  getInitialCompositionBlockId,
+  findCompositionBlockNode,
+  resolveCompositionSlot,
+  updateCompositionPreviewOverride,
+  type CompositionPreviewOverride,
 } from "./compositionPreviewModel";
 import {
   canConfirmCoverageReview,
@@ -39,7 +46,7 @@ import {
 const sectionOrder = ["reusable", "extend", "missing"] as const;
 
 const sectionCopy = {
-  reusable: { heading: "可直接使用", hint: "無需決策" },
+  reusable: { heading: "可直接使用", hint: "覆核選填：確認可用／改用現有" },
   extend: { heading: "需擴充 variant", hint: "請決定：擴充／不擴充／不實作" },
   missing: { heading: "缺少需新建", hint: "請決定：新建／改用現有／不實作" },
 } as const satisfies Record<CoverageSection, { heading: string; hint: string }>;
@@ -54,6 +61,36 @@ const provenanceCopy = {
   extracted: "Figma 擷取",
   "implementation-derived": "實作推導",
 } as const satisfies Record<CoverageMatch["provenance"], string>;
+
+type MatchRank = "primary" | "candidate";
+
+const matchRankCopy = {
+  primary: "首選",
+  candidate: "候選",
+} as const satisfies Record<MatchRank, string>;
+
+const matchFitRank = {
+  exact: 0,
+  "variant-needed": 1,
+  partial: 2,
+} as const satisfies Record<CoverageMatch["fit"], number>;
+
+/**
+ * Presentation-only ranking for blocks carrying two or more matches: the
+ * best-fit match (ties resolved by array order) is the analyzer's primary
+ * pick, the rest are candidates. Single-match blocks show no marker.
+ */
+function findPrimaryMatchIndex(matches: readonly CoverageMatch[]): number {
+  let best = 0;
+
+  for (let index = 1; index < matches.length; index += 1) {
+    if (matchFitRank[matches[index].fit] < matchFitRank[matches[best].fit]) {
+      best = index;
+    }
+  }
+
+  return best;
+}
 
 const reviewDecisionCopy = {
   approve: "確認可用",
@@ -164,6 +201,10 @@ function isReportConfirmed(report: CoverageReport) {
   return (report.reviewStatus ?? "draft") === "confirmed";
 }
 
+function reportDetailDomId(fileName: string) {
+  return `coverage-report-${fileName.replace(/[^a-z0-9]+/gi, "-")}-detail`;
+}
+
 /** Portable implementation handoff shared by Cursor, Claude Code, and Codex. */
 function buildImplementationPrompt(requestId: string): string {
   const reportPath = `outputs/component-coverage/reports/${requestId}.json`;
@@ -257,6 +298,36 @@ function openStoryDocs(storyTitle: string) {
   }
 
   window.location.href = search;
+}
+
+function storyDocsManagerUrl(storyTitle: string) {
+  const search = `?path=${storyDocsPath(storyTitle)}`;
+
+  if (typeof window === "undefined") {
+    return search;
+  }
+
+  let managerHref = window.location.href;
+
+  try {
+    if (window.top && window.top !== window) {
+      managerHref = window.top.location.href;
+    }
+  } catch {
+    // Cross-origin manager — use this frame's URL and strip iframe.html below.
+  }
+
+  try {
+    const url = new URL(managerHref);
+
+    url.hash = "";
+    url.search = "";
+    url.pathname = url.pathname.replace(/\/iframe\.html$/, "/");
+    url.searchParams.set("path", storyDocsPath(storyTitle));
+    return url.toString();
+  } catch {
+    return search;
+  }
 }
 
 function matchDisplayName(match: CoverageMatch) {
@@ -358,10 +429,12 @@ function MatchCard({
   match,
   preview,
   previewKey,
+  rank,
 }: {
   match: CoverageMatch;
   preview: PreviewControl;
   previewKey: string;
+  rank?: MatchRank;
 }) {
   const storyId = preview.storyIndex.get(match.storyTitle);
   const expanded = preview.expandedPreview === previewKey;
@@ -370,6 +443,11 @@ function MatchCard({
     <div className="cm-coverage__match">
       <div className="cm-coverage__match-header">
         <span className="cm-coverage__match-name">{matchDisplayName(match)}</span>
+        {rank ? (
+          <span className={`cm-coverage__chip cm-coverage__chip--rank-${rank}`}>
+            {matchRankCopy[rank]}
+          </span>
+        ) : null}
         <span className={`cm-coverage__chip cm-coverage__chip--fit-${match.fit}`}>
           {fitCopy[match.fit]}
         </span>
@@ -431,11 +509,17 @@ function MatchCard({
 export function BlockReviewPanel({
   block,
   editable,
+  onCancel,
+  onDraftOverrideChange,
   onSave,
+  onSaveSuccess,
 }: {
   block: CoverageBlock;
   editable: boolean;
+  onCancel?: () => void;
+  onDraftOverrideChange?: (componentId?: string) => void;
   onSave: (blockId: string, review: CoverageBlockReview) => Promise<void>;
+  onSaveSuccess?: () => void;
 }) {
   const allowedDecisions = getAllowedReviewDecisions(block);
   const review = block.review;
@@ -455,6 +539,20 @@ export function BlockReviewPanel({
   const showForm = editable && (editing || !review);
   const canSave =
     decision !== "" && (decision !== "use-existing" || overrideId !== "");
+  const updateDraftOverride = (
+    nextDecision: CoverageReviewDecision | "",
+    nextOverrideId: string,
+  ) => {
+    const isSavedOverride =
+      review?.decision === "use-existing" &&
+      review.overrideComponentId === nextOverrideId;
+
+    onDraftOverrideChange?.(
+      nextDecision === "use-existing" && nextOverrideId && !isSavedOverride
+        ? nextOverrideId
+        : undefined,
+    );
+  };
 
   const handleSave = async () => {
     if (decision === "" || (decision === "use-existing" && overrideId === "")) {
@@ -472,6 +570,7 @@ export function BlockReviewPanel({
         reviewedAt: new Date().toISOString(),
       });
       setEditing(false);
+      onSaveSuccess?.();
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : String(saveError));
     } finally {
@@ -523,7 +622,10 @@ export function BlockReviewPanel({
                   decision === option ? " cm-coverage__review-option--active" : ""
                 }`}
                 key={option}
-                onClick={() => setDecision(option)}
+                onClick={() => {
+                  setDecision(option);
+                  updateDraftOverride(option, overrideId);
+                }}
                 type="button"
               >
                 {reviewDecisionCopy[option]}
@@ -534,7 +636,11 @@ export function BlockReviewPanel({
             <select
               aria-label="選擇現有元件"
               className="cm-coverage__review-select"
-              onChange={(event) => setOverrideId(event.target.value)}
+              onChange={(event) => {
+                const nextOverrideId = event.target.value;
+                setOverrideId(nextOverrideId);
+                updateDraftOverride(decision, nextOverrideId);
+              }}
               value={overrideId}
             >
               <option value="">選擇現有元件…</option>
@@ -563,14 +669,15 @@ export function BlockReviewPanel({
             >
               {saving ? "儲存中…" : "儲存覆核"}
             </button>
-            {review ? (
+            {review || (decision === "use-existing" && overrideId !== "") ? (
               <button
                 className="cm-coverage__review-cancel"
                 onClick={() => {
                   setEditing(false);
-                  setDecision(review.decision);
-                  setNote(review.note ?? "");
-                  setOverrideId(review.overrideComponentId ?? "");
+                  setDecision(review?.decision ?? "");
+                  setNote(review?.note ?? "");
+                  setOverrideId(review?.overrideComponentId ?? "");
+                  onCancel?.();
                 }}
                 type="button"
               >
@@ -578,6 +685,17 @@ export function BlockReviewPanel({
               </button>
             ) : null}
           </div>
+          {onDraftOverrideChange &&
+          decision === "use-existing" &&
+          overrideId !== "" &&
+          !(
+            review?.decision === "use-existing" &&
+            review.overrideComponentId === overrideId
+          ) ? (
+            <span className="cm-coverage__review-draft-hint">
+              正在試用，尚未儲存
+            </span>
+          ) : null}
           {error ? <span className="cm-coverage__review-error">{error}</span> : null}
         </div>
       ) : null}
@@ -703,6 +821,8 @@ function BlockCard({
 }) {
   const needsDecision = classifyCoverageBlock(block) !== "reusable";
   const unreviewed = needsDecision && !block.review?.decision;
+  const primaryMatchIndex =
+    block.matches.length >= 2 ? findPrimaryMatchIndex(block.matches) : -1;
 
   return (
     <article className="cm-coverage__block">
@@ -724,12 +844,19 @@ function BlockCard({
           requestId={requestId}
         />
       ) : null}
-      {block.matches.map((match) => (
+      {block.matches.map((match, matchIndex) => (
         <MatchCard
           key={`${block.id}-${match.componentId}`}
           match={match}
           preview={preview}
           previewKey={`${block.id}:${match.componentId}`}
+          rank={
+            primaryMatchIndex === -1
+              ? undefined
+              : matchIndex === primaryMatchIndex
+                ? "primary"
+                : "candidate"
+          }
         />
       ))}
       {block.gap.status !== "none" ? (
@@ -940,9 +1067,20 @@ function ReportDetail({
   const [activeMode, setActiveMode] = useState<"preview" | "analysis">(() =>
     report.composition ? "preview" : "analysis",
   );
-  const [selectedBlockId, setSelectedBlockId] = useState(() =>
-    getInitialCompositionBlockId(report),
+  const [compositionCanvasMode, setCompositionCanvasMode] =
+    useState<CompositionCanvasMode>("assembled");
+  const [failedReferenceImageNames, setFailedReferenceImageNames] = useState<
+    readonly string[]
+  >([]);
+  const [activeReferenceImageName, setActiveReferenceImageName] = useState(
+    request?.images[0] ?? "",
   );
+  const [selectedBlockId, setSelectedBlockId] = useState<string | undefined>(
+    undefined,
+  );
+  const [previewOverride, setPreviewOverride] = useState<
+    CompositionPreviewOverride | undefined
+  >();
   const modeTabRefs = useRef<
     Record<"preview" | "analysis", HTMLButtonElement | null>
   >({ analysis: null, preview: null });
@@ -956,7 +1094,63 @@ function ReportDetail({
   const selectedBlock = report.blocks.find(
     (block) => block.id === selectedBlockId,
   );
+  const selectedCompositionNode =
+    report.composition && selectedBlock
+      ? findCompositionBlockNode(report.composition.root, selectedBlock.id)
+      : undefined;
+  const selectedResolution =
+    selectedBlock && selectedCompositionNode
+      ? resolveCompositionSlot(
+          selectedBlock,
+          selectedCompositionNode,
+          previewOverride,
+        )
+      : undefined;
+  const referenceImages = useMemo<readonly CompositionReferenceImage[]>(
+    () =>
+      request
+        ? request.images
+            .filter((name) => !failedReferenceImageNames.includes(name))
+            .map((name) => ({
+              name,
+              url: `${componentCoverageStaticBase}/requests/${request.id}/${name}`,
+            }))
+        : [],
+    [failedReferenceImageNames, request],
+  );
+  const activeReferenceImage = referenceImages.find(
+    (image) => image.name === activeReferenceImageName,
+  );
   const reviewEditable = isDevMode && !isReportConfirmed(report);
+
+  useEffect(() => {
+    setCompositionCanvasMode("assembled");
+    setFailedReferenceImageNames([]);
+    setActiveReferenceImageName(request?.images[0] ?? "");
+    setSelectedBlockId(undefined);
+    setPreviewOverride(undefined);
+  }, [request?.id]);
+
+  useEffect(() => {
+    if (referenceImages.length === 0) {
+      if (compositionCanvasMode === "reference") {
+        setCompositionCanvasMode("assembled");
+      }
+      if (activeReferenceImageName !== "") {
+        setActiveReferenceImageName("");
+      }
+      return;
+    }
+
+    if (!activeReferenceImage) {
+      setActiveReferenceImageName(referenceImages[0].name);
+    }
+  }, [
+    activeReferenceImage,
+    activeReferenceImageName,
+    compositionCanvasMode,
+    referenceImages,
+  ]);
 
   useEffect(() => {
     if (!report.composition) {
@@ -966,8 +1160,12 @@ function ReportDetail({
       return;
     }
 
-    if (!compositionBlockIds.includes(selectedBlockId)) {
-      setSelectedBlockId(getInitialCompositionBlockId(report));
+    if (
+      selectedBlockId !== undefined &&
+      !compositionBlockIds.includes(selectedBlockId)
+    ) {
+      setSelectedBlockId(undefined);
+      setPreviewOverride(undefined);
     }
   }, [activeMode, compositionBlockIds, report, selectedBlockId]);
 
@@ -990,6 +1188,13 @@ function ReportDetail({
     reviews[blockId] = review;
     await onReviewSubmit(fileName, { reviews, reviewStatus: "draft" });
   };
+  const updatePreviewOverride = (
+    event: Parameters<typeof updateCompositionPreviewOverride>[1],
+  ) => {
+    setPreviewOverride((current) =>
+      updateCompositionPreviewOverride(current, event),
+    );
+  };
   const handleModeTabKeyDown = (
     event: ReactKeyboardEvent<HTMLButtonElement>,
     currentMode: "preview" | "analysis",
@@ -1003,7 +1208,7 @@ function ReportDetail({
     if (event.key === "Home") {
       nextMode = availableModes[0];
     } else if (event.key === "End") {
-      nextMode = availableModes[availableModes.length - 1];
+      nextMode = availableModes.at(-1);
     } else if (event.key === "ArrowRight") {
       nextMode = availableModes[(currentIndex + 1) % availableModes.length];
     } else if (event.key === "ArrowLeft") {
@@ -1103,13 +1308,34 @@ function ReportDetail({
           role="tabpanel"
         >
           <CompositionPreview
+            activeReferenceImage={activeReferenceImage}
             blocks={report.blocks}
+            canvasMode={compositionCanvasMode}
             composition={report.composition}
-            onSelectBlock={setSelectedBlockId}
+            onCanvasModeChange={setCompositionCanvasMode}
+            onClearSelection={() => {
+              updatePreviewOverride({ type: "block-change" });
+              setSelectedBlockId(undefined);
+            }}
+            onReferenceImageError={(name) =>
+              setFailedReferenceImageNames((current) =>
+                current.includes(name) ? current : [...current, name],
+              )
+            }
+            onReferenceImageSelect={setActiveReferenceImageName}
+            onSelectBlock={(blockId) => {
+              if (blockId !== selectedBlockId) {
+                updatePreviewOverride({ type: "block-change" });
+              }
+              setSelectedBlockId(blockId);
+            }}
+            previewOverride={previewOverride}
+            referenceImages={referenceImages}
             selectedBlockId={selectedBlockId}
+            storyIndex={preview.storyIndex}
           />
           <aside
-            aria-label="已選區塊覆核"
+            aria-label={selectedBlock ? "已選區塊覆核" : "未選取區塊"}
             className="cm-coverage__composition-inspector"
           >
             {selectedBlock ? (
@@ -1131,6 +1357,25 @@ function ReportDetail({
                 <p className="cm-coverage__composition-inspector-evidence">
                   辨識依據：{selectedBlock.evidence}
                 </p>
+                {selectedResolution?.kind === "component" ? (
+                  <div className="cm-coverage__composition-inspector-component">
+                    <span className="cm-coverage__composition-inspector-kicker">
+                      目前元件
+                    </span>
+                    <strong>{selectedResolution.componentName}</strong>
+                    <code className="cm-coverage__code">
+                      {selectedResolution.componentPath}
+                    </code>
+                    <a
+                      className="cm-coverage__story-link"
+                      href={storyDocsManagerUrl(selectedResolution.storyTitle)}
+                      rel="noopener noreferrer"
+                      target="_blank"
+                    >
+                      另開元件文件
+                    </a>
+                  </div>
+                ) : null}
                 {selectedBlock.gap.status !== "none" ? (
                   <div className="cm-coverage__composition-inspector-gap">
                     <strong>{selectedBlock.gap.suggestedName}</strong>
@@ -1145,7 +1390,18 @@ function ReportDetail({
                   block={selectedBlock}
                   editable={reviewEditable}
                   key={`${selectedBlock.id}-${selectedBlock.review?.reviewedAt ?? "unreviewed"}`}
+                  onCancel={() => updatePreviewOverride({ type: "cancel" })}
+                  onDraftOverrideChange={(componentId) =>
+                    updatePreviewOverride({
+                      blockId: selectedBlock.id,
+                      componentId,
+                      type: "draft-change",
+                    })
+                  }
                   onSave={handleBlockReview}
+                  onSaveSuccess={() =>
+                    updatePreviewOverride({ type: "save-success" })
+                  }
                 />
                 {!reviewEditable && !selectedBlock.review ? (
                   <p className="cm-coverage__composition-inspector-readonly">
@@ -1156,9 +1412,18 @@ function ReportDetail({
                 ) : null}
               </>
             ) : (
-              <p className="cm-coverage__composition-inspector-readonly">
-                請在左側選擇一個區塊。
-              </p>
+              <div
+                className="cm-coverage__composition-inspector-empty"
+                role="status"
+              >
+                <span className="cm-coverage__composition-inspector-kicker">
+                  元件 Inspector
+                </span>
+                <strong>尚未選取任何元件</strong>
+                <p className="cm-coverage__composition-inspector-readonly">
+                  點擊左側預覽中的元件，以查看辨識依據與覆核選項。
+                </p>
+              </div>
             )}
           </aside>
         </div>
@@ -1399,6 +1664,7 @@ function PipelineRowView({
         ]
       : [row.fileName, formatTimestamp(row.report.createdAt)];
   const expandable = Boolean(report && reportFileName);
+  const detailId = reportFileName ? reportDetailDomId(reportFileName) : undefined;
   const deleteTarget: DeleteTarget =
     row.kind === "request"
       ? {
@@ -1452,6 +1718,7 @@ function PipelineRowView({
 
   return (
     <div
+      aria-controls={detailId}
       aria-expanded={selected}
       className={`cm-coverage__report-item${selected ? " cm-coverage__report-item--selected" : ""}`}
       onClick={() => onSelect(reportFileName ?? "")}
@@ -1465,6 +1732,22 @@ function PipelineRowView({
       tabIndex={0}
     >
       {rowBody}
+      {selected ? (
+        <span className="cm-coverage__chip cm-coverage__report-open-state">
+          目前開啟
+        </span>
+      ) : null}
+      <span aria-hidden="true" className="cm-coverage__report-disclosure">
+        <svg fill="none" viewBox="0 0 16 16">
+          <path
+            d="m4 6 4 4 4-4"
+            stroke="currentColor"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth="1.5"
+          />
+        </svg>
+      </span>
     </div>
   );
 }
@@ -1517,7 +1800,11 @@ export function ReportView({
           Boolean(reportFileName) && selectedReport === reportFileName;
 
         return (
-          <div key={row.key}>
+          <div
+            className="cm-coverage__report-entry"
+            data-expanded={expanded ? "true" : "false"}
+            key={row.key}
+          >
             <PipelineRowView
               isDevMode={isDevMode}
               onDelete={onDelete}
@@ -1526,20 +1813,27 @@ export function ReportView({
               selected={expanded}
             />
             {report && reportFileName && expanded ? (
-              <ReportDetail
-                compositionIssues={
-                  row.kind === "request" || row.kind === "orphan-report"
-                    ? row.compositionIssues
-                    : undefined
-                }
-                fileName={reportFileName}
-                isDevMode={isDevMode}
-                onOpenImage={setLightboxSrc}
-                onReviewSubmit={onReviewSubmit}
-                preview={preview}
-                report={report}
-                request={row.kind === "request" ? row.request : undefined}
-              />
+              <div
+                aria-label={`${report.requestId} 報告內容`}
+                className="cm-coverage__report-detail-shell"
+                id={reportDetailDomId(reportFileName)}
+                role="region"
+              >
+                <ReportDetail
+                  compositionIssues={
+                    row.kind === "request" || row.kind === "orphan-report"
+                      ? row.compositionIssues
+                      : undefined
+                  }
+                  fileName={reportFileName}
+                  isDevMode={isDevMode}
+                  onOpenImage={setLightboxSrc}
+                  onReviewSubmit={onReviewSubmit}
+                  preview={preview}
+                  report={report}
+                  request={row.kind === "request" ? row.request : undefined}
+                />
+              </div>
             ) : null}
           </div>
         );
