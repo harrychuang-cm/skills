@@ -7,6 +7,7 @@ import {
   type CoverageBlock,
   type CoverageCompositionBlock,
   type CoverageCompositionNode,
+  type CoverageEvidenceRegion,
   type CoverageReviewDecision,
 } from "./coverageTypes";
 
@@ -78,6 +79,17 @@ export type CompositionSlotResolution =
   | CompositionComponentSlot
   | CompositionPlaceholderSlot
   | CompositionUnavailableSlot;
+
+export function findInspectorEvidenceRegion(
+  block: CoverageBlock | undefined,
+  requestImageNames: readonly string[] | undefined,
+): CoverageEvidenceRegion | undefined {
+  const region = block?.evidenceRegion;
+
+  return region && requestImageNames?.includes(region.image)
+    ? region
+    : undefined;
+}
 
 const decisionBadgeCopy = {
   approve: "已確認可用",

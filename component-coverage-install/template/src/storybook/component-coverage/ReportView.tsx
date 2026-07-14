@@ -23,6 +23,7 @@ import {
 import {
   collectCompositionBlockIds,
   findCompositionBlockNode,
+  findInspectorEvidenceRegion,
   resolveCompositionSlot,
   updateCompositionPreviewOverride,
   type CompositionPreviewOverride,
@@ -107,6 +108,11 @@ const analysisGuidanceCopy = {
   pending: "下一步：複製分析提示詞，貼到 Cursor、Claude Code 或 Codex 執行。",
   reportMissing:
     "已分析但找不到報告檔，請將分析提示詞重新貼到 Cursor、Claude Code 或 Codex 執行。",
+} as const;
+
+const inspectorEvidenceCopy = {
+  label: "UI Reference 元件截圖",
+  unavailable: "無可用 UI Reference 截圖",
 } as const;
 
 export function buildAnalysisPrompt(requestId: string) {
@@ -912,19 +918,49 @@ function Lightbox({ onClose, src }: { onClose: () => void; src: string }) {
 }
 
 function CroppedEvidence({
+  alt = "缺失元素的原圖位置",
+  label = "原圖位置",
   onOpen,
   region,
   requestId,
+  unavailableText,
+  variant = "detail",
 }: {
+  alt?: string;
+  label?: string;
   onOpen: (src: string) => void;
   region: CoverageEvidenceRegion;
   requestId: string;
+  unavailableText?: string;
+  variant?: "detail" | "inspector";
 }) {
-  const [cropSrc, setCropSrc] = useState("");
+  const cropKey = [
+    requestId,
+    region.image,
+    region.x,
+    region.y,
+    region.width,
+    region.height,
+  ].join(":");
+  const [cropResult, setCropResult] = useState<
+    | { key: string; status: "loading" | "unavailable" }
+    | { key: string; src: string; status: "ready" }
+  >({ key: cropKey, status: "loading" });
+  const currentCrop =
+    cropResult.key === cropKey
+      ? cropResult
+      : { key: cropKey, status: "loading" as const };
 
   useEffect(() => {
     let cancelled = false;
     const image = new Image();
+    const markUnavailable = () => {
+      if (!cancelled) {
+        setCropResult({ key: cropKey, status: "unavailable" });
+      }
+    };
+
+    setCropResult({ key: cropKey, status: "loading" });
 
     image.onload = () => {
       if (cancelled) {
@@ -943,38 +979,57 @@ function CroppedEvidence({
       const context = canvas.getContext("2d");
 
       if (!context) {
+        markUnavailable();
         return;
       }
 
-      context.drawImage(image, sx, sy, sw, sh, 0, 0, sw, sh);
-
       try {
-        setCropSrc(canvas.toDataURL("image/png"));
+        context.drawImage(image, sx, sy, sw, sh, 0, 0, sw, sh);
+        setCropResult({
+          key: cropKey,
+          src: canvas.toDataURL("image/png"),
+          status: "ready",
+        });
       } catch {
-        // Tainted canvas or encoding failure — hide silently.
+        markUnavailable();
       }
     };
+    image.onerror = markUnavailable;
     image.src = `${componentCoverageStaticBase}/requests/${requestId}/${region.image}`;
 
     return () => {
       cancelled = true;
     };
-  }, [region, requestId]);
+  }, [cropKey, region, requestId]);
 
-  if (!cropSrc) {
+  if (currentCrop.status === "loading") {
+    return null;
+  }
+
+  if (currentCrop.status === "unavailable" && !unavailableText) {
     return null;
   }
 
   return (
-    <figure className="cm-coverage__crop">
-      <figcaption className="cm-coverage__crop-label">原圖位置</figcaption>
-      <button
-        className="cm-coverage__crop-button"
-        onClick={() => onOpen(cropSrc)}
-        type="button"
-      >
-        <img alt="缺失元素的原圖位置" className="cm-coverage__crop-image" src={cropSrc} />
-      </button>
+    <figure
+      className={`cm-coverage__crop${
+        variant === "inspector" ? " cm-coverage__crop--inspector" : ""
+      }`}
+    >
+      <figcaption className="cm-coverage__crop-label">{label}</figcaption>
+      {currentCrop.status === "ready" ? (
+        <button
+          className="cm-coverage__crop-button"
+          onClick={() => onOpen(currentCrop.src)}
+          type="button"
+        >
+          <img alt={alt} className="cm-coverage__crop-image" src={currentCrop.src} />
+        </button>
+      ) : unavailableText ? (
+        <p className="cm-coverage__crop-unavailable" role="status">
+          {unavailableText}
+        </p>
+      ) : null}
     </figure>
   );
 }
@@ -1106,6 +1161,10 @@ function ReportDetail({
           previewOverride,
         )
       : undefined;
+  const selectedEvidenceRegion = findInspectorEvidenceRegion(
+    selectedBlock,
+    request?.images,
+  );
   const referenceImages = useMemo<readonly CompositionReferenceImage[]>(
     () =>
       request
@@ -1357,6 +1416,27 @@ function ReportDetail({
                 <p className="cm-coverage__composition-inspector-evidence">
                   辨識依據：{selectedBlock.evidence}
                 </p>
+                {selectedEvidenceRegion && request ? (
+                  <CroppedEvidence
+                    alt={`${selectedBlock.label} 的 UI Reference 原圖裁切`}
+                    key={`${selectedBlock.id}:${selectedEvidenceRegion.image}`}
+                    label={inspectorEvidenceCopy.label}
+                    onOpen={onOpenImage}
+                    region={selectedEvidenceRegion}
+                    requestId={request.id}
+                    unavailableText={inspectorEvidenceCopy.unavailable}
+                    variant="inspector"
+                  />
+                ) : (
+                  <figure className="cm-coverage__crop cm-coverage__crop--inspector">
+                    <figcaption className="cm-coverage__crop-label">
+                      {inspectorEvidenceCopy.label}
+                    </figcaption>
+                    <p className="cm-coverage__crop-unavailable" role="status">
+                      {inspectorEvidenceCopy.unavailable}
+                    </p>
+                  </figure>
+                )}
                 {selectedResolution?.kind === "component" ? (
                   <div className="cm-coverage__composition-inspector-component">
                     <span className="cm-coverage__composition-inspector-kicker">

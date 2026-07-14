@@ -1729,6 +1729,25 @@
   background: #fff;
 }
 
+.cm-coverage__crop--inspector {
+  inline-size: 100%;
+}
+
+.cm-coverage__crop--inspector .cm-coverage__crop-button {
+  inline-size: 100%;
+  max-inline-size: none;
+}
+
+.cm-coverage__crop--inspector .cm-coverage__crop-image {
+  max-block-size: 240px;
+}
+
+.cm-coverage__crop-unavailable {
+  margin: 0;
+  color: var(--cca-text-3);
+  font-size: 11.5px;
+}
+
 .cm-coverage__lightbox {
   position: fixed;
   inset: 0;
