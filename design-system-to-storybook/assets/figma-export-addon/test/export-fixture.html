@@ -117,6 +117,7 @@
     <div data-component="case-specificity" class="case-specificity spec-a spec-b"></div>
     <div data-component="case-hsl-token" class="case-hsl-token"></div>
     <div data-component="case-plain" class="case-plain"></div>
+    <shadow-case data-component="case-shadow-dom"></shadow-case>
   </div>
 </div>
 <pre id="payload-output" style="display: none"></pre>
@@ -126,6 +127,24 @@
   function toBase64Utf8(text) {
     return btoa(unescape(encodeURIComponent(text)));
   }
+
+  // Web component with an open shadow root; its inner styles arrive through
+  // an adoptedStyleSheet that binds background-color to a sys color token.
+  class ShadowCase extends HTMLElement {
+    connectedCallback() {
+      const root = this.attachShadow({ mode: "open" });
+      const sheet = new CSSStyleSheet();
+      sheet.replaceSync(
+        ":host { display: block; } " +
+          ".shadow-inner { width: 120px; height: 40px; background-color: var(--fx-sys-color-primary); }",
+      );
+      root.adoptedStyleSheets = [sheet];
+      const inner = document.createElement("div");
+      inner.className = "shadow-inner";
+      root.append(inner);
+    }
+  }
+  customElements.define("shadow-case", ShadowCase);
 
   function makePngDataUrl(width, height, color) {
     const canvas = document.createElement("canvas");

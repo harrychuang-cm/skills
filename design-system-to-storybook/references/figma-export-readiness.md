@@ -52,6 +52,12 @@ Prefer component or semantic tokens (`--<prefix>-comp-*`, `--<prefix>-sys-*`) in
 - Modern color functions (`oklch()`, `lab()`, `color()`, `hsl()`, named colors) normalize to sRGB hex/rgba at export time — wide-gamut values clamp to sRGB.
 - Keep decorative assets named and scoped so they do not obscure the component root.
 
+## Shadow DOM and Token-less Projects
+
+- Open shadow roots (Lit/Web Components) export their rendered content in place of the host; slots flatten to assigned elements. Styles from `adoptedStyleSheets` (document and per shadow root) participate in token binding. Closed shadow roots do not export their internals.
+- Projects without layered `--<prefix>-<layer>-*` tokens export successfully with an empty variable set — the readiness goal is still token-backed CSS, but a missing token system no longer blocks visual export.
+- The addon preview side is renderer-agnostic (pass-through decorator, plain-DOM overlay); the optional review panel remains React-only.
+
 ## Remaining Limitations
 
 - Browser and Figma font metrics differ; long text can wrap at different points even with fixed frames. Keep exportable text short and stable.
@@ -62,7 +68,7 @@ Prefer component or semantic tokens (`--<prefix>-comp-*`, `--<prefix>-sys-*`) in
 ## Story Contract
 
 - Give each exportable component a stable default story with realistic content, fixed state, and no product-route side effects.
-- Keep the story root visually tight around the component. Avoid preview-only margins/padding inside the exported root; use Storybook decorators outside the `sbfx-story-scope` when needed.
+- Keep the story root visually tight around the component. Avoid preview-only margins/padding inside the exported root; exports scope to the `storybook-root` preview element, so keep preview-only chrome outside it (the export overlay itself mounts on document.body and never exports).
 - Add source URL parameters as described in `SKILL.md`, preferably `parameters.figmaSourceUrl`.
 - Cover variants/states with stories whose DOM root names and `data-variant` values match the component spec.
 

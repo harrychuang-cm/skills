@@ -1,12 +1,3 @@
-// src/FigmaCodeExporter.tsx
-import {
-  CheckIcon,
-  CommandIcon,
-  CopyIcon,
-  FigmaIcon
-} from "@storybook/icons";
-import { useRef, useState } from "react";
-
 // src/color.ts
 var colorContext;
 var normalizedColorCache = /* @__PURE__ */ new Map();
@@ -231,6 +222,18 @@ function collectCssCustomProperties() {
     } catch {
     }
   }
+  let adoptedSheets = [];
+  try {
+    adoptedSheets = Array.from(document.adoptedStyleSheets ?? []);
+  } catch {
+    adoptedSheets = [];
+  }
+  for (const sheet of adoptedSheets) {
+    try {
+      collectRuleList(sheet.cssRules);
+    } catch {
+    }
+  }
   collectFromStyle(document.documentElement.style, true);
   if (document.body) collectFromStyle(document.body.style, true);
   collectFromStyle(window.getComputedStyle(document.documentElement), false);
@@ -262,15 +265,26 @@ function detectTokenPrefix(tokenNames, options) {
       candidates.set(prefix, candidate);
     }
   }
+  if (candidates.size === 0) return void 0;
   const completeCandidates = Array.from(candidates.entries()).filter(([, candidate]) => tokenLayers.every((layer) => candidate.layers.has(layer))).sort(([, a], [, b]) => b.count - a.count);
   if (completeCandidates.length > 0) return completeCandidates[0][0];
   throw new Error(
     "Unable to detect a ref/sys/comp token prefix. Pass tokenPrefix in the Storybook Figma export addon options."
   );
 }
+var emptyTokenSystemPrefix = "";
 function detectTokenSystem(options) {
   const customProperties = collectCssCustomProperties();
   const prefix = detectTokenPrefix(customProperties.keys(), options);
+  if (prefix === void 0) {
+    return {
+      catalog: [],
+      collections: options.collections,
+      layers: options.tokenLayers,
+      pluginDataKey: options.pluginDataKey,
+      prefix: emptyTokenSystemPrefix
+    };
+  }
   const catalog = [];
   customProperties.forEach((value, name) => {
     const layer = getTokenLayer(name, prefix, options.tokenLayers);
@@ -385,6 +399,7 @@ function getTokenScopes(token, type) {
   return ["WIDTH_HEIGHT"];
 }
 function extractCssVariableNames(value, tokenSystem) {
+  if (!tokenSystem.prefix) return [];
   const layerPattern = tokenLayers.map((layer) => escapeRegExp(tokenSystem.layers[layer])).join("|");
   const variablePattern = new RegExp(
     `var\\(\\s*(--${escapeRegExp(tokenSystem.prefix)}-(?:${layerPattern})-[a-z0-9-]+)`,
@@ -482,7 +497,14 @@ function getExportTime() {
 function waitForExportFrame() {
   return new Promise((resolve) => {
     if (typeof window !== "undefined" && window.requestAnimationFrame) {
-      window.requestAnimationFrame(() => resolve());
+      let settled = false;
+      const settle = () => {
+        if (settled) return;
+        settled = true;
+        resolve();
+      };
+      window.requestAnimationFrame(settle);
+      globalThis.setTimeout(settle, 120);
       return;
     }
     globalThis.setTimeout(resolve, 0);
@@ -661,6 +683,7 @@ function isColorTokenName(token) {
   return token.includes("-color-") || token.endsWith("-color");
 }
 function findLinearGradientTokens(declarations, tokenSystem) {
+  if (!tokenSystem.prefix) return [];
   for (let index = declarations.length - 1; index >= 0; index -= 1) {
     const declaration = declarations[index];
     if (!["background", "background-image"].includes(declaration.property)) {
@@ -963,7 +986,7 @@ function mediaRuleMatches(rule) {
     return true;
   }
 }
-function getCssRules() {
+function collectRulesFromStyleSheets(sheets) {
   const rules = [];
   function collect(ruleList) {
     for (const rule of Array.from(ruleList)) {
@@ -982,13 +1005,61 @@ function getCssRules() {
       }
     }
   }
-  for (const sheet of Array.from(document.styleSheets)) {
+  for (const sheet of sheets) {
     try {
       collect(sheet.cssRules);
     } catch {
     }
   }
   return rules;
+}
+function getDocumentAdoptedStyleSheets() {
+  try {
+    return Array.from(document.adoptedStyleSheets ?? []);
+  } catch {
+    return [];
+  }
+}
+function createCssRuleIndex() {
+  return {
+    documentRules: collectRulesFromStyleSheets([
+      ...Array.from(document.styleSheets),
+      ...getDocumentAdoptedStyleSheets()
+    ]),
+    rulesByShadowRoot: /* @__PURE__ */ new Map()
+  };
+}
+function getRulesForElement(index, element) {
+  const root = element.getRootNode();
+  if (!(root instanceof ShadowRoot)) return index.documentRules;
+  let combined = index.rulesByShadowRoot.get(root);
+  if (!combined) {
+    let adopted = [];
+    try {
+      adopted = Array.from(root.adoptedStyleSheets ?? []);
+    } catch {
+      adopted = [];
+    }
+    combined = index.documentRules.concat(
+      collectRulesFromStyleSheets([...Array.from(root.styleSheets), ...adopted])
+    );
+    index.rulesByShadowRoot.set(root, combined);
+  }
+  return combined;
+}
+function getRenderChildren(element) {
+  const shadowRoot = element.shadowRoot;
+  const baseChildren = shadowRoot ? Array.from(shadowRoot.children) : Array.from(element.children);
+  const expanded = [];
+  for (const child of baseChildren) {
+    if (child instanceof HTMLSlotElement) {
+      const assigned = child.assignedElements({ flatten: true });
+      expanded.push(...assigned.length > 0 ? assigned : Array.from(child.children));
+      continue;
+    }
+    expanded.push(child);
+  }
+  return expanded;
 }
 function calculateSelectorSpecificity(selector) {
   const withoutPseudoElements = selector.replace(/::[a-z-]+(\([^)]*\))?/gi, " x");
@@ -1380,6 +1451,7 @@ function getPseudoMatchedDeclarations(element, rules, pseudo) {
   return declarations;
 }
 function collectPseudoBindings(element, rules, pseudo, tokenSystem) {
+  if (!tokenSystem.prefix) return {};
   const declarations = getPseudoMatchedDeclarations(element, rules, pseudo);
   const bindings = {};
   for (const bindingName of ["backgroundColor", "height", "width"]) {
@@ -1507,6 +1579,7 @@ function getVisibleBorderSides(computed) {
   return Object.keys(sides).length > 0 ? sides : void 0;
 }
 function collectBorderSideBindings(element, rules, sides, tokenSystem) {
+  if (!tokenSystem.prefix) return {};
   const declarations = getMatchedDeclarations(element, rules);
   const bindings = {};
   for (const side of borderSides) {
@@ -1523,6 +1596,7 @@ function collectBorderSideBindings(element, rules, sides, tokenSystem) {
   return bindings;
 }
 function collectBindings(element, rules, hasUniformVisibleBorder, tokenSystem) {
+  if (!tokenSystem.prefix) return {};
   const declarations = getMatchedDeclarations(element, rules);
   const bindings = {};
   Object.keys(bindingProperties).forEach((bindingName) => {
@@ -1796,7 +1870,7 @@ function measureAutoLayoutChildren({
   }
   return measurement;
 }
-async function createExportNode(element, rootRect, parentRect, rules, tokenSystem, options, traversalState, forceAbsoluteLayout = false) {
+async function createExportNode(element, rootRect, parentRect, ruleIndex, tokenSystem, options, traversalState, forceAbsoluteLayout = false) {
   await markExportNodeVisited(traversalState);
   const computed = window.getComputedStyle(element);
   if (computed.display === "none" || computed.visibility === "hidden" || Number(computed.opacity) === 0) {
@@ -1806,6 +1880,7 @@ async function createExportNode(element, rootRect, parentRect, rules, tokenSyste
   const width = toFiniteNumber(rect.width);
   const height = toFiniteNumber(rect.height);
   if (width <= 0 || height <= 0) return void 0;
+  const rules = getRulesForElement(ruleIndex, element);
   const forceAutoLayout = element.getAttribute("data-figma-layout-strategy") === "auto-layout";
   const nextForceAbsoluteLayout = !forceAutoLayout && (forceAbsoluteLayout || isAbsoluteFidelityRoot(element, options));
   const component = getComponentReference(element);
@@ -1822,7 +1897,7 @@ async function createExportNode(element, rootRect, parentRect, rules, tokenSyste
     options
   );
   if (clipPathNode) return clipPathNode;
-  const childElements = Array.from(element.children);
+  const childElements = getRenderChildren(element);
   const hasPositionedChildren = hasOutOfFlowPositionedChildren(childElements);
   const childNodeResults = await Promise.all(
     childElements.map(
@@ -1830,7 +1905,7 @@ async function createExportNode(element, rootRect, parentRect, rules, tokenSyste
         child,
         rootRect,
         rect,
-        rules,
+        ruleIndex,
         tokenSystem,
         options,
         traversalState,
@@ -1894,7 +1969,7 @@ async function createExportNode(element, rootRect, parentRect, rules, tokenSyste
   const shouldPreserveComputedAutoLayout = layoutStrategy === "autoLayout" && isFlexDisplay(computed.display) && !hasPositionedChildren;
   const frameLayoutStrategy = element.getAttribute("data-figma-layout-strategy") === "auto-layout" ? layoutStrategy : shouldPreserveComputedAutoLayout ? layoutStrategy : pseudoNodes.length > 0 || hasPositionedChildren ? "absolute" : layoutStrategy;
   const elementOutOfFlow = isOutOfFlowPositioned(computed);
-  if (directText && !hasElementChildren(element)) {
+  if (directText && !hasElementChildren(element) && !element.shadowRoot) {
     const leafText = applyTextTransformToText(getRenderedLeafText(element), computed);
     if (hasBoxedTextStyle(computed, border)) {
       const paddingLeft = cssLengthToNumber(computed.paddingLeft) ?? 0;
@@ -2078,7 +2153,7 @@ async function createFigmaExportPayload({
   const artifactKind = getArtifactKind(storyTitle);
   onProgress?.({ phase: "preparing" });
   await waitForExportFrame();
-  const rules = getCssRules();
+  const ruleIndex = createCssRuleIndex();
   const tokenSystem = detectTokenSystem(options);
   const rootRect = root.getBoundingClientRect();
   const traversalState = {
@@ -2091,7 +2166,7 @@ async function createFigmaExportPayload({
     root,
     rootRect,
     rootRect,
-    rules,
+    ruleIndex,
     tokenSystem,
     options,
     traversalState
@@ -2165,6 +2240,7 @@ function resolveFigmaExportAddonOptions(options) {
     componentClassPrefixes: options?.componentClassPrefixes ?? [],
     embeddedSvgByDataGraphic: options?.embeddedSvgByDataGraphic ?? {},
     globalName: options?.globalName ?? defaultFigmaExportGlobalName,
+    ...options?.payloadSyncUrl ? { payloadSyncUrl: options.payloadSyncUrl } : {},
     pluginDataKey: options?.pluginDataKey ?? "storybookCssToken",
     storyTitlePrefix: normalizeStoryTitlePrefix(options?.storyTitlePrefix),
     tokenLayers: {
@@ -3410,13 +3486,25 @@ void (async function importStorybookStory(payload) {
 `;
 }
 
-// src/FigmaCodeExporter.tsx
-import { Fragment, jsx, jsxs } from "react/jsx-runtime";
+// src/overlay.ts
 var statusLabels = {
   copied: "Copied",
   copying: "Exporting",
   error: "Failed",
   idle: "Ready"
+};
+var actionLabels = {
+  design: { busy: "", done: "", idle: "" },
+  file: { busy: "Preparing", done: "Downloaded", idle: "Download JSON" },
+  json: { busy: "Copying", done: "Copied", idle: "Copy JSON" },
+  script: { busy: "Copying", done: "Copied", idle: "Plugin Console Script" }
+};
+var svgIcons = {
+  check: '<svg viewBox="0 0 14 14" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2.5 7.5 5.5 10.5 11.5 3.5"/></svg>',
+  command: '<svg viewBox="0 0 14 14" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M5 5h4v4H5zM5 5H3.5A1.5 1.5 0 1 1 5 3.5V5zm4 0h1.5A1.5 1.5 0 1 0 9 3.5V5zM5 9H3.5A1.5 1.5 0 1 0 5 10.5V9zm4 0h1.5A1.5 1.5 0 1 1 9 10.5V9z"/></svg>',
+  copy: '<svg viewBox="0 0 14 14" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><rect x="4.5" y="4.5" width="7" height="7" rx="1"/><path d="M9.5 4.5v-1a1 1 0 0 0-1-1h-5a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1h1"/></svg>',
+  download: '<svg viewBox="0 0 14 14" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M7 2v7m0 0L4.5 6.5M7 9l2.5-2.5M2.5 11.5h9"/></svg>',
+  figma: '<svg viewBox="0 0 14 14" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M5.5 1.5h3a2 2 0 1 1 0 4 2 2 0 1 1 0 4 2 2 0 1 1-4 0v-2a2 2 0 0 1-1-3.73A2 2 0 0 1 5.5 1.5z" fill="none" stroke="currentColor" stroke-width="1.1"/><circle cx="8.5" cy="7.5" r="1.1"/></svg>'
 };
 function getExportComponentTitle(title, options) {
   if (!title) return "Component";
@@ -3466,9 +3554,16 @@ function getExporterTime() {
 function waitForExporterPanelPaint() {
   return new Promise((resolve) => {
     if (typeof window !== "undefined" && window.requestAnimationFrame) {
+      let settled = false;
+      const settle = () => {
+        if (settled) return;
+        settled = true;
+        resolve();
+      };
       window.requestAnimationFrame(() => {
-        window.requestAnimationFrame(() => resolve());
+        window.requestAnimationFrame(settle);
       });
+      globalThis.setTimeout(settle, 120);
       return;
     }
     globalThis.setTimeout(resolve, 0);
@@ -3575,239 +3670,293 @@ async function copySvgDesign(svgText) {
   }
   await copyText(svgText);
 }
-function FigmaCodeExporter({
-  children,
-  context,
-  options
-}) {
-  const scopeRef = useRef(null);
-  const [activeFormat, setActiveFormat] = useState();
-  const [copiedFormat, setCopiedFormat] = useState();
-  const [status, setStatus] = useState("idle");
-  const [summary, setSummary] = useState("");
+function syncPayloadToBridge(payload, syncUrl) {
+  try {
+    return fetch(syncUrl, {
+      body: JSON.stringify(payload),
+      headers: { "content-type": "application/json" },
+      method: "POST"
+    }).then(
+      (response) => response.ok ? "synced" : "sync failed",
+      () => "sync failed"
+    );
+  } catch {
+    return Promise.resolve("sync failed");
+  }
+}
+function resolveExportScope() {
+  const root = document.getElementById("storybook-root");
+  if (root) return { scope: root };
+  return {
+    scope: document.body,
+    warning: "storybook-root not found; exported from document.body"
+  };
+}
+var overlayRefs = null;
+var overlayState = null;
+function createIconSpan(icon) {
+  const span = document.createElement("span");
+  span.setAttribute("aria-hidden", "true");
+  span.style.display = "inline-flex";
+  span.innerHTML = icon;
+  return span;
+}
+function createActionButton(format, icon, className, ariaLabel) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = className;
+  if (ariaLabel) {
+    button.setAttribute("aria-label", ariaLabel);
+    button.title = ariaLabel;
+  }
+  const iconSpan = createIconSpan(icon);
+  button.append(iconSpan);
+  let label = null;
+  if (actionLabels[format].idle) {
+    label = document.createTextNode(actionLabels[format].idle);
+    button.append(label);
+  }
+  button.addEventListener("click", () => {
+    void handleCopy(format);
+  });
+  return { button, iconSpan, label };
+}
+function buildOverlay() {
+  const aside = document.createElement("aside");
+  aside.setAttribute("aria-label", "Figma export");
+  aside.className = "sbfx-exporter";
+  aside.dataset.status = "idle";
+  const header = document.createElement("header");
+  header.className = "sbfx-exporter__header";
+  const mark = createIconSpan(svgIcons.figma);
+  mark.className = "sbfx-exporter__mark";
+  const heading = document.createElement("span");
+  heading.className = "sbfx-exporter__heading";
+  const title = document.createElement("span");
+  title.className = "sbfx-exporter__title";
+  title.textContent = "Figma export";
+  const subtitle = document.createElement("span");
+  subtitle.className = "sbfx-exporter__subtitle";
+  heading.append(title, subtitle);
+  header.append(mark, heading);
+  const info = document.createElement("div");
+  info.className = "sbfx-exporter__info";
+  const status = document.createElement("span");
+  status.className = "sbfx-exporter__status";
+  const statusDot = document.createElement("span");
+  statusDot.className = "sbfx-exporter__status-dot";
+  statusDot.setAttribute("aria-hidden", "true");
+  const statusLabel = document.createTextNode(statusLabels.idle);
+  status.append(statusDot, statusLabel);
+  const summary = document.createElement("p");
+  summary.className = "sbfx-exporter__summary";
+  summary.style.display = "none";
+  info.append(status, summary);
+  const actions = document.createElement("div");
+  actions.className = "sbfx-exporter__actions";
+  const json = createActionButton("json", svgIcons.copy, "sbfx-exporter__button");
+  const file = createActionButton("file", svgIcons.download, "sbfx-exporter__button");
+  const script = createActionButton(
+    "script",
+    svgIcons.command,
+    "sbfx-exporter__button sbfx-exporter__button--secondary"
+  );
+  const design = createActionButton(
+    "design",
+    svgIcons.figma,
+    "sbfx-exporter__button sbfx-exporter__button--secondary sbfx-exporter__button--icon",
+    "Copy design to Figma"
+  );
+  actions.append(json.button, file.button, script.button, design.button);
+  aside.append(header, info, actions);
+  return {
+    aside,
+    buttons: {
+      design: { button: design.button, icon: design.iconSpan, label: design.label },
+      file: { button: file.button, icon: file.iconSpan, label: file.label },
+      json: { button: json.button, icon: json.iconSpan, label: json.label },
+      script: { button: script.button, icon: script.iconSpan, label: script.label }
+    },
+    info,
+    statusLabel,
+    subtitle,
+    summary
+  };
+}
+function renderOverlay() {
+  if (!overlayRefs || !overlayState) return;
+  const { aside, buttons, info, statusLabel, subtitle, summary } = overlayRefs;
+  const { activeFormat, copiedFormat, options, status } = overlayState;
+  const componentTitle = getExportComponentTitle(overlayState.context.title, options);
+  aside.dataset.status = status;
+  subtitle.textContent = componentTitle;
+  subtitle.title = componentTitle;
+  statusLabel.textContent = statusLabels[status];
+  summary.textContent = overlayState.summary;
+  summary.title = overlayState.summary;
+  summary.style.display = overlayState.summary ? "" : "none";
+  let progress = info.querySelector(".sbfx-exporter__progress");
+  if (status === "copying" && !progress) {
+    progress = document.createElement("span");
+    progress.className = "sbfx-exporter__progress";
+    progress.setAttribute("aria-hidden", "true");
+    info.append(progress);
+  } else if (status !== "copying" && progress) {
+    progress.remove();
+  }
+  Object.keys(buttons).forEach((format) => {
+    const entry = buttons[format];
+    if (!entry) return;
+    entry.button.disabled = status === "copying";
+    const isDone = copiedFormat === format && status === "copied";
+    entry.icon.innerHTML = isDone ? svgIcons.check : format === "json" || format === "file" ? format === "file" ? svgIcons.download : svgIcons.copy : format === "script" ? svgIcons.command : svgIcons.figma;
+    if (entry.label) {
+      entry.label.textContent = activeFormat === format ? actionLabels[format].busy : isDone ? actionLabels[format].done : actionLabels[format].idle;
+    }
+  });
+}
+function setOverlayStatus(status, summary) {
+  if (!overlayState) return;
+  overlayState.status = status;
+  if (summary !== void 0) overlayState.summary = summary;
+  renderOverlay();
+}
+async function handleCopy(format) {
+  if (!overlayState) return;
+  const { context, options } = overlayState;
+  const componentTitle = getExportComponentTitle(context.title, options);
+  const { scope, warning } = resolveExportScope();
+  overlayState.activeFormat = format;
+  overlayState.copiedFormat = void 0;
+  setOverlayStatus(
+    "copying",
+    format === "design" ? "Generating SVG design..." : format === "file" ? "Preparing export file..." : format === "json" ? "Generating JSON payload..." : "Generating console script..."
+  );
+  try {
+    const startedAt = getExporterTime();
+    await waitForExporterPanelPaint();
+    const payload = await createFigmaExportPayload({
+      componentTitle,
+      onProgress: (progress) => {
+        if (progress.phase === "preparing") {
+          setOverlayStatus("copying", "Preparing story surface...");
+          return;
+        }
+        if (progress.phase === "nodes") {
+          setOverlayStatus(
+            "copying",
+            `Reading ${progress.nodeCount ?? 0} layers from the story...`
+          );
+          return;
+        }
+        setOverlayStatus(
+          "copying",
+          `Resolving design tokens from ${progress.nodeCount ?? 0} layers...`
+        );
+      },
+      options,
+      scope,
+      storyId: context.id ?? "unknown-story",
+      storyName: context.name ?? "Story",
+      storyTitle: context.title ?? ""
+    });
+    let exportSizeLabel = "";
+    if (format === "design") {
+      setOverlayStatus("copying", "Copying SVG design...");
+      await waitForExporterPanelPaint();
+      const svgText = createFigmaDesignSvg(payload);
+      exportSizeLabel = getTextSizeLabel(svgText);
+      await copySvgDesign(svgText);
+    } else if (format === "file") {
+      const exportText = createFigmaExportJson(payload);
+      exportSizeLabel = getTextSizeLabel(exportText);
+      setOverlayStatus("copying", `Starting ${exportSizeLabel} download...`);
+      await waitForExporterPanelPaint();
+      downloadTextFile(
+        `${sanitizeExportFilename(context.id ?? payload.storyId)}.sbfx.json`,
+        exportText
+      );
+    } else {
+      const exportText = format === "json" ? createFigmaExportJson(payload) : createFigmaPluginCode(payload);
+      exportSizeLabel = getTextSizeLabel(exportText);
+      setOverlayStatus(
+        "copying",
+        format === "json" ? `Copying ${exportSizeLabel} JSON...` : `Copying ${exportSizeLabel} plugin script...`
+      );
+      await waitForExporterPanelPaint();
+      await copyText(exportText);
+    }
+    overlayState.copiedFormat = format;
+    overlayState.activeFormat = void 0;
+    const elapsedLabel = formatExportDuration(getExporterTime() - startedAt);
+    const sizeSummary = exportSizeLabel ? ` (${exportSizeLabel})` : "";
+    const scopeNote = warning ? ` [${warning}]` : "";
+    setOverlayStatus(
+      "copied",
+      format === "design" ? `Visual SVG copied from ${payload.root.name}${sizeSummary} in ${elapsedLabel}.${scopeNote}` : format === "file" ? `${payload.tokens.length} variables exported from ${payload.root.name}${sizeSummary} in ${elapsedLabel}; .sbfx.json downloaded.${scopeNote}` : format === "json" ? `${payload.tokens.length} variables exported from ${payload.root.name}${sizeSummary} in ${elapsedLabel}; JSON copied.${scopeNote}` : `${payload.tokens.length} variables exported from ${payload.root.name}${sizeSummary} in ${elapsedLabel}; script copied.${scopeNote}`
+    );
+    if (options.payloadSyncUrl) {
+      const syncedStoryId = payload.storyId;
+      void syncPayloadToBridge(payload, options.payloadSyncUrl).then((result) => {
+        if (!overlayState || overlayState.status !== "copied" || overlayState.context.id !== syncedStoryId) {
+          return;
+        }
+        setOverlayStatus("copied", `${overlayState.summary} [${result}]`);
+      });
+    }
+  } catch (error) {
+    overlayState.activeFormat = void 0;
+    overlayState.copiedFormat = void 0;
+    setOverlayStatus(
+      "error",
+      error instanceof Error ? error.message : "Export failed."
+    );
+  }
+}
+function unmountOverlay() {
+  if (overlayRefs) {
+    overlayRefs.aside.remove();
+    overlayRefs = null;
+  }
+  overlayState = null;
+}
+function syncFigmaExportOverlay(context, options) {
+  if (typeof document === "undefined") return;
   const resolvedOptions = resolveFigmaExportAddonOptions(options);
   const enabled = context.globals?.[resolvedOptions.globalName] === "on";
   const includedStory = isStoryIncludedForFigmaExport(context.title, resolvedOptions);
-  const componentTitle = getExportComponentTitle(context.title, resolvedOptions);
-  async function handleCopy(format) {
-    const scope = scopeRef.current;
-    if (!scope) return;
-    setActiveFormat(format);
-    setCopiedFormat(void 0);
-    setStatus("copying");
-    setSummary(
-      format === "design" ? "Generating SVG design..." : format === "file" ? "Preparing export file..." : format === "json" ? "Generating JSON payload..." : "Generating console script..."
-    );
-    try {
-      const startedAt = getExporterTime();
-      await waitForExporterPanelPaint();
-      const payload = await createFigmaExportPayload({
-        componentTitle,
-        onProgress: (progress) => {
-          if (progress.phase === "preparing") {
-            setSummary("Preparing story surface...");
-            return;
-          }
-          if (progress.phase === "nodes") {
-            setSummary(
-              `Reading ${progress.nodeCount ?? 0} layers from the story...`
-            );
-            return;
-          }
-          setSummary(
-            `Resolving design tokens from ${progress.nodeCount ?? 0} layers...`
-          );
-        },
-        options: resolvedOptions,
-        scope,
-        storyId: context.id ?? "unknown-story",
-        storyName: context.name ?? "Story",
-        storyTitle: context.title ?? ""
-      });
-      let exportSizeLabel = "";
-      if (format === "design") {
-        setSummary("Copying SVG design...");
-        await waitForExporterPanelPaint();
-        const svgText = createFigmaDesignSvg(payload);
-        exportSizeLabel = getTextSizeLabel(svgText);
-        await copySvgDesign(svgText);
-      } else if (format === "file") {
-        const exportText = createFigmaExportJson(payload);
-        exportSizeLabel = getTextSizeLabel(exportText);
-        setSummary(`Starting ${exportSizeLabel} download...`);
-        await waitForExporterPanelPaint();
-        downloadTextFile(
-          `${sanitizeExportFilename(context.id ?? payload.storyId)}.sbfx.json`,
-          exportText
-        );
-      } else {
-        const exportText = format === "json" ? createFigmaExportJson(payload) : createFigmaPluginCode(payload);
-        exportSizeLabel = getTextSizeLabel(exportText);
-        setSummary(
-          format === "json" ? `Copying ${exportSizeLabel} JSON...` : `Copying ${exportSizeLabel} plugin script...`
-        );
-        await waitForExporterPanelPaint();
-        await copyText(exportText);
-      }
-      setCopiedFormat(format);
-      setStatus("copied");
-      const elapsedLabel = formatExportDuration(getExporterTime() - startedAt);
-      const sizeSummary = exportSizeLabel ? ` (${exportSizeLabel})` : "";
-      setSummary(
-        format === "design" ? `Visual SVG copied from ${payload.root.name}${sizeSummary} in ${elapsedLabel}.` : format === "file" ? `${payload.tokens.length} variables exported from ${payload.root.name}${sizeSummary} in ${elapsedLabel}; .sbfx.json downloaded.` : format === "json" ? `${payload.tokens.length} variables exported from ${payload.root.name}${sizeSummary} in ${elapsedLabel}; JSON copied.` : `${payload.tokens.length} variables exported from ${payload.root.name}${sizeSummary} in ${elapsedLabel}; script copied.`
-      );
-    } catch (error) {
-      setStatus("error");
-      setCopiedFormat(void 0);
-      setSummary(error instanceof Error ? error.message : "Export failed.");
-    } finally {
-      setActiveFormat(void 0);
-    }
+  const isStoryView = (context.viewMode ?? "story") === "story";
+  if (!enabled || !includedStory || !isStoryView) {
+    unmountOverlay();
+    return;
   }
-  if (!includedStory) {
-    return /* @__PURE__ */ jsx(Fragment, { children });
+  if (!overlayRefs) {
+    overlayRefs = buildOverlay();
   }
-  return /* @__PURE__ */ jsxs(Fragment, { children: [
-    /* @__PURE__ */ jsx("div", { className: "sbfx-story-scope", ref: scopeRef, children }),
-    enabled ? /* @__PURE__ */ jsxs(
-      "aside",
-      {
-        "aria-label": "Figma export",
-        className: "sbfx-exporter",
-        "data-status": status,
-        children: [
-          /* @__PURE__ */ jsxs("header", { className: "sbfx-exporter__header", children: [
-            /* @__PURE__ */ jsx("span", { className: "sbfx-exporter__mark", "aria-hidden": "true", children: /* @__PURE__ */ jsx(FigmaIcon, { size: 14 }) }),
-            /* @__PURE__ */ jsxs("span", { className: "sbfx-exporter__heading", children: [
-              /* @__PURE__ */ jsx("span", { className: "sbfx-exporter__title", children: "Figma export" }),
-              /* @__PURE__ */ jsx("span", { className: "sbfx-exporter__subtitle", title: componentTitle, children: componentTitle })
-            ] })
-          ] }),
-          /* @__PURE__ */ jsxs("div", { className: "sbfx-exporter__info", children: [
-            /* @__PURE__ */ jsxs("span", { className: "sbfx-exporter__status", children: [
-              /* @__PURE__ */ jsx("span", { className: "sbfx-exporter__status-dot", "aria-hidden": "true" }),
-              statusLabels[status]
-            ] }),
-            summary ? /* @__PURE__ */ jsx("p", { className: "sbfx-exporter__summary", title: summary, children: summary }) : null,
-            status === "copying" ? /* @__PURE__ */ jsx("span", { className: "sbfx-exporter__progress", "aria-hidden": "true" }) : null
-          ] }),
-          /* @__PURE__ */ jsxs("div", { className: "sbfx-exporter__actions", children: [
-            /* @__PURE__ */ jsxs(
-              "button",
-              {
-                className: "sbfx-exporter__button",
-                disabled: status === "copying",
-                onClick: () => {
-                  void handleCopy("json");
-                },
-                type: "button",
-                children: [
-                  copiedFormat === "json" && status === "copied" ? /* @__PURE__ */ jsx(CheckIcon, { size: 14 }) : /* @__PURE__ */ jsx(CopyIcon, { size: 14 }),
-                  activeFormat === "json" ? "Copying" : copiedFormat === "json" && status === "copied" ? "Copied" : "Copy JSON"
-                ]
-              }
-            ),
-            /* @__PURE__ */ jsxs(
-              "button",
-              {
-                className: "sbfx-exporter__button",
-                disabled: status === "copying",
-                onClick: () => {
-                  void handleCopy("file");
-                },
-                type: "button",
-                children: [
-                  copiedFormat === "file" && status === "copied" ? /* @__PURE__ */ jsx(CheckIcon, { size: 14 }) : /* @__PURE__ */ jsx(CopyIcon, { size: 14 }),
-                  activeFormat === "file" ? "Preparing" : copiedFormat === "file" && status === "copied" ? "Downloaded" : "Download JSON"
-                ]
-              }
-            ),
-            /* @__PURE__ */ jsxs(
-              "button",
-              {
-                className: "sbfx-exporter__button sbfx-exporter__button--secondary",
-                disabled: status === "copying",
-                onClick: () => {
-                  void handleCopy("script");
-                },
-                type: "button",
-                children: [
-                  copiedFormat === "script" && status === "copied" ? /* @__PURE__ */ jsx(CheckIcon, { size: 14 }) : /* @__PURE__ */ jsx(CommandIcon, { size: 14 }),
-                  activeFormat === "script" ? "Copying" : copiedFormat === "script" && status === "copied" ? "Copied" : "Plugin Console Script"
-                ]
-              }
-            ),
-            /* @__PURE__ */ jsx(
-              "button",
-              {
-                "aria-label": "Copy design to Figma",
-                className: "sbfx-exporter__button sbfx-exporter__button--secondary sbfx-exporter__button--icon",
-                disabled: status === "copying",
-                onClick: () => {
-                  void handleCopy("design");
-                },
-                title: "Copy design to Figma",
-                type: "button",
-                children: copiedFormat === "design" && status === "copied" ? /* @__PURE__ */ jsx(CheckIcon, { size: 14 }) : /* @__PURE__ */ jsx(FigmaIcon, { size: 14 })
-              }
-            )
-          ] })
-        ]
-      }
-    ) : null
-  ] });
+  const isNewStory = overlayState?.context.id !== context.id;
+  overlayState = {
+    activeFormat: void 0,
+    context,
+    copiedFormat: isNewStory ? void 0 : overlayState?.copiedFormat,
+    options: resolvedOptions,
+    status: isNewStory ? "idle" : overlayState?.status ?? "idle",
+    summary: isNewStory ? "" : overlayState?.summary ?? ""
+  };
+  if (!overlayRefs.aside.isConnected) {
+    document.body.append(overlayRefs.aside);
+  }
+  renderOverlay();
 }
 
-// src/manager.tsx
-import { CopyIcon as CopyIcon2 } from "@storybook/icons";
-import { createElement } from "react";
-import { ToggleButton } from "storybook/internal/components";
-import { addons, types, useGlobals } from "storybook/manager-api";
-var figmaExportAddonId = "storybook/figma-export";
-function registerFigmaExportTool(options = {}) {
-  const addonId = options.addonId ?? figmaExportAddonId;
-  const globalName = options.globalName ?? defaultFigmaExportGlobalName;
-  const toolId = `${addonId}/tool`;
-  function FigmaExportToggle() {
-    const [globals, updateGlobals] = useGlobals();
-    const enabled = globals[globalName] === "on";
-    const title = enabled ? "Figma export on" : "Figma export off";
-    return createElement(
-      ToggleButton,
-      {
-        ariaLabel: title,
-        key: toolId,
-        onClick: () => {
-          updateGlobals({
-            [globalName]: enabled ? "off" : "on"
-          });
-        },
-        padding: "small",
-        pressed: enabled,
-        title,
-        tooltip: title,
-        variant: "ghost"
-      },
-      createElement(CopyIcon2),
-      createElement("span", null, title)
-    );
-  }
-  addons.register(addonId, () => {
-    addons.add(toolId, {
-      render: () => createElement(FigmaExportToggle),
-      title: "Figma export",
-      type: types.TOOL
-    });
-  });
-}
-
-// src/preview.tsx
-import { createElement as createElement2 } from "react";
+// src/preview.ts
 function getFigmaExportGlobalName(options) {
   return options?.globalName ?? defaultFigmaExportGlobalName;
 }
 function createFigmaExportDecorator(options) {
-  return (Story, context) => createElement2(FigmaCodeExporter, { context, options }, Story());
+  return function figmaExportDecorator(storyFn, context) {
+    syncFigmaExportOverlay(context, options);
+    return storyFn();
+  };
 }
 function createFigmaExportGlobalTypes(options) {
   return {
@@ -3823,17 +3972,14 @@ function createFigmaExportInitialGlobals(options) {
   };
 }
 export {
-  FigmaCodeExporter,
   createFigmaExportDecorator,
   createFigmaExportGlobalTypes,
   createFigmaExportInitialGlobals,
   createFigmaExportJson,
   createFigmaPluginCode,
   defaultFigmaExportGlobalName,
-  figmaExportAddonId,
   getFigmaExportGlobalName,
   isStoryIncludedForFigmaExport,
-  registerFigmaExportTool,
   resolveFigmaExportAddonOptions
 };
 //# sourceMappingURL=index.js.map

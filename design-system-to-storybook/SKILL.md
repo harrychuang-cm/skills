@@ -29,7 +29,7 @@ This is a downstream implementation skill. Do not re-extract a design system her
 - **Batch budget:** optional number of components to implement in the current pass.
 - **Extractor source evidence:** `DESIGN_EVIDENCE_MAP.md`, `SESSION_STATE.md`, component spec `Evidence` tables, component-review image links, and any Figma URLs/nodes, UI screenshots, graphic/brand/editorial image references, rendered routes, or frontend folders listed there.
 - **Documentation sync inputs:** existing component folders, co-located Storybook stories, component CSS token usage, explicit user component briefs, `COMPONENT_INVENTORY.md`, and component-review status JSON when design-system docs need auditing or backfilling.
-- **Bundled Figma export addon:** auto-install only against its verified React + Storybook 10 baseline; other renderers require compatibility evidence or an explicit validation pass.
+- **Bundled Figma export addon:** auto-install against Storybook 10 with any renderer (React, Vue, Svelte, Angular, Web Components) — the preview decorator is a renderer-agnostic pass-through and the export overlay is plain DOM. The optional review panel remains React-only; skip its wiring on non-React targets.
 - **Bundled Figma import plugin:** pair with a compatible exporter payload; it is not a renderer or exporter by itself.
 - **Bundled Storybook template:** optional React + Vite + Storybook 10 workspace; ask before using it and never treat it as the universal bootstrap.
 - **Figma export readiness:** stable component node naming, token-bindable CSS, auto-layout-friendly DOM, source URL parameters, and export payload validation.
@@ -47,7 +47,7 @@ This is a downstream implementation skill. Do not re-extract a design system her
 8. If Storybook is absent or a new workspace is requested, ask whether to initialize product-native Storybook unless that choice is already explicit. Offer the bundled React/Vite template only for a React/Vite target or an explicitly requested separate token/docs or React workspace.
 9. Run the component documentation checker for product repos that already contain components: `node <skill-root>/scripts/check_component_docs.mjs <product-repo-root> --design-system-root <design-system-package-root>`. Use `--write` only when the user asked to backfill missing docs or when this pass creates new components.
 10. Record an implementation map before code changes. Prefer `design-system/STORYBOOK_IMPLEMENTATION_MAP.md` when the design-system package lives in the product repo; otherwise use `docs/design-system/storybook-implementation.md`.
-11. Install the bundled Figma export addon, generate project-local addon config, and configure Storybook only when the verified React + Storybook 10 baseline or separately validated compatibility is present.
+11. Install the bundled Figma export addon, generate project-local addon config, and configure Storybook when Storybook 10 is present (any renderer). Wire the React-only review panel only on React targets.
 12. Install or confirm the paired Figma import plugin only when a compatible exporter payload is available.
 13. Read `references/figma-export-readiness.md` before implementing components when the Figma export addon is installed or planned.
 14. If implementing more than one component, create or update a component queue before reading every spec or editing code.
@@ -228,7 +228,7 @@ node <skill-root>/scripts/install_figma_export_addon.mjs <product-repo-root>
 
 The installer copies the vendored addon, detects the package manager, and installs the local `file:` dependency plus `@storybook/icons` when needed. Use `--copy-only` only when you need to inspect or manually install the vendored package. If the bundled addon asset is missing or incomplete, mark `figma-export-addon` as `blocked`; do not fall back to GitHub unless the user explicitly asks to refresh the vendored asset.
 
-If Storybook is missing, not version 10, or the project is not React-based, do not auto-install or force the addon. A non-React target may proceed only with concrete compatibility evidence or a separately approved validation pass; otherwise mark `figma-export-addon` as `unavailable` or `blocked` with the reason and continue core Storybook implementation. Do not install, upgrade, or migrate the app solely for this addon.
+If Storybook is missing or not version 10, do not auto-install or force the addon; mark `figma-export-addon` as `unavailable` or `blocked` with the reason and continue core Storybook implementation. Any Storybook 10 renderer is supported (the preview side imports no react); on non-React targets skip the React-only review panel wiring. Do not install, upgrade, or migrate the app solely for this addon.
 
 Generate a project-local addon config before editing `.storybook/main.*` or `.storybook/preview.*`:
 

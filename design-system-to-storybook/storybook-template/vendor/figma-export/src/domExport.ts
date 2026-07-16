@@ -91,7 +91,16 @@ function getExportTime(): number {
 function waitForExportFrame(): Promise<void> {
   return new Promise((resolve) => {
     if (typeof window !== "undefined" && window.requestAnimationFrame) {
-      window.requestAnimationFrame(() => resolve());
+      let settled = false;
+      const settle = () => {
+        if (settled) return;
+        settled = true;
+        resolve();
+      };
+      window.requestAnimationFrame(settle);
+      // Headless/hidden pages stop producing frames, so a timer settles the
+      // race when requestAnimationFrame never fires.
+      globalThis.setTimeout(settle, 120);
       return;
     }
 
@@ -363,6 +372,8 @@ function findLinearGradientTokens(
   declarations: MatchedDeclaration[],
   tokenSystem: DetectedTokenSystem,
 ): string[] {
+  if (!tokenSystem.prefix) return [];
+
   for (let index = declarations.length - 1; index >= 0; index -= 1) {
     const declaration = declarations[index];
     if (!["background", "background-image"].includes(declaration.property)) {
@@ -817,7 +828,7 @@ function mediaRuleMatches(rule: CSSMediaRule): boolean {
   }
 }
 
-function getCssRules(): CSSStyleRule[] {
+function collectRulesFromStyleSheets(sheets: CSSStyleSheet[]): CSSStyleRule[] {
   const rules: CSSStyleRule[] = [];
 
   function collect(ruleList: CSSRuleList) {
@@ -843,7 +854,7 @@ function getCssRules(): CSSStyleRule[] {
     }
   }
 
-  for (const sheet of Array.from(document.styleSheets)) {
+  for (const sheet of sheets) {
     try {
       collect(sheet.cssRules);
     } catch {
@@ -852,6 +863,74 @@ function getCssRules(): CSSStyleRule[] {
   }
 
   return rules;
+}
+
+// Style rules are collected per root: document styleSheets plus document
+// adoptedStyleSheets form the base set, and each open shadow root contributes
+// its own styleSheets and adoptedStyleSheets for the elements inside it
+// (Lit and friends inject component styles via adoptedStyleSheets).
+type CssRuleIndex = {
+  documentRules: CSSStyleRule[];
+  rulesByShadowRoot: Map<ShadowRoot, CSSStyleRule[]>;
+};
+
+function getDocumentAdoptedStyleSheets(): CSSStyleSheet[] {
+  try {
+    return Array.from(document.adoptedStyleSheets ?? []);
+  } catch {
+    return [];
+  }
+}
+
+function createCssRuleIndex(): CssRuleIndex {
+  return {
+    documentRules: collectRulesFromStyleSheets([
+      ...Array.from(document.styleSheets),
+      ...getDocumentAdoptedStyleSheets(),
+    ]),
+    rulesByShadowRoot: new Map(),
+  };
+}
+
+function getRulesForElement(index: CssRuleIndex, element: Element): CSSStyleRule[] {
+  const root = element.getRootNode();
+  if (!(root instanceof ShadowRoot)) return index.documentRules;
+
+  let combined = index.rulesByShadowRoot.get(root);
+  if (!combined) {
+    let adopted: CSSStyleSheet[] = [];
+    try {
+      adopted = Array.from(root.adoptedStyleSheets ?? []);
+    } catch {
+      adopted = [];
+    }
+    combined = index.documentRules.concat(
+      collectRulesFromStyleSheets([...Array.from(root.styleSheets), ...adopted]),
+    );
+    index.rulesByShadowRoot.set(root, combined);
+  }
+  return combined;
+}
+
+// Open shadow roots render in place of the host's light children; slots
+// expand to their flattened assigned elements (falling back to the slot's own
+// fallback content) and never produce nodes themselves.
+function getRenderChildren(element: Element): Element[] {
+  const shadowRoot = element.shadowRoot;
+  const baseChildren = shadowRoot
+    ? Array.from(shadowRoot.children)
+    : Array.from(element.children);
+
+  const expanded: Element[] = [];
+  for (const child of baseChildren) {
+    if (child instanceof HTMLSlotElement) {
+      const assigned = child.assignedElements({ flatten: true });
+      expanded.push(...(assigned.length > 0 ? assigned : Array.from(child.children)));
+      continue;
+    }
+    expanded.push(child);
+  }
+  return expanded;
 }
 
 // Simplified a-b-c specificity: ids, then classes/attributes/pseudo-classes,
@@ -1450,6 +1529,8 @@ function collectPseudoBindings(
   pseudo: PseudoElementName,
   tokenSystem: DetectedTokenSystem,
 ): Partial<Record<FigmaBindingName, string>> {
+  if (!tokenSystem.prefix) return {};
+
   const declarations = getPseudoMatchedDeclarations(element, rules, pseudo);
   const bindings: Partial<Record<FigmaBindingName, string>> = {};
 
@@ -1632,6 +1713,8 @@ function collectBorderSideBindings(
   sides: Partial<Record<BorderSide, VisibleBorder>>,
   tokenSystem: DetectedTokenSystem,
 ): Partial<Record<FigmaBindingName, string>> {
+  if (!tokenSystem.prefix) return {};
+
   const declarations = getMatchedDeclarations(element, rules);
   const bindings: Partial<Record<FigmaBindingName, string>> = {};
 
@@ -1657,6 +1740,8 @@ function collectBindings(
   hasUniformVisibleBorder: boolean,
   tokenSystem: DetectedTokenSystem,
 ): Partial<Record<FigmaBindingName, string>> {
+  if (!tokenSystem.prefix) return {};
+
   const declarations = getMatchedDeclarations(element, rules);
   const bindings: Partial<Record<FigmaBindingName, string>> = {};
 
@@ -2067,7 +2152,7 @@ async function createExportNode(
   element: Element,
   rootRect: DOMRect,
   parentRect: DOMRect,
-  rules: CSSStyleRule[],
+  ruleIndex: CssRuleIndex,
   tokenSystem: DetectedTokenSystem,
   options: ResolvedFigmaExportAddonOptions,
   traversalState: FigmaExportTraversalState,
@@ -2089,6 +2174,7 @@ async function createExportNode(
   const height = toFiniteNumber(rect.height);
   if (width <= 0 || height <= 0) return undefined;
 
+  const rules = getRulesForElement(ruleIndex, element);
   const forceAutoLayout =
     element.getAttribute("data-figma-layout-strategy") === "auto-layout";
   const nextForceAbsoluteLayout =
@@ -2110,7 +2196,7 @@ async function createExportNode(
   );
   if (clipPathNode) return clipPathNode;
 
-  const childElements = Array.from(element.children);
+  const childElements = getRenderChildren(element);
   const hasPositionedChildren = hasOutOfFlowPositionedChildren(childElements);
   const childNodeResults = await Promise.all(
     childElements.map((child) =>
@@ -2118,7 +2204,7 @@ async function createExportNode(
         child,
         rootRect,
         rect,
-        rules,
+        ruleIndex,
         tokenSystem,
         options,
         traversalState,
@@ -2201,7 +2287,7 @@ async function createExportNode(
 
   const elementOutOfFlow = isOutOfFlowPositioned(computed);
 
-  if (directText && !hasElementChildren(element)) {
+  if (directText && !hasElementChildren(element) && !element.shadowRoot) {
     const leafText = applyTextTransformToText(getRenderedLeafText(element), computed);
     if (hasBoxedTextStyle(computed, border)) {
       const paddingLeft = cssLengthToNumber(computed.paddingLeft) ?? 0;
@@ -2427,7 +2513,7 @@ export async function createFigmaExportPayload({
   onProgress?.({ phase: "preparing" });
   await waitForExportFrame();
 
-  const rules = getCssRules();
+  const ruleIndex = createCssRuleIndex();
   const tokenSystem = detectTokenSystem(options);
   const rootRect = root.getBoundingClientRect();
   const traversalState: FigmaExportTraversalState = {
@@ -2440,7 +2526,7 @@ export async function createFigmaExportPayload({
     root,
     rootRect,
     rootRect,
-    rules,
+    ruleIndex,
     tokenSystem,
     options,
     traversalState,

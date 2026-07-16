@@ -17,11 +17,40 @@ Payloads produced by the current exporter may carry additional optional fields; 
 
 Invalid types on these fields fail `parsePayload` with an error naming the node path and field.
 
+## Load from Storybook (local bridge)
+
+The UI's "Load from Storybook" section batch-imports payloads stored by the
+Storybook review-server bridge (exports pushed via the addon's
+`payloadSyncUrl` option):
+
+1. Enter the Storybook URL (default `http://localhost:6006`) and press
+   **Fetch** — the plugin reads `GET <url>/__figma-export/payloads`.
+2. Tick the stored payloads to import (or **Select all**).
+3. Press **Import selected** — each payload is fetched and fed through the
+   same pipeline as pasted JSON, sequentially, with a final summary.
+
+`manifest.json` declares `networkAccess.devAllowedDomains` for
+`http://localhost:*` and `http://127.0.0.1:*`; re-import the manifest in
+Figma after updating so the permission takes effect. Fetch failures (bridge
+not running, CORS) surface in the status panel — pasting JSON and choosing a
+file keep working regardless.
+
+Manual verification checklist (requires Figma Desktop):
+
+1. Start a Storybook whose preview sets `payloadSyncUrl`, toggle Figma export
+   on, and run **Copy JSON** on two stories — the overlay notes `[synced]`.
+2. In Figma run the plugin, press **Fetch** — both stories appear; select
+   both and import — two sections/components are created and the summary
+   reports 2/2.
+3. Stop Storybook and press **Fetch** again — a connection error appears and
+   pasting JSON still imports.
+
 ## Verify pure helpers under Node
 
 ```sh
 npm run build
 node test/verify-pure-functions.cjs
+node test/verify-bridge-helpers.cjs
 ```
 
 The script stubs the `figma` global, loads `code.js`, and asserts color parsing, gradient transforms, font style candidates, and payload validation compatibility.

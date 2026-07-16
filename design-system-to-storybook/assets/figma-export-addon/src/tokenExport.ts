@@ -140,6 +140,21 @@ function collectCssCustomProperties(): Map<string, string> {
     }
   }
 
+  // Document-level adoptedStyleSheets can also define :root/body tokens.
+  let adoptedSheets: CSSStyleSheet[] = [];
+  try {
+    adoptedSheets = Array.from(document.adoptedStyleSheets ?? []);
+  } catch {
+    adoptedSheets = [];
+  }
+  for (const sheet of adoptedSheets) {
+    try {
+      collectRuleList(sheet.cssRules);
+    } catch {
+      // Ignore inaccessible constructed style sheets.
+    }
+  }
+
   collectFromStyle(document.documentElement.style, true);
   if (document.body) collectFromStyle(document.body.style, true);
   collectFromStyle(window.getComputedStyle(document.documentElement), false);
@@ -163,7 +178,7 @@ function getTokenLayer(
 function detectTokenPrefix(
   tokenNames: Iterable<string>,
   options: ResolvedFigmaExportAddonOptions,
-): string {
+): string | undefined {
   if (options.tokenPrefix) return options.tokenPrefix;
 
   const candidates = new Map<
@@ -191,6 +206,10 @@ function detectTokenPrefix(
     }
   }
 
+  // No custom property matches any layered pattern: degrade to a token-less
+  // export (empty token system) instead of blocking the whole export.
+  if (candidates.size === 0) return undefined;
+
   const completeCandidates = Array.from(candidates.entries())
     .filter(([, candidate]) => tokenLayers.every((layer) => candidate.layers.has(layer)))
     .sort(([, a], [, b]) => b.count - a.count);
@@ -202,11 +221,22 @@ function detectTokenPrefix(
   );
 }
 
+const emptyTokenSystemPrefix = "";
+
 export function detectTokenSystem(
   options: ResolvedFigmaExportAddonOptions,
 ): DetectedTokenSystem {
   const customProperties = collectCssCustomProperties();
   const prefix = detectTokenPrefix(customProperties.keys(), options);
+  if (prefix === undefined) {
+    return {
+      catalog: [],
+      collections: options.collections,
+      layers: options.tokenLayers,
+      pluginDataKey: options.pluginDataKey,
+      prefix: emptyTokenSystemPrefix,
+    };
+  }
   const catalog: TokenDefinition[] = [];
 
   customProperties.forEach((value, name) => {
@@ -369,6 +399,8 @@ export function extractCssVariableNames(
   value: string,
   tokenSystem: DetectedTokenSystem,
 ): string[] {
+  if (!tokenSystem.prefix) return [];
+
   const layerPattern = tokenLayers
     .map((layer) => escapeRegExp(tokenSystem.layers[layer]))
     .join("|");

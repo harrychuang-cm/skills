@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>figma-export overlay fixture</title>
+<style>
+  :root {
+    --fx-ref-color-blue: #3366ff;
+    --fx-sys-color-primary: var(--fx-ref-color-blue);
+    --fx-comp-card-color-bg: var(--fx-sys-color-primary);
+  }
+  body { font-family: Arial, sans-serif; margin: 16px; }
+  .demo-card {
+    width: 160px; height: 48px;
+    background-color: var(--fx-comp-card-color-bg);
+    border-radius: 8px;
+  }
+</style>
+</head>
+<body>
+<div id="storybook-root">
+  <div data-component="demo-card" class="demo-card"></div>
+</div>
+<pre id="fixture-result" style="display: none"></pre>
+<script src="./.export-overlay.bundle.js"></script>
+<script>
+  function toBase64Utf8(text) {
+    return btoa(unescape(encodeURIComponent(text)));
+  }
+
+  const results = [];
+  function check(name, condition) {
+    results.push({ name, passed: Boolean(condition) });
+  }
+
+  function overlayElement() {
+    return document.querySelector("aside.sbfx-exporter");
+  }
+
+  function waitFor(predicate, timeoutMs) {
+    return new Promise((resolve) => {
+      const startedAt = Date.now();
+      function tick() {
+        if (predicate()) {
+          resolve(true);
+          return;
+        }
+        if (Date.now() - startedAt > timeoutMs) {
+          resolve(false);
+          return;
+        }
+        // setTimeout (not rAF): headless Chromium throttles rAF, while
+        // virtual time fast-forwards timers deterministically.
+        setTimeout(tick, 50);
+      }
+      tick();
+    });
+  }
+
+  async function run() {
+    try {
+      document.title = "STEP:start";
+      const copies = [];
+      Object.defineProperty(navigator, "clipboard", {
+        configurable: true,
+        value: {
+          writeText: async (text) => {
+            copies.push(text);
+          },
+        },
+      });
+
+      const syncUrl = new URLSearchParams(location.search).get("sync") || undefined;
+      const decorator = window.FigmaOverlayFixture.createFigmaExportDecorator({
+        storyTitlePrefix: false,
+        ...(syncUrl ? { payloadSyncUrl: syncUrl } : {}),
+      });
+
+      const baseContext = {
+        globals: { figmaExport: "on" },
+        id: "demo-card--default",
+        name: "Default",
+        title: "Components/DemoCard",
+        viewMode: "story",
+      };
+
+      // Pass-through identity: the decorator returns the story result unchanged.
+      document.title = "STEP:decorator";
+      const sentinel = { marker: "story-result" };
+      const returned = decorator(() => sentinel, baseContext);
+      check("decorator returns story result unchanged", returned === sentinel);
+
+      // Overlay mounts on document.body with the action buttons.
+      const aside = overlayElement();
+      check("overlay aside mounted on body", Boolean(aside && aside.parentElement === document.body));
+      check("overlay starts idle", aside?.dataset.status === "idle");
+      const buttons = aside ? aside.querySelectorAll("button") : [];
+      check("overlay has four action buttons", buttons.length === 4);
+
+      // Globals off unmounts the overlay.
+      decorator(() => sentinel, { ...baseContext, globals: { figmaExport: "off" } });
+      check("overlay removed when global is off", overlayElement() === null);
+
+      // Docs view mode keeps the overlay unmounted.
+      decorator(() => sentinel, { ...baseContext, viewMode: "docs" });
+      check("overlay absent in docs view mode", overlayElement() === null);
+
+      // Re-enable and export via the Copy JSON button with a stubbed clipboard.
+      document.title = "STEP:remount";
+      decorator(() => sentinel, baseContext);
+      const mounted = overlayElement();
+      check("overlay remounts when re-enabled", Boolean(mounted));
+      const copyJsonButton = Array.from(mounted.querySelectorAll("button")).find(
+        (button) => button.textContent.includes("Copy JSON"),
+      );
+      check("copy json button present", Boolean(copyJsonButton));
+      document.title = "STEP:clicked";
+      copyJsonButton.click();
+
+      const copied = await waitFor(
+        () => overlayElement()?.dataset.status === "copied",
+        8000,
+      );
+      document.title = "STEP:copied-" + String(copied) + "-" + String(overlayElement()?.dataset.status);
+      check("export reaches copied status", copied);
+      check("clipboard stub received one payload", copies.length === 1);
+
+      let payload = null;
+      try {
+        payload = JSON.parse(copies[0] || "null");
+      } catch {
+        payload = null;
+      }
+      check("copied payload parses as JSON", Boolean(payload));
+      check("payload version is 2", payload?.version === 2);
+      check(
+        "payload root comes from storybook-root scope",
+        payload?.root?.name === "demo-card",
+      );
+      check(
+        "overlay itself is not exported",
+        JSON.stringify(payload).includes("sbfx-exporter") === false,
+      );
+      check("token bindings resolved", (payload?.tokens?.length ?? 0) > 0);
+
+      if (syncUrl) {
+        // Give the fire-and-forget sync a beat, then confirm the status note.
+        await waitFor(
+          () => (overlayElement()?.textContent || "").includes("[synced]"),
+          8000,
+        );
+        check(
+          "sync note appended to summary",
+          (overlayElement()?.textContent || "").includes("[synced]"),
+        );
+      }
+
+      document.getElementById("fixture-result").textContent = toBase64Utf8(
+        JSON.stringify({ diagnostics: { status: overlayElement()?.dataset.status ?? null, summary: overlayElement()?.textContent ?? "" }, payloadStoryId: payload?.storyId ?? null, results }),
+      );
+      document.title = "OVERLAY_DONE";
+    } catch (error) {
+      document.getElementById("fixture-result").textContent = toBase64Utf8(
+        JSON.stringify({
+          error: String(error && error.stack ? error.stack : error),
+          results,
+        }),
+      );
+      document.title = "OVERLAY_ERROR";
+    }
+  }
+
+  window.addEventListener("load", () => {
+    run();
+  });
+</script>
+</body>
+</html>

@@ -1,2 +1,4 @@
 .export-fixture.bundle.js
 .last-fixture-payload.json
+.export-overlay.bundle.js
+.export-overlay.bundle.css

@@ -147,6 +147,7 @@ type FigmaExportAddonOptions = {
     componentClassPrefixes?: string[];
     embeddedSvgByDataGraphic?: Record<string, string>;
     globalName?: string;
+    payloadSyncUrl?: string;
     pluginDataKey?: string;
     storyTitlePrefix?: false | string | string[];
     tokenLayers?: Partial<Record<TokenLayer, string>>;
@@ -158,6 +159,7 @@ type ResolvedFigmaExportAddonOptions = {
     componentClassPrefixes: string[];
     embeddedSvgByDataGraphic: Record<string, string>;
     globalName: string;
+    payloadSyncUrl?: string;
     pluginDataKey: string;
     storyTitlePrefix: false | string[];
     tokenLayers: Record<TokenLayer, string>;
@@ -167,4 +169,4 @@ declare const defaultFigmaExportGlobalName = "figmaExport";
 declare function resolveFigmaExportAddonOptions(options: FigmaExportAddonOptions | undefined): ResolvedFigmaExportAddonOptions;
 declare function isStoryIncludedForFigmaExport(title: string | undefined, options: ResolvedFigmaExportAddonOptions): boolean;
 
-export { type FigmaExportAddonOptions as F, type ResolvedFigmaExportAddonOptions as R, type TokenLayer as T, type FigmaExportPayload as a, type FigmaBindingName as b, type FigmaExportNode as c, type FigmaExportToken as d, type FigmaLayoutStrategy as e, type FigmaNodeKind as f, defaultFigmaExportGlobalName as g, isStoryIncludedForFigmaExport as i, resolveFigmaExportAddonOptions as r };
+export { type FigmaExportPayload as F, type ResolvedFigmaExportAddonOptions as R, type TokenLayer as T, type FigmaBindingName as a, type FigmaExportAddonOptions as b, type FigmaExportNode as c, type FigmaExportToken as d, type FigmaLayoutStrategy as e, type FigmaNodeKind as f, defaultFigmaExportGlobalName as g, isStoryIncludedForFigmaExport as i, resolveFigmaExportAddonOptions as r };

@@ -6,6 +6,7 @@ export type FigmaExportAddonOptions = {
   componentClassPrefixes?: string[];
   embeddedSvgByDataGraphic?: Record<string, string>;
   globalName?: string;
+  payloadSyncUrl?: string;
   pluginDataKey?: string;
   storyTitlePrefix?: false | string | string[];
   tokenLayers?: Partial<Record<TokenLayer, string>>;
@@ -18,6 +19,7 @@ export type ResolvedFigmaExportAddonOptions = {
   componentClassPrefixes: string[];
   embeddedSvgByDataGraphic: Record<string, string>;
   globalName: string;
+  payloadSyncUrl?: string;
   pluginDataKey: string;
   storyTitlePrefix: false | string[];
   tokenLayers: Record<TokenLayer, string>;
@@ -58,6 +60,7 @@ export function resolveFigmaExportAddonOptions(
     componentClassPrefixes: options?.componentClassPrefixes ?? [],
     embeddedSvgByDataGraphic: options?.embeddedSvgByDataGraphic ?? {},
     globalName: options?.globalName ?? defaultFigmaExportGlobalName,
+    ...(options?.payloadSyncUrl ? { payloadSyncUrl: options.payloadSyncUrl } : {}),
     pluginDataKey: options?.pluginDataKey ?? "storybookCssToken",
     storyTitlePrefix: normalizeStoryTitlePrefix(options?.storyTitlePrefix),
     tokenLayers: {

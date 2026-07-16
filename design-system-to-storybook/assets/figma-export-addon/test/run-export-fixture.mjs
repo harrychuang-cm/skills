@@ -240,6 +240,23 @@ function assertPayload(payload) {
   approx(accentToken.value?.g, 0.4, 0.01, "hsl token g");
   approx(accentToken.value?.b, 0.6, 0.01, "hsl token b");
 
+  // Shadow DOM traversal capture
+  const shadowHost = findCase(root, "case-shadow-dom");
+  const shadowInner = shadowHost.children.find((child) => child.name === "shadow-inner");
+  assert.ok(shadowInner, "open shadow root content exported as host child");
+  approx(shadowInner.styles.width, 120, 1, "shadow inner width");
+  approx(shadowInner.styles.height, 40, 1, "shadow inner height");
+  assert.match(
+    String(shadowInner.styles.backgroundColor),
+    /^(#3366ff|rgb\(51, 102, 255\))$/i,
+    "shadow inner background resolves the token value",
+  );
+  assert.strictEqual(
+    shadowInner.bindings.backgroundColor,
+    "--fx-sys-color-primary",
+    "adopted stylesheet token binds inside shadow",
+  );
+
   // Payload compatibility: plain nodes carry no new fields
   const plain = findCase(root, "case-plain");
   for (const key of NEW_STYLE_KEYS) {

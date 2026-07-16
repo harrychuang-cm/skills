@@ -28,6 +28,31 @@
     />
   </section>
 
+  <section class="bridge" id="bridge">
+    <span class="field-header">
+      <span>Load from Storybook</span>
+      <span class="field-hint">Local bridge</span>
+    </span>
+    <div class="bridge-controls">
+      <input
+        id="bridge-url"
+        type="text"
+        value="http://localhost:6006"
+        spellcheck="false"
+        aria-label="Storybook URL"
+      />
+      <button id="bridge-fetch" class="secondary" type="button">Fetch</button>
+    </div>
+    <div class="bridge-list" id="bridge-list" hidden></div>
+    <div class="bridge-actions" id="bridge-actions" hidden>
+      <label class="bridge-select-all">
+        <input type="checkbox" id="bridge-select-all" />
+        Select all
+      </label>
+      <button id="bridge-import" type="button">Import selected</button>
+    </div>
+  </section>
+
   <label class="field">
     <span class="field-header">
       <span>Storybook export JSON</span>
@@ -282,6 +307,96 @@
     justify-content: space-between;
     min-width: 0;
     gap: 8px;
+  }
+
+  .bridge {
+    display: grid;
+    gap: 8px;
+    min-width: 0;
+    padding: 10px;
+    background: var(--figma-color-bg-secondary, var(--sctd-surface-raised));
+    border: 1px solid var(--figma-color-border, var(--sctd-border));
+    border-radius: 8px;
+    font-weight: 600;
+  }
+
+  .bridge-controls {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+  }
+
+  .bridge-controls input {
+    min-width: 0;
+    padding: 6px 10px;
+    color: var(--figma-color-text, var(--sctd-text));
+    background: var(--figma-color-bg, var(--sctd-surface));
+    border: 1px solid var(--figma-color-border, var(--sctd-border));
+    border-radius: 7px;
+    font: 11px/1.5 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  }
+
+  .bridge-controls input:focus {
+    border-color: var(--sctd-primary);
+    outline: 3px solid rgba(73, 69, 255, 0.18);
+    outline-offset: 0;
+  }
+
+  .bridge-controls button,
+  .bridge-actions button {
+    min-height: 30px;
+    padding: 0 12px;
+    font-size: 11px;
+  }
+
+  .bridge-list {
+    display: grid;
+    overflow: auto;
+    max-height: 118px;
+    gap: 2px;
+  }
+
+  .bridge-list label {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    overflow: hidden;
+    padding: 4px 6px;
+    border-radius: 6px;
+    color: var(--figma-color-text, var(--sctd-text));
+    font-size: 11px;
+    font-weight: 520;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    cursor: pointer;
+  }
+
+  .bridge-list label:hover {
+    background: var(--sctd-primary-soft);
+  }
+
+  .bridge-list .bridge-item-meta {
+    overflow: hidden;
+    color: var(--figma-color-text-secondary, var(--sctd-muted));
+    font-size: 10px;
+    text-overflow: ellipsis;
+  }
+
+  .bridge-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .bridge-select-all {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--figma-color-text-secondary, var(--sctd-muted));
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
   }
 
   .field-hint {
@@ -562,6 +677,174 @@
     parent.postMessage({ pluginMessage: { type: "import-json", json } }, "*");
   };
 
+  // sbfx-bridge-helpers-start
+  // Pure helpers for the local Storybook bridge; kept fetch-free so
+  // test/verify-bridge-helpers.cjs can evaluate them under Node.
+  function buildBridgePayloadListUrl(baseUrl) {
+    const trimmed = String(baseUrl || "").trim().replace(/\/+$/, "");
+    if (!/^https?:\/\//i.test(trimmed)) return null;
+    return trimmed + "/__figma-export/payloads";
+  }
+
+  function buildBridgePayloadUrl(baseUrl, storyId) {
+    const listUrl = buildBridgePayloadListUrl(baseUrl);
+    if (!listUrl || !storyId) return null;
+    return listUrl + "/" + encodeURIComponent(String(storyId));
+  }
+
+  function parseBridgePayloadList(data) {
+    if (!Array.isArray(data)) {
+      throw new Error("Bridge list response must be a JSON array.");
+    }
+    return data
+      .filter(
+        (entry) =>
+          entry &&
+          typeof entry === "object" &&
+          typeof entry.storyId === "string" &&
+          entry.storyId.length > 0,
+      )
+      .map((entry) => ({
+        componentTitle:
+          typeof entry.componentTitle === "string" ? entry.componentTitle : "",
+        generatedAt: typeof entry.generatedAt === "string" ? entry.generatedAt : "",
+        storyId: entry.storyId,
+        storyName: typeof entry.storyName === "string" ? entry.storyName : "",
+      }));
+  }
+  // sbfx-bridge-helpers-end
+
+  const bridgeUrlInput = document.getElementById("bridge-url");
+  const bridgeFetchButton = document.getElementById("bridge-fetch");
+  const bridgeList = document.getElementById("bridge-list");
+  const bridgeActions = document.getElementById("bridge-actions");
+  const bridgeSelectAll = document.getElementById("bridge-select-all");
+  const bridgeImportButton = document.getElementById("bridge-import");
+
+  let bridgeQueue = [];
+  let bridgeTotal = 0;
+  let bridgeFailed = [];
+  let bridgeActive = false;
+
+  function renderBridgeList(entries) {
+    bridgeList.innerHTML = "";
+    for (const entry of entries) {
+      const label = document.createElement("label");
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.value = entry.storyId;
+      checkbox.className = "bridge-item";
+      const name = document.createElement("span");
+      name.textContent = entry.componentTitle
+        ? entry.componentTitle + " / " + entry.storyName
+        : entry.storyId;
+      const meta = document.createElement("span");
+      meta.className = "bridge-item-meta";
+      meta.textContent = entry.storyId;
+      label.append(checkbox, name, meta);
+      bridgeList.append(label);
+    }
+    const hasEntries = entries.length > 0;
+    bridgeList.hidden = !hasEntries;
+    bridgeActions.hidden = !hasEntries;
+    bridgeSelectAll.checked = false;
+  }
+
+  bridgeSelectAll.addEventListener("change", () => {
+    for (const checkbox of bridgeList.querySelectorAll("input.bridge-item")) {
+      checkbox.checked = bridgeSelectAll.checked;
+    }
+  });
+
+  bridgeFetchButton.onclick = async () => {
+    const listUrl = buildBridgePayloadListUrl(bridgeUrlInput.value);
+    if (!listUrl) {
+      setStatus("error", "Invalid Storybook URL", "Use an http(s) URL such as http://localhost:6006.");
+      return;
+    }
+
+    bridgeFetchButton.disabled = true;
+    setStatus("importing", "Fetching", "Reading stored payloads from " + listUrl + "...");
+    try {
+      const response = await fetch(listUrl);
+      if (!response.ok) {
+        throw new Error("Bridge answered " + response.status + ".");
+      }
+      const entries = parseBridgePayloadList(await response.json());
+      renderBridgeList(entries);
+      setStatus(
+        entries.length > 0 ? "ready" : "error",
+        entries.length > 0 ? "Bridge connected" : "No payloads stored",
+        entries.length > 0
+          ? entries.length + " stored payload(s). Select and import."
+          : "Export stories in Storybook first (the overlay stores payloads when payloadSyncUrl is configured).",
+      );
+    } catch (error) {
+      renderBridgeList([]);
+      setStatus(
+        "error",
+        "Bridge unreachable",
+        (error instanceof Error ? error.message : String(error)) +
+          " Check that Storybook is running and the plugin manifest allows localhost. Pasting JSON still works.",
+      );
+    } finally {
+      bridgeFetchButton.disabled = false;
+    }
+  };
+
+  async function importNextFromBridge() {
+    if (bridgeQueue.length === 0) {
+      bridgeActive = false;
+      const doneCount = bridgeTotal - bridgeFailed.length;
+      setImporting(false);
+      setStatus(
+        bridgeFailed.length > 0 ? "error" : "complete",
+        "Batch import finished",
+        doneCount + "/" + bridgeTotal + " payload(s) imported.",
+        bridgeFailed.length > 0 ? "Failed: " + bridgeFailed.join(", ") : "",
+      );
+      return;
+    }
+
+    const storyId = bridgeQueue.shift();
+    const position = bridgeTotal - bridgeQueue.length;
+    const payloadUrl = buildBridgePayloadUrl(bridgeUrlInput.value, storyId);
+    setImporting(true);
+    setStatus(
+      "importing",
+      "Importing " + position + "/" + bridgeTotal,
+      storyId,
+    );
+
+    try {
+      const response = await fetch(payloadUrl);
+      if (!response.ok) {
+        throw new Error("Bridge answered " + response.status + " for " + storyId + ".");
+      }
+      const json = (await response.text()).trim();
+      parent.postMessage({ pluginMessage: { type: "import-json", json } }, "*");
+    } catch (error) {
+      bridgeFailed.push(storyId);
+      importNextFromBridge();
+    }
+  }
+
+  bridgeImportButton.onclick = () => {
+    const selected = Array.from(
+      bridgeList.querySelectorAll("input.bridge-item:checked"),
+    ).map((checkbox) => checkbox.value);
+    if (selected.length === 0) {
+      setStatus("error", "Nothing selected", "Tick at least one stored payload first.");
+      return;
+    }
+
+    bridgeQueue = selected;
+    bridgeTotal = selected.length;
+    bridgeFailed = [];
+    bridgeActive = true;
+    importNextFromBridge();
+  };
+
   cancelButton.onclick = () => {
     parent.postMessage({ pluginMessage: { type: "cancel" } }, "*");
   };
@@ -597,12 +880,21 @@
       const detail = warningCount
         ? `${warningCount} warnings:\n${stats.warnings.slice(0, 12).join("\n")}`
         : "No warnings.";
+      if (bridgeActive) {
+        importNextFromBridge();
+        return;
+      }
       setImporting(false);
       setStatus("complete", "Import complete", summary, detail);
       return;
     }
 
     if (message.type === "import-error") {
+      if (bridgeActive) {
+        bridgeFailed.push(bridgeTotal - bridgeQueue.length + ": " + message.message);
+        importNextFromBridge();
+        return;
+      }
       setImporting(false);
       setStatus("error", "Import failed", message.message);
     }

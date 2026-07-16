@@ -1,21 +1,14 @@
-import type { ReactNode } from "react";
-import { createElement } from "react";
-
 import "./figma-code-exporter.css";
-import { FigmaCodeExporter } from "./FigmaCodeExporter";
+import {
+  syncFigmaExportOverlay,
+  type FigmaExportPreviewContext,
+} from "./overlay";
 import {
   defaultFigmaExportGlobalName,
   type FigmaExportAddonOptions,
 } from "./options";
 
-type StorybookContext = {
-  globals?: Record<string, unknown>;
-  id?: string;
-  name?: string;
-  title?: string;
-};
-
-type StorybookStory = () => ReactNode;
+export type { FigmaExportPreviewContext } from "./overlay";
 
 export function getFigmaExportGlobalName(
   options?: FigmaExportAddonOptions,
@@ -23,9 +16,18 @@ export function getFigmaExportGlobalName(
   return options?.globalName ?? defaultFigmaExportGlobalName;
 }
 
+// Pass-through decorator: the story result is returned unchanged (strict
+// identity, no wrapper element), so it is valid for every Storybook renderer
+// (React, Vue, Svelte, Angular, Web Components). The export overlay is a
+// document.body side effect handled by the overlay module.
 export function createFigmaExportDecorator(options?: FigmaExportAddonOptions) {
-  return (Story: StorybookStory, context: StorybookContext) =>
-    createElement(FigmaCodeExporter, { context, options }, Story());
+  return function figmaExportDecorator<StoryResult>(
+    storyFn: () => StoryResult,
+    context: FigmaExportPreviewContext,
+  ): StoryResult {
+    syncFigmaExportOverlay(context, options);
+    return storyFn();
+  };
 }
 
 export function createFigmaExportGlobalTypes(

@@ -1,6 +1,6 @@
 # @harrychuang/storybook-addon-figma-export
 
-Storybook 10 addon: export a rendered React story into a Figma import payload (payload version 2). Expects a three-layer CSS token model: `ref`, `sys`, and `comp`.
+Storybook 10 addon: export a rendered story into a Figma import payload (payload version 2). Works with any Storybook renderer — React, Vue, Svelte, Angular, or Web Components — because the preview decorator is a pass-through (it returns the story result unchanged) and the export overlay is plain DOM mounted on document.body; the preview bundle imports no react. Exports are scoped to the `storybook-root` preview element (falling back to document.body with a warning). The optional review panel (`/review` entry) remains React-only. Prefers a three-layer CSS token model (`ref`, `sys`, `comp`); projects without layered tokens still export with an empty variable set.
 
 ## Visual fidelity capture
 
@@ -17,13 +17,34 @@ Beyond layout, tokens, and SVG, the exporter captures:
 
 Known limitations (by design): browser/Figma font metrics may wrap text differently; `transform: rotate/scale`, z-index restacking, masks, and filters are not captured; wide-gamut colors clamp to sRGB; raster embeds cap at 2048px.
 
-Verify exporter behavior end to end with the bundled fixture:
+## Shadow DOM and token-less projects
 
-```bash
-node test/run-export-fixture.mjs
+- Open shadow roots export in place of the host's light children (slots expand to their flattened assigned elements). Component styles injected through `adoptedStyleSheets` — document-level or per shadow root — participate in token binding. Closed shadow roots stay unexported.
+- Projects without `--<prefix>-<layer>-*` tokens degrade gracefully: the export completes with `payload.tokens` empty and no variable bindings instead of throwing.
+
+## Local bridge (batch import into Figma)
+
+Configure `payloadSyncUrl` in the addon options to push every successful export into the review-server payload store:
+
+```ts
+const figmaExportOptions = {
+  payloadSyncUrl: "/__figma-export/payloads",
+} satisfies FigmaExportAddonOptions;
 ```
 
-It bundles `src/domExport.ts`, renders `test/export-fixture.html` in headless Chromium, asserts every capture feature, and writes the payload to `test/.last-fixture-payload.json`.
+`createFigmaReviewStatusPlugin` (see the review-server section) now also serves the store endpoints — POST/list/GET under `/__figma-export/payloads` with permissive CORS, persisted to `design-system/figma-export-payloads/` (`payloadDir` option). The paired Figma plugin's "Load from Storybook" section fetches that list and imports selected payloads without clipboard round-trips.
+
+## Verification suite
+
+Run from the addon root (after `npm run build` for the store test):
+
+```bash
+node test/run-export-fixture.mjs      # capture features incl. shadow DOM case
+node test/run-overlay-fixture.mjs     # renderer-agnostic overlay + token-less + auto-sync
+node test/run-payload-store-test.mjs  # bridge store endpoints (CORS, sanitize, round trip)
+```
+
+The browser runners bundle the sources, render the fixtures in headless Chromium, and assert the spec scenarios; payloads land in `test/.last-fixture-payload.json`.
 
 ## Install
 

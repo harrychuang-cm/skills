@@ -7,7 +7,7 @@ export default defineConfig({
   dts: true,
   entry: {
     index: "src/index.ts",
-    preview: "src/preview.tsx",
+    preview: "src/preview.ts",
     preset: "src/preset.ts",
     manager: "src/manager-entry.ts",
     review: "src/review.ts",

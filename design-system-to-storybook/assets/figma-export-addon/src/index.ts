@@ -1,5 +1,3 @@
-export { FigmaCodeExporter } from "./FigmaCodeExporter";
-export { registerFigmaExportTool, figmaExportAddonId } from "./manager";
 export {
   createFigmaExportDecorator,
   createFigmaExportGlobalTypes,
