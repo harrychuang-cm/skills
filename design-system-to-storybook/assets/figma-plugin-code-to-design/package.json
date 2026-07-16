@@ -1,6 +1,6 @@
 {
   "name": "storybook-code-to-design",
-  "version": "1.1.8",
+  "version": "1.2.0",
   "description": "Figma importer for Storybook Code To Design JSON exports",
   "main": "code.js",
   "scripts": {

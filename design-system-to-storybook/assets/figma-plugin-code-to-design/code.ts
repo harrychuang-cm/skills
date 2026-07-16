@@ -92,10 +92,32 @@ type FigmaExportBorderSides = Partial<
   Record<FigmaBorderSideName, FigmaExportBorderSide>
 >;
 
+type FigmaExportEffect = {
+  blur: number;
+  color?: string;
+  offsetX: number;
+  offsetY: number;
+  spread: number;
+  type: "DROP_SHADOW" | "INNER_SHADOW";
+};
+
+type FigmaRadiusCorners = {
+  bottomLeft: number;
+  bottomRight: number;
+  topLeft: number;
+  topRight: number;
+};
+
+type FigmaImageScaleMode = "FILL" | "FIT";
+
+type FigmaTextDecorationSpec = "STRIKETHROUGH" | "UNDERLINE";
+
 type FigmaExportNode = {
   bindings?: Partial<Record<FigmaBindingName, string>>;
   children?: FigmaExportNode[];
   component?: FigmaComponentReference;
+  imageBase64?: string;
+  imageMimeType?: string;
   kind: FigmaNodeKind;
   name: string;
   styles: {
@@ -107,18 +129,24 @@ type FigmaExportNode = {
     borderWidth?: number;
     constraints?: FigmaExportConstraints;
     color?: string;
+    counterAxisSpacing?: number;
     display?: string;
+    effects?: FigmaExportEffect[];
     flexDirection?: string;
     fontFamily?: string;
     fontSize?: number;
+    fontStyle?: "italic";
     fontWeight?: number;
     gap?: number;
     height: number;
+    imageScaleMode?: FigmaImageScaleMode;
     justifyContent?: string;
     layoutAlign?: "STRETCH";
     layoutGrow?: number;
     layoutSizingHorizontal?: "HUG";
     layoutSizingVertical?: "HUG";
+    layoutWrap?: "WRAP";
+    letterSpacing?: number;
     lineHeight?: number | "normal";
     maxLines?: number;
     textTruncation?: "ENDING";
@@ -130,9 +158,11 @@ type FigmaExportNode = {
     paddingRight?: number;
     paddingTop?: number;
     radius?: number;
+    radiusCorners?: FigmaRadiusCorners;
     textAlign?: string;
     textAlignVertical?: TextVerticalAlign;
     textAutoResize?: TextAutoResizeMode;
+    textDecoration?: FigmaTextDecorationSpec;
     width: number;
     x: number;
     y: number;
@@ -328,7 +358,7 @@ type ComponentSectionTarget = {
 
 // Bump this on every behavior change so the Figma UI badge confirms which
 // build is running (Figma re-reads code.js per run, but the badge removes doubt).
-const PLUGIN_VERSION = "1.1.8 (2026-06-25)";
+const PLUGIN_VERSION = "1.2.0 (2026-07-16)";
 
 const SUPPORTED_PAYLOAD_VERSIONS = [1, 2] as const;
 const DEFAULT_TOKEN_PLUGIN_DATA_KEY = "storybookCssToken";
@@ -968,6 +998,7 @@ function createImportContext(payload: FigmaExportPayload) {
     setFrameFills(node, styles, bindings, path);
     setStrokes(node, styles, bindings, path);
     applyRadius(node, styles, bindings, path);
+    applyEffects(node, styles.effects, path);
     applyAutoLayout(node, styles, bindings, path);
 
     safeBind(node, "width", bindings.width, path);
@@ -1197,6 +1228,7 @@ function createImportContext(payload: FigmaExportPayload) {
     setFrameFills(node, styles, bindings, path);
     setStrokes(node, styles, bindings, path);
     applyRadius(node, styles, bindings, path);
+    applyEffects(node, styles.effects, path);
     applyAutoLayout(node, styles, bindings, path);
 
     safeBind(node, "width", bindings.width, path);
@@ -2065,7 +2097,22 @@ function createImportContext(payload: FigmaExportPayload) {
         value: styles.lineHeight,
       };
     }
+    if (typeof styles.letterSpacing === "number") {
+      try {
+        node.letterSpacing = { unit: "PIXELS", value: styles.letterSpacing };
+      } catch (error) {
+        warn(`Could not set letter spacing for ${path}: ${formatError(error)}`);
+      }
+    }
+    if (styles.textDecoration) {
+      try {
+        node.textDecoration = styles.textDecoration;
+      } catch (error) {
+        warn(`Could not set text decoration for ${path}: ${formatError(error)}`);
+      }
+    }
     node.fills = [solidPaint(styles.color, bindings.textColor, `${path}.textColor`)];
+    applyEffects(node, styles.effects, path);
     safeResize(node, styles.width, styles.height, path);
     applyTextAutoResize(node, styles.textAutoResize, path);
     applyTextTruncation(node, styles, path);
@@ -2077,6 +2124,7 @@ function createImportContext(payload: FigmaExportPayload) {
       node,
       bindings.fontFamily,
       styles.fontWeight ?? 400,
+      styles.fontStyle === "italic",
       path,
     );
     safeBind(node, "fontSize", bindings.fontSize, path);
@@ -2110,9 +2158,28 @@ function createImportContext(payload: FigmaExportPayload) {
       } catch (error) {
         warn(`Could not create SVG for ${path}: ${formatError(error)}`);
       }
+    } else if (spec.imageBase64) {
+      try {
+        const bytes = figma.base64Decode(spec.imageBase64);
+        const image = figma.createImage(bytes);
+        const scaleMode: "FILL" | "FIT" =
+          spec.styles.imageScaleMode === "FIT" ? "FIT" : "FILL";
+        wrapper.fills = [
+          {
+            imageHash: image.hash,
+            scaleMode,
+            type: "IMAGE",
+          },
+        ];
+      } catch (error) {
+        warn(`Could not create raster image for ${path}: ${formatError(error)}`);
+      }
     } else {
-      warn(`Image ${path} has no SVG payload; created an empty image frame.`);
+      warn(`Image ${path} has no SVG or raster payload; created an empty image frame.`);
     }
+
+    applyRadius(wrapper, spec.styles, bindings, path);
+    applyEffects(wrapper, spec.styles.effects, path);
 
     return wrapper;
   }
@@ -2152,14 +2219,6 @@ function createImportContext(payload: FigmaExportPayload) {
     node.fills = [
       solidPaint(styles.backgroundColor, bindings.backgroundColor, `${path}.fill`),
     ];
-  }
-
-  function getLinearGradientTransform(angle: number): Transform {
-    const normalized = ((angle % 360) + 360) % 360;
-    if (normalized === 270) return [[-1, 0, 1], [0, 1, 0]];
-    if (normalized === 180) return [[0, 1, 0], [-1, 0, 1]];
-    if (normalized === 0) return [[0, -1, 1], [1, 0, 0]];
-    return [[1, 0, 0], [0, 1, 0]];
   }
 
   function linearGradientPaint(
@@ -2310,11 +2369,53 @@ function createImportContext(payload: FigmaExportPayload) {
     bindings: Partial<Record<FigmaBindingName, string>>,
     path: string,
   ): void {
-    if (typeof styles.radius === "number") {
+    if (styles.radiusCorners) {
+      try {
+        node.topLeftRadius = Math.max(0, safeNumber(styles.radiusCorners.topLeft, 0));
+        node.topRightRadius = Math.max(0, safeNumber(styles.radiusCorners.topRight, 0));
+        node.bottomRightRadius = Math.max(
+          0,
+          safeNumber(styles.radiusCorners.bottomRight, 0),
+        );
+        node.bottomLeftRadius = Math.max(
+          0,
+          safeNumber(styles.radiusCorners.bottomLeft, 0),
+        );
+      } catch (error) {
+        warn(`Could not set per-corner radius for ${path}: ${formatError(error)}`);
+      }
+    } else if (typeof styles.radius === "number") {
       node.cornerRadius = styles.radius;
     }
 
     safeBindRadius(node, bindings.cornerRadius, path);
+  }
+
+  function applyEffects(
+    node: SceneNode,
+    effects: FigmaExportEffect[] | undefined,
+    path: string,
+  ): void {
+    if (!effects || effects.length === 0) return;
+
+    try {
+      const mapped = effects.map((effect) => ({
+        blendMode: "NORMAL" as const,
+        color: cloneColor(colorFromCss(effect.color)),
+        offset: {
+          x: safeNumber(effect.offsetX, 0),
+          y: safeNumber(effect.offsetY, 0),
+        },
+        radius: Math.max(0, safeNumber(effect.blur, 0)),
+        spread: safeNumber(effect.spread, 0),
+        type: effect.type,
+        visible: true,
+      }));
+      (node as SceneNode & { effects: readonly Effect[] }).effects =
+        mapped as unknown as Effect[];
+    } catch (error) {
+      warn(`Could not set effects for ${path}: ${formatError(error)}`);
+    }
   }
 
   function applyAutoLayout(
@@ -2349,6 +2450,20 @@ function createImportContext(payload: FigmaExportPayload) {
     node.paddingTop = safeNumber(styles.paddingTop, 0);
     node.paddingBottom = safeNumber(styles.paddingBottom, 0);
     node.primaryAxisAlignItems = primaryAxisAlignItems;
+
+    if (styles.layoutWrap === "WRAP") {
+      try {
+        (node as FrameLikeNode & { layoutWrap: "NO_WRAP" | "WRAP" }).layoutWrap =
+          "WRAP";
+        if (typeof styles.counterAxisSpacing === "number") {
+          (
+            node as FrameLikeNode & { counterAxisSpacing: number | null }
+          ).counterAxisSpacing = Math.max(0, styles.counterAxisSpacing);
+        }
+      } catch (error) {
+        warn(`Could not set layout wrap for ${path}: ${formatError(error)}`);
+      }
+    }
 
     if (primaryAxisAlignItems !== "SPACE_BETWEEN") {
       safeBind(node, "itemSpacing", bindings.gap, path);
@@ -2455,10 +2570,11 @@ function createImportContext(payload: FigmaExportPayload) {
     node: SceneNode,
     tokenName: string | undefined,
     fontWeight: number,
+    italic: boolean,
     path: string,
   ): Promise<boolean> {
     if (!tokenName) return false;
-    const loaded = await loadBoundFontFamily(tokenName, fontWeight, path);
+    const loaded = await loadBoundFontFamily(tokenName, fontWeight, italic, path);
     if (!loaded) return false;
     return safeBind(node, "fontFamily", tokenName, path);
   }
@@ -2584,7 +2700,10 @@ function createImportContext(payload: FigmaExportPayload) {
     path: string,
   ): Promise<FontName> {
     const family = getFontFamily(styles.fontFamily);
-    const styleCandidates = getFontStyleCandidates(styles.fontWeight ?? 400);
+    const styleCandidates = getFontStyleCandidates(
+      styles.fontWeight ?? 400,
+      styles.fontStyle === "italic",
+    );
 
     for (const style of styleCandidates) {
       const candidate = { family, style };
@@ -2631,6 +2750,7 @@ function createImportContext(payload: FigmaExportPayload) {
   async function loadBoundFontFamily(
     tokenName: string,
     fontWeight: number,
+    italic: boolean,
     path: string,
   ): Promise<boolean> {
     const family = getFontFamilyFromToken(tokenName);
@@ -2639,7 +2759,7 @@ function createImportContext(payload: FigmaExportPayload) {
       return false;
     }
 
-    const styleCandidates = getFontStyleCandidates(fontWeight);
+    const styleCandidates = getFontStyleCandidates(fontWeight, italic);
     for (const style of styleCandidates) {
       try {
         await figma.loadFontAsync({ family, style });
@@ -2825,36 +2945,118 @@ function cloneColor(value: unknown): RGBA {
   };
 }
 
+// CSS angles are clockwise with 0deg pointing up; Figma's identity gradient
+// runs along +x (the CSS 90deg direction). Rotate about the tile center so
+// any angle maps, not just the four axis-aligned ones.
+function getLinearGradientTransform(angle: number): Transform {
+  const radians = ((angle - 90) * Math.PI) / 180;
+  const cos = Math.cos(radians);
+  const sin = Math.sin(radians);
+  const translateX = 0.5 - (cos * 0.5 + sin * 0.5);
+  const translateY = 0.5 - (-sin * 0.5 + cos * 0.5);
+  return [
+    [cos, sin, translateX],
+    [-sin, cos, translateY],
+  ];
+}
+
+// Accepts commas, spaces, and the slash alpha separator so both legacy
+// "rgb(1, 2, 3)" and modern "rgb(1 2 3 / 0.5)" syntaxes parse.
+function splitColorComponents(inner: string): string[] {
+  return inner
+    .replace(/\//g, " ")
+    .split(/[\s,]+/)
+    .filter((part) => part.length > 0);
+}
+
+function parseColorComponent(part: string | undefined, scale: number): number | undefined {
+  if (part === undefined) return undefined;
+  const percent = part.match(/^(-?\d*\.?\d+)%$/);
+  if (percent) return (Number(percent[1]) / 100) * scale;
+  const numeric = part.match(/^(-?\d*\.?\d+)$/);
+  return numeric ? Number(numeric[1]) : undefined;
+}
+
+function hslToRgbColor(hue: number, saturation: number, lightness: number): {
+  b: number;
+  g: number;
+  r: number;
+} {
+  const normalizedHue = (((hue % 360) + 360) % 360) / 60;
+  const chroma = (1 - Math.abs(2 * lightness - 1)) * saturation;
+  const secondary = chroma * (1 - Math.abs((normalizedHue % 2) - 1));
+  const offset = lightness - chroma / 2;
+
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  if (normalizedHue < 1) [r, g, b] = [chroma, secondary, 0];
+  else if (normalizedHue < 2) [r, g, b] = [secondary, chroma, 0];
+  else if (normalizedHue < 3) [r, g, b] = [0, chroma, secondary];
+  else if (normalizedHue < 4) [r, g, b] = [0, secondary, chroma];
+  else if (normalizedHue < 5) [r, g, b] = [secondary, 0, chroma];
+  else [r, g, b] = [chroma, 0, secondary];
+
+  return { b: b + offset, g: g + offset, r: r + offset };
+}
+
 function colorFromCss(cssValue: string | undefined): RgbaColor {
   if (!cssValue) return { a: 1, b: 0, g: 0, r: 0 };
 
   const value = cssValue.trim();
-  const hex = value.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+  const hex = value.match(/^#([0-9a-f]{3,8})$/i);
   if (hex) {
-    const expanded =
-      hex[1].length === 3
-        ? hex[1]
-            .split("")
-            .map((part) => `${part}${part}`)
-            .join("")
-        : hex[1];
-    const intValue = Number.parseInt(expanded, 16);
+    const digits = hex[1];
+    if (digits.length === 3 || digits.length === 4) {
+      const channel = (index: number) =>
+        Number.parseInt(`${digits[index]}${digits[index]}`, 16) / 255;
+      return {
+        a: digits.length === 4 ? channel(3) : 1,
+        b: channel(2),
+        g: channel(1),
+        r: channel(0),
+      };
+    }
+    if (digits.length === 6 || digits.length === 8) {
+      const channel = (index: number) =>
+        Number.parseInt(digits.slice(index, index + 2), 16) / 255;
+      return {
+        a: digits.length === 8 ? channel(6) : 1,
+        b: channel(4),
+        g: channel(2),
+        r: channel(0),
+      };
+    }
+    return { a: 1, b: 0, g: 0, r: 0 };
+  }
+
+  const rgb = value.match(/^rgba?\(([^)]+)\)$/i);
+  if (rgb) {
+    const parts = splitColorComponents(rgb[1]);
     return {
-      a: 1,
-      b: (intValue & 255) / 255,
-      g: ((intValue >> 8) & 255) / 255,
-      r: ((intValue >> 16) & 255) / 255,
+      a: clamp(safeNumber(parseColorComponent(parts[3], 1), 1), 0, 1),
+      b: clamp(safeNumber(parseColorComponent(parts[2], 255), 0) / 255, 0, 1),
+      g: clamp(safeNumber(parseColorComponent(parts[1], 255), 0) / 255, 0, 1),
+      r: clamp(safeNumber(parseColorComponent(parts[0], 255), 0) / 255, 0, 1),
     };
   }
 
-  const rgb = value.match(/rgba?\(([^)]+)\)/i);
-  if (rgb) {
-    const parts = rgb[1].split(",").map((part) => Number(part.trim()));
+  const hsl = value.match(/^hsla?\(([^)]+)\)$/i);
+  if (hsl) {
+    const parts = splitColorComponents(hsl[1]);
+    const hue = safeNumber(
+      parseColorComponent(parts[0]?.replace(/deg$/i, ""), 360),
+      0,
+    );
+    const saturation = clamp(safeNumber(parseColorComponent(parts[1], 1), 0), 0, 1);
+    const lightness = clamp(safeNumber(parseColorComponent(parts[2], 1), 0), 0, 1);
+    const alpha = clamp(safeNumber(parseColorComponent(parts[3], 1), 1), 0, 1);
+    const rgbColor = hslToRgbColor(hue, saturation, lightness);
     return {
-      a: clamp(safeNumber(parts[3], 1), 0, 1),
-      b: clamp(safeNumber(parts[2], 0) / 255, 0, 1),
-      g: clamp(safeNumber(parts[1], 0) / 255, 0, 1),
-      r: clamp(safeNumber(parts[0], 0) / 255, 0, 1),
+      a: alpha,
+      b: clamp(rgbColor.b, 0, 1),
+      g: clamp(rgbColor.g, 0, 1),
+      r: clamp(rgbColor.r, 0, 1),
     };
   }
 
@@ -3031,6 +3233,50 @@ function validateNode(node: unknown, path: string): void {
   if (node.styles.borderSides !== undefined) {
     validateBorderSides(node.styles.borderSides, `${path}.borderSides`);
   }
+  if (node.styles.effects !== undefined) {
+    validateEffects(node.styles.effects, `${path}.effects`);
+  }
+  if (node.styles.radiusCorners !== undefined) {
+    validateRadiusCorners(node.styles.radiusCorners, `${path}.radiusCorners`);
+  }
+  if (node.styles.layoutWrap !== undefined && node.styles.layoutWrap !== "WRAP") {
+    throw new Error(`Invalid node ${path}: unsupported layoutWrap value.`);
+  }
+  if (
+    node.styles.counterAxisSpacing !== undefined &&
+    typeof node.styles.counterAxisSpacing !== "number"
+  ) {
+    throw new Error(`Invalid node ${path}: counterAxisSpacing must be a number.`);
+  }
+  if (
+    node.styles.letterSpacing !== undefined &&
+    typeof node.styles.letterSpacing !== "number"
+  ) {
+    throw new Error(`Invalid node ${path}: letterSpacing must be a number.`);
+  }
+  if (
+    node.styles.textDecoration !== undefined &&
+    node.styles.textDecoration !== "STRIKETHROUGH" &&
+    node.styles.textDecoration !== "UNDERLINE"
+  ) {
+    throw new Error(`Invalid node ${path}: unsupported textDecoration value.`);
+  }
+  if (node.styles.fontStyle !== undefined && node.styles.fontStyle !== "italic") {
+    throw new Error(`Invalid node ${path}: unsupported fontStyle value.`);
+  }
+  if (
+    node.styles.imageScaleMode !== undefined &&
+    node.styles.imageScaleMode !== "FILL" &&
+    node.styles.imageScaleMode !== "FIT"
+  ) {
+    throw new Error(`Invalid node ${path}: unsupported imageScaleMode value.`);
+  }
+  if (node.imageBase64 !== undefined && typeof node.imageBase64 !== "string") {
+    throw new Error(`Invalid node ${path}: imageBase64 must be a string.`);
+  }
+  if (node.imageMimeType !== undefined && typeof node.imageMimeType !== "string") {
+    throw new Error(`Invalid node ${path}: imageMimeType must be a string.`);
+  }
   if (node.styles.outOfFlow !== undefined && typeof node.styles.outOfFlow !== "boolean") {
     throw new Error(`Invalid node ${path}: outOfFlow must be a boolean.`);
   }
@@ -3059,6 +3305,45 @@ function validateConstraints(constraints: unknown, path: string): void {
     !CONSTRAINT_VALUES.includes(String(constraints.vertical))
   ) {
     throw new Error(`Invalid node ${path}: unsupported constraint value.`);
+  }
+}
+
+const EFFECT_TYPES = ["DROP_SHADOW", "INNER_SHADOW"];
+const EFFECT_NUMBER_FIELDS = ["blur", "offsetX", "offsetY", "spread"];
+const RADIUS_CORNER_FIELDS = ["bottomLeft", "bottomRight", "topLeft", "topRight"];
+
+function validateEffects(effects: unknown, path: string): void {
+  if (!Array.isArray(effects)) {
+    throw new Error(`Invalid node ${path}: effects must be an array.`);
+  }
+
+  effects.forEach((effect, index) => {
+    if (!isRecord(effect)) {
+      throw new Error(`Invalid node ${path}.${index}: expected object.`);
+    }
+    if (!EFFECT_TYPES.includes(String(effect.type))) {
+      throw new Error(`Invalid node ${path}.${index}: unsupported effect type.`);
+    }
+    for (const field of EFFECT_NUMBER_FIELDS) {
+      if (typeof effect[field] !== "number") {
+        throw new Error(`Invalid node ${path}.${index}: ${field} must be a number.`);
+      }
+    }
+    if (effect.color !== undefined && typeof effect.color !== "string") {
+      throw new Error(`Invalid node ${path}.${index}: color must be a string.`);
+    }
+  });
+}
+
+function validateRadiusCorners(corners: unknown, path: string): void {
+  if (!isRecord(corners)) {
+    throw new Error(`Invalid node ${path}: expected object.`);
+  }
+
+  for (const field of RADIUS_CORNER_FIELDS) {
+    if (typeof corners[field] !== "number") {
+      throw new Error(`Invalid node ${path}.${field}: must be a number.`);
+    }
   }
 }
 
@@ -3161,11 +3446,27 @@ function mapCounterAlignment(value: string | undefined): "BASELINE" | "CENTER" |
   return "MIN";
 }
 
-function getFontStyleCandidates(weight: number): string[] {
+function getUprightFontStyleCandidates(weight: number): string[] {
+  if (weight >= 900) return ["Black", "Heavy", "ExtraBold", "Extra Bold", "Bold", "Regular"];
+  if (weight >= 800) return ["ExtraBold", "Extra Bold", "Black", "Bold", "Regular"];
   if (weight >= 700) return ["Bold", "Semibold", "Semi Bold", "SemiBold", "Medium", "Regular"];
   if (weight >= 600) return ["Semi Bold", "Semibold", "SemiBold", "Medium", "Regular"];
   if (weight >= 500) return ["Medium", "Regular"];
-  return ["Regular"];
+  if (weight >= 400) return ["Regular"];
+  if (weight >= 300) return ["Light", "Regular"];
+  if (weight >= 200) return ["Extra Light", "ExtraLight", "Light", "Thin", "Regular"];
+  return ["Thin", "Extra Light", "ExtraLight", "Light", "Regular"];
+}
+
+function getFontStyleCandidates(weight: number, italic = false): string[] {
+  const upright = getUprightFontStyleCandidates(weight);
+  if (!italic) return upright;
+
+  // Prefer italic variants of the same weight, then fall back to upright.
+  const italicCandidates = upright.map((style) =>
+    style === "Regular" ? "Italic" : `${style} Italic`,
+  );
+  return italicCandidates.concat(upright);
 }
 
 function getFontFamily(fontFamily: string | undefined): string {
@@ -3196,4 +3497,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function formatError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+// Exposes pure helpers for Node-based verification (test/verify-pure-functions.cjs).
+// The Figma plugin runtime has no CommonJS `module`, so this block never runs there.
+declare const module: { exports?: Record<string, unknown> } | undefined;
+if (typeof module !== "undefined" && module) {
+  module.exports = {
+    colorFromCss,
+    getFontStyleCandidates,
+    getLinearGradientTransform,
+    parsePayload,
+  };
 }

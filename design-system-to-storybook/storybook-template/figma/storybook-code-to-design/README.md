@@ -12,8 +12,8 @@ specific project prefix or domain.
 
 1. In Figma, open **Plugins > Development > Import plugin from manifest...**.
 2. Select `figma/storybook-code-to-design/manifest.json`.
-3. Export a story from Storybook with **Figma export > Download JSON**.
-4. Run **SBFX JSON Importer** and choose the downloaded `.sbfx.json` file.
+3. Export a story from Storybook with **Figma export > Copy JSON** (or **Download JSON**).
+4. Run **SBFX JSON Importer**, then paste the JSON or choose the downloaded `.sbfx.json` file.
 
 The importer validates payload version `2`, previews story, token, node, and
 component counts before import, upserts the exported CSS-token variables,

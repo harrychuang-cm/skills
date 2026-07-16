@@ -1,7 +1,6 @@
 import * as react from 'react';
 import { ReactNode } from 'react';
-import { F as FigmaExportAddonOptions } from './options-C-KiYN0_.js';
-import './types-BuDkFEZo.js';
+import { F as FigmaExportAddonOptions } from './options-C7dKT9Sy.js';
 
 type StorybookContext = {
     globals?: Record<string, unknown>;

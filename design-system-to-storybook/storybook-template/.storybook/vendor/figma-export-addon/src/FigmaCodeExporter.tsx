@@ -129,53 +129,58 @@ function getTextSizeLabel(text: string): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function exporterEscapeXml(value: string): string {
+function escapeXml(value: string): string {
   return value
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
 }
 
-function exporterEscapeSvgAttribute(value: string): string {
-  return exporterEscapeXml(value).replace(/"/g, "&quot;");
+function escapeSvgAttribute(value: string): string {
+  return escapeXml(value).replace(/"/g, "&quot;");
 }
 
-function exporterFormatSvgNumber(value: number | undefined): string {
+function formatSvgNumber(value: number | undefined): string {
   const numberValue = Number.isFinite(value) ? Number(value) : 0;
   return Number.isInteger(numberValue) ? String(numberValue) : numberValue.toFixed(2);
 }
 
-function exporterSvgDataUrl(svgText: string): string {
+function svgDataUrl(svgText: string): string {
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgText)}`;
 }
 
-function exporterGetSvgPaint(value: string | undefined, fallback = "none"): string {
-  return value ? exporterEscapeSvgAttribute(value) : fallback;
+function getSvgPaint(value: string | undefined, fallback = "none"): string {
+  return value ? escapeSvgAttribute(value) : fallback;
 }
 
 function renderSvgImageNode(node: FigmaExportNode, isRoot: boolean): string {
   const { height, width, x, y } = node.styles;
   const transform = isRoot
     ? ""
-    : ` transform="translate(${exporterFormatSvgNumber(x)} ${exporterFormatSvgNumber(y)})"`;
+    : ` transform="translate(${formatSvgNumber(x)} ${formatSvgNumber(y)})"`;
 
-  if (!node.svgText) return "";
+  if (!node.svgText) {
+    return "";
+  }
 
-  return `<g${transform}><image href="${exporterEscapeSvgAttribute(exporterSvgDataUrl(node.svgText))}" width="${exporterFormatSvgNumber(width)}" height="${exporterFormatSvgNumber(height)}" preserveAspectRatio="none"/></g>`;
+  return `<g${transform}><image href="${escapeSvgAttribute(svgDataUrl(node.svgText))}" width="${formatSvgNumber(width)}" height="${formatSvgNumber(height)}" preserveAspectRatio="none"/></g>`;
 }
 
 function renderSvgTextNode(node: FigmaExportNode, isRoot: boolean): string {
-  const { color, fontFamily, fontSize, fontWeight, textAlign, width, x, y } = node.styles;
+  const { color, fontFamily, fontSize, fontWeight, height, textAlign, textAlignVertical, width, x, y } = node.styles;
   const transform = isRoot
     ? ""
-    : ` transform="translate(${exporterFormatSvgNumber(x)} ${exporterFormatSvgNumber(y)})"`;
+    : ` transform="translate(${formatSvgNumber(x)} ${formatSvgNumber(y)})"`;
   const resolvedFontSize = fontSize ?? 12;
   const textAnchor =
-    textAlign === "center" ? "middle" : textAlign === "right" || textAlign === "end" ? "end" : "start";
+    textAlign === "center" ? "middle" : textAlign === "right" ? "end" : "start";
   const textX =
     textAnchor === "middle" ? width / 2 : textAnchor === "end" ? width : 0;
+  const isCentered = textAlignVertical === "CENTER";
+  const textY = isCentered ? height / 2 : resolvedFontSize;
+  const baseline = isCentered ? "middle" : "alphabetic";
 
-  return `<text${transform} x="${exporterFormatSvgNumber(textX)}" y="${exporterFormatSvgNumber(resolvedFontSize)}" fill="${exporterGetSvgPaint(color, "#000000")}" font-family="${exporterEscapeSvgAttribute(fontFamily ?? "sans-serif")}" font-size="${exporterFormatSvgNumber(resolvedFontSize)}" font-weight="${exporterEscapeSvgAttribute(String(fontWeight ?? 400))}" text-anchor="${textAnchor}">${exporterEscapeXml(node.text ?? "")}</text>`;
+  return `<text${transform} x="${formatSvgNumber(textX)}" y="${formatSvgNumber(textY)}" fill="${getSvgPaint(color, "#000000")}" font-family="${escapeSvgAttribute(fontFamily ?? "sans-serif")}" font-size="${formatSvgNumber(resolvedFontSize)}" font-weight="${escapeSvgAttribute(String(fontWeight ?? 400))}" text-anchor="${textAnchor}" dominant-baseline="${baseline}">${escapeXml(node.text ?? "")}</text>`;
 }
 
 function renderSvgFrameNode(node: FigmaExportNode, isRoot: boolean): string {
@@ -192,14 +197,14 @@ function renderSvgFrameNode(node: FigmaExportNode, isRoot: boolean): string {
   } = node.styles;
   const transform = isRoot
     ? ""
-    : ` transform="translate(${exporterFormatSvgNumber(x)} ${exporterFormatSvgNumber(y)})"`;
+    : ` transform="translate(${formatSvgNumber(x)} ${formatSvgNumber(y)})"`;
   const groupOpacity =
     typeof opacity === "number" && opacity >= 0 && opacity < 1
-      ? ` opacity="${exporterFormatSvgNumber(opacity)}"`
+      ? ` opacity="${formatSvgNumber(opacity)}"`
       : "";
   const hasRect = Boolean(backgroundColor || (borderColor && borderWidth));
   const rect = hasRect
-    ? `<rect width="${exporterFormatSvgNumber(width)}" height="${exporterFormatSvgNumber(height)}" rx="${exporterFormatSvgNumber(radius)}" fill="${exporterGetSvgPaint(backgroundColor)}"${borderColor && borderWidth ? ` stroke="${exporterGetSvgPaint(borderColor)}" stroke-width="${exporterFormatSvgNumber(borderWidth)}"` : ""}/>`
+    ? `<rect width="${formatSvgNumber(width)}" height="${formatSvgNumber(height)}" rx="${formatSvgNumber(radius)}" fill="${getSvgPaint(backgroundColor)}"${borderColor && borderWidth ? ` stroke="${getSvgPaint(borderColor)}" stroke-width="${formatSvgNumber(borderWidth)}"` : ""}/>`
     : "";
   const children = node.children.map((child) => renderSvgNode(child)).join("");
 
@@ -218,7 +223,7 @@ function createFigmaDesignSvg(payload: FigmaExportPayload): string {
   const width = Math.max(1, payload.root.styles.width);
   const height = Math.max(1, payload.root.styles.height);
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${exporterFormatSvgNumber(width)}" height="${exporterFormatSvgNumber(height)}" viewBox="0 0 ${exporterFormatSvgNumber(width)} ${exporterFormatSvgNumber(height)}" role="img" aria-label="${exporterEscapeSvgAttribute(payload.root.name)}">${renderSvgNode(payload.root, true)}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${formatSvgNumber(width)}" height="${formatSvgNumber(height)}" viewBox="0 0 ${formatSvgNumber(width)} ${formatSvgNumber(height)}" role="img" aria-label="${escapeSvgAttribute(payload.root.name)}">${renderSvgNode(payload.root, true)}</svg>`;
 }
 
 async function copySvgDesign(svgText: string): Promise<void> {
@@ -310,7 +315,7 @@ export function FigmaCodeExporter({
         scope,
         storyId: context.id ?? "unknown-story",
         storyName: context.name ?? "Story",
-        storyTitle: context.title ?? componentTitle,
+        storyTitle: context.title ?? "",
       });
       let exportSizeLabel = "";
 
@@ -354,10 +359,10 @@ export function FigmaCodeExporter({
         format === "design"
           ? `Visual SVG copied from ${payload.root.name}${sizeSummary} in ${elapsedLabel}.`
           : format === "file"
-            ? `${payload.tokens.length} variables exported from ${payload.root.name}${sizeSummary} in ${elapsedLabel}; .sbfx.json downloaded.`
+          ? `${payload.tokens.length} variables exported from ${payload.root.name}${sizeSummary} in ${elapsedLabel}; .sbfx.json downloaded.`
           : format === "json"
-            ? `${payload.tokens.length} variables exported from ${payload.root.name}${sizeSummary} in ${elapsedLabel}; JSON copied.`
-            : `${payload.tokens.length} variables exported from ${payload.root.name}${sizeSummary} in ${elapsedLabel}; script copied.`,
+          ? `${payload.tokens.length} variables exported from ${payload.root.name}${sizeSummary} in ${elapsedLabel}; JSON copied.`
+          : `${payload.tokens.length} variables exported from ${payload.root.name}${sizeSummary} in ${elapsedLabel}; script copied.`,
       );
     } catch (error) {
       setStatus("error");
@@ -464,7 +469,7 @@ export function FigmaCodeExporter({
                 ? "Copying"
                 : copiedFormat === "script" && status === "copied"
                   ? "Copied"
-                : "Plugin Console Script"}
+                  : "Plugin Console Script"}
             </button>
             <button
               aria-label="Copy design to Figma"

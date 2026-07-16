@@ -91,6 +91,79 @@ function hasPositiveNumber(value) {
   return typeof value === "number" && Number.isFinite(value) && value > 0;
 }
 
+function isFiniteNumber(value) {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+const effectTypes = new Set(["DROP_SHADOW", "INNER_SHADOW"]);
+const effectNumberFields = ["blur", "offsetX", "offsetY", "spread"];
+const imageScaleModes = new Set(["FILL", "FIT"]);
+const textDecorations = new Set(["STRIKETHROUGH", "UNDERLINE"]);
+const radiusCornerFields = ["bottomLeft", "bottomRight", "topLeft", "topRight"];
+
+// Type and value-range checks for the optional payload v2 fidelity fields
+// (effects, radiusCorners, layoutWrap, counterAxisSpacing, letterSpacing,
+// textDecoration, fontStyle, imageScaleMode, imageBase64, imageMimeType).
+function validateFidelityFields(node, styles, issues, ancestry) {
+  if (styles.effects !== undefined) {
+    if (!Array.isArray(styles.effects)) {
+      addIssue(issues, "error", "styles.effects must be an array.", node, ancestry);
+    } else {
+      styles.effects.forEach((effect, index) => {
+        if (!isRecord(effect) || !effectTypes.has(effect.type)) {
+          addIssue(issues, "error", `styles.effects[${index}] must be a DROP_SHADOW or INNER_SHADOW object.`, node, ancestry);
+          return;
+        }
+        for (const field of effectNumberFields) {
+          if (!isFiniteNumber(effect[field])) {
+            addIssue(issues, "error", `styles.effects[${index}].${field} must be a finite number.`, node, ancestry);
+          }
+        }
+        if (effect.color !== undefined && typeof effect.color !== "string") {
+          addIssue(issues, "error", `styles.effects[${index}].color must be a string.`, node, ancestry);
+        }
+      });
+    }
+  }
+
+  if (styles.radiusCorners !== undefined) {
+    if (!isRecord(styles.radiusCorners)) {
+      addIssue(issues, "error", "styles.radiusCorners must be an object.", node, ancestry);
+    } else {
+      for (const field of radiusCornerFields) {
+        if (!isFiniteNumber(styles.radiusCorners[field])) {
+          addIssue(issues, "error", `styles.radiusCorners.${field} must be a finite number.`, node, ancestry);
+        }
+      }
+    }
+  }
+
+  if (styles.layoutWrap !== undefined && styles.layoutWrap !== "WRAP") {
+    addIssue(issues, "error", `styles.layoutWrap must be "WRAP".`, node, ancestry);
+  }
+  if (styles.counterAxisSpacing !== undefined && !isFiniteNumber(styles.counterAxisSpacing)) {
+    addIssue(issues, "error", "styles.counterAxisSpacing must be a finite number.", node, ancestry);
+  }
+  if (styles.letterSpacing !== undefined && !isFiniteNumber(styles.letterSpacing)) {
+    addIssue(issues, "error", "styles.letterSpacing must be a finite number.", node, ancestry);
+  }
+  if (styles.textDecoration !== undefined && !textDecorations.has(styles.textDecoration)) {
+    addIssue(issues, "error", "styles.textDecoration must be UNDERLINE or STRIKETHROUGH.", node, ancestry);
+  }
+  if (styles.fontStyle !== undefined && styles.fontStyle !== "italic") {
+    addIssue(issues, "error", `styles.fontStyle must be "italic" when present.`, node, ancestry);
+  }
+  if (styles.imageScaleMode !== undefined && !imageScaleModes.has(styles.imageScaleMode)) {
+    addIssue(issues, "error", "styles.imageScaleMode must be FILL or FIT.", node, ancestry);
+  }
+  if (node.imageBase64 !== undefined && (typeof node.imageBase64 !== "string" || node.imageBase64.length === 0)) {
+    addIssue(issues, "error", "imageBase64 must be a non-empty base64 string.", node, ancestry);
+  }
+  if (node.imageMimeType !== undefined && typeof node.imageMimeType !== "string") {
+    addIssue(issues, "error", "imageMimeType must be a string.", node, ancestry);
+  }
+}
+
 function validatePayload(payload) {
   const issues = [];
 
@@ -105,8 +178,8 @@ function validatePayload(payload) {
     };
   }
 
-  if (payload.version !== 1) {
-    addIssue(issues, "error", "Expected payload version 1.", null, []);
+  if (payload.version !== 1 && payload.version !== 2) {
+    addIssue(issues, "error", "Expected payload version 1 or 2.", null, []);
   }
 
   if (!isRecord(payload.root)) {
@@ -208,9 +281,11 @@ function validatePayload(payload) {
       addIssue(issues, "warn", "SVG export still contains CSS var() references; inline or embedded SVG paint should resolve before import.", node, ancestry);
     }
 
-    if (node.kind === "image" && !node.svgText) {
-      addIssue(issues, "warn", "Image node has no SVG text; Figma import may only preserve raster bounds.", node, ancestry);
+    if (node.kind === "image" && !node.svgText && !node.imageBase64) {
+      addIssue(issues, "warn", "Image node has no SVG or raster payload; Figma import will only preserve its bounds.", node, ancestry);
     }
+
+    validateFidelityFields(node, styles, issues, ancestry);
   });
 
   if (referencedTokens.size > 0) {

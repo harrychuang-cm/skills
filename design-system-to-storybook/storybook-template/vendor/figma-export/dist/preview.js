@@ -10,6 +10,144 @@ import {
 } from "@storybook/icons";
 import { useRef, useState } from "react";
 
+// src/color.ts
+var colorContext;
+var normalizedColorCache = /* @__PURE__ */ new Map();
+var parsedColorCache = /* @__PURE__ */ new Map();
+var simpleColorPattern = /^(#([0-9a-f]{3}|[0-9a-f]{6})|rgba?\([^()]*\))$/i;
+function getColorContext() {
+  if (colorContext !== void 0) return colorContext;
+  if (typeof document === "undefined") {
+    colorContext = null;
+    return colorContext;
+  }
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width = 1;
+    canvas.height = 1;
+    colorContext = canvas.getContext("2d", { willReadFrequently: true });
+  } catch {
+    colorContext = null;
+  }
+  return colorContext;
+}
+function roundTripFillStyle(context, value, sentinel) {
+  context.fillStyle = sentinel;
+  context.fillStyle = value;
+  return String(context.fillStyle);
+}
+function parseFillStyle(value) {
+  const context = getColorContext();
+  if (!context) return void 0;
+  const first = roundTripFillStyle(context, value, "#010203");
+  const second = roundTripFillStyle(context, value, "#030201");
+  return first === second ? first : void 0;
+}
+function readPixelRgba(value) {
+  const context = getColorContext();
+  if (!context) return void 0;
+  try {
+    context.save();
+    context.globalCompositeOperation = "copy";
+    context.fillStyle = value;
+    context.fillRect(0, 0, 1, 1);
+    const [r, g, b, a] = context.getImageData(0, 0, 1, 1).data;
+    context.restore();
+    return {
+      a: Math.round(a / 255 * 1e4) / 1e4,
+      b: b / 255,
+      g: g / 255,
+      r: r / 255
+    };
+  } catch {
+    return void 0;
+  }
+}
+function parseHexChannel(hex) {
+  return Number.parseInt(hex.length === 1 ? `${hex}${hex}` : hex, 16);
+}
+function rgbaFromNormalizedString(value) {
+  const hex = value.match(/^#([0-9a-f]{3,8})$/i);
+  if (hex) {
+    const digits = hex[1];
+    if (digits.length === 3 || digits.length === 4) {
+      return {
+        a: digits.length === 4 ? parseHexChannel(digits[3]) / 255 : 1,
+        b: parseHexChannel(digits[2]) / 255,
+        g: parseHexChannel(digits[1]) / 255,
+        r: parseHexChannel(digits[0]) / 255
+      };
+    }
+    if (digits.length === 6 || digits.length === 8) {
+      return {
+        a: digits.length === 8 ? parseHexChannel(digits.slice(6, 8)) / 255 : 1,
+        b: parseHexChannel(digits.slice(4, 6)) / 255,
+        g: parseHexChannel(digits.slice(2, 4)) / 255,
+        r: parseHexChannel(digits.slice(0, 2)) / 255
+      };
+    }
+    return void 0;
+  }
+  const rgb = value.match(/^rgba?\(([^)]+)\)$/i);
+  if (!rgb) return void 0;
+  const parts = rgb[1].split(",").map((part) => Number(part.trim()));
+  if (parts.length < 3 || parts.slice(0, 3).some((part) => !Number.isFinite(part))) {
+    return void 0;
+  }
+  return {
+    a: Number.isFinite(parts[3]) ? Math.min(1, Math.max(0, parts[3])) : 1,
+    b: Math.min(1, Math.max(0, parts[2] / 255)),
+    g: Math.min(1, Math.max(0, parts[1] / 255)),
+    r: Math.min(1, Math.max(0, parts[0] / 255))
+  };
+}
+function serializeRgba(color) {
+  const r = Math.round(color.r * 255);
+  const g = Math.round(color.g * 255);
+  const b = Math.round(color.b * 255);
+  if (color.a >= 1) {
+    const toHex = (channel) => channel.toString(16).padStart(2, "0");
+    return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+  }
+  return `rgba(${r}, ${g}, ${b}, ${Math.round(color.a * 1e4) / 1e4})`;
+}
+function normalizeCssColorString(value) {
+  const input = value.trim();
+  if (!input) return void 0;
+  if (simpleColorPattern.test(input)) return input;
+  const cached = normalizedColorCache.get(input);
+  if (cached !== void 0 || normalizedColorCache.has(input)) return cached;
+  let normalized;
+  const parsed = parseFillStyle(input);
+  if (parsed !== void 0) {
+    if (simpleColorPattern.test(parsed)) {
+      normalized = parsed;
+    } else {
+      const rgba = readPixelRgba(input);
+      normalized = rgba ? serializeRgba(rgba) : void 0;
+    }
+  }
+  normalizedColorCache.set(input, normalized);
+  return normalized;
+}
+function parseCssColorToRgba(value) {
+  const input = value.trim();
+  if (!input) return void 0;
+  const cached = parsedColorCache.get(input);
+  if (cached !== void 0 || parsedColorCache.has(input)) return cached;
+  let parsed;
+  const fillStyle = parseFillStyle(input);
+  if (fillStyle !== void 0) {
+    parsed = rgbaFromNormalizedString(fillStyle) ?? readPixelRgba(input);
+  }
+  parsedColorCache.set(input, parsed);
+  return parsed;
+}
+function isFullyTransparentColor(value) {
+  const match = value.trim().match(/^rgba\([^)]*,\s*(-?\d*\.?\d+)\s*\)$/i);
+  return match ? Number(match[1]) === 0 : false;
+}
+
 // src/tokenExport.ts
 var tokenLayerOrder = {
   comp: 2,
@@ -196,6 +334,13 @@ function parseRawValue(value) {
     return {
       type: "BOOLEAN",
       value: trimmed === "true"
+    };
+  }
+  const cssColor = parseCssColorToRgba(trimmed);
+  if (cssColor) {
+    return {
+      type: "COLOR",
+      value: cssColor
     };
   }
   return {
@@ -396,7 +541,11 @@ function cssLineHeightToNumber(value) {
 function cssColorValue(value) {
   const normalized = value.trim();
   if (!normalized || transparentValues.has(normalized)) return void 0;
-  return normalized;
+  const canonical = normalizeCssColorString(normalized) ?? normalized;
+  if (transparentValues.has(canonical) || isFullyTransparentColor(canonical)) {
+    return void 0;
+  }
+  return canonical;
 }
 function clampUnit(value) {
   return Math.min(1, Math.max(0, value));
@@ -430,7 +579,7 @@ function parseLinearGradientAngle(value) {
   return void 0;
 }
 function parseGradientStop(value, index, total) {
-  const colorMatch = value.trim().match(/^(#[0-9a-f]{3,8}|rgba?\([^)]*\))/i);
+  const colorMatch = value.trim().match(/^(#[0-9a-f]{3,8}|[a-z][a-z-]*\((?:[^()]|\([^()]*\))*\))/i);
   if (!colorMatch) return void 0;
   const color = cssColorValue(colorMatch[1]);
   if (!color) return void 0;
@@ -447,6 +596,69 @@ function parseLinearGradient(backgroundImage) {
   const stopParts = angle === void 0 ? parts : parts.slice(1);
   const stops = stopParts.map((part, index) => parseGradientStop(part, index, stopParts.length)).filter((stop) => Boolean(stop));
   return stops.length >= 2 ? { angle: angle ?? 180, stops } : void 0;
+}
+function parseShadowListToEffects(value) {
+  const normalized = value.trim();
+  if (!normalized || normalized === "none") return [];
+  const effects = [];
+  for (const part of splitGradientArguments(normalized)) {
+    const inset = /\binset\b/.test(part);
+    let rest = part.replace(/\binset\b/g, " ");
+    const colorMatch = rest.match(
+      /(#[0-9a-f]{3,8}|[a-z][a-z-]*\((?:[^()]|\([^()]*\))*\))/i
+    );
+    if (!colorMatch) continue;
+    rest = rest.replace(colorMatch[1], " ");
+    const color = cssColorValue(colorMatch[1]);
+    if (!color) continue;
+    const lengths = Array.from(
+      rest.matchAll(/(-?\d*\.?\d+)px/g),
+      (match) => Number(match[1])
+    );
+    const [offsetX = 0, offsetY = 0, blur = 0, spread = 0] = lengths;
+    effects.push({
+      blur: toFiniteNumber(blur),
+      color,
+      offsetX: toFiniteNumber(offsetX),
+      offsetY: toFiniteNumber(offsetY),
+      spread: toFiniteNumber(spread),
+      type: inset ? "INNER_SHADOW" : "DROP_SHADOW"
+    });
+  }
+  return effects;
+}
+function getBoxShadowEffects(computed) {
+  return parseShadowListToEffects(computed.boxShadow);
+}
+function getTextShadowEffects(computed) {
+  return parseShadowListToEffects(computed.textShadow);
+}
+function cssRadiusToNumber(value, width, height) {
+  const length = cssLengthToNumber(value);
+  if (length !== void 0) return length;
+  const percent = value.trim().match(/^(-?\d+(?:\.\d+)?)%$/);
+  if (percent) {
+    return toFiniteNumber(Number(percent[1]) / 100 * Math.min(width, height));
+  }
+  return 0;
+}
+function getRadiusStyles(computed, width, height) {
+  const topLeft = cssRadiusToNumber(computed.borderTopLeftRadius, width, height);
+  const topRight = cssRadiusToNumber(computed.borderTopRightRadius, width, height);
+  const bottomRight = cssRadiusToNumber(
+    computed.borderBottomRightRadius,
+    width,
+    height
+  );
+  const bottomLeft = cssRadiusToNumber(
+    computed.borderBottomLeftRadius,
+    width,
+    height
+  );
+  if (topLeft === topRight && topLeft === bottomRight && topLeft === bottomLeft) {
+    return topLeft > 0 ? { radius: topLeft } : {};
+  }
+  return { radiusCorners: { bottomLeft, bottomRight, topLeft, topRight } };
 }
 function isColorTokenName(token) {
   return token.includes("-color-") || token.endsWith("-color");
@@ -747,12 +959,22 @@ function createInlineSvgNode(element, computed, rect, parentRect, options) {
     }
   };
 }
+function mediaRuleMatches(rule) {
+  try {
+    return window.matchMedia(rule.conditionText).matches;
+  } catch {
+    return true;
+  }
+}
 function getCssRules() {
   const rules = [];
   function collect(ruleList) {
     for (const rule of Array.from(ruleList)) {
       if (rule instanceof CSSStyleRule) {
         rules.push(rule);
+        continue;
+      }
+      if (rule instanceof CSSMediaRule && !mediaRuleMatches(rule)) {
         continue;
       }
       if ("cssRules" in rule) {
@@ -771,18 +993,30 @@ function getCssRules() {
   }
   return rules;
 }
-function selectorMatches(element, selectorText) {
-  return selectorText.split(",").some((selector) => {
+function calculateSelectorSpecificity(selector) {
+  const withoutPseudoElements = selector.replace(/::[a-z-]+(\([^)]*\))?/gi, " x");
+  const ids = withoutPseudoElements.match(/#[\w-]+/g)?.length ?? 0;
+  const classLike = withoutPseudoElements.match(/\.[\w-]+|\[[^\]]*\]|:(?!:)[\w-]+(\([^)]*\))?/g)?.length ?? 0;
+  const typeLike = withoutPseudoElements.match(/(^|[\s>+~(,])[a-z][\w-]*/gi)?.length ?? 0;
+  const pseudoElements = selector.match(/::[a-z-]+/gi)?.length ?? 0;
+  return ids * 1e6 + classLike * 1e3 + typeLike + pseudoElements;
+}
+function getMatchedSelectorSpecificity(element, selectorText) {
+  let best;
+  for (const selector of selectorText.split(",")) {
     const trimmed = selector.trim();
     if (!trimmed || trimmed.includes(":hover") || trimmed.includes(":focus")) {
-      return false;
+      continue;
     }
     try {
-      return element.matches(trimmed);
+      if (!element.matches(trimmed)) continue;
     } catch {
-      return false;
+      continue;
     }
-  });
+    const specificity = calculateSelectorSpecificity(trimmed);
+    if (best === void 0 || specificity > best) best = specificity;
+  }
+  return best;
 }
 function parseCssTextDeclarations(cssText) {
   const declarations = [];
@@ -811,28 +1045,35 @@ function parseCssTextDeclarations(cssText) {
   return declarations;
 }
 function getMatchedDeclarations(element, rules) {
-  const declarations = [];
+  const collected = [];
+  let order = 0;
+  const push = (property, value, specificity) => {
+    collected.push({ order: order += 1, property, specificity, value });
+  };
   for (const rule of rules) {
-    if (!selectorMatches(element, rule.selectorText)) continue;
+    const specificity = getMatchedSelectorSpecificity(element, rule.selectorText);
+    if (specificity === void 0) continue;
     for (const property of Array.from(rule.style)) {
-      declarations.push({
-        property,
-        value: rule.style.getPropertyValue(property).trim()
-      });
+      push(property, rule.style.getPropertyValue(property).trim(), specificity);
     }
-    declarations.push(...parseCssTextDeclarations(rule.style.cssText));
+    for (const declaration of parseCssTextDeclarations(rule.style.cssText)) {
+      push(declaration.property, declaration.value, specificity);
+    }
   }
   const inlineStyle = element.getAttribute("style");
   if (inlineStyle && element instanceof HTMLElement) {
-    declarations.push(...parseCssTextDeclarations(element.style.cssText));
+    for (const declaration of parseCssTextDeclarations(element.style.cssText)) {
+      push(declaration.property, declaration.value, Number.MAX_SAFE_INTEGER);
+    }
     for (const property of Array.from(element.style)) {
-      declarations.push({
+      push(
         property,
-        value: element.style.getPropertyValue(property).trim()
-      });
+        element.style.getPropertyValue(property).trim(),
+        Number.MAX_SAFE_INTEGER
+      );
     }
   }
-  return declarations;
+  return collected.sort((a, b) => a.specificity - b.specificity || a.order - b.order).map(({ property, value }) => ({ property, value }));
 }
 function findTokenForProperty(declarations, bindingName, tokenSystem) {
   const properties = bindingProperties[bindingName];
@@ -1062,6 +1303,10 @@ function createTextLeafNode({
   const color = cssColorValue(computed.color);
   const fontWeight = Number.parseInt(computed.fontWeight, 10);
   const lineHeight = cssLineHeightToNumber(computed.lineHeight);
+  const textShadowEffects = getTextShadowEffects(computed);
+  const letterSpacing = cssLengthToNumber(computed.letterSpacing);
+  const textDecoration = getTextDecoration(computed);
+  const italic = isItalicFontStyle(computed);
   const isSingleLineTruncatedText = isClippedSingleLineText(computed);
   const exportWidth = isSingleLineTruncatedText || Boolean(textAutoResize) || layoutGrow === 1 || hasFixedFlexBasis(computed) ? width : getTextExportWidth({ computed, text, width });
   const exportX = getTextExportX({ computed, exportWidth, width, x });
@@ -1081,10 +1326,14 @@ function createTextLeafNode({
     styles: {
       ...color ? { color } : {},
       display: computed.display,
+      ...textShadowEffects.length > 0 ? { effects: textShadowEffects } : {},
       fontFamily: computed.fontFamily,
       fontSize: cssLengthToNumber(computed.fontSize) ?? 14,
+      ...italic ? { fontStyle: "italic" } : {},
       ...Number.isFinite(fontWeight) ? { fontWeight } : {},
       height,
+      ...letterSpacing !== void 0 && letterSpacing !== 0 ? { letterSpacing } : {},
+      ...textDecoration ? { textDecoration } : {},
       ...layoutAlign ? { layoutAlign } : {},
       ...layoutGrow ? { layoutGrow } : {},
       ...lineHeight ? { lineHeight } : {},
@@ -1300,8 +1549,35 @@ function collectBindings(element, rules, hasUniformVisibleBorder, tokenSystem) {
 function getDirectText(element) {
   return Array.from(element.childNodes).filter((node) => node.nodeType === Node.TEXT_NODE).map((node) => node.textContent ?? "").join("").replace(/\s+/g, " ").trim();
 }
+function getRenderedLeafText(element) {
+  if (element instanceof HTMLElement) {
+    const rendered = element.innerText.trim();
+    if (rendered) return rendered;
+  }
+  return getDirectText(element);
+}
+function applyTextTransformToText(text, computed) {
+  const transform = computed.textTransform.trim().toLowerCase();
+  if (transform.includes("uppercase")) return text.toUpperCase();
+  if (transform.includes("lowercase")) return text.toLowerCase();
+  if (transform.includes("capitalize")) {
+    return text.replace(/\b\p{L}/gu, (character) => character.toUpperCase());
+  }
+  return text;
+}
+function getTextDecoration(computed) {
+  const line = (computed.textDecorationLine || "").toLowerCase();
+  if (line.includes("line-through")) return "STRIKETHROUGH";
+  if (line.includes("underline")) return "UNDERLINE";
+  return void 0;
+}
+function isItalicFontStyle(computed) {
+  const fontStyle = computed.fontStyle.trim().toLowerCase();
+  return fontStyle.startsWith("italic") || fontStyle.startsWith("oblique");
+}
 function hasElementChildren(element) {
   return Array.from(element.children).some((child) => {
+    if (child.tagName === "BR") return false;
     const style = window.getComputedStyle(child);
     return style.display !== "none";
   });
@@ -1332,6 +1608,78 @@ function findExportRoot(scope) {
   }
   return scope.firstElementChild ?? void 0;
 }
+var rasterImageMaxDimension = 2048;
+function getImageScaleMode(computed) {
+  const objectFit = (computed.objectFit || "").trim().toLowerCase();
+  if (objectFit === "contain" || objectFit === "none" || objectFit === "scale-down") {
+    return "FIT";
+  }
+  return "FILL";
+}
+function dataUrlToRasterCapture(dataUrl) {
+  const match = dataUrl.match(/^data:(image\/[a-z0-9.+-]+);base64,(.+)$/i);
+  if (!match) return void 0;
+  return { imageBase64: match[2], imageMimeType: match[1] };
+}
+function drawSourceToRasterCapture(source, naturalWidth, naturalHeight) {
+  if (naturalWidth <= 0 || naturalHeight <= 0) return void 0;
+  const scale = Math.min(
+    1,
+    rasterImageMaxDimension / Math.max(naturalWidth, naturalHeight)
+  );
+  const width = Math.max(1, Math.round(naturalWidth * scale));
+  const height = Math.max(1, Math.round(naturalHeight * scale));
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("2d");
+    if (!context) return void 0;
+    context.drawImage(source, 0, 0, width, height);
+    return dataUrlToRasterCapture(canvas.toDataURL("image/png"));
+  } catch {
+    return void 0;
+  }
+}
+async function fetchRasterCapture(src) {
+  try {
+    const response = await fetch(src);
+    if (!response.ok) return void 0;
+    const blob = await response.blob();
+    if (!blob.type.startsWith("image/") || blob.type === "image/svg+xml") {
+      return void 0;
+    }
+    if (typeof createImageBitmap === "function") {
+      try {
+        const bitmap = await createImageBitmap(blob);
+        const capture = drawSourceToRasterCapture(bitmap, bitmap.width, bitmap.height);
+        bitmap.close();
+        if (capture) return capture;
+      } catch {
+      }
+    }
+    const dataUrl = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(blob);
+    });
+    return dataUrlToRasterCapture(dataUrl);
+  } catch {
+    return void 0;
+  }
+}
+async function captureRasterImage(element) {
+  const src = element.currentSrc || element.src;
+  if (!src || src.startsWith("data:image/svg+xml")) return void 0;
+  const drawn = drawSourceToRasterCapture(
+    element,
+    element.naturalWidth,
+    element.naturalHeight
+  );
+  if (drawn) return drawn;
+  return fetchRasterCapture(src);
+}
 async function fetchSvgText(element, options) {
   const graphicName = element.getAttribute("data-graphic");
   if (element.getAttribute("data-component") === "graphic" && graphicName) {
@@ -1356,6 +1704,100 @@ async function fetchSvgText(element, options) {
   } catch {
     return void 0;
   }
+}
+function isUniformSpacing(values) {
+  if (values.length === 0) return true;
+  return Math.max(...values) - Math.min(...values) <= 1;
+}
+function averageSpacing(values) {
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+function measureAutoLayoutChildren({
+  childEntries,
+  computed,
+  containerRect
+}) {
+  const flowEntries = childEntries.filter((entry) => !entry.node.styles.outOfFlow);
+  const outOfFlowNodes = childEntries.filter((entry) => entry.node.styles.outOfFlow).map((entry) => entry.node);
+  if (flowEntries.length === 0) return void 0;
+  const isColumn = computed.flexDirection.startsWith("column");
+  const measured = flowEntries.map(({ element, node }) => {
+    const rect = element.getBoundingClientRect();
+    const x = rect.left - containerRect.left;
+    const y = rect.top - containerRect.top;
+    return {
+      crossEnd: isColumn ? x + rect.width : y + rect.height,
+      crossStart: isColumn ? x : y,
+      mainEnd: isColumn ? y + rect.height : x + rect.width,
+      mainStart: isColumn ? y : x,
+      node
+    };
+  });
+  const sortedByCross = [...measured].sort(
+    (a, b) => a.crossStart - b.crossStart || a.mainStart - b.mainStart
+  );
+  const lines = [];
+  for (const item of sortedByCross) {
+    const line = lines[lines.length - 1];
+    const lineEnd = line ? Math.max(...line.map((entry) => entry.crossEnd)) : Number.NEGATIVE_INFINITY;
+    if (!line || item.crossStart >= lineEnd - 0.5) {
+      lines.push([item]);
+    } else {
+      line.push(item);
+    }
+  }
+  lines.forEach((line) => line.sort((a, b) => a.mainStart - b.mainStart));
+  const mainGaps = [];
+  for (const line of lines) {
+    for (let index = 0; index < line.length - 1; index += 1) {
+      mainGaps.push(line[index + 1].mainStart - line[index].mainEnd);
+    }
+  }
+  const crossGaps = [];
+  for (let index = 0; index < lines.length - 1; index += 1) {
+    const currentEnd = Math.max(...lines[index].map((entry) => entry.crossEnd));
+    const nextStart = Math.min(...lines[index + 1].map((entry) => entry.crossStart));
+    crossGaps.push(nextStart - currentEnd);
+  }
+  const justify = computed.justifyContent.trim();
+  const isSpaceBetween = justify === "space-between";
+  const hasOverlap = mainGaps.some((value) => value < -0.5) || crossGaps.some((value) => value < -0.5);
+  if (hasOverlap || !isUniformSpacing(crossGaps) || !isUniformSpacing(mainGaps) && !isSpaceBetween) {
+    return {
+      children: childEntries.map((entry) => entry.node),
+      strategy: "absolute"
+    };
+  }
+  const wrapDeclared = computed.flexWrap === "wrap" || computed.flexWrap === "wrap-reverse";
+  const measurement = {
+    children: [
+      ...lines.flatMap((line) => line.map((entry) => entry.node)),
+      ...outOfFlowNodes
+    ],
+    strategy: "autoLayout"
+  };
+  if (mainGaps.length > 0 && !isSpaceBetween) {
+    measurement.gap = Math.max(0, toFiniteNumber(averageSpacing(mainGaps)));
+  }
+  if (wrapDeclared && lines.length > 1) {
+    measurement.layoutWrap = "WRAP";
+    if (crossGaps.length > 0) {
+      measurement.counterAxisSpacing = Math.max(
+        0,
+        toFiniteNumber(averageSpacing(crossGaps))
+      );
+    }
+  }
+  const isStartJustified = justify === "" || ["flex-start", "left", "normal", "start"].includes(justify);
+  if (isStartJustified) {
+    const leading = Math.min(...measured.map((entry) => entry.mainStart));
+    const containerMainSize = isColumn ? containerRect.height : containerRect.width;
+    const trailing = containerMainSize - Math.max(...measured.map((entry) => entry.mainEnd));
+    const leadingPadding = Math.max(0, toFiniteNumber(leading));
+    const trailingPadding = Math.max(0, toFiniteNumber(trailing));
+    measurement.paddingOverrides = isColumn ? { bottom: trailingPadding, top: leadingPadding } : { left: leadingPadding, right: trailingPadding };
+  }
+  return measurement;
 }
 async function createExportNode(element, rootRect, parentRect, rules, tokenSystem, options, traversalState, forceAbsoluteLayout = false) {
   await markExportNodeVisited(traversalState);
@@ -1385,7 +1827,7 @@ async function createExportNode(element, rootRect, parentRect, rules, tokenSyste
   if (clipPathNode) return clipPathNode;
   const childElements = Array.from(element.children);
   const hasPositionedChildren = hasOutOfFlowPositionedChildren(childElements);
-  const childNodes = (await Promise.all(
+  const childNodeResults = await Promise.all(
     childElements.map(
       (child) => createExportNode(
         child,
@@ -1398,7 +1840,13 @@ async function createExportNode(element, rootRect, parentRect, rules, tokenSyste
         nextForceAbsoluteLayout && !child.hasAttribute("data-component")
       )
     )
-  )).filter((child) => Boolean(child));
+  );
+  const childEntries = [];
+  childElements.forEach((childElement, index) => {
+    const node = childNodeResults[index];
+    if (node) childEntries.push({ element: childElement, node });
+  });
+  const childNodes = childEntries.map((entry) => entry.node);
   const directText = getDirectText(element);
   const backgroundColor = cssColorValue(computed.backgroundColor);
   const declarations = getMatchedDeclarations(element, rules);
@@ -1411,7 +1859,8 @@ async function createExportNode(element, rootRect, parentRect, rules, tokenSyste
   const border = getUniformVisibleBorder(computed);
   const borderSideMap = getVisibleBorderSides(computed);
   const fontWeight = Number.parseInt(computed.fontWeight, 10);
-  const radius = cssLengthToNumber(computed.borderTopLeftRadius);
+  const radiusStyles = getRadiusStyles(computed, width, height);
+  const boxShadowEffects = getBoxShadowEffects(computed);
   const lineHeight = cssLineHeightToNumber(computed.lineHeight);
   const gap = cssLengthToNumber(computed.columnGap) ?? cssLengthToNumber(computed.gap);
   const layoutAlign = getLayoutAlign(element);
@@ -1449,6 +1898,7 @@ async function createExportNode(element, rootRect, parentRect, rules, tokenSyste
   const frameLayoutStrategy = element.getAttribute("data-figma-layout-strategy") === "auto-layout" ? layoutStrategy : shouldPreserveComputedAutoLayout ? layoutStrategy : pseudoNodes.length > 0 || hasPositionedChildren ? "absolute" : layoutStrategy;
   const elementOutOfFlow = isOutOfFlowPositioned(computed);
   if (directText && !hasElementChildren(element)) {
+    const leafText = applyTextTransformToText(getRenderedLeafText(element), computed);
     if (hasBoxedTextStyle(computed, border)) {
       const paddingLeft = cssLengthToNumber(computed.paddingLeft) ?? 0;
       const paddingRight = cssLengthToNumber(computed.paddingRight) ?? 0;
@@ -1460,7 +1910,7 @@ async function createExportNode(element, rootRect, parentRect, rules, tokenSyste
         height: Math.max(1, height - paddingTop - paddingBottom),
         layoutStrategy: textLayoutStrategy,
         name: `${getElementName(element, options)}__text`,
-        text: directText,
+        text: leafText,
         textAutoResize: getTextAutoResize(element, computed),
         layoutAlign,
         layoutGrow,
@@ -1481,6 +1931,7 @@ async function createExportNode(element, rootRect, parentRect, rules, tokenSyste
             alignItems: "center",
             ...backgroundColor ? { backgroundColor } : {},
             ...backgroundLinearGradient ? { backgroundLinearGradient } : {},
+            ...boxShadowEffects.length > 0 ? { effects: boxShadowEffects } : {},
             ...border ? { borderColor: border.color, borderWidth: border.width } : {},
             ...borderSideMap ? { borderSides: borderSideMap } : {},
             display: "flex",
@@ -1494,7 +1945,7 @@ async function createExportNode(element, rootRect, parentRect, rules, tokenSyste
             paddingLeft,
             paddingRight,
             paddingTop,
-            ...radius !== void 0 && radius > 0 ? { radius } : {},
+            ...radiusStyles,
             ...layoutSizingHorizontal ? { layoutSizingHorizontal } : {},
             ...layoutSizingHorizontal && !bindings.height ? { layoutSizingVertical: "HUG" } : {},
             width,
@@ -1513,6 +1964,7 @@ async function createExportNode(element, rootRect, parentRect, rules, tokenSyste
         styles: {
           ...backgroundColor ? { backgroundColor } : {},
           ...backgroundLinearGradient ? { backgroundLinearGradient } : {},
+          ...boxShadowEffects.length > 0 ? { effects: boxShadowEffects } : {},
           ...border ? { borderColor: border.color, borderWidth: border.width } : {},
           ...borderSideMap ? { borderSides: borderSideMap } : {},
           display: getExportDisplay(computed, "absolute"),
@@ -1524,7 +1976,7 @@ async function createExportNode(element, rootRect, parentRect, rules, tokenSyste
           paddingLeft,
           paddingRight,
           paddingTop,
-          ...radius !== void 0 && radius > 0 ? { radius } : {},
+          ...radiusStyles,
           ...layoutSizingHorizontal ? { layoutSizingHorizontal } : {},
           width,
           x: toFiniteNumber(rect.left - parentRect.left),
@@ -1539,7 +1991,7 @@ async function createExportNode(element, rootRect, parentRect, rules, tokenSyste
       layoutStrategy: textLayoutStrategy,
       name: getElementName(element, options),
       outOfFlow: elementOutOfFlow,
-      text: directText,
+      text: leafText,
       textAutoResize: getTextAutoResize(element, computed),
       layoutAlign,
       layoutGrow,
@@ -1549,36 +2001,53 @@ async function createExportNode(element, rootRect, parentRect, rules, tokenSyste
       y: toFiniteNumber(rect.top - parentRect.top)
     });
   }
-  const kind = element instanceof HTMLImageElement ? "image" : "frame";
+  const kind = element instanceof HTMLImageElement || element instanceof HTMLCanvasElement ? "image" : "frame";
+  let imageSvgText;
+  let imageCapture;
+  if (element instanceof HTMLImageElement) {
+    imageSvgText = await fetchSvgText(element, options);
+    if (!imageSvgText) imageCapture = await captureRasterImage(element);
+  } else if (element instanceof HTMLCanvasElement) {
+    imageCapture = drawSourceToRasterCapture(element, element.width, element.height);
+  }
   const elementName = getElementName(element, options);
+  const autoLayoutMeasurement = kind === "frame" && frameLayoutStrategy === "autoLayout" && isFlexDisplay(computed.display) && childEntries.length > 0 ? measureAutoLayoutChildren({ childEntries, computed, containerRect: rect }) : void 0;
+  const effectiveLayoutStrategy = autoLayoutMeasurement?.strategy ?? frameLayoutStrategy;
+  const orderedChildNodes = autoLayoutMeasurement?.children ?? childNodes;
+  const paddingOverrides = effectiveLayoutStrategy === "autoLayout" ? autoLayoutMeasurement?.paddingOverrides : void 0;
+  const measuredGap = effectiveLayoutStrategy === "autoLayout" ? autoLayoutMeasurement?.gap : void 0;
+  const effectiveGap = measuredGap ?? gap;
   const frameStyles = {
     ...computed.alignItems ? { alignItems: computed.alignItems } : {},
     ...backgroundColor ? { backgroundColor } : {},
     ...backgroundLinearGradient ? { backgroundLinearGradient } : {},
+    ...boxShadowEffects.length > 0 ? { effects: boxShadowEffects } : {},
     ...border ? { borderColor: border.color, borderWidth: border.width } : {},
     ...borderSideMap ? { borderSides: borderSideMap } : {},
     ...color ? { color } : {},
-    display: getExportDisplay(computed, frameLayoutStrategy),
-    ...frameLayoutStrategy === "autoLayout" ? { flexDirection: computed.flexDirection } : {},
+    ...effectiveLayoutStrategy === "autoLayout" && autoLayoutMeasurement?.counterAxisSpacing !== void 0 ? { counterAxisSpacing: autoLayoutMeasurement.counterAxisSpacing } : {},
+    display: getExportDisplay(computed, effectiveLayoutStrategy),
+    ...effectiveLayoutStrategy === "autoLayout" ? { flexDirection: computed.flexDirection.replace("-reverse", "") } : {},
     fontFamily: computed.fontFamily,
     fontSize: cssLengthToNumber(computed.fontSize) ?? 14,
     ...Number.isFinite(fontWeight) ? { fontWeight } : {},
-    ...gap !== void 0 && gap >= 0 ? { gap } : {},
+    ...effectiveGap !== void 0 && effectiveGap >= 0 ? { gap: effectiveGap } : {},
     height,
     ...computed.justifyContent ? { justifyContent: computed.justifyContent } : {},
     ...frameLayoutAlign ? { layoutAlign: frameLayoutAlign } : {},
     ...layoutGrow ? { layoutGrow } : {},
     ...layoutSizingHorizontal ? { layoutSizingHorizontal } : {},
     ...layoutSizingVertical ? { layoutSizingVertical } : {},
+    ...effectiveLayoutStrategy === "autoLayout" && autoLayoutMeasurement?.layoutWrap ? { layoutWrap: autoLayoutMeasurement.layoutWrap } : {},
     ...lineHeight ? { lineHeight } : {},
     opacity: Number(computed.opacity),
     ...elementOutOfFlow ? { outOfFlow: true } : {},
     overflow: computed.overflow,
-    paddingBottom: cssLengthToNumber(computed.paddingBottom) ?? 0,
-    paddingLeft: cssLengthToNumber(computed.paddingLeft) ?? 0,
-    paddingRight: cssLengthToNumber(computed.paddingRight) ?? 0,
-    paddingTop: cssLengthToNumber(computed.paddingTop) ?? 0,
-    ...radius !== void 0 && radius > 0 ? { radius } : {},
+    paddingBottom: paddingOverrides?.bottom ?? (cssLengthToNumber(computed.paddingBottom) ?? 0),
+    paddingLeft: paddingOverrides?.left ?? (cssLengthToNumber(computed.paddingLeft) ?? 0),
+    paddingRight: paddingOverrides?.right ?? (cssLengthToNumber(computed.paddingRight) ?? 0),
+    paddingTop: paddingOverrides?.top ?? (cssLengthToNumber(computed.paddingTop) ?? 0),
+    ...radiusStyles,
     ...textAlignVertical ? { textAlignVertical } : {},
     width,
     x: toFiniteNumber(rect.left - parentRect.left),
@@ -1586,13 +2055,14 @@ async function createExportNode(element, rootRect, parentRect, rules, tokenSyste
   };
   return {
     bindings,
-    children: kind === "image" ? [] : [...childNodes, ...pseudoNodes],
+    children: kind === "image" ? [] : [...orderedChildNodes, ...pseudoNodes],
     ...component ? { component } : {},
+    ...imageCapture ? { ...imageCapture } : {},
     kind,
-    layoutStrategy: kind === "image" ? "absolute" : frameLayoutStrategy,
+    layoutStrategy: kind === "image" ? "absolute" : effectiveLayoutStrategy,
     name: elementName,
-    ...kind === "image" && element instanceof HTMLImageElement ? { svgText: await fetchSvgText(element, options) } : {},
-    styles: frameStyles
+    ...imageSvgText ? { svgText: imageSvgText } : {},
+    styles: imageCapture ? { ...frameStyles, imageScaleMode: getImageScaleMode(computed) } : frameStyles
   };
 }
 async function createFigmaExportPayload({

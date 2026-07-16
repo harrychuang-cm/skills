@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>figma-export fixture</title>
+<style>
+  :root {
+    --fx-ref-color-blue: #3366ff;
+    --fx-ref-color-teal: hsl(210, 50%, 40%);
+    --fx-ref-spacing-3: 12px;
+    --fx-sys-color-primary: var(--fx-ref-color-blue);
+    --fx-sys-color-accent: var(--fx-ref-color-teal);
+    --fx-sys-spacing-gap: var(--fx-ref-spacing-3);
+    --fx-comp-card-color-bg: var(--fx-sys-color-primary);
+  }
+
+  body { font-family: Arial, sans-serif; margin: 16px; }
+
+  #scope > div[data-component="fixture-root"] {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    align-items: flex-start;
+    width: 640px;
+  }
+
+  .case-oklch { width: 120px; height: 40px; background-color: oklch(0.7 0.15 200); }
+
+  .case-shadow {
+    width: 120px; height: 40px; background-color: #ffffff;
+    box-shadow: 0px 4px 12px rgba(0, 0, 0, 0.25);
+  }
+
+  .case-inset-shadow {
+    width: 120px; height: 40px; background-color: #ffffff;
+    box-shadow: inset 0px 2px 4px rgba(0, 0, 0, 0.4);
+  }
+
+  .case-corners {
+    width: 120px; height: 40px; background-color: #dddddd;
+    border-radius: 8px 8px 0px 0px;
+  }
+
+  .case-margin-row { display: flex; background-color: #f5f5f5; padding: 4px; }
+  .case-margin-row > div { width: 40px; height: 20px; background-color: #999999; }
+  .case-margin-row > div:not(:last-child) { margin-right: 12px; }
+
+  .case-uneven-row { display: flex; background-color: #f5f5f5; padding: 4px; }
+  .case-uneven-row > div { width: 40px; height: 20px; background-color: #999999; }
+  .case-uneven-row > .uneven-first { margin-right: 8px; }
+  .case-uneven-row > .uneven-second { margin-right: 24px; }
+
+  .case-reverse { display: flex; flex-direction: row-reverse; gap: 10px; background-color: #f5f5f5; }
+  .case-reverse > div { width: 40px; height: 20px; }
+  .item-a { background-color: #cc3333; }
+  .item-b { background-color: #33cc33; }
+  .item-c { background-color: #3333cc; }
+
+  .case-wrap {
+    display: flex; flex-wrap: wrap; gap: 12px 8px;
+    width: 200px; background-color: #f5f5f5;
+  }
+  .case-wrap > div { width: 60px; height: 24px; background-color: #aaaaaa; }
+
+  .case-raster { width: 40px; height: 40px; object-fit: cover; }
+  .case-raster-big { width: 300px; height: 150px; object-fit: cover; }
+
+  .case-uppercase { text-transform: uppercase; font-size: 14px; }
+  .case-multiline { font-size: 14px; width: 200px; }
+  .case-letterspacing {
+    font-size: 14px; letter-spacing: 0.5px; text-decoration: underline;
+  }
+  .case-italic { font-size: 14px; font-style: italic; }
+  .case-text-shadow { font-size: 14px; text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5); }
+
+  .case-media-token { width: 120px; height: 40px; background-color: #dd4444; }
+  @media (max-width: 600px) {
+    .case-media-token { background-color: var(--fx-sys-color-primary); }
+  }
+
+  .spec-a.spec-b { background-color: var(--fx-comp-card-color-bg); }
+  .case-specificity { width: 120px; height: 40px; }
+  .spec-b { background-color: var(--fx-sys-color-accent); }
+
+  .case-hsl-token { width: 120px; height: 40px; background-color: var(--fx-sys-color-accent); }
+
+  .case-plain { width: 120px; height: 40px; background-color: #eeeeee; }
+</style>
+</head>
+<body>
+<div id="scope">
+  <div data-component="fixture-root">
+    <div data-component="case-oklch" class="case-oklch"></div>
+    <div data-component="case-shadow" class="case-shadow"></div>
+    <div data-component="case-inset-shadow" class="case-inset-shadow"></div>
+    <div data-component="case-corners" class="case-corners"></div>
+    <div data-component="case-margin-row" class="case-margin-row">
+      <div></div><div></div><div></div>
+    </div>
+    <div data-component="case-uneven-row" class="case-uneven-row">
+      <div class="uneven-first"></div><div class="uneven-second"></div><div></div>
+    </div>
+    <div data-component="case-reverse" class="case-reverse">
+      <div class="item-a"></div><div class="item-b"></div><div class="item-c"></div>
+    </div>
+    <div data-component="case-wrap" class="case-wrap">
+      <div></div><div></div><div></div><div></div><div></div><div></div>
+    </div>
+    <img data-component="case-raster" class="case-raster" alt="" />
+    <img data-component="case-raster-big" class="case-raster-big" alt="" />
+    <span data-component="case-uppercase" class="case-uppercase">Submit order</span>
+    <div data-component="case-multiline" class="case-multiline">Line one<br />Line two</div>
+    <span data-component="case-letterspacing" class="case-letterspacing">Tracked underline</span>
+    <span data-component="case-italic" class="case-italic">Italic note</span>
+    <span data-component="case-text-shadow" class="case-text-shadow">Shadowed text</span>
+    <div data-component="case-media-token" class="case-media-token"></div>
+    <div data-component="case-specificity" class="case-specificity spec-a spec-b"></div>
+    <div data-component="case-hsl-token" class="case-hsl-token"></div>
+    <div data-component="case-plain" class="case-plain"></div>
+  </div>
+</div>
+<pre id="payload-output" style="display: none"></pre>
+<pre id="payload-error" style="display: none"></pre>
+<script src="./.export-fixture.bundle.js"></script>
+<script>
+  function toBase64Utf8(text) {
+    return btoa(unescape(encodeURIComponent(text)));
+  }
+
+  function makePngDataUrl(width, height, color) {
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("2d");
+    context.fillStyle = color;
+    context.fillRect(0, 0, width, height);
+    return canvas.toDataURL("image/png");
+  }
+
+  // Assign raster sources synchronously during parsing so both images take
+  // part in the window load event; img.decode() is unreliable under headless
+  // virtual time, so the export must not depend on it.
+  document.querySelector('[data-component="case-raster"]').src =
+    makePngDataUrl(64, 64, "#cc4444");
+  document.querySelector('[data-component="case-raster-big"]').src =
+    makePngDataUrl(3000, 1500, "#4488cc");
+
+  async function runFixtureExport() {
+    try {
+      const exportApi = window.FigmaExportFixture;
+      const payload = await exportApi.createFigmaExportPayload({
+        componentTitle: "Fixture",
+        options: exportApi.resolveFigmaExportAddonOptions({ storyTitlePrefix: false }),
+        scope: document.getElementById("scope"),
+        storyId: "fixture--all",
+        storyName: "All",
+        storyTitle: "Fixture/All",
+      });
+
+      document.getElementById("payload-output").textContent = toBase64Utf8(
+        JSON.stringify(payload),
+      );
+      document.title = "EXPORT_DONE";
+    } catch (error) {
+      document.getElementById("payload-error").textContent = toBase64Utf8(
+        String(error && error.stack ? error.stack : error),
+      );
+      document.title = "EXPORT_ERROR";
+    }
+  }
+
+  window.addEventListener("load", () => {
+    runFixtureExport();
+  });
+</script>
+</body>
+</html>

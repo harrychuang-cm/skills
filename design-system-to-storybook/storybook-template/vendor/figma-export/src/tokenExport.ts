@@ -1,4 +1,5 @@
 import type { ResolvedFigmaExportAddonOptions } from "./options";
+import { parseCssColorToRgba } from "./color";
 import type {
   FigmaExportToken,
   FigmaVariableType,
@@ -285,6 +286,16 @@ function parseRawValue(value: string): {
     return {
       type: "BOOLEAN",
       value: trimmed === "true",
+    };
+  }
+
+  // hsl()/oklch()/color()/named tokens parse through the browser color engine
+  // so they export as COLOR variables instead of STRING fallbacks.
+  const cssColor = parseCssColorToRgba(trimmed);
+  if (cssColor) {
+    return {
+      type: "COLOR",
+      value: cssColor,
     };
   }
 

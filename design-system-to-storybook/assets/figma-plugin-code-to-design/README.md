@@ -2,7 +2,29 @@
 
 Figma development plugin for importing Storybook Code To Design JSON exports. The plugin parses JSON only; it does not evaluate pasted JavaScript.
 
-Version: `1.1.8`
+Version: `1.2.0`
+
+## Fidelity fields (payload v2, all optional)
+
+Payloads produced by the current exporter may carry additional optional fields; older payloads without them import exactly as before:
+
+- `styles.effects` → Figma `DROP_SHADOW` / `INNER_SHADOW` effects on frames, text, and images
+- `styles.radiusCorners` → per-corner radii (`topLeftRadius` etc.)
+- `styles.layoutWrap` + `styles.counterAxisSpacing` → wrapped auto layout
+- `styles.letterSpacing` (px), `styles.textDecoration` (`UNDERLINE`/`STRIKETHROUGH`), `styles.fontStyle: "italic"` → text styling; font style resolution covers weights 100–900 with italic variants and upright fallback
+- `imageBase64` + `imageMimeType` + `styles.imageScaleMode` → raster fills via `figma.createImage` (decode failures warn and keep an empty frame)
+- `colorFromCss` also accepts 4/8-digit hex, `hsl()/hsla()`, and `rgb(r g b / a)` syntax; `linear-gradient` supports arbitrary angles
+
+Invalid types on these fields fail `parsePayload` with an error naming the node path and field.
+
+## Verify pure helpers under Node
+
+```sh
+npm run build
+node test/verify-pure-functions.cjs
+```
+
+The script stubs the `figma` global, loads `code.js`, and asserts color parsing, gradient transforms, font style candidates, and payload validation compatibility.
 
 ## Build
 

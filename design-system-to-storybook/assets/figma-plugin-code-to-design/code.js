@@ -112,7 +112,7 @@ function applyTextAlignmentFromSpec(node, spec, options, path) {
 }
 // Bump this on every behavior change so the Figma UI badge confirms which
 // build is running (Figma re-reads code.js per run, but the badge removes doubt).
-var PLUGIN_VERSION = "1.1.8 (2026-06-25)";
+var PLUGIN_VERSION = "1.2.0 (2026-07-16)";
 var SUPPORTED_PAYLOAD_VERSIONS = [1, 2];
 var DEFAULT_TOKEN_PLUGIN_DATA_KEY = "storybookCssToken";
 var LEGACY_CM_TOKEN_PLUGIN_DATA_KEY = "cmCssToken";
@@ -739,6 +739,7 @@ function createImportContext(payload) {
                         setFrameFills(node, styles, bindings, path);
                         setStrokes(node, styles, bindings, path);
                         applyRadius(node, styles, bindings, path);
+                        applyEffects(node, styles.effects, path);
                         applyAutoLayout(node, styles, bindings, path);
                         safeBind(node, "width", bindings.width, path);
                         safeBind(node, "height", bindings.height, path);
@@ -962,6 +963,7 @@ function createImportContext(payload) {
         setFrameFills(node, styles, bindings, path);
         setStrokes(node, styles, bindings, path);
         applyRadius(node, styles, bindings, path);
+        applyEffects(node, styles.effects, path);
         applyAutoLayout(node, styles, bindings, path);
         safeBind(node, "width", bindings.width, path);
         safeBind(node, "height", bindings.height, path);
@@ -1688,14 +1690,31 @@ function createImportContext(payload) {
                                 value: styles.lineHeight,
                             };
                         }
+                        if (typeof styles.letterSpacing === "number") {
+                            try {
+                                node.letterSpacing = { unit: "PIXELS", value: styles.letterSpacing };
+                            }
+                            catch (error) {
+                                warn("Could not set letter spacing for ".concat(path, ": ").concat(formatError(error)));
+                            }
+                        }
+                        if (styles.textDecoration) {
+                            try {
+                                node.textDecoration = styles.textDecoration;
+                            }
+                            catch (error) {
+                                warn("Could not set text decoration for ".concat(path, ": ").concat(formatError(error)));
+                            }
+                        }
                         node.fills = [solidPaint(styles.color, bindings.textColor, "".concat(path, ".textColor"))];
+                        applyEffects(node, styles.effects, path);
                         safeResize(node, styles.width, styles.height, path);
                         applyTextAutoResize(node, styles.textAutoResize, path);
                         applyTextTruncation(node, styles, path);
                         applyTextAlignHorizontal(node, spec, options, path);
                         safeBind(node, "width", bindings.width, path);
                         safeBind(node, "height", bindings.height, path);
-                        return [4 /*yield*/, safeBindFontFamily(node, bindings.fontFamily, (_d = styles.fontWeight) !== null && _d !== void 0 ? _d : 400, path)];
+                        return [4 /*yield*/, safeBindFontFamily(node, bindings.fontFamily, (_d = styles.fontWeight) !== null && _d !== void 0 ? _d : 400, styles.fontStyle === "italic", path)];
                     case 2:
                         _e.sent();
                         safeBind(node, "fontSize", bindings.fontSize, path);
@@ -1731,9 +1750,28 @@ function createImportContext(payload) {
                 warn("Could not create SVG for ".concat(path, ": ").concat(formatError(error)));
             }
         }
-        else {
-            warn("Image ".concat(path, " has no SVG payload; created an empty image frame."));
+        else if (spec.imageBase64) {
+            try {
+                var bytes = figma.base64Decode(spec.imageBase64);
+                var image = figma.createImage(bytes);
+                var scaleMode = spec.styles.imageScaleMode === "FIT" ? "FIT" : "FILL";
+                wrapper.fills = [
+                    {
+                        imageHash: image.hash,
+                        scaleMode: scaleMode,
+                        type: "IMAGE",
+                    },
+                ];
+            }
+            catch (error) {
+                warn("Could not create raster image for ".concat(path, ": ").concat(formatError(error)));
+            }
         }
+        else {
+            warn("Image ".concat(path, " has no SVG or raster payload; created an empty image frame."));
+        }
+        applyRadius(wrapper, spec.styles, bindings, path);
+        applyEffects(wrapper, spec.styles.effects, path);
         return wrapper;
     }
     function createSvgSceneNode(spec, path) {
@@ -1760,16 +1798,6 @@ function createImportContext(payload) {
         node.fills = [
             solidPaint(styles.backgroundColor, bindings.backgroundColor, "".concat(path, ".fill")),
         ];
-    }
-    function getLinearGradientTransform(angle) {
-        var normalized = ((angle % 360) + 360) % 360;
-        if (normalized === 270)
-            return [[-1, 0, 1], [0, 1, 0]];
-        if (normalized === 180)
-            return [[0, 1, 0], [-1, 0, 1]];
-        if (normalized === 0)
-            return [[0, -1, 1], [1, 0, 0]];
-        return [[1, 0, 0], [0, 1, 0]];
     }
     function linearGradientPaint(gradient, path) {
         return {
@@ -1878,10 +1906,44 @@ function createImportContext(payload) {
         }
     }
     function applyRadius(node, styles, bindings, path) {
-        if (typeof styles.radius === "number") {
+        if (styles.radiusCorners) {
+            try {
+                node.topLeftRadius = Math.max(0, safeNumber(styles.radiusCorners.topLeft, 0));
+                node.topRightRadius = Math.max(0, safeNumber(styles.radiusCorners.topRight, 0));
+                node.bottomRightRadius = Math.max(0, safeNumber(styles.radiusCorners.bottomRight, 0));
+                node.bottomLeftRadius = Math.max(0, safeNumber(styles.radiusCorners.bottomLeft, 0));
+            }
+            catch (error) {
+                warn("Could not set per-corner radius for ".concat(path, ": ").concat(formatError(error)));
+            }
+        }
+        else if (typeof styles.radius === "number") {
             node.cornerRadius = styles.radius;
         }
         safeBindRadius(node, bindings.cornerRadius, path);
+    }
+    function applyEffects(node, effects, path) {
+        if (!effects || effects.length === 0)
+            return;
+        try {
+            var mapped = effects.map(function (effect) { return ({
+                blendMode: "NORMAL",
+                color: cloneColor(colorFromCss(effect.color)),
+                offset: {
+                    x: safeNumber(effect.offsetX, 0),
+                    y: safeNumber(effect.offsetY, 0),
+                },
+                radius: Math.max(0, safeNumber(effect.blur, 0)),
+                spread: safeNumber(effect.spread, 0),
+                type: effect.type,
+                visible: true,
+            }); });
+            node.effects =
+                mapped;
+        }
+        catch (error) {
+            warn("Could not set effects for ".concat(path, ": ").concat(formatError(error)));
+        }
     }
     function applyAutoLayout(node, styles, bindings, path) {
         var _a, _b;
@@ -1908,6 +1970,18 @@ function createImportContext(payload) {
         node.paddingTop = safeNumber(styles.paddingTop, 0);
         node.paddingBottom = safeNumber(styles.paddingBottom, 0);
         node.primaryAxisAlignItems = primaryAxisAlignItems;
+        if (styles.layoutWrap === "WRAP") {
+            try {
+                node.layoutWrap =
+                    "WRAP";
+                if (typeof styles.counterAxisSpacing === "number") {
+                    node.counterAxisSpacing = Math.max(0, styles.counterAxisSpacing);
+                }
+            }
+            catch (error) {
+                warn("Could not set layout wrap for ".concat(path, ": ").concat(formatError(error)));
+            }
+        }
         if (primaryAxisAlignItems !== "SPACE_BETWEEN") {
             safeBind(node, "itemSpacing", bindings.gap, path);
         }
@@ -1987,7 +2061,7 @@ function createImportContext(payload) {
             return false;
         }
     }
-    function safeBindFontFamily(node, tokenName, fontWeight, path) {
+    function safeBindFontFamily(node, tokenName, fontWeight, italic, path) {
         return __awaiter(this, void 0, void 0, function () {
             var loaded;
             return __generator(this, function (_a) {
@@ -1995,7 +2069,7 @@ function createImportContext(payload) {
                     case 0:
                         if (!tokenName)
                             return [2 /*return*/, false];
-                        return [4 /*yield*/, loadBoundFontFamily(tokenName, fontWeight, path)];
+                        return [4 /*yield*/, loadBoundFontFamily(tokenName, fontWeight, italic, path)];
                     case 1:
                         loaded = _a.sent();
                         if (!loaded)
@@ -2098,7 +2172,7 @@ function createImportContext(payload) {
                 switch (_c.label) {
                     case 0:
                         family = getFontFamily(styles.fontFamily);
-                        styleCandidates = getFontStyleCandidates((_b = styles.fontWeight) !== null && _b !== void 0 ? _b : 400);
+                        styleCandidates = getFontStyleCandidates((_b = styles.fontWeight) !== null && _b !== void 0 ? _b : 400, styles.fontStyle === "italic");
                         _i = 0, styleCandidates_1 = styleCandidates;
                         _c.label = 1;
                     case 1:
@@ -2156,7 +2230,7 @@ function createImportContext(payload) {
         var value = resolveTokenValue(tokenName);
         return typeof value === "string" ? getFontFamily(value) : undefined;
     }
-    function loadBoundFontFamily(tokenName, fontWeight, path) {
+    function loadBoundFontFamily(tokenName, fontWeight, italic, path) {
         return __awaiter(this, void 0, void 0, function () {
             var family, styleCandidates, _i, styleCandidates_2, style, _a;
             return __generator(this, function (_b) {
@@ -2167,7 +2241,7 @@ function createImportContext(payload) {
                             warn("Could not resolve font family token for ".concat(path, ".fontFamily: ").concat(tokenName));
                             return [2 /*return*/, false];
                         }
-                        styleCandidates = getFontStyleCandidates(fontWeight);
+                        styleCandidates = getFontStyleCandidates(fontWeight, italic);
                         _i = 0, styleCandidates_2 = styleCandidates;
                         _b.label = 1;
                     case 1:
@@ -2366,34 +2440,115 @@ function cloneColor(value) {
         r: clamp(safeNumber(color.r, 0), 0, 1),
     };
 }
+// CSS angles are clockwise with 0deg pointing up; Figma's identity gradient
+// runs along +x (the CSS 90deg direction). Rotate about the tile center so
+// any angle maps, not just the four axis-aligned ones.
+function getLinearGradientTransform(angle) {
+    var radians = ((angle - 90) * Math.PI) / 180;
+    var cos = Math.cos(radians);
+    var sin = Math.sin(radians);
+    var translateX = 0.5 - (cos * 0.5 + sin * 0.5);
+    var translateY = 0.5 - (-sin * 0.5 + cos * 0.5);
+    return [
+        [cos, sin, translateX],
+        [-sin, cos, translateY],
+    ];
+}
+// Accepts commas, spaces, and the slash alpha separator so both legacy
+// "rgb(1, 2, 3)" and modern "rgb(1 2 3 / 0.5)" syntaxes parse.
+function splitColorComponents(inner) {
+    return inner
+        .replace(/\//g, " ")
+        .split(/[\s,]+/)
+        .filter(function (part) { return part.length > 0; });
+}
+function parseColorComponent(part, scale) {
+    if (part === undefined)
+        return undefined;
+    var percent = part.match(/^(-?\d*\.?\d+)%$/);
+    if (percent)
+        return (Number(percent[1]) / 100) * scale;
+    var numeric = part.match(/^(-?\d*\.?\d+)$/);
+    return numeric ? Number(numeric[1]) : undefined;
+}
+function hslToRgbColor(hue, saturation, lightness) {
+    var _a, _b, _c, _d, _e, _f;
+    var normalizedHue = (((hue % 360) + 360) % 360) / 60;
+    var chroma = (1 - Math.abs(2 * lightness - 1)) * saturation;
+    var secondary = chroma * (1 - Math.abs((normalizedHue % 2) - 1));
+    var offset = lightness - chroma / 2;
+    var r = 0;
+    var g = 0;
+    var b = 0;
+    if (normalizedHue < 1)
+        _a = [chroma, secondary, 0], r = _a[0], g = _a[1], b = _a[2];
+    else if (normalizedHue < 2)
+        _b = [secondary, chroma, 0], r = _b[0], g = _b[1], b = _b[2];
+    else if (normalizedHue < 3)
+        _c = [0, chroma, secondary], r = _c[0], g = _c[1], b = _c[2];
+    else if (normalizedHue < 4)
+        _d = [0, secondary, chroma], r = _d[0], g = _d[1], b = _d[2];
+    else if (normalizedHue < 5)
+        _e = [secondary, 0, chroma], r = _e[0], g = _e[1], b = _e[2];
+    else
+        _f = [chroma, 0, secondary], r = _f[0], g = _f[1], b = _f[2];
+    return { b: b + offset, g: g + offset, r: r + offset };
+}
 function colorFromCss(cssValue) {
+    var _a;
     if (!cssValue)
         return { a: 1, b: 0, g: 0, r: 0 };
     var value = cssValue.trim();
-    var hex = value.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+    var hex = value.match(/^#([0-9a-f]{3,8})$/i);
     if (hex) {
-        var expanded = hex[1].length === 3
-            ? hex[1]
-                .split("")
-                .map(function (part) { return "".concat(part).concat(part); })
-                .join("")
-            : hex[1];
-        var intValue = Number.parseInt(expanded, 16);
+        var digits_1 = hex[1];
+        if (digits_1.length === 3 || digits_1.length === 4) {
+            var channel = function (index) {
+                return Number.parseInt("".concat(digits_1[index]).concat(digits_1[index]), 16) / 255;
+            };
+            return {
+                a: digits_1.length === 4 ? channel(3) : 1,
+                b: channel(2),
+                g: channel(1),
+                r: channel(0),
+            };
+        }
+        if (digits_1.length === 6 || digits_1.length === 8) {
+            var channel = function (index) {
+                return Number.parseInt(digits_1.slice(index, index + 2), 16) / 255;
+            };
+            return {
+                a: digits_1.length === 8 ? channel(6) : 1,
+                b: channel(4),
+                g: channel(2),
+                r: channel(0),
+            };
+        }
+        return { a: 1, b: 0, g: 0, r: 0 };
+    }
+    var rgb = value.match(/^rgba?\(([^)]+)\)$/i);
+    if (rgb) {
+        var parts = splitColorComponents(rgb[1]);
         return {
-            a: 1,
-            b: (intValue & 255) / 255,
-            g: ((intValue >> 8) & 255) / 255,
-            r: ((intValue >> 16) & 255) / 255,
+            a: clamp(safeNumber(parseColorComponent(parts[3], 1), 1), 0, 1),
+            b: clamp(safeNumber(parseColorComponent(parts[2], 255), 0) / 255, 0, 1),
+            g: clamp(safeNumber(parseColorComponent(parts[1], 255), 0) / 255, 0, 1),
+            r: clamp(safeNumber(parseColorComponent(parts[0], 255), 0) / 255, 0, 1),
         };
     }
-    var rgb = value.match(/rgba?\(([^)]+)\)/i);
-    if (rgb) {
-        var parts = rgb[1].split(",").map(function (part) { return Number(part.trim()); });
+    var hsl = value.match(/^hsla?\(([^)]+)\)$/i);
+    if (hsl) {
+        var parts = splitColorComponents(hsl[1]);
+        var hue = safeNumber(parseColorComponent((_a = parts[0]) === null || _a === void 0 ? void 0 : _a.replace(/deg$/i, ""), 360), 0);
+        var saturation = clamp(safeNumber(parseColorComponent(parts[1], 1), 0), 0, 1);
+        var lightness = clamp(safeNumber(parseColorComponent(parts[2], 1), 0), 0, 1);
+        var alpha = clamp(safeNumber(parseColorComponent(parts[3], 1), 1), 0, 1);
+        var rgbColor = hslToRgbColor(hue, saturation, lightness);
         return {
-            a: clamp(safeNumber(parts[3], 1), 0, 1),
-            b: clamp(safeNumber(parts[2], 0) / 255, 0, 1),
-            g: clamp(safeNumber(parts[1], 0) / 255, 0, 1),
-            r: clamp(safeNumber(parts[0], 0) / 255, 0, 1),
+            a: alpha,
+            b: clamp(rgbColor.b, 0, 1),
+            g: clamp(rgbColor.g, 0, 1),
+            r: clamp(rgbColor.r, 0, 1),
         };
     }
     return { a: 1, b: 0, g: 0, r: 0 };
@@ -2531,6 +2686,42 @@ function validateNode(node, path) {
     if (node.styles.borderSides !== undefined) {
         validateBorderSides(node.styles.borderSides, "".concat(path, ".borderSides"));
     }
+    if (node.styles.effects !== undefined) {
+        validateEffects(node.styles.effects, "".concat(path, ".effects"));
+    }
+    if (node.styles.radiusCorners !== undefined) {
+        validateRadiusCorners(node.styles.radiusCorners, "".concat(path, ".radiusCorners"));
+    }
+    if (node.styles.layoutWrap !== undefined && node.styles.layoutWrap !== "WRAP") {
+        throw new Error("Invalid node ".concat(path, ": unsupported layoutWrap value."));
+    }
+    if (node.styles.counterAxisSpacing !== undefined &&
+        typeof node.styles.counterAxisSpacing !== "number") {
+        throw new Error("Invalid node ".concat(path, ": counterAxisSpacing must be a number."));
+    }
+    if (node.styles.letterSpacing !== undefined &&
+        typeof node.styles.letterSpacing !== "number") {
+        throw new Error("Invalid node ".concat(path, ": letterSpacing must be a number."));
+    }
+    if (node.styles.textDecoration !== undefined &&
+        node.styles.textDecoration !== "STRIKETHROUGH" &&
+        node.styles.textDecoration !== "UNDERLINE") {
+        throw new Error("Invalid node ".concat(path, ": unsupported textDecoration value."));
+    }
+    if (node.styles.fontStyle !== undefined && node.styles.fontStyle !== "italic") {
+        throw new Error("Invalid node ".concat(path, ": unsupported fontStyle value."));
+    }
+    if (node.styles.imageScaleMode !== undefined &&
+        node.styles.imageScaleMode !== "FILL" &&
+        node.styles.imageScaleMode !== "FIT") {
+        throw new Error("Invalid node ".concat(path, ": unsupported imageScaleMode value."));
+    }
+    if (node.imageBase64 !== undefined && typeof node.imageBase64 !== "string") {
+        throw new Error("Invalid node ".concat(path, ": imageBase64 must be a string."));
+    }
+    if (node.imageMimeType !== undefined && typeof node.imageMimeType !== "string") {
+        throw new Error("Invalid node ".concat(path, ": imageMimeType must be a string."));
+    }
     if (node.styles.outOfFlow !== undefined && typeof node.styles.outOfFlow !== "boolean") {
         throw new Error("Invalid node ".concat(path, ": outOfFlow must be a boolean."));
     }
@@ -2555,6 +2746,42 @@ function validateConstraints(constraints, path) {
     if (!CONSTRAINT_VALUES.includes(String(constraints.horizontal)) ||
         !CONSTRAINT_VALUES.includes(String(constraints.vertical))) {
         throw new Error("Invalid node ".concat(path, ": unsupported constraint value."));
+    }
+}
+var EFFECT_TYPES = ["DROP_SHADOW", "INNER_SHADOW"];
+var EFFECT_NUMBER_FIELDS = ["blur", "offsetX", "offsetY", "spread"];
+var RADIUS_CORNER_FIELDS = ["bottomLeft", "bottomRight", "topLeft", "topRight"];
+function validateEffects(effects, path) {
+    if (!Array.isArray(effects)) {
+        throw new Error("Invalid node ".concat(path, ": effects must be an array."));
+    }
+    effects.forEach(function (effect, index) {
+        if (!isRecord(effect)) {
+            throw new Error("Invalid node ".concat(path, ".").concat(index, ": expected object."));
+        }
+        if (!EFFECT_TYPES.includes(String(effect.type))) {
+            throw new Error("Invalid node ".concat(path, ".").concat(index, ": unsupported effect type."));
+        }
+        for (var _i = 0, EFFECT_NUMBER_FIELDS_1 = EFFECT_NUMBER_FIELDS; _i < EFFECT_NUMBER_FIELDS_1.length; _i++) {
+            var field = EFFECT_NUMBER_FIELDS_1[_i];
+            if (typeof effect[field] !== "number") {
+                throw new Error("Invalid node ".concat(path, ".").concat(index, ": ").concat(field, " must be a number."));
+            }
+        }
+        if (effect.color !== undefined && typeof effect.color !== "string") {
+            throw new Error("Invalid node ".concat(path, ".").concat(index, ": color must be a string."));
+        }
+    });
+}
+function validateRadiusCorners(corners, path) {
+    if (!isRecord(corners)) {
+        throw new Error("Invalid node ".concat(path, ": expected object."));
+    }
+    for (var _i = 0, RADIUS_CORNER_FIELDS_1 = RADIUS_CORNER_FIELDS; _i < RADIUS_CORNER_FIELDS_1.length; _i++) {
+        var field = RADIUS_CORNER_FIELDS_1[_i];
+        if (typeof corners[field] !== "number") {
+            throw new Error("Invalid node ".concat(path, ".").concat(field, ": must be a number."));
+        }
     }
 }
 function validateBorderSides(borderSides, path) {
@@ -2657,14 +2884,35 @@ function mapCounterAlignment(value) {
         return "MAX";
     return "MIN";
 }
-function getFontStyleCandidates(weight) {
+function getUprightFontStyleCandidates(weight) {
+    if (weight >= 900)
+        return ["Black", "Heavy", "ExtraBold", "Extra Bold", "Bold", "Regular"];
+    if (weight >= 800)
+        return ["ExtraBold", "Extra Bold", "Black", "Bold", "Regular"];
     if (weight >= 700)
         return ["Bold", "Semibold", "Semi Bold", "SemiBold", "Medium", "Regular"];
     if (weight >= 600)
         return ["Semi Bold", "Semibold", "SemiBold", "Medium", "Regular"];
     if (weight >= 500)
         return ["Medium", "Regular"];
-    return ["Regular"];
+    if (weight >= 400)
+        return ["Regular"];
+    if (weight >= 300)
+        return ["Light", "Regular"];
+    if (weight >= 200)
+        return ["Extra Light", "ExtraLight", "Light", "Thin", "Regular"];
+    return ["Thin", "Extra Light", "ExtraLight", "Light", "Regular"];
+}
+function getFontStyleCandidates(weight, italic) {
+    if (italic === void 0) { italic = false; }
+    var upright = getUprightFontStyleCandidates(weight);
+    if (!italic)
+        return upright;
+    // Prefer italic variants of the same weight, then fall back to upright.
+    var italicCandidates = upright.map(function (style) {
+        return style === "Regular" ? "Italic" : "".concat(style, " Italic");
+    });
+    return italicCandidates.concat(upright);
 }
 function getFontFamily(fontFamily) {
     var _a;
@@ -2688,4 +2936,12 @@ function isRecord(value) {
 }
 function formatError(error) {
     return error instanceof Error ? error.message : String(error);
+}
+if (typeof module !== "undefined" && module) {
+    module.exports = {
+        colorFromCss: colorFromCss,
+        getFontStyleCandidates: getFontStyleCandidates,
+        getLinearGradientTransform: getLinearGradientTransform,
+        parsePayload: parsePayload,
+    };
 }

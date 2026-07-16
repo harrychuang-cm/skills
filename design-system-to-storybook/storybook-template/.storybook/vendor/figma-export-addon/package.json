@@ -1,7 +1,7 @@
 {
   "name": "@harrychuang/storybook-addon-figma-export",
   "version": "0.1.0",
-  "description": "Export Storybook stories to Figma import payloads with ref/sys/comp CSS token layers",
+  "description": "Export Storybook stories to Figma import payloads with configurable CSS token layers",
   "type": "module",
   "license": "MIT",
   "author": "Harry Chuang",
@@ -51,10 +51,6 @@
     "./source": {
       "types": "./dist/source.d.ts",
       "default": "./dist/source.js"
-    },
-    "./plugin-code": {
-      "types": "./dist/plugin-code.d.ts",
-      "default": "./dist/plugin-code.js"
     },
     "./styles.css": "./dist/figma-code-exporter.css",
     "./review.css": "./dist/review.css",

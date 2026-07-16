@@ -1,4 +1,5 @@
 import type { ResolvedFigmaExportAddonOptions } from "./options";
+import { parseCssColorToRgba } from "./color";
 import type {
   FigmaExportToken,
   FigmaVariableType,
@@ -288,6 +289,16 @@ function parseRawValue(value: string): {
     };
   }
 
+  // hsl()/oklch()/color()/named tokens parse through the browser color engine
+  // so they export as COLOR variables instead of STRING fallbacks.
+  const cssColor = parseCssColorToRgba(trimmed);
+  if (cssColor) {
+    return {
+      type: "COLOR",
+      value: cssColor,
+    };
+  }
+
   return {
     type: "STRING",
     value: trimmed.replace(/^["']|["']$/g, ""),
@@ -354,20 +365,6 @@ function getTokenScopes(token: TokenDefinition, type: FigmaVariableType): string
   return ["WIDTH_HEIGHT"];
 }
 
-function isOpacityToken(token: TokenDefinition, type: FigmaVariableType): boolean {
-  return type === "FLOAT" && (token.family === "opacity" || token.name.includes("-opacity-"));
-}
-
-function normalizeOpacityTokenValue(
-  token: TokenDefinition,
-  type: FigmaVariableType,
-  value: FigmaVariableValue | undefined,
-): FigmaVariableValue | undefined {
-  if (!isOpacityToken(token, type) || typeof value !== "number") return value;
-
-  return value >= 0 && value <= 1 ? value * 100 : value;
-}
-
 export function extractCssVariableNames(
   value: string,
   tokenSystem: DetectedTokenSystem,
@@ -387,21 +384,28 @@ function getAliasTokenName(
   token: TokenDefinition,
   tokenSystem: DetectedTokenSystem,
 ): string | undefined {
-  const trimmedValue = token.value.trim();
-  const layerPattern = tokenLayers
-    .map((layer) => escapeRegExp(tokenSystem.layers[layer]))
-    .join("|");
-  const variablePattern = new RegExp(
-    `^var\\(\\s*(--${escapeRegExp(tokenSystem.prefix)}-(?:${layerPattern})-[a-z0-9-]+)(?:\\s*,[^)]*)?\\s*\\)$`,
-    "i",
-  );
-  const match = trimmedValue.match(variablePattern);
-
-  return match?.[1];
+  return extractCssVariableNames(token.value, tokenSystem)[0];
 }
 
 function toFigmaVariableName(cssName: string): string {
   return cssName.replace(/^--/, "").replaceAll("-", "/");
+}
+
+function getExportTokenValue(
+  token: TokenDefinition,
+  parsed: { type: FigmaVariableType; value: FigmaVariableValue } | undefined,
+): FigmaVariableValue | undefined {
+  if (
+    token.family !== "opacity" ||
+    parsed?.type !== "FLOAT" ||
+    typeof parsed.value !== "number"
+  ) {
+    return parsed?.value;
+  }
+
+  return parsed.value >= 0 && parsed.value <= 1
+    ? parsed.value * 100
+    : parsed.value;
 }
 
 function toExportToken(
@@ -412,10 +416,9 @@ function toExportToken(
   const alias = getAliasTokenName(token, tokenSystem);
   const type = getTokenType(token, tokenByName, tokenSystem);
   const parsed = alias ? undefined : parseRawValue(token.value);
-  const value = normalizeOpacityTokenValue(token, type, parsed?.value);
 
   return {
-    ...(alias ? { alias } : { value }),
+    ...(alias ? { alias } : { value: getExportTokenValue(token, parsed) }),
     collection: token.layer,
     cssName: token.name,
     figmaName: toFigmaVariableName(token.name),

@@ -13,12 +13,7 @@ export {
   type FigmaExportAddonOptions,
   type ResolvedFigmaExportAddonOptions,
 } from "./options";
-export {
-  createFigmaExportJson,
-  createFigmaImporterPluginMainCode,
-  createFigmaPluginCode,
-  type FigmaImporterPluginMainCodeOptions,
-} from "./pluginCode";
+export { createFigmaExportJson, createFigmaPluginCode } from "./pluginCode";
 export type {
   FigmaBindingName,
   FigmaLayoutStrategy,

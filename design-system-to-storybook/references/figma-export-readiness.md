@@ -36,18 +36,28 @@ Prefer component or semantic tokens (`--<prefix>-comp-*`, `--<prefix>-sys-*`) in
 ## Layout Contract
 
 - Prefer `display: flex` for component internals that should become Figma auto-layout.
-- Use `gap` and padding tokens instead of margins between child slots.
+- Prefer `gap` and padding tokens between child slots so spacing stays token-bindable. Margin-driven spacing no longer breaks the export — the exporter measures child rects and derives uniform spacing (including `space-around`/`space-evenly`, `order`, and `*-reverse` visual order) — but measured spacing exports as a raw value without a token binding.
+- `flex-wrap: wrap` exports as Figma wrapped auto layout (`layoutWrap: "WRAP"` with measured line spacing).
+- Non-uniform spacing that `space-between` cannot explain falls back to pixel-true absolute layout; treat that as a signal to regularize spacing when editability matters.
 - Use absolute positioning only when the Figma layer must preserve pixel fidelity or when children are intentionally overlaid. Add those component slugs to `absoluteFidelityComponents` and record the decision.
 - Avoid CSS grid for small reusable components when Figma editability matters; grid normally exports as positioned frames rather than clean auto-layout.
-- Avoid transform-driven placement, filter effects, masks, clip-paths, and complex shadows unless the imported result is allowed to be a static SVG/raster-like layer.
+- `box-shadow` (including `inset`) and `text-shadow` export as Figma effects. Still avoid transform-driven placement (`rotate`/`scale`), filter effects, masks, z-index restacking, and clip-paths beyond simple polygons unless the imported result is allowed to be a static SVG/raster-like layer.
 - Keep fixed-format elements stable with explicit dimensions or aspect ratios so exported bounds do not depend on hover text, loading states, or viewport quirks.
 
 ## Asset Contract
 
 - Use inline SVG or configured `data-graphic` embedded SVG for icons/graphics that need editable or crisp Figma output.
 - Ensure SVG paint values resolve before export. Do not leave `var(...)` references inside serialized SVG text.
-- Use raster images only when the design requires raster content; otherwise prefer SVG or DOM/CSS shapes.
+- Raster `img` and `canvas` content embeds as PNG base64 (longest side capped at 2048px) and imports as a Figma image fill with `object-fit`-derived scale mode. Prefer SVG or DOM/CSS shapes when the graphic must stay editable as vector layers.
+- Modern color functions (`oklch()`, `lab()`, `color()`, `hsl()`, named colors) normalize to sRGB hex/rgba at export time — wide-gamut values clamp to sRGB.
 - Keep decorative assets named and scoped so they do not obscure the component root.
+
+## Remaining Limitations
+
+- Browser and Figma font metrics differ; long text can wrap at different points even with fixed frames. Keep exportable text short and stable.
+- `transform: rotate/scale`, z-index restacking, masks, and filters are not captured; bounding boxes of transformed elements reflect the transformed outline.
+- Wide-gamut colors clamp to sRGB; raster embeds cap at 2048px on the longest side.
+- Measured (margin-derived) spacing and non-token colors export as raw values without variable bindings; only `var(--token)` declarations create bindings.
 
 ## Story Contract
 

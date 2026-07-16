@@ -1,10 +1,8 @@
-import * as react_jsx_runtime from 'react/jsx-runtime';
+import * as react from 'react';
 import { ReactNode } from 'react';
-import { F as FigmaExportAddonOptions } from './options-C-KiYN0_.js';
-export { R as ResolvedFigmaExportAddonOptions, d as defaultFigmaExportGlobalName, i as isStoryIncludedForFigmaExport, r as resolveFigmaExportAddonOptions } from './options-C-KiYN0_.js';
+import { F as FigmaExportAddonOptions, a as FigmaExportPayload } from './options-C7dKT9Sy.js';
+export { b as FigmaBindingName, c as FigmaExportNode, d as FigmaExportToken, e as FigmaLayoutStrategy, f as FigmaNodeKind, R as ResolvedFigmaExportAddonOptions, T as TokenLayer, g as defaultFigmaExportGlobalName, i as isStoryIncludedForFigmaExport, r as resolveFigmaExportAddonOptions } from './options-C7dKT9Sy.js';
 export { createFigmaExportDecorator, createFigmaExportGlobalTypes, createFigmaExportInitialGlobals, getFigmaExportGlobalName } from './preview.js';
-export { FigmaImporterPluginMainCodeOptions, createFigmaExportJson, createFigmaImporterPluginMainCode, createFigmaPluginCode } from './plugin-code.js';
-export { a as FigmaBindingName, b as FigmaExportNode, F as FigmaExportPayload, c as FigmaExportToken, d as FigmaLayoutStrategy, e as FigmaNodeKind, T as TokenLayer } from './types-BuDkFEZo.js';
 
 type StorybookContext = {
     globals?: Record<string, unknown>;
@@ -17,7 +15,7 @@ type FigmaCodeExporterProps = {
     context: StorybookContext;
     options?: FigmaExportAddonOptions;
 };
-declare function FigmaCodeExporter({ children, context, options, }: FigmaCodeExporterProps): react_jsx_runtime.JSX.Element;
+declare function FigmaCodeExporter({ children, context, options, }: FigmaCodeExporterProps): react.JSX.Element;
 
 type FigmaExportToolOptions = {
     addonId?: string;
@@ -26,4 +24,7 @@ type FigmaExportToolOptions = {
 declare const figmaExportAddonId = "storybook/figma-export";
 declare function registerFigmaExportTool(options?: FigmaExportToolOptions): void;
 
-export { FigmaCodeExporter, FigmaExportAddonOptions, figmaExportAddonId, registerFigmaExportTool };
+declare function createFigmaExportJson(payload: FigmaExportPayload): string;
+declare function createFigmaPluginCode(payload: FigmaExportPayload): string;
+
+export { FigmaCodeExporter, FigmaExportAddonOptions, FigmaExportPayload, createFigmaExportJson, createFigmaPluginCode, figmaExportAddonId, registerFigmaExportTool };

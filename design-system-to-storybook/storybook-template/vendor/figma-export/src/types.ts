@@ -86,10 +86,32 @@ export type FigmaExportBorderSides = Partial<
   Record<FigmaBorderSideName, FigmaExportBorderSide>
 >;
 
+export type FigmaExportEffect = {
+  blur: number;
+  color: string;
+  offsetX: number;
+  offsetY: number;
+  spread: number;
+  type: "DROP_SHADOW" | "INNER_SHADOW";
+};
+
+export type FigmaRadiusCorners = {
+  bottomLeft: number;
+  bottomRight: number;
+  topLeft: number;
+  topRight: number;
+};
+
+export type FigmaImageScaleMode = "FILL" | "FIT";
+
+export type FigmaTextDecoration = "STRIKETHROUGH" | "UNDERLINE";
+
 export type FigmaExportNode = {
   bindings: Partial<Record<FigmaBindingName, string>>;
   children: FigmaExportNode[];
   component?: FigmaComponentReference;
+  imageBase64?: string;
+  imageMimeType?: string;
   kind: FigmaNodeKind;
   layoutStrategy?: FigmaLayoutStrategy;
   name: string;
@@ -104,18 +126,24 @@ export type FigmaExportNode = {
     borderWidth?: number;
     color?: string;
     constraints?: FigmaNodeConstraints;
+    counterAxisSpacing?: number;
     display?: string;
+    effects?: FigmaExportEffect[];
     flexDirection?: string;
     fontFamily?: string;
     fontSize?: number;
+    fontStyle?: "italic";
     fontWeight?: number;
     gap?: number;
     height: number;
+    imageScaleMode?: FigmaImageScaleMode;
     justifyContent?: string;
     layoutAlign?: "STRETCH";
     layoutGrow?: number;
     layoutSizingHorizontal?: "HUG";
     layoutSizingVertical?: "HUG";
+    layoutWrap?: "WRAP";
+    letterSpacing?: number;
     lineHeight?: number | "normal";
     maxLines?: number;
     textTruncation?: "ENDING";
@@ -127,9 +155,11 @@ export type FigmaExportNode = {
     paddingRight?: number;
     paddingTop?: number;
     radius?: number;
+    radiusCorners?: FigmaRadiusCorners;
     textAlign?: string;
     textAlignVertical?: "CENTER";
     textAutoResize?: "WIDTH_AND_HEIGHT";
+    textDecoration?: FigmaTextDecoration;
     width: number;
     x: number;
     y: number;

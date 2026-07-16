@@ -1,6 +1,3 @@
-import * as react from 'react';
-import { ReactNode } from 'react';
-
 type TokenLayer = "ref" | "sys" | "comp";
 type FigmaVariableType = "BOOLEAN" | "COLOR" | "FLOAT" | "STRING";
 type FigmaVariableValue = boolean | number | string | {
@@ -50,10 +47,28 @@ type FigmaExportBorderSide = {
     width: number;
 };
 type FigmaExportBorderSides = Partial<Record<FigmaBorderSideName, FigmaExportBorderSide>>;
+type FigmaExportEffect = {
+    blur: number;
+    color: string;
+    offsetX: number;
+    offsetY: number;
+    spread: number;
+    type: "DROP_SHADOW" | "INNER_SHADOW";
+};
+type FigmaRadiusCorners = {
+    bottomLeft: number;
+    bottomRight: number;
+    topLeft: number;
+    topRight: number;
+};
+type FigmaImageScaleMode = "FILL" | "FIT";
+type FigmaTextDecoration = "STRIKETHROUGH" | "UNDERLINE";
 type FigmaExportNode = {
     bindings: Partial<Record<FigmaBindingName, string>>;
     children: FigmaExportNode[];
     component?: FigmaComponentReference;
+    imageBase64?: string;
+    imageMimeType?: string;
     kind: FigmaNodeKind;
     layoutStrategy?: FigmaLayoutStrategy;
     name: string;
@@ -68,18 +83,24 @@ type FigmaExportNode = {
         borderWidth?: number;
         color?: string;
         constraints?: FigmaNodeConstraints;
+        counterAxisSpacing?: number;
         display?: string;
+        effects?: FigmaExportEffect[];
         flexDirection?: string;
         fontFamily?: string;
         fontSize?: number;
+        fontStyle?: "italic";
         fontWeight?: number;
         gap?: number;
         height: number;
+        imageScaleMode?: FigmaImageScaleMode;
         justifyContent?: string;
         layoutAlign?: "STRETCH";
         layoutGrow?: number;
         layoutSizingHorizontal?: "HUG";
         layoutSizingVertical?: "HUG";
+        layoutWrap?: "WRAP";
+        letterSpacing?: number;
         lineHeight?: number | "normal";
         maxLines?: number;
         textTruncation?: "ENDING";
@@ -91,9 +112,11 @@ type FigmaExportNode = {
         paddingRight?: number;
         paddingTop?: number;
         radius?: number;
+        radiusCorners?: FigmaRadiusCorners;
         textAlign?: string;
         textAlignVertical?: "CENTER";
         textAutoResize?: "WIDTH_AND_HEIGHT";
+        textDecoration?: FigmaTextDecoration;
         width: number;
         x: number;
         y: number;
@@ -144,28 +167,4 @@ declare const defaultFigmaExportGlobalName = "figmaExport";
 declare function resolveFigmaExportAddonOptions(options: FigmaExportAddonOptions | undefined): ResolvedFigmaExportAddonOptions;
 declare function isStoryIncludedForFigmaExport(title: string | undefined, options: ResolvedFigmaExportAddonOptions): boolean;
 
-type StorybookContext = {
-    globals?: Record<string, unknown>;
-    id?: string;
-    name?: string;
-    title?: string;
-};
-type StorybookStory = () => ReactNode;
-declare function getFigmaExportGlobalName(options?: FigmaExportAddonOptions): string;
-declare function createFigmaExportDecorator(options?: FigmaExportAddonOptions): (Story: StorybookStory, context: StorybookContext) => react.FunctionComponentElement<{
-    children?: ReactNode;
-    context: {
-        globals?: Record<string, unknown>;
-        id?: string;
-        name?: string;
-        title?: string;
-    };
-    options?: FigmaExportAddonOptions;
-}>;
-declare function createFigmaExportGlobalTypes(options?: FigmaExportAddonOptions): Record<string, {
-    defaultValue: "off";
-    description: string;
-}>;
-declare function createFigmaExportInitialGlobals(options?: FigmaExportAddonOptions): Record<string, "off">;
-
-export { type FigmaExportAddonOptions as F, type ResolvedFigmaExportAddonOptions as R, type TokenLayer as T, type FigmaExportPayload as a, type FigmaBindingName as b, type FigmaExportNode as c, type FigmaExportToken as d, type FigmaLayoutStrategy as e, type FigmaNodeKind as f, createFigmaExportDecorator as g, createFigmaExportGlobalTypes as h, createFigmaExportInitialGlobals as i, defaultFigmaExportGlobalName as j, getFigmaExportGlobalName as k, isStoryIncludedForFigmaExport as l, resolveFigmaExportAddonOptions as r };
+export { type FigmaExportAddonOptions as F, type ResolvedFigmaExportAddonOptions as R, type TokenLayer as T, type FigmaExportPayload as a, type FigmaBindingName as b, type FigmaExportNode as c, type FigmaExportToken as d, type FigmaLayoutStrategy as e, type FigmaNodeKind as f, defaultFigmaExportGlobalName as g, isStoryIncludedForFigmaExport as i, resolveFigmaExportAddonOptions as r };

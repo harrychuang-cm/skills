@@ -7,6 +7,144 @@ import {
 } from "@storybook/icons";
 import { useRef, useState } from "react";
 
+// src/color.ts
+var colorContext;
+var normalizedColorCache = /* @__PURE__ */ new Map();
+var parsedColorCache = /* @__PURE__ */ new Map();
+var simpleColorPattern = /^(#([0-9a-f]{3}|[0-9a-f]{6})|rgba?\([^()]*\))$/i;
+function getColorContext() {
+  if (colorContext !== void 0) return colorContext;
+  if (typeof document === "undefined") {
+    colorContext = null;
+    return colorContext;
+  }
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width = 1;
+    canvas.height = 1;
+    colorContext = canvas.getContext("2d", { willReadFrequently: true });
+  } catch {
+    colorContext = null;
+  }
+  return colorContext;
+}
+function roundTripFillStyle(context, value, sentinel) {
+  context.fillStyle = sentinel;
+  context.fillStyle = value;
+  return String(context.fillStyle);
+}
+function parseFillStyle(value) {
+  const context = getColorContext();
+  if (!context) return void 0;
+  const first = roundTripFillStyle(context, value, "#010203");
+  const second = roundTripFillStyle(context, value, "#030201");
+  return first === second ? first : void 0;
+}
+function readPixelRgba(value) {
+  const context = getColorContext();
+  if (!context) return void 0;
+  try {
+    context.save();
+    context.globalCompositeOperation = "copy";
+    context.fillStyle = value;
+    context.fillRect(0, 0, 1, 1);
+    const [r, g, b, a] = context.getImageData(0, 0, 1, 1).data;
+    context.restore();
+    return {
+      a: Math.round(a / 255 * 1e4) / 1e4,
+      b: b / 255,
+      g: g / 255,
+      r: r / 255
+    };
+  } catch {
+    return void 0;
+  }
+}
+function parseHexChannel(hex) {
+  return Number.parseInt(hex.length === 1 ? `${hex}${hex}` : hex, 16);
+}
+function rgbaFromNormalizedString(value) {
+  const hex = value.match(/^#([0-9a-f]{3,8})$/i);
+  if (hex) {
+    const digits = hex[1];
+    if (digits.length === 3 || digits.length === 4) {
+      return {
+        a: digits.length === 4 ? parseHexChannel(digits[3]) / 255 : 1,
+        b: parseHexChannel(digits[2]) / 255,
+        g: parseHexChannel(digits[1]) / 255,
+        r: parseHexChannel(digits[0]) / 255
+      };
+    }
+    if (digits.length === 6 || digits.length === 8) {
+      return {
+        a: digits.length === 8 ? parseHexChannel(digits.slice(6, 8)) / 255 : 1,
+        b: parseHexChannel(digits.slice(4, 6)) / 255,
+        g: parseHexChannel(digits.slice(2, 4)) / 255,
+        r: parseHexChannel(digits.slice(0, 2)) / 255
+      };
+    }
+    return void 0;
+  }
+  const rgb = value.match(/^rgba?\(([^)]+)\)$/i);
+  if (!rgb) return void 0;
+  const parts = rgb[1].split(",").map((part) => Number(part.trim()));
+  if (parts.length < 3 || parts.slice(0, 3).some((part) => !Number.isFinite(part))) {
+    return void 0;
+  }
+  return {
+    a: Number.isFinite(parts[3]) ? Math.min(1, Math.max(0, parts[3])) : 1,
+    b: Math.min(1, Math.max(0, parts[2] / 255)),
+    g: Math.min(1, Math.max(0, parts[1] / 255)),
+    r: Math.min(1, Math.max(0, parts[0] / 255))
+  };
+}
+function serializeRgba(color) {
+  const r = Math.round(color.r * 255);
+  const g = Math.round(color.g * 255);
+  const b = Math.round(color.b * 255);
+  if (color.a >= 1) {
+    const toHex = (channel) => channel.toString(16).padStart(2, "0");
+    return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+  }
+  return `rgba(${r}, ${g}, ${b}, ${Math.round(color.a * 1e4) / 1e4})`;
+}
+function normalizeCssColorString(value) {
+  const input = value.trim();
+  if (!input) return void 0;
+  if (simpleColorPattern.test(input)) return input;
+  const cached = normalizedColorCache.get(input);
+  if (cached !== void 0 || normalizedColorCache.has(input)) return cached;
+  let normalized;
+  const parsed = parseFillStyle(input);
+  if (parsed !== void 0) {
+    if (simpleColorPattern.test(parsed)) {
+      normalized = parsed;
+    } else {
+      const rgba = readPixelRgba(input);
+      normalized = rgba ? serializeRgba(rgba) : void 0;
+    }
+  }
+  normalizedColorCache.set(input, normalized);
+  return normalized;
+}
+function parseCssColorToRgba(value) {
+  const input = value.trim();
+  if (!input) return void 0;
+  const cached = parsedColorCache.get(input);
+  if (cached !== void 0 || parsedColorCache.has(input)) return cached;
+  let parsed;
+  const fillStyle = parseFillStyle(input);
+  if (fillStyle !== void 0) {
+    parsed = rgbaFromNormalizedString(fillStyle) ?? readPixelRgba(input);
+  }
+  parsedColorCache.set(input, parsed);
+  return parsed;
+}
+function isFullyTransparentColor(value) {
+  const match = value.trim().match(/^rgba\([^)]*,\s*(-?\d*\.?\d+)\s*\)$/i);
+  return match ? Number(match[1]) === 0 : false;
+}
+
 // src/tokenExport.ts
 var tokenLayerOrder = {
   comp: 2,
@@ -195,6 +333,13 @@ function parseRawValue(value) {
       value: trimmed === "true"
     };
   }
+  const cssColor = parseCssColorToRgba(trimmed);
+  if (cssColor) {
+    return {
+      type: "COLOR",
+      value: cssColor
+    };
+  }
   return {
     type: "STRING",
     value: trimmed.replace(/^["']|["']$/g, "")
@@ -239,13 +384,6 @@ function getTokenScopes(token, type) {
   if (token.name.includes("-size-")) return ["WIDTH_HEIGHT"];
   return ["WIDTH_HEIGHT"];
 }
-function isOpacityToken(token, type) {
-  return type === "FLOAT" && (token.family === "opacity" || token.name.includes("-opacity-"));
-}
-function normalizeOpacityTokenValue(token, type, value) {
-  if (!isOpacityToken(token, type) || typeof value !== "number") return value;
-  return value >= 0 && value <= 1 ? value * 100 : value;
-}
 function extractCssVariableNames(value, tokenSystem) {
   const layerPattern = tokenLayers.map((layer) => escapeRegExp(tokenSystem.layers[layer])).join("|");
   const variablePattern = new RegExp(
@@ -255,25 +393,23 @@ function extractCssVariableNames(value, tokenSystem) {
   return Array.from(value.matchAll(variablePattern), (match) => match[1]);
 }
 function getAliasTokenName(token, tokenSystem) {
-  const trimmedValue = token.value.trim();
-  const layerPattern = tokenLayers.map((layer) => escapeRegExp(tokenSystem.layers[layer])).join("|");
-  const variablePattern = new RegExp(
-    `^var\\(\\s*(--${escapeRegExp(tokenSystem.prefix)}-(?:${layerPattern})-[a-z0-9-]+)(?:\\s*,[^)]*)?\\s*\\)$`,
-    "i"
-  );
-  const match = trimmedValue.match(variablePattern);
-  return match?.[1];
+  return extractCssVariableNames(token.value, tokenSystem)[0];
 }
 function toFigmaVariableName(cssName) {
   return cssName.replace(/^--/, "").replaceAll("-", "/");
+}
+function getExportTokenValue(token, parsed) {
+  if (token.family !== "opacity" || parsed?.type !== "FLOAT" || typeof parsed.value !== "number") {
+    return parsed?.value;
+  }
+  return parsed.value >= 0 && parsed.value <= 1 ? parsed.value * 100 : parsed.value;
 }
 function toExportToken(token, tokenByName, tokenSystem) {
   const alias = getAliasTokenName(token, tokenSystem);
   const type = getTokenType(token, tokenByName, tokenSystem);
   const parsed = alias ? void 0 : parseRawValue(token.value);
-  const value = normalizeOpacityTokenValue(token, type, parsed?.value);
   return {
-    ...alias ? { alias } : { value },
+    ...alias ? { alias } : { value: getExportTokenValue(token, parsed) },
     collection: token.layer,
     cssName: token.name,
     figmaName: toFigmaVariableName(token.name),
@@ -402,10 +538,13 @@ function cssLineHeightToNumber(value) {
 function cssColorValue(value) {
   const normalized = value.trim();
   if (!normalized || transparentValues.has(normalized)) return void 0;
-  return normalized;
+  const canonical = normalizeCssColorString(normalized) ?? normalized;
+  if (transparentValues.has(canonical) || isFullyTransparentColor(canonical)) {
+    return void 0;
+  }
+  return canonical;
 }
 function clampUnit(value) {
-  if (!Number.isFinite(value)) return 0;
   return Math.min(1, Math.max(0, value));
 }
 function splitGradientArguments(value) {
@@ -437,7 +576,7 @@ function parseLinearGradientAngle(value) {
   return void 0;
 }
 function parseGradientStop(value, index, total) {
-  const colorMatch = value.trim().match(/^(#[0-9a-f]{3,8}|rgba?\([^)]*\))/i);
+  const colorMatch = value.trim().match(/^(#[0-9a-f]{3,8}|[a-z][a-z-]*\((?:[^()]|\([^()]*\))*\))/i);
   if (!colorMatch) return void 0;
   const color = cssColorValue(colorMatch[1]);
   if (!color) return void 0;
@@ -454,6 +593,69 @@ function parseLinearGradient(backgroundImage) {
   const stopParts = angle === void 0 ? parts : parts.slice(1);
   const stops = stopParts.map((part, index) => parseGradientStop(part, index, stopParts.length)).filter((stop) => Boolean(stop));
   return stops.length >= 2 ? { angle: angle ?? 180, stops } : void 0;
+}
+function parseShadowListToEffects(value) {
+  const normalized = value.trim();
+  if (!normalized || normalized === "none") return [];
+  const effects = [];
+  for (const part of splitGradientArguments(normalized)) {
+    const inset = /\binset\b/.test(part);
+    let rest = part.replace(/\binset\b/g, " ");
+    const colorMatch = rest.match(
+      /(#[0-9a-f]{3,8}|[a-z][a-z-]*\((?:[^()]|\([^()]*\))*\))/i
+    );
+    if (!colorMatch) continue;
+    rest = rest.replace(colorMatch[1], " ");
+    const color = cssColorValue(colorMatch[1]);
+    if (!color) continue;
+    const lengths = Array.from(
+      rest.matchAll(/(-?\d*\.?\d+)px/g),
+      (match) => Number(match[1])
+    );
+    const [offsetX = 0, offsetY = 0, blur = 0, spread = 0] = lengths;
+    effects.push({
+      blur: toFiniteNumber(blur),
+      color,
+      offsetX: toFiniteNumber(offsetX),
+      offsetY: toFiniteNumber(offsetY),
+      spread: toFiniteNumber(spread),
+      type: inset ? "INNER_SHADOW" : "DROP_SHADOW"
+    });
+  }
+  return effects;
+}
+function getBoxShadowEffects(computed) {
+  return parseShadowListToEffects(computed.boxShadow);
+}
+function getTextShadowEffects(computed) {
+  return parseShadowListToEffects(computed.textShadow);
+}
+function cssRadiusToNumber(value, width, height) {
+  const length = cssLengthToNumber(value);
+  if (length !== void 0) return length;
+  const percent = value.trim().match(/^(-?\d+(?:\.\d+)?)%$/);
+  if (percent) {
+    return toFiniteNumber(Number(percent[1]) / 100 * Math.min(width, height));
+  }
+  return 0;
+}
+function getRadiusStyles(computed, width, height) {
+  const topLeft = cssRadiusToNumber(computed.borderTopLeftRadius, width, height);
+  const topRight = cssRadiusToNumber(computed.borderTopRightRadius, width, height);
+  const bottomRight = cssRadiusToNumber(
+    computed.borderBottomRightRadius,
+    width,
+    height
+  );
+  const bottomLeft = cssRadiusToNumber(
+    computed.borderBottomLeftRadius,
+    width,
+    height
+  );
+  if (topLeft === topRight && topLeft === bottomRight && topLeft === bottomLeft) {
+    return topLeft > 0 ? { radius: topLeft } : {};
+  }
+  return { radiusCorners: { bottomLeft, bottomRight, topLeft, topRight } };
 }
 function isColorTokenName(token) {
   return token.includes("-color-") || token.endsWith("-color");
@@ -522,60 +724,27 @@ function getElementName(element, options) {
   const base = component || icon || className || element.tagName.toLowerCase();
   return variant ? `${base}/${variant}` : base;
 }
-function toComponentKeyPart(value) {
-  const normalized = value.trim().toLowerCase().normalize("NFKD").replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-+|-+$/g, "");
-  if (normalized) return normalized;
-  let hash = 0;
-  for (const char of value) {
-    hash = hash * 31 + char.codePointAt(0) >>> 0;
-  }
-  return `component-${hash.toString(36)}`;
+function toComponentKey(value) {
+  const normalized = value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  return normalized || "component";
 }
 function toComponentLabel(value) {
   return value.trim().replace(/[_-]+/g, " ").replace(/\s+/g, " ").replace(/\b[a-z]/g, (match) => match.toUpperCase());
 }
-function getVariantProperties(variant) {
-  const parts = variant.split(",").map((part) => part.trim()).filter(Boolean);
-  const parsedEntries = parts.map((part) => {
-    const separatorIndex = part.indexOf("=");
-    if (separatorIndex <= 0) return void 0;
-    const name = part.slice(0, separatorIndex).trim();
-    const value = part.slice(separatorIndex + 1).trim();
-    if (!name || !value) return void 0;
-    return [name, value];
-  });
-  if (parsedEntries.length > 0 && parsedEntries.every((entry) => Boolean(entry))) {
-    return Object.fromEntries(parsedEntries);
-  }
-  return { Variant: variant };
-}
-function getComponentReference(element) {
+function getComponentReference(element, fallbackName) {
   const sourceName = element.getAttribute("data-component");
-  if (!sourceName) return void 0;
+  if (!sourceName && !fallbackName) return void 0;
   const variant = element.getAttribute("data-figma-variant") || element.getAttribute("data-variant") || void 0;
-  const baseKey = `storybook:${toComponentKeyPart(sourceName)}`;
-  const key = variant ? `${baseKey}--${toComponentKeyPart(variant)}` : baseKey;
+  const source = sourceName || fallbackName || "component";
+  const name = fallbackName || toComponentLabel(source);
+  const baseKey = toComponentKey(source);
+  const key = variant ? `${baseKey}--${toComponentKey(variant)}` : baseKey;
   return {
     key,
-    name: toComponentLabel(sourceName),
-    sourceName,
-    ...variant ? { variant, variantProperties: getVariantProperties(variant) } : {}
-  };
-}
-function createRootComponentReference(componentTitle, storyName) {
-  const name = componentTitle.trim() || "Component";
-  const normalizedStoryName = storyName.trim();
-  const isDefaultStory = normalizedStoryName.toLowerCase() === "default";
-  const component = {
-    key: `storybook:${toComponentKeyPart(name)}`,
     name,
-    sourceName: name
+    sourceName: source,
+    ...variant ? { variant, variantProperties: { Variant: variant } } : {}
   };
-  if (normalizedStoryName && !isDefaultStory) {
-    component.variant = normalizedStoryName;
-    component.variantProperties = getVariantProperties(normalizedStoryName);
-  }
-  return component;
 }
 function getArtifactKind(storyTitle) {
   return storyTitle.startsWith("Pages/") ? "page" : "component";
@@ -591,24 +760,35 @@ function isAbsoluteFidelityRoot(element, options) {
   const component = element.getAttribute("data-component");
   return Boolean(component && options.absoluteFidelityComponents.has(component));
 }
-function getLayoutStrategy(computed, forceAbsoluteLayout) {
+function isFlexDisplay(display) {
+  return display.includes("flex");
+}
+function isOutOfFlowPositioned(computed) {
+  return computed.position === "absolute" || computed.position === "fixed";
+}
+function isFlexItem(element, computed) {
+  if (isOutOfFlowPositioned(computed)) return false;
+  const parentElement = element.parentElement;
+  if (!parentElement) return false;
+  return isFlexDisplay(window.getComputedStyle(parentElement).display);
+}
+function getLayoutStrategy(element, computed, forceAbsoluteLayout) {
   if (forceAbsoluteLayout) return "absolute";
-  return computed.display.includes("flex") ? "autoLayout" : "absolute";
+  return isFlexDisplay(computed.display) || isFlexItem(element, computed) ? "autoLayout" : "absolute";
 }
 function getExportDisplay(computed, layoutStrategy) {
-  if (layoutStrategy === "absolute" && computed.display.includes("flex")) {
+  if (layoutStrategy === "absolute" && isFlexDisplay(computed.display)) {
     return "block";
   }
   return computed.display;
 }
-function justifyContentFromTextAlign(textAlign) {
-  const normalized = textAlign.trim().toLowerCase();
-  if (normalized === "center") return "center";
-  if (normalized === "right" || normalized === "end") return "flex-end";
-  return "flex-start";
-}
 function escapeSvgAttribute(value) {
   return value.replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+}
+function normalizeSvgStrokeDashValue(value) {
+  const normalized = value.trim();
+  if (!normalized || normalized === "none") return void 0;
+  return normalized.replace(/(-?\d+(?:\.\d+)?)px\b/g, "$1");
 }
 function serializeInlineSvg(element, width, height) {
   const clone = element.cloneNode(true);
@@ -626,8 +806,12 @@ function serializeInlineSvg(element, width, height) {
     const strokeWidth = originalStyle.strokeWidth;
     const strokeLinecap = originalStyle.strokeLinecap;
     const strokeLinejoin = originalStyle.strokeLinejoin;
-    const strokeDasharray = originalStyle.getPropertyValue("stroke-dasharray").trim();
-    const opacity = originalStyle.opacity;
+    const strokeDasharray = normalizeSvgStrokeDashValue(
+      originalStyle.strokeDasharray
+    );
+    const strokeDashoffset = normalizeSvgStrokeDashValue(
+      originalStyle.strokeDashoffset
+    );
     if (fill) clonedNode.setAttribute("fill", fill);
     if (originalStyle.fill === "none") clonedNode.setAttribute("fill", "none");
     if (stroke) clonedNode.setAttribute("stroke", stroke);
@@ -636,16 +820,8 @@ function serializeInlineSvg(element, width, height) {
     }
     if (strokeLinecap) clonedNode.setAttribute("stroke-linecap", strokeLinecap);
     if (strokeLinejoin) clonedNode.setAttribute("stroke-linejoin", strokeLinejoin);
-    if (strokeDasharray && strokeDasharray !== "none") {
-      clonedNode.setAttribute("stroke-dasharray", strokeDasharray.replaceAll("px", ""));
-    }
-    if (opacity && opacity !== "1") clonedNode.setAttribute("opacity", opacity);
-    if (clonedNode.tagName.toLowerCase() === "stop") {
-      const stopColor = originalStyle.getPropertyValue("stop-color").trim();
-      const stopOpacity = originalStyle.getPropertyValue("stop-opacity").trim();
-      if (stopColor) clonedNode.setAttribute("stop-color", stopColor);
-      if (stopOpacity) clonedNode.setAttribute("stop-opacity", stopOpacity);
-    }
+    if (strokeDasharray) clonedNode.setAttribute("stroke-dasharray", strokeDasharray);
+    if (strokeDashoffset) clonedNode.setAttribute("stroke-dashoffset", strokeDashoffset);
   });
   return clone.outerHTML;
 }
@@ -737,12 +913,13 @@ function createClipPathSvgNode(element, computed, rect, parentRect, rules, token
   const fill = cssColorValue(computed.backgroundColor) ?? cssColorValue(computed.color);
   if (!fill) return void 0;
   const transform = computed.transform && computed.transform.startsWith("matrix(-1") ? ` transform="rotate(180 ${width / 2} ${height / 2})"` : "";
+  const layoutStrategy = element.getAttribute("data-figma-layout-strategy") === "auto-layout" || isFlexItem(element, computed) ? "autoLayout" : "absolute";
   const svgText = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><polygon points="${escapeSvgAttribute(points)}" fill="${escapeSvgAttribute(fill)}"${transform}/></svg>`;
   return {
     bindings: collectBindings(element, rules, false, tokenSystem),
     children: [],
     kind: "svg",
-    layoutStrategy: "absolute",
+    layoutStrategy,
     name: getElementName(element, options),
     svgText,
     styles: {
@@ -756,9 +933,10 @@ function createClipPathSvgNode(element, computed, rect, parentRect, rules, token
     }
   };
 }
-function createInlineSvgNode(element, computed, rect, parentRect, options, component) {
+function createInlineSvgNode(element, computed, rect, parentRect, options) {
   const width = toFiniteNumber(rect.width);
   const height = toFiniteNumber(rect.height);
+  const component = getComponentReference(element);
   return {
     bindings: {},
     children: [],
@@ -778,12 +956,22 @@ function createInlineSvgNode(element, computed, rect, parentRect, options, compo
     }
   };
 }
+function mediaRuleMatches(rule) {
+  try {
+    return window.matchMedia(rule.conditionText).matches;
+  } catch {
+    return true;
+  }
+}
 function getCssRules() {
   const rules = [];
   function collect(ruleList) {
     for (const rule of Array.from(ruleList)) {
       if (rule instanceof CSSStyleRule) {
         rules.push(rule);
+        continue;
+      }
+      if (rule instanceof CSSMediaRule && !mediaRuleMatches(rule)) {
         continue;
       }
       if ("cssRules" in rule) {
@@ -802,18 +990,30 @@ function getCssRules() {
   }
   return rules;
 }
-function selectorMatches(element, selectorText) {
-  return selectorText.split(",").some((selector) => {
+function calculateSelectorSpecificity(selector) {
+  const withoutPseudoElements = selector.replace(/::[a-z-]+(\([^)]*\))?/gi, " x");
+  const ids = withoutPseudoElements.match(/#[\w-]+/g)?.length ?? 0;
+  const classLike = withoutPseudoElements.match(/\.[\w-]+|\[[^\]]*\]|:(?!:)[\w-]+(\([^)]*\))?/g)?.length ?? 0;
+  const typeLike = withoutPseudoElements.match(/(^|[\s>+~(,])[a-z][\w-]*/gi)?.length ?? 0;
+  const pseudoElements = selector.match(/::[a-z-]+/gi)?.length ?? 0;
+  return ids * 1e6 + classLike * 1e3 + typeLike + pseudoElements;
+}
+function getMatchedSelectorSpecificity(element, selectorText) {
+  let best;
+  for (const selector of selectorText.split(",")) {
     const trimmed = selector.trim();
     if (!trimmed || trimmed.includes(":hover") || trimmed.includes(":focus")) {
-      return false;
+      continue;
     }
     try {
-      return element.matches(trimmed);
+      if (!element.matches(trimmed)) continue;
     } catch {
-      return false;
+      continue;
     }
-  });
+    const specificity = calculateSelectorSpecificity(trimmed);
+    if (best === void 0 || specificity > best) best = specificity;
+  }
+  return best;
 }
 function parseCssTextDeclarations(cssText) {
   const declarations = [];
@@ -842,28 +1042,35 @@ function parseCssTextDeclarations(cssText) {
   return declarations;
 }
 function getMatchedDeclarations(element, rules) {
-  const declarations = [];
+  const collected = [];
+  let order = 0;
+  const push = (property, value, specificity) => {
+    collected.push({ order: order += 1, property, specificity, value });
+  };
   for (const rule of rules) {
-    if (!selectorMatches(element, rule.selectorText)) continue;
+    const specificity = getMatchedSelectorSpecificity(element, rule.selectorText);
+    if (specificity === void 0) continue;
     for (const property of Array.from(rule.style)) {
-      declarations.push({
-        property,
-        value: rule.style.getPropertyValue(property).trim()
-      });
+      push(property, rule.style.getPropertyValue(property).trim(), specificity);
     }
-    declarations.push(...parseCssTextDeclarations(rule.style.cssText));
+    for (const declaration of parseCssTextDeclarations(rule.style.cssText)) {
+      push(declaration.property, declaration.value, specificity);
+    }
   }
   const inlineStyle = element.getAttribute("style");
   if (inlineStyle && element instanceof HTMLElement) {
-    declarations.push(...parseCssTextDeclarations(element.style.cssText));
+    for (const declaration of parseCssTextDeclarations(element.style.cssText)) {
+      push(declaration.property, declaration.value, Number.MAX_SAFE_INTEGER);
+    }
     for (const property of Array.from(element.style)) {
-      declarations.push({
+      push(
         property,
-        value: element.style.getPropertyValue(property).trim()
-      });
+        element.style.getPropertyValue(property).trim(),
+        Number.MAX_SAFE_INTEGER
+      );
     }
   }
-  return declarations;
+  return collected.sort((a, b) => a.specificity - b.specificity || a.order - b.order).map(({ property, value }) => ({ property, value }));
 }
 function findTokenForProperty(declarations, bindingName, tokenSystem) {
   const properties = bindingProperties[bindingName];
@@ -871,7 +1078,7 @@ function findTokenForProperty(declarations, bindingName, tokenSystem) {
     const declaration = declarations[index];
     if (!properties.includes(declaration.property)) continue;
     const tokens = extractCssVariableNames(declaration.value, tokenSystem);
-    if (tokens.length === 0) continue;
+    if (tokens.length === 0) return void 0;
     if (declaration.property === "padding") {
       if (bindingName === "paddingTop" || bindingName === "paddingBottom") {
         return tokens[0];
@@ -892,14 +1099,14 @@ function findTokenForProperty(declarations, bindingName, tokenSystem) {
     }
     if (declaration.property === "border") {
       if (bindingName === "borderColor") {
-        return tokens.find((token) => token.includes("-color-"));
+        return tokens.find(isColorTokenName);
       }
       if (bindingName === "borderWidth") {
-        return tokens.find((token) => !token.includes("-color-")) || tokens[0];
+        return tokens.find((token) => !isColorTokenName(token)) || tokens[0];
       }
     }
     if (bindingName === "backgroundColor" || bindingName === "textColor") {
-      return tokens.find((token) => token.includes("-color-")) || tokens[0];
+      return tokens.find(isColorTokenName) || tokens[0];
     }
     return tokens[0];
   }
@@ -923,54 +1130,169 @@ function getTextExportWidth({
   const safetyWidth = Math.max(12, fontSize);
   return toFiniteNumber(width + safetyWidth);
 }
-function getTextAutoResize(element) {
-  return element.getAttribute("data-figma-text-auto-width") === "true" ? "WIDTH_AND_HEIGHT" : void 0;
+function getTextExportX({
+  computed,
+  exportWidth,
+  width,
+  x
+}) {
+  const extraWidth = Math.max(0, exportWidth - width);
+  const textAlign = computed.textAlign.toLowerCase();
+  if (textAlign === "right" || textAlign === "end") {
+    return toFiniteNumber(x - extraWidth);
+  }
+  if (textAlign === "center") return toFiniteNumber(x - extraWidth / 2);
+  return x;
 }
-function shouldPreserveTextWidth(element) {
-  return element.getAttribute("data-figma-text-fixed-width") === "true";
+function justifyContentFromTextAlign(textAlign) {
+  const normalized = textAlign.trim().toLowerCase();
+  if (normalized === "center") return "center";
+  if (normalized === "right" || normalized === "end") return "flex-end";
+  return "flex-start";
 }
-function getLayoutGrow(element) {
-  const value = element.getAttribute("data-figma-layout-grow");
-  if (!value) return void 0;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : void 0;
+function hasFixedFlexBasis(computed) {
+  if (!computed.flexBasis || computed.flexBasis === "auto" || computed.flexBasis === "content") {
+    return false;
+  }
+  return cssLengthToNumber(computed.flexBasis) !== void 0;
+}
+function isClippedSingleLineText(computed) {
+  const overflowX = computed.overflowX.toLowerCase();
+  const overflow = computed.overflow.toLowerCase();
+  const textOverflow = computed.textOverflow.toLowerCase();
+  const whiteSpace = computed.whiteSpace.toLowerCase();
+  const clipsInline = overflowX === "hidden" || overflowX === "clip" || overflow === "hidden" || overflow === "clip";
+  return clipsInline && textOverflow === "ellipsis" && whiteSpace === "nowrap";
+}
+function shouldAutoResizeText(element, computed) {
+  if (isClippedSingleLineText(computed)) return false;
+  if (element.getAttribute("data-figma-text-auto-width") === "true") return true;
+  const textAlign = computed.textAlign.toLowerCase();
+  if (textAlign === "center" || textAlign === "right" || textAlign === "end") {
+    const isSingleLine = computed.whiteSpace.toLowerCase().includes("nowrap");
+    if (!isFlexItem(element, computed) || !isSingleLine) return false;
+  }
+  if (!isFlexItem(element, computed)) return false;
+  if (hasFixedFlexBasis(computed)) return false;
+  return Number.parseFloat(computed.flexGrow || "0") === 0;
+}
+function getTextAutoResize(element, computed) {
+  return shouldAutoResizeText(element, computed) ? "WIDTH_AND_HEIGHT" : void 0;
 }
 function getLayoutAlign(element) {
-  const value = element.getAttribute("data-figma-layout-align");
-  if (!value) return void 0;
-  return value.trim().toLowerCase() === "stretch" ? "STRETCH" : void 0;
+  return element.getAttribute("data-figma-layout-align") === "stretch" ? "STRETCH" : void 0;
 }
-function getLayoutSizingHorizontal(element) {
-  return element.getAttribute("data-figma-layout-sizing-horizontal") === "hug" ? "HUG" : void 0;
+var verticalSizeProperties = [
+  "height",
+  "block-size",
+  "min-height",
+  "min-block-size"
+];
+var horizontalSizeProperties = [
+  "width",
+  "inline-size",
+  "min-width",
+  "min-inline-size"
+];
+function hasExplicitSizeDeclaration(declarations, properties) {
+  return declarations.some(
+    (declaration) => properties.includes(declaration.property) && declaration.value.trim().toLowerCase() !== "auto"
+  );
 }
-function getLayoutSizingVertical(element) {
-  return element.getAttribute("data-figma-layout-sizing-vertical") === "hug" ? "HUG" : void 0;
+function isStretchAlignment(value) {
+  return value === "stretch" || value === "normal";
 }
-function getExportOverflow(element, computed) {
-  if (element.getAttribute("data-figma-clip-content") === "false") {
-    return "visible";
-  }
-  return element.getAttribute("data-figma-overflow") || computed.overflow;
+function getResolvedFlexAlignment(element, computed) {
+  const alignSelf = computed.alignSelf;
+  if (alignSelf && alignSelf !== "auto") return alignSelf;
+  const parentElement = element.parentElement;
+  if (!parentElement) return "auto";
+  return window.getComputedStyle(parentElement).alignItems || "auto";
 }
-function getCornerRadii(computed) {
+function getFlexParentCrossAxisInfo(element, computed) {
+  if (!isFlexItem(element, computed)) return void 0;
+  const parentElement = element.parentElement;
+  if (!parentElement) return void 0;
+  const parentComputed = window.getComputedStyle(parentElement);
+  if (!isFlexDisplay(parentComputed.display)) return void 0;
   return {
-    bottomLeftRadius: cssLengthToNumber(computed.borderBottomLeftRadius) ?? 0,
-    bottomRightRadius: cssLengthToNumber(computed.borderBottomRightRadius) ?? 0,
-    topLeftRadius: cssLengthToNumber(computed.borderTopLeftRadius) ?? 0,
-    topRightRadius: cssLengthToNumber(computed.borderTopRightRadius) ?? 0
+    crossAxis: parentComputed.flexDirection.startsWith("column") ? "horizontal" : "vertical",
+    stretched: isStretchAlignment(getResolvedFlexAlignment(element, computed))
   };
+}
+function getInferredFrameLayoutAlign(element, computed, declarations) {
+  const crossAxisInfo = getFlexParentCrossAxisInfo(element, computed);
+  if (!crossAxisInfo || !crossAxisInfo.stretched) return void 0;
+  const crossSizeProperties = crossAxisInfo.crossAxis === "horizontal" ? horizontalSizeProperties : verticalSizeProperties;
+  if (hasExplicitSizeDeclaration(declarations, crossSizeProperties)) {
+    return void 0;
+  }
+  return "STRETCH";
+}
+function getLayoutSizingVertical(element, computed, bindings, declarations) {
+  if (bindings.height) return void 0;
+  if (hasExplicitSizeDeclaration(declarations, verticalSizeProperties)) {
+    return void 0;
+  }
+  if (element.getAttribute("data-figma-layout-sizing-vertical") === "hug") {
+    return "HUG";
+  }
+  if (!isFlexDisplay(computed.display)) return void 0;
+  const crossAxisInfo = getFlexParentCrossAxisInfo(element, computed);
+  if (crossAxisInfo?.crossAxis === "vertical" && crossAxisInfo.stretched) {
+    return void 0;
+  }
+  return "HUG";
+}
+function getLayoutGrow(element, computed) {
+  if (element.getAttribute("data-figma-layout-grow") === "1") return 1;
+  const flexGrow = Number.parseFloat(computed.flexGrow || "0");
+  return Number.isFinite(flexGrow) && flexGrow > 0 ? flexGrow : void 0;
+}
+function getLayoutSizingHorizontal(element, computed, bindings, declarations) {
+  if (bindings.width) return void 0;
+  if (hasExplicitSizeDeclaration(declarations, horizontalSizeProperties)) {
+    return void 0;
+  }
+  if (element.getAttribute("data-figma-layout-sizing-horizontal") === "hug") {
+    return "HUG";
+  }
+  if (isFlexItem(element, computed) || computed.display.includes("inline-flex")) {
+    if (hasFixedFlexBasis(computed)) return void 0;
+    if (Number.parseFloat(computed.flexGrow || "0") > 0) return void 0;
+    return "HUG";
+  }
+  if (isFlexDisplay(computed.display) && isOutOfFlowPositioned(computed)) {
+    return "HUG";
+  }
+  const parentElement = element.parentElement;
+  if (parentElement && isFlexDisplay(computed.display) && !isOutOfFlowPositioned(computed)) {
+    const parentComputed = window.getComputedStyle(parentElement);
+    if (parentComputed.display.includes("grid")) {
+      const justifySelf = computed.justifySelf;
+      const resolved = justifySelf && justifySelf !== "auto" ? justifySelf : parentComputed.justifyItems;
+      if (["start", "center", "end", "flex-start", "flex-end"].includes(resolved)) {
+        return "HUG";
+      }
+    }
+  }
+  return void 0;
+}
+function getTextAlignVertical(element) {
+  return element.getAttribute("data-figma-text-align-vertical") === "center" ? "CENTER" : void 0;
 }
 function createTextLeafNode({
   bindings,
   computed,
   height,
-  layoutAlign,
-  layoutGrow,
   layoutStrategy,
   name,
-  preserveWidth,
+  outOfFlow,
   text,
   textAutoResize,
+  layoutAlign,
+  layoutGrow,
+  textAlignVertical,
   width,
   x,
   y
@@ -978,7 +1300,13 @@ function createTextLeafNode({
   const color = cssColorValue(computed.color);
   const fontWeight = Number.parseInt(computed.fontWeight, 10);
   const lineHeight = cssLineHeightToNumber(computed.lineHeight);
-  const exportWidth = textAutoResize ? width : preserveWidth ? width : getTextExportWidth({ computed, text, width });
+  const textShadowEffects = getTextShadowEffects(computed);
+  const letterSpacing = cssLengthToNumber(computed.letterSpacing);
+  const textDecoration = getTextDecoration(computed);
+  const italic = isItalicFontStyle(computed);
+  const isSingleLineTruncatedText = isClippedSingleLineText(computed);
+  const exportWidth = isSingleLineTruncatedText || Boolean(textAutoResize) || layoutGrow === 1 || hasFixedFlexBasis(computed) ? width : getTextExportWidth({ computed, text, width });
+  const exportX = getTextExportX({ computed, exportWidth, width, x });
   return {
     bindings: pickBindings(bindings, [
       "fontFamily",
@@ -989,46 +1317,40 @@ function createTextLeafNode({
     ]),
     children: [],
     kind: "text",
-    layoutStrategy: layoutStrategy ?? "absolute",
+    layoutStrategy: layoutStrategy ?? (layoutAlign ? "autoLayout" : "absolute"),
     name,
     text,
     styles: {
       ...color ? { color } : {},
       display: computed.display,
+      ...textShadowEffects.length > 0 ? { effects: textShadowEffects } : {},
       fontFamily: computed.fontFamily,
       fontSize: cssLengthToNumber(computed.fontSize) ?? 14,
+      ...italic ? { fontStyle: "italic" } : {},
       ...Number.isFinite(fontWeight) ? { fontWeight } : {},
       height,
+      ...letterSpacing !== void 0 && letterSpacing !== 0 ? { letterSpacing } : {},
+      ...textDecoration ? { textDecoration } : {},
       ...layoutAlign ? { layoutAlign } : {},
-      ...layoutGrow !== void 0 ? { layoutGrow } : {},
+      ...layoutGrow ? { layoutGrow } : {},
       ...lineHeight ? { lineHeight } : {},
       opacity: Number(computed.opacity),
+      ...outOfFlow ? { outOfFlow: true } : {},
       overflow: computed.overflow,
+      ...isSingleLineTruncatedText ? { maxLines: 1, textTruncation: "ENDING" } : {},
       textAlign: computed.textAlign,
+      ...textAlignVertical ? { textAlignVertical } : {},
       ...textAutoResize ? { textAutoResize } : {},
       width: exportWidth,
-      x,
+      x: exportX,
       y
     }
   };
 }
 function hasBoxedTextStyle(computed, border) {
-  const cornerRadii = getCornerRadii(computed);
   return Boolean(
-    cssColorValue(computed.backgroundColor) || border || Object.values(cornerRadii).some((radius) => radius > 0) || cssLengthToNumber(computed.paddingBottom) || cssLengthToNumber(computed.paddingLeft) || cssLengthToNumber(computed.paddingRight) || cssLengthToNumber(computed.paddingTop)
+    cssColorValue(computed.backgroundColor) || border || cssLengthToNumber(computed.borderTopLeftRadius) || cssLengthToNumber(computed.paddingBottom) || cssLengthToNumber(computed.paddingLeft) || cssLengthToNumber(computed.paddingRight) || cssLengthToNumber(computed.paddingTop)
   );
-}
-function getCornerRadiusStyles(computed) {
-  const { bottomLeftRadius, bottomRightRadius, topLeftRadius, topRightRadius } = getCornerRadii(computed);
-  const radii = [topLeftRadius, topRightRadius, bottomRightRadius, bottomLeftRadius];
-  if (radii.every((radius) => radius <= 0)) return {};
-  if (radii.every((radius) => radius === topLeftRadius)) return { radius: topLeftRadius };
-  return {
-    bottomLeftRadius,
-    bottomRightRadius,
-    topLeftRadius,
-    topRightRadius
-  };
 }
 function getPseudoMatchedDeclarations(element, rules, pseudo) {
   const declarations = [];
@@ -1066,6 +1388,41 @@ function collectPseudoBindings(element, rules, pseudo, tokenSystem) {
   }
   return bindings;
 }
+function declarationsIncludeProperty(declarations, properties) {
+  return declarations.some(
+    (declaration) => properties.includes(declaration.property)
+  );
+}
+function getPseudoConstraints(declarations) {
+  const hasTop = declarationsIncludeProperty(declarations, [
+    "top",
+    "inset-block-start",
+    "inset-block",
+    "inset"
+  ]);
+  const hasBottom = declarationsIncludeProperty(declarations, [
+    "bottom",
+    "inset-block-end",
+    "inset-block",
+    "inset"
+  ]);
+  const hasLeft = declarationsIncludeProperty(declarations, [
+    "left",
+    "inset-inline-start",
+    "inset-inline",
+    "inset"
+  ]);
+  const hasRight = declarationsIncludeProperty(declarations, [
+    "right",
+    "inset-inline-end",
+    "inset-inline",
+    "inset"
+  ]);
+  return {
+    horizontal: hasLeft && hasRight ? "STRETCH" : hasRight && !hasLeft ? "MAX" : "MIN",
+    vertical: hasTop && hasBottom ? "STRETCH" : hasBottom && !hasTop ? "MAX" : "MIN"
+  };
+}
 function createPseudoNode(element, rules, pseudo, parentWidth, parentHeight, tokenSystem, options) {
   const style = window.getComputedStyle(element, `::${pseudo}`);
   const content = style.content.trim();
@@ -1090,9 +1447,13 @@ function createPseudoNode(element, rules, pseudo, parentWidth, parentHeight, tok
     name: `${getElementName(element, options)}::${pseudo}`,
     styles: {
       backgroundColor,
+      constraints: getPseudoConstraints(
+        getPseudoMatchedDeclarations(element, rules, pseudo)
+      ),
       display: style.display,
       height,
       opacity: Number(style.opacity),
+      outOfFlow: true,
       overflow: style.overflow,
       width,
       x: toFiniteNumber(left + translateX),
@@ -1127,69 +1488,39 @@ function findBorderLineToken(declarations, side, target, tokenSystem) {
     const tokens = extractCssVariableNames(declaration.value, tokenSystem);
     if (tokens.length === 0) continue;
     if (target === "color") {
-      return tokens.find((token) => token.includes("-color-")) || tokens[0];
+      return tokens.find(isColorTokenName) || tokens[0];
     }
-    return tokens.find((token) => !token.includes("-color-")) || tokens[0];
+    return tokens.find((token) => !isColorTokenName(token)) || tokens[0];
   }
   return void 0;
 }
-function collectBorderLineBindings(element, rules, side, tokenSystem) {
+function getVisibleBorderSides(computed) {
+  if (getUniformVisibleBorder(computed)) return void 0;
+  const sides = {};
+  for (const side of borderSides) {
+    if (!isVisibleBorderSide(computed, side)) continue;
+    const width = cssBorderWidth(computed, side);
+    const color = cssColorValue(cssBorderColor(computed, side));
+    if (!color || width <= 0) continue;
+    sides[side] = { color, width };
+  }
+  return Object.keys(sides).length > 0 ? sides : void 0;
+}
+function collectBorderSideBindings(element, rules, sides, tokenSystem) {
   const declarations = getMatchedDeclarations(element, rules);
-  const colorToken = findBorderLineToken(declarations, side, "color", tokenSystem);
-  const widthToken = findBorderLineToken(declarations, side, "width", tokenSystem);
   const bindings = {};
-  if (colorToken) bindings.backgroundColor = colorToken;
-  if (widthToken) {
-    if (side === "left" || side === "right") {
-      bindings.width = widthToken;
-    } else {
-      bindings.height = widthToken;
+  for (const side of borderSides) {
+    if (!sides[side]) continue;
+    if (!bindings.borderColor) {
+      const colorToken = findBorderLineToken(declarations, side, "color", tokenSystem);
+      if (colorToken) bindings.borderColor = colorToken;
+    }
+    if (!bindings.borderWidth) {
+      const widthToken = findBorderLineToken(declarations, side, "width", tokenSystem);
+      if (widthToken) bindings.borderWidth = widthToken;
     }
   }
   return bindings;
-}
-function createBorderLineNode(element, rules, side, parentWidth, parentHeight, tokenSystem, options) {
-  if (!isVisibleBorderSide(window.getComputedStyle(element), side)) return void 0;
-  const computed = window.getComputedStyle(element);
-  const borderWidth = cssBorderWidth(computed, side);
-  const backgroundColor = cssColorValue(cssBorderColor(computed, side));
-  if (!backgroundColor || borderWidth <= 0) return void 0;
-  const isVertical = side === "left" || side === "right";
-  const width = isVertical ? borderWidth : parentWidth;
-  const height = isVertical ? parentHeight : borderWidth;
-  const x = side === "right" ? parentWidth - borderWidth : 0;
-  const y = side === "bottom" ? parentHeight - borderWidth : 0;
-  return {
-    bindings: collectBorderLineBindings(element, rules, side, tokenSystem),
-    children: [],
-    kind: "frame",
-    layoutStrategy: "absolute",
-    name: `${getElementName(element, options)}__border-${side}`,
-    styles: {
-      backgroundColor,
-      display: "block",
-      height: toFiniteNumber(height),
-      opacity: Number(computed.opacity),
-      overflow: "visible",
-      width: toFiniteNumber(width),
-      x: toFiniteNumber(x),
-      y: toFiniteNumber(y)
-    }
-  };
-}
-function createBorderLineNodes(element, computed, rules, parentWidth, parentHeight, tokenSystem, options) {
-  if (getUniformVisibleBorder(computed)) return [];
-  return borderSides.map(
-    (side) => createBorderLineNode(
-      element,
-      rules,
-      side,
-      parentWidth,
-      parentHeight,
-      tokenSystem,
-      options
-    )
-  ).filter((node) => Boolean(node));
 }
 function collectBindings(element, rules, hasUniformVisibleBorder, tokenSystem) {
   const declarations = getMatchedDeclarations(element, rules);
@@ -1215,8 +1546,35 @@ function collectBindings(element, rules, hasUniformVisibleBorder, tokenSystem) {
 function getDirectText(element) {
   return Array.from(element.childNodes).filter((node) => node.nodeType === Node.TEXT_NODE).map((node) => node.textContent ?? "").join("").replace(/\s+/g, " ").trim();
 }
+function getRenderedLeafText(element) {
+  if (element instanceof HTMLElement) {
+    const rendered = element.innerText.trim();
+    if (rendered) return rendered;
+  }
+  return getDirectText(element);
+}
+function applyTextTransformToText(text, computed) {
+  const transform = computed.textTransform.trim().toLowerCase();
+  if (transform.includes("uppercase")) return text.toUpperCase();
+  if (transform.includes("lowercase")) return text.toLowerCase();
+  if (transform.includes("capitalize")) {
+    return text.replace(/\b\p{L}/gu, (character) => character.toUpperCase());
+  }
+  return text;
+}
+function getTextDecoration(computed) {
+  const line = (computed.textDecorationLine || "").toLowerCase();
+  if (line.includes("line-through")) return "STRIKETHROUGH";
+  if (line.includes("underline")) return "UNDERLINE";
+  return void 0;
+}
+function isItalicFontStyle(computed) {
+  const fontStyle = computed.fontStyle.trim().toLowerCase();
+  return fontStyle.startsWith("italic") || fontStyle.startsWith("oblique");
+}
 function hasElementChildren(element) {
   return Array.from(element.children).some((child) => {
+    if (child.tagName === "BR") return false;
     const style = window.getComputedStyle(child);
     return style.display !== "none";
   });
@@ -1247,6 +1605,78 @@ function findExportRoot(scope) {
   }
   return scope.firstElementChild ?? void 0;
 }
+var rasterImageMaxDimension = 2048;
+function getImageScaleMode(computed) {
+  const objectFit = (computed.objectFit || "").trim().toLowerCase();
+  if (objectFit === "contain" || objectFit === "none" || objectFit === "scale-down") {
+    return "FIT";
+  }
+  return "FILL";
+}
+function dataUrlToRasterCapture(dataUrl) {
+  const match = dataUrl.match(/^data:(image\/[a-z0-9.+-]+);base64,(.+)$/i);
+  if (!match) return void 0;
+  return { imageBase64: match[2], imageMimeType: match[1] };
+}
+function drawSourceToRasterCapture(source, naturalWidth, naturalHeight) {
+  if (naturalWidth <= 0 || naturalHeight <= 0) return void 0;
+  const scale = Math.min(
+    1,
+    rasterImageMaxDimension / Math.max(naturalWidth, naturalHeight)
+  );
+  const width = Math.max(1, Math.round(naturalWidth * scale));
+  const height = Math.max(1, Math.round(naturalHeight * scale));
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("2d");
+    if (!context) return void 0;
+    context.drawImage(source, 0, 0, width, height);
+    return dataUrlToRasterCapture(canvas.toDataURL("image/png"));
+  } catch {
+    return void 0;
+  }
+}
+async function fetchRasterCapture(src) {
+  try {
+    const response = await fetch(src);
+    if (!response.ok) return void 0;
+    const blob = await response.blob();
+    if (!blob.type.startsWith("image/") || blob.type === "image/svg+xml") {
+      return void 0;
+    }
+    if (typeof createImageBitmap === "function") {
+      try {
+        const bitmap = await createImageBitmap(blob);
+        const capture = drawSourceToRasterCapture(bitmap, bitmap.width, bitmap.height);
+        bitmap.close();
+        if (capture) return capture;
+      } catch {
+      }
+    }
+    const dataUrl = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(blob);
+    });
+    return dataUrlToRasterCapture(dataUrl);
+  } catch {
+    return void 0;
+  }
+}
+async function captureRasterImage(element) {
+  const src = element.currentSrc || element.src;
+  if (!src || src.startsWith("data:image/svg+xml")) return void 0;
+  const drawn = drawSourceToRasterCapture(
+    element,
+    element.naturalWidth,
+    element.naturalHeight
+  );
+  if (drawn) return drawn;
+  return fetchRasterCapture(src);
+}
 async function fetchSvgText(element, options) {
   const graphicName = element.getAttribute("data-graphic");
   if (element.getAttribute("data-component") === "graphic" && graphicName) {
@@ -1272,6 +1702,100 @@ async function fetchSvgText(element, options) {
     return void 0;
   }
 }
+function isUniformSpacing(values) {
+  if (values.length === 0) return true;
+  return Math.max(...values) - Math.min(...values) <= 1;
+}
+function averageSpacing(values) {
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+function measureAutoLayoutChildren({
+  childEntries,
+  computed,
+  containerRect
+}) {
+  const flowEntries = childEntries.filter((entry) => !entry.node.styles.outOfFlow);
+  const outOfFlowNodes = childEntries.filter((entry) => entry.node.styles.outOfFlow).map((entry) => entry.node);
+  if (flowEntries.length === 0) return void 0;
+  const isColumn = computed.flexDirection.startsWith("column");
+  const measured = flowEntries.map(({ element, node }) => {
+    const rect = element.getBoundingClientRect();
+    const x = rect.left - containerRect.left;
+    const y = rect.top - containerRect.top;
+    return {
+      crossEnd: isColumn ? x + rect.width : y + rect.height,
+      crossStart: isColumn ? x : y,
+      mainEnd: isColumn ? y + rect.height : x + rect.width,
+      mainStart: isColumn ? y : x,
+      node
+    };
+  });
+  const sortedByCross = [...measured].sort(
+    (a, b) => a.crossStart - b.crossStart || a.mainStart - b.mainStart
+  );
+  const lines = [];
+  for (const item of sortedByCross) {
+    const line = lines[lines.length - 1];
+    const lineEnd = line ? Math.max(...line.map((entry) => entry.crossEnd)) : Number.NEGATIVE_INFINITY;
+    if (!line || item.crossStart >= lineEnd - 0.5) {
+      lines.push([item]);
+    } else {
+      line.push(item);
+    }
+  }
+  lines.forEach((line) => line.sort((a, b) => a.mainStart - b.mainStart));
+  const mainGaps = [];
+  for (const line of lines) {
+    for (let index = 0; index < line.length - 1; index += 1) {
+      mainGaps.push(line[index + 1].mainStart - line[index].mainEnd);
+    }
+  }
+  const crossGaps = [];
+  for (let index = 0; index < lines.length - 1; index += 1) {
+    const currentEnd = Math.max(...lines[index].map((entry) => entry.crossEnd));
+    const nextStart = Math.min(...lines[index + 1].map((entry) => entry.crossStart));
+    crossGaps.push(nextStart - currentEnd);
+  }
+  const justify = computed.justifyContent.trim();
+  const isSpaceBetween = justify === "space-between";
+  const hasOverlap = mainGaps.some((value) => value < -0.5) || crossGaps.some((value) => value < -0.5);
+  if (hasOverlap || !isUniformSpacing(crossGaps) || !isUniformSpacing(mainGaps) && !isSpaceBetween) {
+    return {
+      children: childEntries.map((entry) => entry.node),
+      strategy: "absolute"
+    };
+  }
+  const wrapDeclared = computed.flexWrap === "wrap" || computed.flexWrap === "wrap-reverse";
+  const measurement = {
+    children: [
+      ...lines.flatMap((line) => line.map((entry) => entry.node)),
+      ...outOfFlowNodes
+    ],
+    strategy: "autoLayout"
+  };
+  if (mainGaps.length > 0 && !isSpaceBetween) {
+    measurement.gap = Math.max(0, toFiniteNumber(averageSpacing(mainGaps)));
+  }
+  if (wrapDeclared && lines.length > 1) {
+    measurement.layoutWrap = "WRAP";
+    if (crossGaps.length > 0) {
+      measurement.counterAxisSpacing = Math.max(
+        0,
+        toFiniteNumber(averageSpacing(crossGaps))
+      );
+    }
+  }
+  const isStartJustified = justify === "" || ["flex-start", "left", "normal", "start"].includes(justify);
+  if (isStartJustified) {
+    const leading = Math.min(...measured.map((entry) => entry.mainStart));
+    const containerMainSize = isColumn ? containerRect.height : containerRect.width;
+    const trailing = containerMainSize - Math.max(...measured.map((entry) => entry.mainEnd));
+    const leadingPadding = Math.max(0, toFiniteNumber(leading));
+    const trailingPadding = Math.max(0, toFiniteNumber(trailing));
+    measurement.paddingOverrides = isColumn ? { bottom: trailingPadding, top: leadingPadding } : { left: leadingPadding, right: trailingPadding };
+  }
+  return measurement;
+}
 async function createExportNode(element, rootRect, parentRect, rules, tokenSystem, options, traversalState, forceAbsoluteLayout = false) {
   await markExportNodeVisited(traversalState);
   const computed = window.getComputedStyle(element);
@@ -1282,10 +1806,11 @@ async function createExportNode(element, rootRect, parentRect, rules, tokenSyste
   const width = toFiniteNumber(rect.width);
   const height = toFiniteNumber(rect.height);
   if (width <= 0 || height <= 0) return void 0;
-  const nextForceAbsoluteLayout = forceAbsoluteLayout || isAbsoluteFidelityRoot(element, options);
+  const forceAutoLayout = element.getAttribute("data-figma-layout-strategy") === "auto-layout";
+  const nextForceAbsoluteLayout = !forceAutoLayout && (forceAbsoluteLayout || isAbsoluteFidelityRoot(element, options));
   const component = getComponentReference(element);
   if (element instanceof SVGElement) {
-    return createInlineSvgNode(element, computed, rect, parentRect, options, component);
+    return createInlineSvgNode(element, computed, rect, parentRect, options);
   }
   const clipPathNode = createClipPathSvgNode(
     element,
@@ -1299,7 +1824,7 @@ async function createExportNode(element, rootRect, parentRect, rules, tokenSyste
   if (clipPathNode) return clipPathNode;
   const childElements = Array.from(element.children);
   const hasPositionedChildren = hasOutOfFlowPositionedChildren(childElements);
-  const childNodes = (await Promise.all(
+  const childNodeResults = await Promise.all(
     childElements.map(
       (child) => createExportNode(
         child,
@@ -1309,10 +1834,16 @@ async function createExportNode(element, rootRect, parentRect, rules, tokenSyste
         tokenSystem,
         options,
         traversalState,
-        nextForceAbsoluteLayout
+        nextForceAbsoluteLayout && !child.hasAttribute("data-component")
       )
     )
-  )).filter((child) => Boolean(child));
+  );
+  const childEntries = [];
+  childElements.forEach((childElement, index) => {
+    const node = childNodeResults[index];
+    if (node) childEntries.push({ element: childElement, node });
+  });
+  const childNodes = childEntries.map((entry) => entry.node);
   const directText = getDirectText(element);
   const backgroundColor = cssColorValue(computed.backgroundColor);
   const declarations = getMatchedDeclarations(element, rules);
@@ -1323,54 +1854,69 @@ async function createExportNode(element, rootRect, parentRect, rules, tokenSyste
   );
   const color = cssColorValue(computed.color);
   const border = getUniformVisibleBorder(computed);
+  const borderSideMap = getVisibleBorderSides(computed);
   const fontWeight = Number.parseInt(computed.fontWeight, 10);
-  const cornerRadiusStyles = getCornerRadiusStyles(computed);
+  const radiusStyles = getRadiusStyles(computed, width, height);
+  const boxShadowEffects = getBoxShadowEffects(computed);
   const lineHeight = cssLineHeightToNumber(computed.lineHeight);
   const gap = cssLengthToNumber(computed.columnGap) ?? cssLengthToNumber(computed.gap);
-  const overflow = getExportOverflow(element, computed);
+  const layoutAlign = getLayoutAlign(element);
+  const layoutGrow = getLayoutGrow(element, computed);
+  const textLayoutStrategy = element.getAttribute("data-figma-layout-strategy") === "auto-layout" ? "autoLayout" : getLayoutStrategy(element, computed, nextForceAbsoluteLayout);
+  const textAlignVertical = getTextAlignVertical(element);
   const bindings = collectBindings(element, rules, Boolean(border), tokenSystem);
-  const layoutSizingHorizontal = getLayoutSizingHorizontal(element);
-  const layoutSizingVertical = getLayoutSizingVertical(element);
+  if (borderSideMap) {
+    Object.assign(
+      bindings,
+      collectBorderSideBindings(element, rules, borderSideMap, tokenSystem)
+    );
+  }
+  const layoutSizingHorizontal = getLayoutSizingHorizontal(
+    element,
+    computed,
+    bindings,
+    declarations
+  );
+  const layoutSizingVertical = getLayoutSizingVertical(
+    element,
+    computed,
+    bindings,
+    declarations
+  );
+  const frameLayoutAlign = layoutAlign ?? getInferredFrameLayoutAlign(element, computed, declarations);
   if (backgroundLinearGradient) {
     delete bindings.backgroundColor;
   }
-  const layoutStrategy = getLayoutStrategy(computed, nextForceAbsoluteLayout);
+  const layoutStrategy = getLayoutStrategy(element, computed, nextForceAbsoluteLayout);
   const pseudoNodes = ["before", "after"].map(
     (pseudo) => createPseudoNode(element, rules, pseudo, width, height, tokenSystem, options)
   ).filter((node) => Boolean(node));
-  const borderLineNodes = createBorderLineNodes(
-    element,
-    computed,
-    rules,
-    width,
-    height,
-    tokenSystem,
-    options
-  );
-  const frameLayoutStrategy = pseudoNodes.length > 0 || borderLineNodes.length > 0 || hasPositionedChildren ? "absolute" : layoutStrategy;
+  const shouldPreserveComputedAutoLayout = layoutStrategy === "autoLayout" && isFlexDisplay(computed.display) && !hasPositionedChildren;
+  const frameLayoutStrategy = element.getAttribute("data-figma-layout-strategy") === "auto-layout" ? layoutStrategy : shouldPreserveComputedAutoLayout ? layoutStrategy : pseudoNodes.length > 0 || hasPositionedChildren ? "absolute" : layoutStrategy;
+  const elementOutOfFlow = isOutOfFlowPositioned(computed);
   if (directText && !hasElementChildren(element)) {
+    const leafText = applyTextTransformToText(getRenderedLeafText(element), computed);
     if (hasBoxedTextStyle(computed, border)) {
       const paddingLeft = cssLengthToNumber(computed.paddingLeft) ?? 0;
       const paddingRight = cssLengthToNumber(computed.paddingRight) ?? 0;
       const paddingTop = cssLengthToNumber(computed.paddingTop) ?? 0;
       const paddingBottom = cssLengthToNumber(computed.paddingBottom) ?? 0;
-      const boxedTextLayoutStrategy = layoutStrategy === "autoLayout" && pseudoNodes.length === 0 && borderLineNodes.length === 0 ? "autoLayout" : "absolute";
       const textNode = createTextLeafNode({
         bindings,
         computed,
         height: Math.max(1, height - paddingTop - paddingBottom),
-        layoutAlign: getLayoutAlign(element),
-        layoutGrow: getLayoutGrow(element),
-        layoutStrategy: boxedTextLayoutStrategy,
+        layoutStrategy: textLayoutStrategy,
         name: `${getElementName(element, options)}__text`,
-        preserveWidth: shouldPreserveTextWidth(element),
-        text: directText,
-        textAutoResize: getTextAutoResize(element),
+        text: leafText,
+        textAutoResize: getTextAutoResize(element, computed),
+        layoutAlign,
+        layoutGrow,
+        textAlignVertical,
         width: Math.max(1, width - paddingLeft - paddingRight),
-        x: boxedTextLayoutStrategy === "autoLayout" ? 0 : paddingLeft,
-        y: boxedTextLayoutStrategy === "autoLayout" ? 0 : paddingTop
+        x: paddingLeft,
+        y: paddingTop
       });
-      if (boxedTextLayoutStrategy === "autoLayout") {
+      if (textLayoutStrategy === "autoLayout") {
         return {
           bindings,
           children: [textNode],
@@ -1380,21 +1926,25 @@ async function createExportNode(element, rootRect, parentRect, rules, tokenSyste
           name: getElementName(element, options),
           styles: {
             alignItems: "center",
-            ...backgroundLinearGradient ? { backgroundLinearGradient } : backgroundColor ? { backgroundColor } : {},
+            ...backgroundColor ? { backgroundColor } : {},
+            ...backgroundLinearGradient ? { backgroundLinearGradient } : {},
+            ...boxShadowEffects.length > 0 ? { effects: boxShadowEffects } : {},
             ...border ? { borderColor: border.color, borderWidth: border.width } : {},
+            ...borderSideMap ? { borderSides: borderSideMap } : {},
             display: "flex",
             flexDirection: "row",
             height,
-            justifyContent: computed.justifyContent || justifyContentFromTextAlign(computed.textAlign),
-            ...layoutSizingHorizontal ? { layoutSizingHorizontal } : {},
-            ...layoutSizingVertical ? { layoutSizingVertical } : {},
+            justifyContent: justifyContentFromTextAlign(computed.textAlign),
             opacity: Number(computed.opacity),
-            overflow,
+            ...elementOutOfFlow ? { outOfFlow: true } : {},
+            overflow: computed.overflow,
             paddingBottom,
             paddingLeft,
             paddingRight,
             paddingTop,
-            ...cornerRadiusStyles,
+            ...radiusStyles,
+            ...layoutSizingHorizontal ? { layoutSizingHorizontal } : {},
+            ...layoutSizingHorizontal && !bindings.height ? { layoutSizingVertical: "HUG" } : {},
             width,
             x: toFiniteNumber(rect.left - parentRect.left),
             y: toFiniteNumber(rect.top - parentRect.top)
@@ -1403,25 +1953,28 @@ async function createExportNode(element, rootRect, parentRect, rules, tokenSyste
       }
       return {
         bindings,
-        children: [textNode, ...borderLineNodes],
+        children: [textNode],
         ...component ? { component } : {},
         kind: "frame",
         layoutStrategy: "absolute",
         name: getElementName(element, options),
         styles: {
-          ...backgroundLinearGradient ? { backgroundLinearGradient } : backgroundColor ? { backgroundColor } : {},
+          ...backgroundColor ? { backgroundColor } : {},
+          ...backgroundLinearGradient ? { backgroundLinearGradient } : {},
+          ...boxShadowEffects.length > 0 ? { effects: boxShadowEffects } : {},
           ...border ? { borderColor: border.color, borderWidth: border.width } : {},
+          ...borderSideMap ? { borderSides: borderSideMap } : {},
           display: getExportDisplay(computed, "absolute"),
           height,
-          ...layoutSizingHorizontal ? { layoutSizingHorizontal } : {},
-          ...layoutSizingVertical ? { layoutSizingVertical } : {},
           opacity: Number(computed.opacity),
-          overflow,
+          ...elementOutOfFlow ? { outOfFlow: true } : {},
+          overflow: computed.overflow,
           paddingBottom,
           paddingLeft,
           paddingRight,
           paddingTop,
-          ...cornerRadiusStyles,
+          ...radiusStyles,
+          ...layoutSizingHorizontal ? { layoutSizingHorizontal } : {},
           width,
           x: toFiniteNumber(rect.left - parentRect.left),
           y: toFiniteNumber(rect.top - parentRect.top)
@@ -1432,55 +1985,81 @@ async function createExportNode(element, rootRect, parentRect, rules, tokenSyste
       bindings,
       computed,
       height,
-      layoutAlign: getLayoutAlign(element),
-      layoutGrow: getLayoutGrow(element),
+      layoutStrategy: textLayoutStrategy,
       name: getElementName(element, options),
-      preserveWidth: shouldPreserveTextWidth(element),
-      text: directText,
-      textAutoResize: getTextAutoResize(element),
+      outOfFlow: elementOutOfFlow,
+      text: leafText,
+      textAutoResize: getTextAutoResize(element, computed),
+      layoutAlign,
+      layoutGrow,
+      textAlignVertical,
       width,
       x: toFiniteNumber(rect.left - parentRect.left),
       y: toFiniteNumber(rect.top - parentRect.top)
     });
   }
-  const kind = element instanceof HTMLImageElement ? "image" : "frame";
+  const kind = element instanceof HTMLImageElement || element instanceof HTMLCanvasElement ? "image" : "frame";
+  let imageSvgText;
+  let imageCapture;
+  if (element instanceof HTMLImageElement) {
+    imageSvgText = await fetchSvgText(element, options);
+    if (!imageSvgText) imageCapture = await captureRasterImage(element);
+  } else if (element instanceof HTMLCanvasElement) {
+    imageCapture = drawSourceToRasterCapture(element, element.width, element.height);
+  }
+  const elementName = getElementName(element, options);
+  const autoLayoutMeasurement = kind === "frame" && frameLayoutStrategy === "autoLayout" && isFlexDisplay(computed.display) && childEntries.length > 0 ? measureAutoLayoutChildren({ childEntries, computed, containerRect: rect }) : void 0;
+  const effectiveLayoutStrategy = autoLayoutMeasurement?.strategy ?? frameLayoutStrategy;
+  const orderedChildNodes = autoLayoutMeasurement?.children ?? childNodes;
+  const paddingOverrides = effectiveLayoutStrategy === "autoLayout" ? autoLayoutMeasurement?.paddingOverrides : void 0;
+  const measuredGap = effectiveLayoutStrategy === "autoLayout" ? autoLayoutMeasurement?.gap : void 0;
+  const effectiveGap = measuredGap ?? gap;
+  const frameStyles = {
+    ...computed.alignItems ? { alignItems: computed.alignItems } : {},
+    ...backgroundColor ? { backgroundColor } : {},
+    ...backgroundLinearGradient ? { backgroundLinearGradient } : {},
+    ...boxShadowEffects.length > 0 ? { effects: boxShadowEffects } : {},
+    ...border ? { borderColor: border.color, borderWidth: border.width } : {},
+    ...borderSideMap ? { borderSides: borderSideMap } : {},
+    ...color ? { color } : {},
+    ...effectiveLayoutStrategy === "autoLayout" && autoLayoutMeasurement?.counterAxisSpacing !== void 0 ? { counterAxisSpacing: autoLayoutMeasurement.counterAxisSpacing } : {},
+    display: getExportDisplay(computed, effectiveLayoutStrategy),
+    ...effectiveLayoutStrategy === "autoLayout" ? { flexDirection: computed.flexDirection.replace("-reverse", "") } : {},
+    fontFamily: computed.fontFamily,
+    fontSize: cssLengthToNumber(computed.fontSize) ?? 14,
+    ...Number.isFinite(fontWeight) ? { fontWeight } : {},
+    ...effectiveGap !== void 0 && effectiveGap >= 0 ? { gap: effectiveGap } : {},
+    height,
+    ...computed.justifyContent ? { justifyContent: computed.justifyContent } : {},
+    ...frameLayoutAlign ? { layoutAlign: frameLayoutAlign } : {},
+    ...layoutGrow ? { layoutGrow } : {},
+    ...layoutSizingHorizontal ? { layoutSizingHorizontal } : {},
+    ...layoutSizingVertical ? { layoutSizingVertical } : {},
+    ...effectiveLayoutStrategy === "autoLayout" && autoLayoutMeasurement?.layoutWrap ? { layoutWrap: autoLayoutMeasurement.layoutWrap } : {},
+    ...lineHeight ? { lineHeight } : {},
+    opacity: Number(computed.opacity),
+    ...elementOutOfFlow ? { outOfFlow: true } : {},
+    overflow: computed.overflow,
+    paddingBottom: paddingOverrides?.bottom ?? (cssLengthToNumber(computed.paddingBottom) ?? 0),
+    paddingLeft: paddingOverrides?.left ?? (cssLengthToNumber(computed.paddingLeft) ?? 0),
+    paddingRight: paddingOverrides?.right ?? (cssLengthToNumber(computed.paddingRight) ?? 0),
+    paddingTop: paddingOverrides?.top ?? (cssLengthToNumber(computed.paddingTop) ?? 0),
+    ...radiusStyles,
+    ...textAlignVertical ? { textAlignVertical } : {},
+    width,
+    x: toFiniteNumber(rect.left - parentRect.left),
+    y: toFiniteNumber(rect.top - parentRect.top)
+  };
   return {
     bindings,
-    children: kind === "image" ? [] : [...childNodes, ...pseudoNodes, ...borderLineNodes],
+    children: kind === "image" ? [] : [...orderedChildNodes, ...pseudoNodes],
     ...component ? { component } : {},
+    ...imageCapture ? { ...imageCapture } : {},
     kind,
-    layoutStrategy: kind === "image" ? "absolute" : frameLayoutStrategy,
-    name: getElementName(element, options),
-    ...kind === "image" && element instanceof HTMLImageElement ? { svgText: await fetchSvgText(element, options) } : {},
-    styles: {
-      ...computed.alignItems ? { alignItems: computed.alignItems } : {},
-      ...backgroundLinearGradient ? { backgroundLinearGradient } : backgroundColor ? { backgroundColor } : {},
-      ...border ? { borderColor: border.color, borderWidth: border.width } : {},
-      ...color ? { color } : {},
-      display: getExportDisplay(computed, frameLayoutStrategy),
-      ...frameLayoutStrategy === "autoLayout" ? { flexDirection: computed.flexDirection } : {},
-      fontFamily: computed.fontFamily,
-      fontSize: cssLengthToNumber(computed.fontSize) ?? 14,
-      ...Number.isFinite(fontWeight) ? { fontWeight } : {},
-      ...gap !== void 0 && gap >= 0 ? { gap } : {},
-      height,
-      ...computed.justifyContent ? { justifyContent: computed.justifyContent } : {},
-      ...lineHeight ? { lineHeight } : {},
-      ...getLayoutAlign(element) ? { layoutAlign: getLayoutAlign(element) } : {},
-      ...getLayoutGrow(element) !== void 0 ? { layoutGrow: getLayoutGrow(element) } : {},
-      ...layoutSizingHorizontal ? { layoutSizingHorizontal } : {},
-      ...layoutSizingVertical ? { layoutSizingVertical } : {},
-      opacity: Number(computed.opacity),
-      overflow,
-      paddingBottom: cssLengthToNumber(computed.paddingBottom) ?? 0,
-      paddingLeft: cssLengthToNumber(computed.paddingLeft) ?? 0,
-      paddingRight: cssLengthToNumber(computed.paddingRight) ?? 0,
-      paddingTop: cssLengthToNumber(computed.paddingTop) ?? 0,
-      ...cornerRadiusStyles,
-      width,
-      x: toFiniteNumber(rect.left - parentRect.left),
-      y: toFiniteNumber(rect.top - parentRect.top)
-    }
+    layoutStrategy: kind === "image" ? "absolute" : effectiveLayoutStrategy,
+    name: elementName,
+    ...imageSvgText ? { svgText: imageSvgText } : {},
+    styles: imageCapture ? { ...frameStyles, imageScaleMode: getImageScaleMode(computed) } : frameStyles
   };
 }
 async function createFigmaExportPayload({
@@ -1496,6 +2075,7 @@ async function createFigmaExportPayload({
   if (!root) {
     throw new Error("No exportable story root was found.");
   }
+  const artifactKind = getArtifactKind(storyTitle);
   onProgress?.({ phase: "preparing" });
   await waitForExportFrame();
   const rules = getCssRules();
@@ -1519,15 +2099,12 @@ async function createFigmaExportPayload({
   if (!rootNode) {
     throw new Error("The story root has no visible exportable bounds.");
   }
-  const artifactKind = getArtifactKind(storyTitle);
   rootNode.styles.x = 0;
   rootNode.styles.y = 0;
   if (artifactKind === "page") {
     stripComponentReferences(rootNode);
   }
-  const hasNestedComponent = rootNode.children.some(hasComponentReference);
-  const component = artifactKind !== "component" ? void 0 : rootNode.component ? rootNode.component : hasNestedComponent ? void 0 : createRootComponentReference(componentTitle, storyName);
-  if (component) rootNode.component = component;
+  const component = artifactKind === "component" ? rootNode.component ?? (!hasComponentReference(rootNode) ? getComponentReference(root, componentTitle) : void 0) : void 0;
   const tokenNames = /* @__PURE__ */ new Set();
   onProgress?.({ nodeCount: traversalState.nodeCount, phase: "tokens" });
   await waitForExportFrame();
@@ -1607,112 +2184,6 @@ function isStoryIncludedForFigmaExport(title, options) {
 function createFigmaExportJson(payload) {
   return JSON.stringify(payload, null, 2);
 }
-var figmaImporterExtractionPayload = {
-  artifactKind: "component",
-  componentTitle: "Storybook Export",
-  generatedAt: "1970-01-01T00:00:00.000Z",
-  root: {
-    bindings: {},
-    children: [],
-    kind: "frame",
-    name: "Storybook Export",
-    styles: {
-      height: 1,
-      width: 1,
-      x: 0,
-      y: 0
-    }
-  },
-  storyId: "storybook-export--default",
-  storyName: "Default",
-  storyTitle: "Storybook Export",
-  tokenSystem: {
-    collections: {
-      comp: "comp",
-      ref: "ref",
-      sys: "sys"
-    },
-    layers: {
-      comp: "comp",
-      ref: "ref",
-      sys: "sys"
-    },
-    pluginDataKey: "storybookCssToken",
-    prefix: "storybook"
-  },
-  tokens: [],
-  version: 2
-};
-function getFigmaImporterFunctionCode() {
-  const script = createFigmaPluginCode(figmaImporterExtractionPayload);
-  const startMarker = "void (async function importStorybookStory(payload) {";
-  const endMarker = "\n})(STORYBOOK_FIGMA_EXPORT).catch";
-  const startIndex = script.indexOf(startMarker);
-  const endIndex = script.indexOf(endMarker, startIndex);
-  if (startIndex < 0 || endIndex < 0) {
-    throw new Error("Unable to extract Storybook Figma importer function.");
-  }
-  return script.slice(startIndex + "void (".length, endIndex) + "\n}";
-}
-function createFigmaImporterPluginMainCode(options = {}) {
-  const width = Math.max(240, Math.round(options.width ?? 360));
-  const height = Math.max(240, Math.round(options.height ?? 420));
-  const importerFunctionCode = getFigmaImporterFunctionCode();
-  return `// Generated by @harrychuang/storybook-addon-figma-export.
-// Do not edit this file directly. Regenerate it from the project template.
-
-figma.showUI(__html__, { height: ${height}, themeColors: true, width: ${width} });
-
-function isRecord(value) {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function validateStorybookFigmaExportPayload(payload) {
-  if (!isRecord(payload)) {
-    throw new Error("The selected file is not a Storybook Figma export payload.");
-  }
-
-  if (payload.version !== 2) {
-    throw new Error("Unsupported export payload version. Expected version 2.");
-  }
-
-  if (!isRecord(payload.root)) {
-    throw new Error("The export payload is missing its root node.");
-  }
-
-  if (!Array.isArray(payload.tokens)) {
-    throw new Error("The export payload is missing token data.");
-  }
-}
-
-function postImportMessage(type, message) {
-  figma.ui.postMessage({ message, type });
-}
-
-function getImportTitle(payload) {
-  return [payload.componentTitle, payload.storyName].filter(Boolean).join(" / ") ||
-    "Storybook export";
-}
-
-${importerFunctionCode}
-
-figma.ui.onmessage = async (message) => {
-  if (!message || message.type !== "import-payload") return;
-
-  try {
-    validateStorybookFigmaExportPayload(message.payload);
-    postImportMessage("import-progress", "Importing " + getImportTitle(message.payload) + "...");
-    await importStorybookStory(message.payload);
-    postImportMessage("import-complete", "Imported " + getImportTitle(message.payload) + ".");
-  } catch (error) {
-    const messageText = error instanceof Error ? error.message : String(error);
-    console.error(error);
-    figma.notify("Storybook import failed: " + messageText, { error: true });
-    postImportMessage("import-error", messageText);
-  }
-};
-`;
-}
 function createFigmaPluginCode(payload) {
   const serializedPayload = createFigmaExportJson(payload);
   return `// Storybook -> Figma
@@ -1724,15 +2195,17 @@ function createFigmaPluginCode(payload) {
 const STORYBOOK_FIGMA_EXPORT = ${serializedPayload};
 
 void (async function importStorybookStory(payload) {
-  const COLLECTION_NAMES = (payload.tokenSystem && payload.tokenSystem.collections) || {
+  const tokenSystem = payload.tokenSystem || {};
+  const componentSystem = payload.componentSystem || {};
+  const COLLECTION_NAMES = tokenSystem.collections || {
     ref: "ref",
     sys: "sys",
     comp: "comp",
   };
   const PLUGIN_DATA_TOKEN_KEY =
-    (payload.tokenSystem && payload.tokenSystem.pluginDataKey) || "storybookCssToken";
+    tokenSystem.pluginDataKey || "storybookCssToken";
   const PLUGIN_DATA_COMPONENT_KEY =
-    (payload.componentSystem && payload.componentSystem.pluginDataKey) || "storybookComponentKey";
+    componentSystem.pluginDataKey || "storybookComponentKey";
 
   const BINDABLE_RADIUS_FIELDS = [
     "topLeftRadius",
@@ -1744,47 +2217,10 @@ void (async function importStorybookStory(payload) {
   const layerOrder = { ref: 0, sys: 1, comp: 2 };
   const registry = new Map();
   const componentRegistry = new Map();
+  let componentDefinitionOffsetY = 0;
   const rawTokenByName = new Map(
     (payload.tokens || []).map((token) => [token.cssName, token]),
   );
-
-  function getOrCreatePage(name) {
-    const normalizedName = String(name || "").trim() || "Components";
-    const existing = figma.root.children.find(
-      (page) => page.name.toLowerCase() === normalizedName.toLowerCase(),
-    );
-    if (existing) return existing;
-
-    const page = figma.createPage();
-    page.name = normalizedName;
-    return page;
-  }
-
-  function getComponentsPageName() {
-    return (payload.componentSystem && payload.componentSystem.componentsPageName) || "Components";
-  }
-
-  function getComponentDefinitionParentPage() {
-    return getOrCreatePage(getComponentsPageName());
-  }
-
-  function isComponentsPage(page) {
-    return String((page && page.name) || "").toLowerCase() ===
-      String(getComponentsPageName()).toLowerCase();
-  }
-
-  function getPageArtifactPageName() {
-    const title = String(payload.storyTitle || payload.componentTitle || "").trim();
-    const normalizedTitle = title.startsWith("Pages/")
-      ? title.slice("Pages/".length)
-      : title;
-    return normalizedTitle.replace(/\\//g, " / ") || "Storybook Pages";
-  }
-
-  function getPageArtifactTargetPage() {
-    if (!isComponentsPage(figma.currentPage)) return figma.currentPage;
-    return getOrCreatePage(getPageArtifactPageName());
-  }
 
   function clamp(value, min, max) {
     return Math.min(max, Math.max(min, value));
@@ -1794,41 +2230,13 @@ void (async function importStorybookStory(payload) {
     return value === undefined || value === null ? fallback : value;
   }
 
-  function mapTextAlignHorizontal(textAlign) {
-    const normalized = String(textAlign || "left").toLowerCase();
-    if (normalized === "center") return "CENTER";
-    if (normalized === "right" || normalized === "end") return "RIGHT";
-    if (normalized === "justify") return "JUSTIFIED";
-    return "LEFT";
-  }
-
-  function applyTextOverflowBehavior(node, styles) {
-    if (!styles.textAutoResize) return;
-
-    if (styles.textAutoResize === "TRUNCATE" && "textTruncation" in node) {
-      try {
-        node.textTruncation = "ENDING";
-        return;
-      } catch (_error) {
-        // Fall back to textAutoResize for older Figma runtimes.
-      }
-    }
-
-    if ("textAutoResize" in node) {
-      try {
-        node.textAutoResize = styles.textAutoResize;
-      } catch (_error) {
-        // Some Figma runtimes may not allow text auto-resize changes.
-      }
-    }
-  }
-
   function cloneColor(color) {
+    const source = color || {};
     return {
-      r: clamp(Number(color.r) || 0, 0, 1),
-      g: clamp(Number(color.g) || 0, 0, 1),
-      b: clamp(Number(color.b) || 0, 0, 1),
-      a: clamp(Number(valueOr(color.a, 1)), 0, 1),
+      r: clamp(Number(source.r) || 0, 0, 1),
+      g: clamp(Number(source.g) || 0, 0, 1),
+      b: clamp(Number(source.b) || 0, 0, 1),
+      a: clamp(Number(valueOr(source.a, 1)), 0, 1),
     };
   }
 
@@ -1883,39 +2291,6 @@ void (async function importStorybookStory(payload) {
     return paint;
   }
 
-  function getLinearGradientTransform(angle) {
-    const normalized = ((Number(angle) % 360) + 360) % 360;
-    if (normalized === 270) return [[-1, 0, 1], [0, 1, 0]];
-    if (normalized === 180) return [[0, 1, 0], [-1, 0, 1]];
-    if (normalized === 0) return [[0, -1, 1], [1, 0, 0]];
-    return [[1, 0, 0], [0, 1, 0]];
-  }
-
-  function linearGradientPaint(gradient) {
-    return {
-      type: "GRADIENT_LINEAR",
-      gradientTransform: getLinearGradientTransform(valueOr(gradient && gradient.angle, 90)),
-      gradientStops: ((gradient && gradient.stops) || []).map((stop, index, stops) => {
-        const variable = registry.get(stop.token);
-        const colorStop = {
-          position:
-            typeof stop.position === "number"
-              ? clamp(stop.position, 0, 1)
-              : stops.length > 1
-                ? index / (stops.length - 1)
-                : 0,
-          color: cloneColor(colorFromCss(stop.color)),
-        };
-        if (variable && variable.id) {
-          colorStop.boundVariables = {
-            color: { type: "VARIABLE_ALIAS", id: variable.id },
-          };
-        }
-        return colorStop;
-      }),
-    };
-  }
-
   async function getCollection(layer) {
     const name = COLLECTION_NAMES[layer] || layer;
     const collections = await figma.variables.getLocalVariableCollectionsAsync();
@@ -1965,46 +2340,12 @@ void (async function importStorybookStory(payload) {
     }
   }
 
-  function getComponentVariantEntries(component) {
-    if (!component) return [];
-    const properties = component.variantProperties;
-    if (properties && typeof properties === "object") {
-      return Object.entries(properties)
-        .map(([name, value]) => [String(name).trim(), String(value).trim()])
-        .filter(([name, value]) => name && value);
-    }
-    return component.variant ? [["Variant", String(component.variant).trim()]] : [];
-  }
-
-  function getComponentVariantName(component) {
-    const entries = getComponentVariantEntries(component);
-    return entries.map(([name, value]) => name + "=" + value).join(", ");
-  }
-
   function getComponentDisplayName(component) {
     if (!component) return "";
-    const variantName = getComponentVariantName(component);
-    return variantName ? component.name + ", " + variantName : component.name;
-  }
-
-  function componentVariantPropertiesMatch(node, component) {
-    const expectedEntries = getComponentVariantEntries(component);
-    if (expectedEntries.length === 0) return true;
-
-    try {
-      const currentProperties = node.variantProperties;
-      if (currentProperties && typeof currentProperties === "object") {
-        return expectedEntries.every(
-          ([name, value]) => String(currentProperties[name] || "") === value,
-        );
-      }
-    } catch (_error) {
-      return false;
+    if (component.variant) {
+      return component.name + ", Variant=" + component.variant;
     }
-
-    const displayName = getComponentDisplayName(component);
-    const variantName = getComponentVariantName(component);
-    return node.name === displayName || node.name === variantName;
+    return component.name;
   }
 
   function findLocalComponent(component) {
@@ -2018,7 +2359,7 @@ void (async function importStorybookStory(payload) {
     const found = nodes.find((node) => {
       const nodeKey = getNodePluginData(node, PLUGIN_DATA_COMPONENT_KEY);
       if (nodeKey === component.key) {
-        return componentVariantPropertiesMatch(node, component);
+        return true;
       }
       if (nodeKey) return false;
 
@@ -2030,12 +2371,7 @@ void (async function importStorybookStory(payload) {
       const knownSource = nodeSource || parentSource;
       if (knownSource && knownSource !== sourceName) return false;
 
-      if (component.variant) {
-        return (
-          componentVariantPropertiesMatch(node, component) &&
-          (node.name === displayName || node.name === getComponentVariantName(component))
-        );
-      }
+      if (component.variant) return node.name === displayName;
       return node.name === displayName || node.name === component.name;
     });
 
@@ -2048,6 +2384,311 @@ void (async function importStorybookStory(payload) {
     setNodePluginData(node, PLUGIN_DATA_COMPONENT_KEY, component.key);
     setNodePluginData(node, "storybookComponentName", component.name);
     setNodePluginData(node, "storybookComponentSource", component.sourceName || component.key);
+  }
+
+  function getOrCreatePage(name) {
+    const normalizedName = String(name || "").trim() || "Components";
+    const existing = figma.root.children.find(
+      (page) => page.name.toLowerCase() === normalizedName.toLowerCase(),
+    );
+    if (existing) return existing;
+
+    const page = figma.createPage();
+    page.name = normalizedName;
+    return page;
+  }
+
+  function getComponentsPageName() {
+    return componentSystem.componentsPageName || "Components";
+  }
+
+  function isComponentsPage(page) {
+    return String((page && page.name) || "").toLowerCase() ===
+      String(getComponentsPageName()).toLowerCase();
+  }
+
+  function getPageArtifactPageName() {
+    const title = String(payload.storyTitle || payload.componentTitle || "").trim();
+    const normalizedTitle = title.startsWith("Pages/")
+      ? title.slice("Pages/".length)
+      : title;
+    return normalizedTitle.replace(/\\//g, " / ") || "Storybook Pages";
+  }
+
+  function getPageArtifactTargetPage() {
+    if (!isComponentsPage(figma.currentPage)) return figma.currentPage;
+    return getOrCreatePage(getPageArtifactPageName());
+  }
+
+  function getComponentDefinitionParentPage() {
+    return getOrCreatePage(getComponentsPageName());
+  }
+
+  function getNextComponentDefinitionY(page) {
+    if (componentDefinitionOffsetY === 0 && page.children.length > 0) {
+      componentDefinitionOffsetY = page.children.reduce((maxBottom, child) => {
+        const bottom = (child.y || 0) + (child.height || 0);
+        return Math.max(maxBottom, bottom);
+      }, 0);
+      if (componentDefinitionOffsetY > 0) componentDefinitionOffsetY += 24;
+    }
+
+    return componentDefinitionOffsetY;
+  }
+
+  function parkComponentDefinition(node) {
+    const parentPage = getComponentDefinitionParentPage();
+    const nextY = getNextComponentDefinitionY(parentPage);
+    if (node.parent !== parentPage) parentPage.appendChild(node);
+    const rootWidth = (payload.root && payload.root.styles && payload.root.styles.width) || 0;
+    node.x = payload.artifactKind === "page" ? 0 : rootWidth + 80;
+    node.y = nextY;
+    componentDefinitionOffsetY += (node.height || 0) + 24;
+  }
+
+  function moveExistingComponentDefinitionToTargetPage(componentNode) {
+    if (payload.artifactKind !== "page" || !componentNode) return;
+
+    const parentPage = getComponentDefinitionParentPage();
+    const definitionNode = getComponentSetParent(componentNode) || componentNode;
+    if (definitionNode.parent === parentPage) return;
+
+    const nextY = getNextComponentDefinitionY(parentPage);
+    parentPage.appendChild(definitionNode);
+    definitionNode.x = 0;
+    definitionNode.y = nextY;
+    componentDefinitionOffsetY += (definitionNode.height || 0) + 24;
+  }
+
+  function createSvgSceneNode(spec) {
+    const svgNode = figma.createNodeFromSvg(spec.svgText || "");
+    svgNode.name = spec.name || "svg";
+    safeResize(svgNode, spec.styles.width, spec.styles.height);
+    svgNode.x = spec.styles.x || 0;
+    svgNode.y = spec.styles.y || 0;
+    return svgNode;
+  }
+
+  function getLinearGradientTransform(angle) {
+    const normalized = ((Number(angle) % 360) + 360) % 360;
+    if (normalized === 270) return [[-1, 0, 1], [0, 1, 0]];
+    if (normalized === 180) return [[0, 1, 0], [-1, 0, 1]];
+    if (normalized === 0) return [[0, -1, 1], [1, 0, 0]];
+    return [[1, 0, 0], [0, 1, 0]];
+  }
+
+  function linearGradientPaint(gradient) {
+    return {
+      type: "GRADIENT_LINEAR",
+      gradientTransform: getLinearGradientTransform(valueOr(gradient && gradient.angle, 90)),
+      gradientStops: ((gradient && gradient.stops) || []).map((stop, index, stops) => {
+        const variable = registry.get(stop.token);
+        const colorStop = {
+          position:
+            typeof stop.position === "number"
+              ? clamp(stop.position, 0, 1)
+              : stops.length > 1
+                ? index / (stops.length - 1)
+                : 0,
+          color: cloneColor(colorFromCss(stop.color)),
+        };
+        if (variable && variable.id) {
+          colorStop.boundVariables = {
+            color: { type: "VARIABLE_ALIAS", id: variable.id },
+          };
+        }
+        return colorStop;
+      }),
+    };
+  }
+
+  function canCreateComponentDefinition(spec) {
+    return spec.kind === "frame" || ((spec.kind === "image" || spec.kind === "svg") && Boolean(spec.svgText));
+  }
+
+  function shouldCreateComponentInstance(spec, context) {
+    const importContext = context || {};
+    return (
+      importContext.reuseComponents !== false &&
+      importContext.isRoot !== true &&
+      spec.component &&
+      spec.component.key &&
+      canCreateComponentDefinition(spec)
+    );
+  }
+
+  function collectComponentDefinitionSpecs(spec, componentTitle, output, seen) {
+    const specs = output || [];
+    const seenKeys = seen || new Set();
+    if (!spec) return specs;
+
+    const component = spec.component;
+    if (
+      component &&
+      component.key &&
+      component.name === componentTitle &&
+      canCreateComponentDefinition(spec) &&
+      !seenKeys.has(component.key)
+    ) {
+      seenKeys.add(component.key);
+      specs.push(spec);
+      return specs;
+    }
+
+    for (const childSpec of spec.children || []) {
+      collectComponentDefinitionSpecs(childSpec, componentTitle, specs, seenKeys);
+    }
+    return specs;
+  }
+
+  function collectPageComponentDefinitionSpecs(spec, output, seen, isRoot) {
+    const specs = output || [];
+    const seenKeys = seen || new Set();
+    const isRootNode = isRoot !== false;
+    if (!spec) return specs;
+
+    const component = spec.component;
+    if (
+      !isRootNode &&
+      component &&
+      component.key &&
+      canCreateComponentDefinition(spec) &&
+      !seenKeys.has(component.key)
+    ) {
+      seenKeys.add(component.key);
+      specs.push(spec);
+    }
+
+    for (const childSpec of spec.children || []) {
+      collectPageComponentDefinitionSpecs(childSpec, specs, seenKeys, false);
+    }
+    return specs;
+  }
+
+  function getComponentSetParent(node) {
+    return node && node.parent && node.parent.type === "COMPONENT_SET" ? node.parent : undefined;
+  }
+
+  async function importComponentVariantSet(specs) {
+    const existingComponents = specs
+      .map((spec) => ({ spec, component: findLocalComponent(spec.component) }))
+      .filter((entry) => Boolean(entry.component));
+    const existingSet = existingComponents.map((entry) => getComponentSetParent(entry.component)).find(Boolean);
+    if (existingSet) {
+      for (const { spec, component } of existingComponents) {
+        await updateExistingComponentDefinition(component, spec);
+      }
+      return existingSet;
+    }
+
+    const componentNodes = [];
+    for (const spec of specs) {
+      componentNodes.push(
+        await ensureComponentDefinition(spec, spec.component, {
+          reuseComponents: true,
+        }),
+      );
+    }
+
+    if (componentNodes.length > 1 && typeof figma.combineAsVariants === "function") {
+      const parentPage = getComponentDefinitionParentPage();
+      const componentSet = figma.combineAsVariants(componentNodes, parentPage);
+      const nextY = payload.artifactKind === "page" ? getNextComponentDefinitionY(parentPage) : 0;
+      componentSet.name = payload.componentTitle;
+      componentSet.x = 0;
+      componentSet.y = nextY;
+      if (payload.artifactKind === "page") {
+        componentDefinitionOffsetY = nextY + (componentSet.height || 0) + 24;
+      }
+      setNodePluginData(componentSet, "storybookComponentName", payload.componentTitle);
+      setNodePluginData(
+        componentSet,
+        "storybookComponentSource",
+        (specs[0] && specs[0].component && specs[0].component.sourceName) || payload.componentTitle,
+      );
+      return componentSet;
+    }
+
+    return componentNodes[0];
+  }
+
+  async function applyInstanceOverrides(node, spec) {
+    if (!node || !spec) return;
+
+    if (spec.kind === "text" && node.type === "TEXT") {
+      await loadTextNodeFonts(node);
+      const nextText = spec.text || "";
+      if (node.characters !== nextText) {
+        node.characters = nextText;
+      }
+
+      if (spec.styles && spec.styles.textAutoResize && "textAutoResize" in node) {
+        try {
+          node.textAutoResize = spec.styles.textAutoResize;
+        } catch (_error) {
+          // Some instance text overrides cannot change auto-resize mode.
+        }
+      } else {
+        safeResize(node, spec.styles && spec.styles.width, spec.styles && spec.styles.height);
+      }
+      applyTextTruncation(node, spec.styles || {});
+      return;
+    }
+
+    if (!("children" in node)) return;
+
+    const nodeChildren = Array.from(node.children || []);
+    const specChildren = spec.children || [];
+    for (let index = 0; index < specChildren.length; index += 1) {
+      await applyInstanceOverrides(nodeChildren[index], specChildren[index]);
+    }
+  }
+
+  async function updateExistingComponentDefinition(node, spec) {
+    if (!node || !spec) return;
+
+    if (spec.kind === "text" && node.type === "TEXT") {
+      await applyInstanceOverrides(node, spec);
+      const styles = spec.styles || {};
+      const bindings = spec.bindings || {};
+      if (styles.color) {
+        node.fills = [solidPaint(styles.color, registry.get(bindings.textColor))];
+      }
+      safeBind(node, "fontSize", bindings.fontSize);
+      safeBind(node, "fontWeight", bindings.fontWeight);
+      safeBind(node, "lineHeight", bindings.lineHeight);
+      return;
+    }
+
+    if ("fills" in node && spec.kind !== "text") {
+      const styles = spec.styles || {};
+      const bindings = spec.bindings || {};
+      safeResize(node, styles.width, styles.height);
+      if ("clipsContent" in node) node.clipsContent = styles.overflow === "hidden";
+      if ("opacity" in node) node.opacity = valueOr(styles.opacity, 1);
+      setFrameFills(node, styles, bindings);
+      setStrokes(node, styles, bindings);
+      applyRadius(node, styles, bindings);
+      applyAutoLayout(node, spec, styles, bindings);
+      safeBind(node, "width", bindings.width);
+      safeBind(node, "height", bindings.height);
+      safeBind(node, "opacity", bindings.opacity);
+      if (!styles.borderSides) safeBind(node, "strokeWeight", bindings.borderWidth);
+    }
+
+    if (!("children" in node)) return;
+
+    const nodeChildren = Array.from(node.children || []);
+    const specChildren = spec.children || [];
+    for (let index = 0; index < specChildren.length; index += 1) {
+      const childSpec = specChildren[index];
+      const childNode = nodeChildren[index];
+      await updateExistingComponentDefinition(childNode, childSpec);
+      if (childNode) {
+        applyAutoLayoutChildSizing(node, childNode, childSpec);
+        positionChildNode(node, childNode, childSpec);
+      }
+    }
   }
 
   async function findExistingVariable(collection, spec) {
@@ -2165,10 +2806,47 @@ void (async function importStorybookStory(payload) {
     }
   }
 
+  function isBorderFallbackNode(spec) {
+    return String((spec && spec.name) || "").includes("__border-");
+  }
+
+  function isAbsoluteLayoutNodeSpec(spec) {
+    return (spec && spec.layoutStrategy) === "absolute" || isBorderFallbackNode(spec);
+  }
+
+  function applyNodeConstraints(child, constraints) {
+    if (!constraints || !("constraints" in child)) return;
+
+    try {
+      child.constraints = constraints;
+    } catch (_error) {
+      // Some Figma nodes do not support constraints.
+    }
+  }
+
+  function getAbsoluteChildX(parent, child, childSpec, styles) {
+    const name = String((childSpec && childSpec.name) || "");
+    if (!name.includes("__border-right")) return styles.x || 0;
+
+    const parentWidth = typeof parent.width === "number" ? parent.width : 0;
+    const childWidth = styles.width || child.width || 1;
+    return Math.max(0, parentWidth - childWidth);
+  }
+
+  function getAbsoluteChildY(parent, child, childSpec, styles) {
+    const name = String((childSpec && childSpec.name) || "");
+    if (!name.includes("__border-bottom")) return styles.y || 0;
+
+    const parentHeight = typeof parent.height === "number" ? parent.height : 0;
+    const childHeight = styles.height || child.height || 1;
+    return Math.max(0, parentHeight - childHeight);
+  }
+
   function positionChildNode(parent, child, childSpec) {
     const styles = childSpec.styles || {};
+    applyNodeConstraints(child, styles.constraints);
 
-    if (childSpec.layoutStrategy === "absolute") {
+    if (isAbsoluteLayoutNodeSpec(childSpec)) {
       if ("layoutPositioning" in child) {
         try {
           child.layoutPositioning = "ABSOLUTE";
@@ -2177,9 +2855,17 @@ void (async function importStorybookStory(payload) {
         }
       }
 
-      child.x = styles.x || 0;
-      child.y = styles.y || 0;
+      child.x = getAbsoluteChildX(parent, child, childSpec, styles);
+      child.y = getAbsoluteChildY(parent, child, childSpec, styles);
       return;
+    }
+
+    if ("layoutPositioning" in child) {
+      try {
+        child.layoutPositioning = "AUTO";
+      } catch (_error) {
+        // Older Figma nodes may not allow layout positioning changes.
+      }
     }
 
     if (parent.layoutMode === "NONE") {
@@ -2201,6 +2887,26 @@ void (async function importStorybookStory(payload) {
 
   function setStrokes(node, styles, bindings) {
     const colorVariable = registry.get(bindings.borderColor);
+
+    if (styles.borderSides) {
+      const firstSide = ["top", "right", "bottom", "left"]
+        .map((side) => styles.borderSides[side])
+        .find(Boolean);
+      if (!firstSide) return;
+
+      node.strokes = [solidPaint(firstSide.color, colorVariable)];
+      try {
+        node.strokeAlign = "INSIDE";
+        node.strokeTopWeight = valueOr(styles.borderSides.top && styles.borderSides.top.width, 0);
+        node.strokeRightWeight = valueOr(styles.borderSides.right && styles.borderSides.right.width, 0);
+        node.strokeBottomWeight = valueOr(styles.borderSides.bottom && styles.borderSides.bottom.width, 0);
+        node.strokeLeftWeight = valueOr(styles.borderSides.left && styles.borderSides.left.width, 0);
+      } catch (_error) {
+        // Per-side stroke weights are unsupported on some node types.
+      }
+      return;
+    }
+
     const widthVariable = registry.get(bindings.borderWidth);
     if (!styles.borderWidth && !widthVariable) return;
     if (!styles.borderColor && !colorVariable) return;
@@ -2212,22 +2918,6 @@ void (async function importStorybookStory(payload) {
   function applyRadius(node, styles, bindings) {
     if ("cornerRadius" in node && styles.radius !== undefined) {
       node.cornerRadius = styles.radius;
-    } else {
-      const cornerRadiusEntries = [
-        ["topLeftRadius", styles.topLeftRadius],
-        ["topRightRadius", styles.topRightRadius],
-        ["bottomRightRadius", styles.bottomRightRadius],
-        ["bottomLeftRadius", styles.bottomLeftRadius],
-      ];
-
-      for (const [field, value] of cornerRadiusEntries) {
-        if (value === undefined || !(field in node)) continue;
-        try {
-          node[field] = value;
-        } catch (_error) {
-          // Some imported nodes may not support per-corner radius.
-        }
-      }
     }
 
     if (bindings.cornerRadius) {
@@ -2235,38 +2925,6 @@ void (async function importStorybookStory(payload) {
         safeBind(node, field, bindings.cornerRadius);
       }
     }
-  }
-
-  function canCreateComponentDefinition(spec) {
-    return spec.kind === "frame" || ((spec.kind === "image" || spec.kind === "svg") && Boolean(spec.svgText));
-  }
-
-  function collectComponentDefinitionSpecs(spec, componentTitle, output, seen) {
-    const specs = output || [];
-    const seenKeys = seen || new Set();
-    if (!spec) return specs;
-
-    const component = spec.component;
-    if (
-      component &&
-      component.key &&
-      component.name === componentTitle &&
-      canCreateComponentDefinition(spec) &&
-      !seenKeys.has(component.key)
-    ) {
-      seenKeys.add(component.key);
-      specs.push(spec);
-      return specs;
-    }
-
-    for (const childSpec of spec.children || []) {
-      collectComponentDefinitionSpecs(childSpec, componentTitle, specs, seenKeys);
-    }
-    return specs;
-  }
-
-  function getComponentSetParent(node) {
-    return node && node.parent && node.parent.type === "COMPONENT_SET" ? node.parent : undefined;
   }
 
   function mapAxisAlignment(value) {
@@ -2282,34 +2940,12 @@ void (async function importStorybookStory(payload) {
     return "MIN";
   }
 
-  function mapLayoutAlign(value) {
+  function mapTextAlignHorizontal(value) {
     const normalized = String(value || "").toLowerCase();
-    if (normalized === "stretch") return "STRETCH";
     if (normalized === "center") return "CENTER";
-    if (normalized === "flex-end" || normalized === "end" || normalized === "right") {
-      return "MAX";
-    }
-    return "MIN";
-  }
-
-  function applyChildLayoutHints(node, styles) {
-    if (!node || !styles) return;
-
-    if (styles.layoutGrow !== undefined && "layoutGrow" in node) {
-      try {
-        node.layoutGrow = styles.layoutGrow;
-      } catch (_error) {
-        // Some nodes only accept layout grow after being appended to auto layout.
-      }
-    }
-
-    if (styles.layoutAlign && "layoutAlign" in node) {
-      try {
-        node.layoutAlign = mapLayoutAlign(styles.layoutAlign);
-      } catch (_error) {
-        // Some nodes do not expose auto-layout child alignment.
-      }
-    }
+    if (normalized === "right" || normalized === "end") return "RIGHT";
+    if (normalized === "justify") return "JUSTIFIED";
+    return "LEFT";
   }
 
   function applyAutoLayout(node, spec, styles, bindings) {
@@ -2353,6 +2989,28 @@ void (async function importStorybookStory(payload) {
     safeBind(node, "paddingRight", bindings.paddingRight);
     safeBind(node, "paddingTop", bindings.paddingTop);
     safeBind(node, "paddingBottom", bindings.paddingBottom);
+  }
+
+  function applyAutoLayoutChildSizing(parent, child, spec) {
+    if (parent.layoutMode === "NONE") return;
+
+    const styles = spec.styles || {};
+    const layoutGrow = Number(styles.layoutGrow || 0);
+    if (layoutGrow > 0 && "layoutGrow" in child) {
+      try {
+        child.layoutGrow = 1;
+      } catch (_error) {
+        // Some Figma nodes do not support fill-container sizing.
+      }
+    }
+
+    if (styles.layoutAlign !== "STRETCH") return;
+
+    try {
+      child.layoutAlign = "STRETCH";
+    } catch (_error) {
+      // Some Figma nodes do not support auto-layout child sizing.
+    }
   }
 
   const loadedFontKeys = new Set();
@@ -2505,6 +3163,26 @@ void (async function importStorybookStory(payload) {
     }
   }
 
+  function applyTextTruncation(node, styles) {
+    if (!node || !styles) return;
+
+    if (styles.maxLines !== undefined && "maxLines" in node) {
+      try {
+        node.maxLines = styles.maxLines;
+      } catch (_error) {
+        // Some Figma runtimes may not support max line limits.
+      }
+    }
+
+    if (styles.textTruncation && "textTruncation" in node) {
+      try {
+        node.textTruncation = styles.textTruncation;
+      } catch (_error) {
+        // Some Figma runtimes may not support text truncation.
+      }
+    }
+  }
+
   async function createTextNode(spec) {
     const node = figma.createText();
     const styles = spec.styles;
@@ -2513,11 +3191,19 @@ void (async function importStorybookStory(payload) {
     node.fontName = await loadTextFont(styles);
     node.characters = spec.text || "";
     node.fontSize = styles.fontSize || 14;
+    if ("textAutoResize" in node) {
+      try {
+        node.textAutoResize = "NONE";
+      } catch (_error) {
+        // Keep default text sizing if fixed text resize is not supported.
+      }
+    }
     if (styles.lineHeight && styles.lineHeight !== "normal") {
       node.lineHeight = { unit: "PIXELS", value: styles.lineHeight };
     }
     node.fills = [solidPaint(styles.color, registry.get(bindings.textColor))];
     safeResize(node, styles.width, styles.height);
+    applyTextTruncation(node, styles);
     if (styles.textAlign && "textAlignHorizontal" in node) {
       try {
         node.textAlignHorizontal = mapTextAlignHorizontal(styles.textAlign);
@@ -2525,7 +3211,13 @@ void (async function importStorybookStory(payload) {
         // Some imported text nodes may not allow text alignment changes.
       }
     }
-    applyTextOverflowBehavior(node, styles);
+    if (styles.textAutoResize && "textAutoResize" in node) {
+      try {
+        node.textAutoResize = styles.textAutoResize;
+      } catch (_error) {
+        // Some imported text nodes may not allow auto-resize changes.
+      }
+    }
     if (
       !bindings.fontFamily ||
       (await loadBoundFontFamily(bindings.fontFamily, styles.fontWeight || 400))
@@ -2563,79 +3255,8 @@ void (async function importStorybookStory(payload) {
     return wrapper;
   }
 
-  async function updateExistingComponentDefinition(node, spec) {
-    if (!node || !spec) return;
-
-    if (spec.kind === "text" && node.type === "TEXT") {
-      const styles = spec.styles || {};
-      const bindings = spec.bindings || {};
-      await loadTextNodeFonts(node);
-      const nextText = spec.text || "";
-      if (node.characters !== nextText) {
-        node.characters = nextText;
-      }
-      node.fontSize = styles.fontSize || 14;
-      if (styles.lineHeight && styles.lineHeight !== "normal") {
-        node.lineHeight = { unit: "PIXELS", value: styles.lineHeight };
-      }
-      if (styles.color) {
-        node.fills = [solidPaint(styles.color, registry.get(bindings.textColor))];
-      }
-      safeResize(node, styles.width, styles.height);
-      if (styles.textAlign && "textAlignHorizontal" in node) {
-        try {
-          node.textAlignHorizontal = mapTextAlignHorizontal(styles.textAlign);
-        } catch (_error) {
-          // Some imported text nodes may not allow text alignment changes.
-        }
-      }
-      applyTextOverflowBehavior(node, styles);
-      if (
-        !bindings.fontFamily ||
-        (await loadBoundFontFamily(bindings.fontFamily, styles.fontWeight || 400))
-      ) {
-        safeBind(node, "fontFamily", bindings.fontFamily);
-      }
-      safeBind(node, "fontSize", bindings.fontSize);
-      safeBind(node, "fontWeight", bindings.fontWeight);
-      safeBind(node, "lineHeight", bindings.lineHeight);
-      await loadTextNodeFonts(node);
-      return;
-    }
-
-    if ("fills" in node && spec.kind !== "text") {
-      const styles = spec.styles || {};
-      const bindings = spec.bindings || {};
-      safeResize(node, styles.width, styles.height);
-      if ("clipsContent" in node) node.clipsContent = styles.overflow === "hidden";
-      if ("opacity" in node) node.opacity = valueOr(styles.opacity, 1);
-      setFrameFills(node, styles, bindings);
-      setStrokes(node, styles, bindings);
-      applyRadius(node, styles, bindings);
-      applyAutoLayout(node, spec, styles, bindings);
-      safeBind(node, "width", bindings.width);
-      safeBind(node, "height", bindings.height);
-      safeBind(node, "opacity", bindings.opacity);
-      safeBind(node, "strokeWeight", bindings.borderWidth);
-    }
-
-    if (!("children" in node)) return;
-
-    const nodeChildren = Array.from(node.children || []);
-    const specChildren = spec.children || [];
-    for (let index = 0; index < specChildren.length; index += 1) {
-      const childSpec = specChildren[index];
-      const childNode = nodeChildren[index];
-      await updateExistingComponentDefinition(childNode, childSpec);
-      if (childNode) {
-        applyChildLayoutHints(childNode, childSpec.styles || {});
-        positionChildNode(node, childNode, childSpec);
-      }
-    }
-  }
-
-  async function createFrameLikeNode(spec, createContainer) {
-    const node = createContainer();
+  async function createFrameNode(spec, context, asComponent) {
+    const node = asComponent ? figma.createComponent() : figma.createFrame();
     const styles = spec.styles;
     const bindings = spec.bindings || {};
     node.name = spec.name;
@@ -2649,13 +3270,18 @@ void (async function importStorybookStory(payload) {
     safeBind(node, "width", bindings.width);
     safeBind(node, "height", bindings.height);
     safeBind(node, "opacity", bindings.opacity);
-    safeBind(node, "strokeWeight", bindings.borderWidth);
+    if (!styles.borderSides) safeBind(node, "strokeWeight", bindings.borderWidth);
 
+    const childContext = {
+      ...(context || {}),
+      isRoot: false,
+      reuseComponents: !context || context.reuseComponents !== false,
+    };
     for (const childSpec of spec.children || []) {
-      const child = await createNode(childSpec);
+      const child = await createNode(childSpec, childContext);
       await loadNodeFonts(child);
       node.appendChild(child);
-      applyChildLayoutHints(child, childSpec.styles || {});
+      applyAutoLayoutChildSizing(node, child, childSpec);
       positionChildNode(node, child, childSpec);
     }
 
@@ -2666,126 +3292,62 @@ void (async function importStorybookStory(payload) {
     return node;
   }
 
-  async function createFrameNode(spec) {
-    return createFrameLikeNode(spec, () => figma.createFrame());
-  }
-
-  async function createComponentNode(spec) {
-    return createFrameLikeNode(spec, () => figma.createComponent());
-  }
-
-  async function ensureComponentDefinition(spec, component) {
+  async function ensureComponentDefinition(spec, component, context) {
     const existing = findLocalComponent(component);
     if (existing) {
-      await updateExistingComponentDefinition(existing, spec);
-      tagComponentNode(existing, component);
+      if (!context || context.updateExistingComponent !== false) {
+        await updateExistingComponentDefinition(existing, spec);
+        tagComponentNode(existing, component);
+        moveExistingComponentDefinitionToTargetPage(existing);
+      }
       return existing;
     }
 
     const componentNode =
       (spec.kind === "image" || spec.kind === "svg") && spec.svgText
-        ? figma.createComponentFromNode(figma.createNodeFromSvg(spec.svgText || ""))
-        : await createComponentNode(spec);
+        ? figma.createComponentFromNode(createSvgSceneNode(spec))
+        : await createFrameNode(
+            spec,
+            { ...(context || {}), reuseComponents: true },
+            true,
+          );
     componentNode.name = getComponentDisplayName(component);
     tagComponentNode(componentNode, component);
-    const parentPage = getComponentDefinitionParentPage();
-    if (componentNode.parent !== parentPage) parentPage.appendChild(componentNode);
+    parkComponentDefinition(componentNode);
     componentRegistry.set(component.key, componentNode);
     return componentNode;
   }
 
-  async function importComponentVariantSet(specs) {
-    const existingComponents = specs
-      .map((spec) => ({ spec, component: findLocalComponent(spec.component) }))
-      .filter((entry) => Boolean(entry.component));
-    const existingSet = existingComponents
-      .map((entry) => getComponentSetParent(entry.component))
-      .find(Boolean);
-    if (existingSet) {
-      for (const spec of specs) {
-        const existingComponent = findLocalComponent(spec.component);
-        if (existingComponent) {
-          await updateExistingComponentDefinition(existingComponent, spec);
-          tagComponentNode(existingComponent, spec.component);
-          continue;
-        }
-
-        const createdComponent = await ensureComponentDefinition(spec, spec.component);
-        if (createdComponent && createdComponent.parent !== existingSet) {
-          try {
-            existingSet.appendChild(createdComponent);
-          } catch (_error) {
-            // Keep the created component on the page if this Figma runtime cannot append variants.
-          }
-        }
-      }
-      setNodePluginData(existingSet, "storybookComponentName", payload.componentTitle);
-      setNodePluginData(
-        existingSet,
-        "storybookComponentSource",
-        (specs[0] && specs[0].component && specs[0].component.sourceName) || payload.componentTitle,
-      );
-      return existingSet;
-    }
-
-    const componentNodes = [];
-    for (const spec of specs) {
-      componentNodes.push(await ensureComponentDefinition(spec, spec.component));
-    }
-
-    if (componentNodes.length > 1 && typeof figma.combineAsVariants === "function") {
-      const componentSet = figma.combineAsVariants(
-        componentNodes,
-        getComponentDefinitionParentPage(),
-      );
-      componentSet.name = payload.componentTitle;
-      componentSet.x = 0;
-      componentSet.y = 0;
-      setNodePluginData(componentSet, "storybookComponentName", payload.componentTitle);
-      setNodePluginData(
-        componentSet,
-        "storybookComponentSource",
-        (specs[0] && specs[0].component && specs[0].component.sourceName) || payload.componentTitle,
-      );
-      return componentSet;
-    }
-
-    return componentNodes[0];
-  }
-
-  async function createComponentInstanceNode(spec) {
-    const component = spec.component;
-    if (!component || !component.key || !canCreateComponentDefinition(spec)) return undefined;
-
-    const existing = findLocalComponent(component);
-    const componentNode = existing || (await ensureComponentDefinition(spec, component));
-    if (!componentNode || typeof componentNode.createInstance !== "function") {
-      return undefined;
-    }
-
-    const instance = componentNode.createInstance();
-    tagComponentNode(instance, component);
-    await updateExistingComponentDefinition(instance, spec);
+  async function createComponentInstance(spec, context) {
+    const component = await ensureComponentDefinition(
+      spec,
+      spec.component,
+      { ...(context || {}), updateExistingComponent: false },
+    );
+    const instance = component.createInstance();
+    instance.name = spec.component.name;
+    safeResize(instance, spec.styles.width, spec.styles.height);
+    instance.x = spec.styles.x || 0;
+    instance.y = spec.styles.y || 0;
+    await applyInstanceOverrides(instance, spec);
     return instance;
   }
 
-  async function createNode(spec) {
-    const shouldReuseComponents = payload.artifactKind === "component";
-    const componentInstance =
-      shouldReuseComponents && spec.component && spec.component.name !== payload.componentTitle
-        ? await createComponentInstanceNode(spec)
-        : undefined;
+  async function createNode(spec, context) {
+    const importContext = context || {};
+    if (shouldCreateComponentInstance(spec, importContext)) {
+      return createComponentInstance(spec, importContext);
+    }
+
     const node =
-      componentInstance ||
-      (spec.kind === "text"
+      spec.kind === "text"
         ? await createTextNode(spec)
         : spec.kind === "image" || spec.kind === "svg"
           ? await createImageNode(spec)
-          : await createFrameNode(spec));
+          : await createFrameNode(spec, importContext, false);
 
     node.x = spec.styles.x || 0;
     node.y = spec.styles.y || 0;
-    applyChildLayoutHints(node, spec.styles || {});
     return node;
   }
 
@@ -2796,17 +3358,35 @@ void (async function importStorybookStory(payload) {
     shouldImportAsComponent && !rootComponent
       ? collectComponentDefinitionSpecs(payload.root, payload.componentTitle)
       : [];
+  const pageComponentSpecs =
+    shouldImportAsComponent
+      ? collectPageComponentDefinitionSpecs(payload.root)
+      : [];
+  for (const spec of pageComponentSpecs) {
+    await ensureComponentDefinition(spec, spec.component, {
+      reuseComponents: true,
+    });
+  }
+
   const rootNode =
     shouldImportAsComponent && rootComponent && canCreateComponentDefinition(payload.root)
-      ? await ensureComponentDefinition(payload.root, rootComponent)
+      ? await ensureComponentDefinition(
+          payload.root,
+          rootComponent,
+          { reuseComponents: true },
+        )
       : componentVariantSpecs.length > 1
         ? await importComponentVariantSet(componentVariantSpecs)
-        : await createNode(payload.root);
+      : await createNode(payload.root, {
+          isRoot: true,
+          reuseComponents: shouldImportAsComponent,
+        });
+
   rootNode.name = shouldImportAsComponent && rootComponent
     ? getComponentDisplayName(rootComponent)
     : componentVariantSpecs.length > 1
       ? payload.componentTitle
-      : payload.componentTitle + " / " + payload.storyName;
+    : payload.componentTitle + " / " + payload.storyName;
   rootNode.x = 0;
   rootNode.y = 0;
   await loadNodeFonts(rootNode);
@@ -2820,7 +3400,7 @@ void (async function importStorybookStory(payload) {
   figma.viewport.scrollAndZoomIntoView([rootNode]);
 
   figma.notify(
-    "Imported " + payload.componentTitle + " with " +
+    "Imported " + (payload.artifactKind || "story") + " " + payload.componentTitle + " with " +
       (payload.tokens || []).length + " variables checked.",
   );
 })(STORYBOOK_FIGMA_EXPORT).catch((error) => {
@@ -2904,35 +3484,40 @@ function getTextSizeLabel(text) {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
-function exporterEscapeXml(value) {
+function escapeXml(value) {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
-function exporterEscapeSvgAttribute(value) {
-  return exporterEscapeXml(value).replace(/"/g, "&quot;");
+function escapeSvgAttribute2(value) {
+  return escapeXml(value).replace(/"/g, "&quot;");
 }
-function exporterFormatSvgNumber(value) {
+function formatSvgNumber(value) {
   const numberValue = Number.isFinite(value) ? Number(value) : 0;
   return Number.isInteger(numberValue) ? String(numberValue) : numberValue.toFixed(2);
 }
-function exporterSvgDataUrl(svgText) {
+function svgDataUrl(svgText) {
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgText)}`;
 }
-function exporterGetSvgPaint(value, fallback = "none") {
-  return value ? exporterEscapeSvgAttribute(value) : fallback;
+function getSvgPaint(value, fallback = "none") {
+  return value ? escapeSvgAttribute2(value) : fallback;
 }
 function renderSvgImageNode(node, isRoot) {
   const { height, width, x, y } = node.styles;
-  const transform = isRoot ? "" : ` transform="translate(${exporterFormatSvgNumber(x)} ${exporterFormatSvgNumber(y)})"`;
-  if (!node.svgText) return "";
-  return `<g${transform}><image href="${exporterEscapeSvgAttribute(exporterSvgDataUrl(node.svgText))}" width="${exporterFormatSvgNumber(width)}" height="${exporterFormatSvgNumber(height)}" preserveAspectRatio="none"/></g>`;
+  const transform = isRoot ? "" : ` transform="translate(${formatSvgNumber(x)} ${formatSvgNumber(y)})"`;
+  if (!node.svgText) {
+    return "";
+  }
+  return `<g${transform}><image href="${escapeSvgAttribute2(svgDataUrl(node.svgText))}" width="${formatSvgNumber(width)}" height="${formatSvgNumber(height)}" preserveAspectRatio="none"/></g>`;
 }
 function renderSvgTextNode(node, isRoot) {
-  const { color, fontFamily, fontSize, fontWeight, textAlign, width, x, y } = node.styles;
-  const transform = isRoot ? "" : ` transform="translate(${exporterFormatSvgNumber(x)} ${exporterFormatSvgNumber(y)})"`;
+  const { color, fontFamily, fontSize, fontWeight, height, textAlign, textAlignVertical, width, x, y } = node.styles;
+  const transform = isRoot ? "" : ` transform="translate(${formatSvgNumber(x)} ${formatSvgNumber(y)})"`;
   const resolvedFontSize = fontSize ?? 12;
-  const textAnchor = textAlign === "center" ? "middle" : textAlign === "right" || textAlign === "end" ? "end" : "start";
+  const textAnchor = textAlign === "center" ? "middle" : textAlign === "right" ? "end" : "start";
   const textX = textAnchor === "middle" ? width / 2 : textAnchor === "end" ? width : 0;
-  return `<text${transform} x="${exporterFormatSvgNumber(textX)}" y="${exporterFormatSvgNumber(resolvedFontSize)}" fill="${exporterGetSvgPaint(color, "#000000")}" font-family="${exporterEscapeSvgAttribute(fontFamily ?? "sans-serif")}" font-size="${exporterFormatSvgNumber(resolvedFontSize)}" font-weight="${exporterEscapeSvgAttribute(String(fontWeight ?? 400))}" text-anchor="${textAnchor}">${exporterEscapeXml(node.text ?? "")}</text>`;
+  const isCentered = textAlignVertical === "CENTER";
+  const textY = isCentered ? height / 2 : resolvedFontSize;
+  const baseline = isCentered ? "middle" : "alphabetic";
+  return `<text${transform} x="${formatSvgNumber(textX)}" y="${formatSvgNumber(textY)}" fill="${getSvgPaint(color, "#000000")}" font-family="${escapeSvgAttribute2(fontFamily ?? "sans-serif")}" font-size="${formatSvgNumber(resolvedFontSize)}" font-weight="${escapeSvgAttribute2(String(fontWeight ?? 400))}" text-anchor="${textAnchor}" dominant-baseline="${baseline}">${escapeXml(node.text ?? "")}</text>`;
 }
 function renderSvgFrameNode(node, isRoot) {
   const {
@@ -2946,10 +3531,10 @@ function renderSvgFrameNode(node, isRoot) {
     x,
     y
   } = node.styles;
-  const transform = isRoot ? "" : ` transform="translate(${exporterFormatSvgNumber(x)} ${exporterFormatSvgNumber(y)})"`;
-  const groupOpacity = typeof opacity === "number" && opacity >= 0 && opacity < 1 ? ` opacity="${exporterFormatSvgNumber(opacity)}"` : "";
+  const transform = isRoot ? "" : ` transform="translate(${formatSvgNumber(x)} ${formatSvgNumber(y)})"`;
+  const groupOpacity = typeof opacity === "number" && opacity >= 0 && opacity < 1 ? ` opacity="${formatSvgNumber(opacity)}"` : "";
   const hasRect = Boolean(backgroundColor || borderColor && borderWidth);
-  const rect = hasRect ? `<rect width="${exporterFormatSvgNumber(width)}" height="${exporterFormatSvgNumber(height)}" rx="${exporterFormatSvgNumber(radius)}" fill="${exporterGetSvgPaint(backgroundColor)}"${borderColor && borderWidth ? ` stroke="${exporterGetSvgPaint(borderColor)}" stroke-width="${exporterFormatSvgNumber(borderWidth)}"` : ""}/>` : "";
+  const rect = hasRect ? `<rect width="${formatSvgNumber(width)}" height="${formatSvgNumber(height)}" rx="${formatSvgNumber(radius)}" fill="${getSvgPaint(backgroundColor)}"${borderColor && borderWidth ? ` stroke="${getSvgPaint(borderColor)}" stroke-width="${formatSvgNumber(borderWidth)}"` : ""}/>` : "";
   const children = node.children.map((child) => renderSvgNode(child)).join("");
   return `<g${transform}${groupOpacity}>${rect}${children}</g>`;
 }
@@ -2963,7 +3548,7 @@ function renderSvgNode(node, isRoot = false) {
 function createFigmaDesignSvg(payload) {
   const width = Math.max(1, payload.root.styles.width);
   const height = Math.max(1, payload.root.styles.height);
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${exporterFormatSvgNumber(width)}" height="${exporterFormatSvgNumber(height)}" viewBox="0 0 ${exporterFormatSvgNumber(width)} ${exporterFormatSvgNumber(height)}" role="img" aria-label="${exporterEscapeSvgAttribute(payload.root.name)}">${renderSvgNode(payload.root, true)}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${formatSvgNumber(width)}" height="${formatSvgNumber(height)}" viewBox="0 0 ${formatSvgNumber(width)} ${formatSvgNumber(height)}" role="img" aria-label="${escapeSvgAttribute2(payload.root.name)}">${renderSvgNode(payload.root, true)}</svg>`;
 }
 async function copySvgDesign(svgText) {
   if (navigator.clipboard?.write && typeof ClipboardItem !== "undefined") {
@@ -3037,7 +3622,7 @@ function FigmaCodeExporter({
         scope,
         storyId: context.id ?? "unknown-story",
         storyName: context.name ?? "Story",
-        storyTitle: context.title ?? componentTitle
+        storyTitle: context.title ?? ""
       });
       let exportSizeLabel = "";
       if (format === "design") {
@@ -3243,7 +3828,6 @@ export {
   createFigmaExportGlobalTypes,
   createFigmaExportInitialGlobals,
   createFigmaExportJson,
-  createFigmaImporterPluginMainCode,
   createFigmaPluginCode,
   defaultFigmaExportGlobalName,
   figmaExportAddonId,

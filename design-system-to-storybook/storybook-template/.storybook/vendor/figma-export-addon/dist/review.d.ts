@@ -1,7 +1,6 @@
 import * as react from 'react';
 import { ReactNode } from 'react';
-import { R as ResolvedFigmaExportAddonOptions, F as FigmaExportAddonOptions } from './options-C-KiYN0_.js';
-import './types-BuDkFEZo.js';
+import { R as ResolvedFigmaExportAddonOptions, F as FigmaExportAddonOptions } from './options-C7dKT9Sy.js';
 
 type FigmaReviewStatus = "not-started" | "exported" | "imported" | "needs-fix" | "approved";
 type FigmaReviewEntry = {

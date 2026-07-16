@@ -57,19 +57,61 @@ export type FigmaComponentReference = {
   variantProperties?: Record<string, string>;
 };
 
+export type FigmaExportGradientStop = {
+  color: string;
+  position: number;
+  token?: string;
+};
+
 export type FigmaExportLinearGradient = {
   angle: number;
-  stops: Array<{
-    color: string;
-    position: number;
-    token?: string;
-  }>;
+  stops: FigmaExportGradientStop[];
 };
+
+export type FigmaNodeConstraint = "CENTER" | "MAX" | "MIN" | "SCALE" | "STRETCH";
+
+export type FigmaNodeConstraints = {
+  horizontal: FigmaNodeConstraint;
+  vertical: FigmaNodeConstraint;
+};
+
+export type FigmaBorderSideName = "bottom" | "left" | "right" | "top";
+
+export type FigmaExportBorderSide = {
+  color: string;
+  width: number;
+};
+
+export type FigmaExportBorderSides = Partial<
+  Record<FigmaBorderSideName, FigmaExportBorderSide>
+>;
+
+export type FigmaExportEffect = {
+  blur: number;
+  color: string;
+  offsetX: number;
+  offsetY: number;
+  spread: number;
+  type: "DROP_SHADOW" | "INNER_SHADOW";
+};
+
+export type FigmaRadiusCorners = {
+  bottomLeft: number;
+  bottomRight: number;
+  topLeft: number;
+  topRight: number;
+};
+
+export type FigmaImageScaleMode = "FILL" | "FIT";
+
+export type FigmaTextDecoration = "STRIKETHROUGH" | "UNDERLINE";
 
 export type FigmaExportNode = {
   bindings: Partial<Record<FigmaBindingName, string>>;
   children: FigmaExportNode[];
   component?: FigmaComponentReference;
+  imageBase64?: string;
+  imageMimeType?: string;
   kind: FigmaNodeKind;
   layoutStrategy?: FigmaLayoutStrategy;
   name: string;
@@ -80,34 +122,44 @@ export type FigmaExportNode = {
     backgroundColor?: string;
     backgroundLinearGradient?: FigmaExportLinearGradient;
     borderColor?: string;
+    borderSides?: FigmaExportBorderSides;
     borderWidth?: number;
     color?: string;
+    constraints?: FigmaNodeConstraints;
+    counterAxisSpacing?: number;
     display?: string;
+    effects?: FigmaExportEffect[];
     flexDirection?: string;
     fontFamily?: string;
     fontSize?: number;
+    fontStyle?: "italic";
     fontWeight?: number;
     gap?: number;
     height: number;
+    imageScaleMode?: FigmaImageScaleMode;
     justifyContent?: string;
     layoutAlign?: "STRETCH";
     layoutGrow?: number;
     layoutSizingHorizontal?: "HUG";
     layoutSizingVertical?: "HUG";
+    layoutWrap?: "WRAP";
+    letterSpacing?: number;
     lineHeight?: number | "normal";
+    maxLines?: number;
+    textTruncation?: "ENDING";
     opacity?: number;
+    outOfFlow?: boolean;
     overflow?: string;
     paddingBottom?: number;
     paddingLeft?: number;
     paddingRight?: number;
     paddingTop?: number;
-    bottomLeftRadius?: number;
-    bottomRightRadius?: number;
     radius?: number;
+    radiusCorners?: FigmaRadiusCorners;
     textAlign?: string;
+    textAlignVertical?: "CENTER";
     textAutoResize?: "WIDTH_AND_HEIGHT";
-    topLeftRadius?: number;
-    topRightRadius?: number;
+    textDecoration?: FigmaTextDecoration;
     width: number;
     x: number;
     y: number;

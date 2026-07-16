@@ -1,8 +1,7 @@
 import { IncomingMessage, ServerResponse } from 'node:http';
 import { FigmaReviewEntry } from './review.js';
 import 'react';
-import './options-C-KiYN0_.js';
-import './types-BuDkFEZo.js';
+import './options-C7dKT9Sy.js';
 
 declare const defaultFigmaReviewStatusApiPath = "/__figma_export_review_status";
 type FigmaReviewStatusFile = {

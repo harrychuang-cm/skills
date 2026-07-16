@@ -12,7 +12,6 @@ export default defineConfig({
     manager: "src/manager-entry.ts",
     review: "src/review.ts",
     "review-server": "src/review-server.ts",
-    "plugin-code": "src/pluginCode.ts",
     source: "src/source.ts",
   },
   external: [
@@ -52,7 +51,6 @@ export default defineConfig({
       "review.js.map",
       "index.css.map",
       "preview.css.map",
-      "plugin-code.js.map",
       "source.js.map",
     ]) {
       try {

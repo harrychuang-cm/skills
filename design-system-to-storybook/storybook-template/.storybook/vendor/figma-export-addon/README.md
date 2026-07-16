@@ -1,6 +1,29 @@
 # @harrychuang/storybook-addon-figma-export
 
-Storybook 10 addon: export a rendered React story into a Figma import payload. Expects a three-layer CSS token model: `ref`, `sys`, and `comp`.
+Storybook 10 addon: export a rendered React story into a Figma import payload (payload version 2). Expects a three-layer CSS token model: `ref`, `sys`, and `comp`.
+
+## Visual fidelity capture
+
+Beyond layout, tokens, and SVG, the exporter captures:
+
+- **Shadows** — `box-shadow` (including `inset`) and `text-shadow` export as `styles.effects` (`DROP_SHADOW` / `INNER_SHADOW`).
+- **Per-corner radius** — asymmetric `border-radius` exports as `styles.radiusCorners`; percentage radii approximate to the shorter box side.
+- **Raster images** — non-SVG `img` and `canvas` elements embed as PNG base64 (`imageBase64`, longest side capped at 2048px) with `imageScaleMode` mapped from `object-fit`.
+- **Modern colors** — `oklch()`, `lab()`, `color()`, `hsl()`, and named colors normalize to hex/rgba through the browser color engine (clamped to sRGB), for both computed styles and token raw values.
+- **Text styles** — `text-transform` is baked into the exported string, rendered line breaks are preserved (`<br>`, `white-space: pre*`), and `letter-spacing`, `text-decoration` (underline/line-through), and `font-style: italic` export as text fields.
+- **Measured auto layout** — flex containers derive item spacing and effective padding from the children's real bounding rects, so margin-driven spacing, `space-around`/`space-evenly`, `order`, and `row-reverse`/`column-reverse` visual order survive. Non-uniform spacing (that `space-between` cannot explain) falls back to pixel-true absolute layout.
+- **Flex wrap** — wrapped flex containers export `layoutWrap: "WRAP"` with measured in-line `gap` and `counterAxisSpacing`.
+- **Binding correctness** — token bindings skip rules inside non-matching media queries and rank matching declarations by CSS specificity (inline styles highest).
+
+Known limitations (by design): browser/Figma font metrics may wrap text differently; `transform: rotate/scale`, z-index restacking, masks, and filters are not captured; wide-gamut colors clamp to sRGB; raster embeds cap at 2048px.
+
+Verify exporter behavior end to end with the bundled fixture:
+
+```bash
+node test/run-export-fixture.mjs
+```
+
+It bundles `src/domExport.ts`, renders `test/export-fixture.html` in headless Chromium, asserts every capture feature, and writes the payload to `test/.last-fixture-payload.json`.
 
 ## Install
 
@@ -37,10 +60,9 @@ export default config;
 
 This loads the addon preset and registers the Figma export toolbar toggle.
 When the toolbar toggle is on, the exporter overlay provides `Copy JSON`,
-`Download JSON`, `Plugin Console Script`, and an icon-only `Copy design to
-Figma` action. `Download JSON` writes a `.sbfx.json` payload for importer
-plugins, while the Figma copy action writes an SVG design representation to the
-clipboard so it can be pasted directly into Figma for quick visual review.
+`Plugin Console Script`, and an icon-only `Copy design to Figma` action. The
+Figma copy action writes an SVG design representation to the clipboard so it can
+be pasted directly into Figma for quick visual review.
 
 ### 2. Wire preview (decorator + globals)
 
@@ -58,8 +80,8 @@ import type { FigmaExportAddonOptions } from "@harrychuang/storybook-addon-figma
 import "@harrychuang/storybook-addon-figma-export/styles.css";
 
 const figmaExportOptions = {
-  componentClassPrefixes: ["md-"],
-  storyTitlePrefix: "Components/",
+  componentClassPrefixes: ["your-prefix-"],
+  storyTitlePrefix: false,
 } satisfies FigmaExportAddonOptions;
 
 const preview: Preview = {
@@ -74,6 +96,8 @@ const preview: Preview = {
 
 export default preview;
 ```
+
+Replace `your-prefix-` with the class prefix used by your component library, or use an empty array when you want the exporter to derive layer names without a project prefix. `storyTitlePrefix: false` keeps the addon available for every story; set it to a string or string array only when your project wants to filter exports.
 
 Adjust `figmaExportOptions` for your design tokens and story naming.
 
@@ -160,7 +184,7 @@ registerFigmaExportTool();
 
 ## Token prefix detection
 
-By default, the exporter auto-detects the token prefix from CSS custom properties:
+By default, the exporter auto-detects the token prefix from CSS custom properties that match the configured token layer segments:
 
 ```txt
 --{prefix}-ref-*
@@ -168,7 +192,7 @@ By default, the exporter auto-detects the token prefix from CSS custom propertie
 --{prefix}-comp-*
 ```
 
-If auto-detection fails, set `tokenPrefix` (for example `"md"`).
+Projects do not need all three default layers to export. The detector chooses the prefix with the broadest layer coverage and then the most matching tokens. If auto-detection fails, set `tokenPrefix` (for example `"your-prefix"`), and use `tokenLayers` when your layer segment names are not `ref`, `sys`, and `comp`.
 
 ## Options
 

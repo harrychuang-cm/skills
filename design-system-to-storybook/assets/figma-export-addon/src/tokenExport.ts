@@ -1,4 +1,5 @@
 import type { ResolvedFigmaExportAddonOptions } from "./options";
+import { parseCssColorToRgba } from "./color";
 import type {
   FigmaExportToken,
   FigmaVariableType,
@@ -52,7 +53,7 @@ function getTokenFamily(name: string): TokenFamily {
     name.includes("-typeface-") ||
     name.includes("-typescale-") ||
     name.includes("-weight-") ||
-    name.includes("-line-height-")
+    name.includes("-line-height")
   ) {
     return "type";
   }
@@ -190,15 +191,14 @@ function detectTokenPrefix(
     }
   }
 
-  const rankedCandidates = Array.from(candidates.entries()).sort(([, a], [, b]) => {
-    const byLayerCoverage = b.layers.size - a.layers.size;
-    return byLayerCoverage || b.count - a.count;
-  });
+  const completeCandidates = Array.from(candidates.entries())
+    .filter(([, candidate]) => tokenLayers.every((layer) => candidate.layers.has(layer)))
+    .sort(([, a], [, b]) => b.count - a.count);
 
-  if (rankedCandidates.length > 0) return rankedCandidates[0][0];
+  if (completeCandidates.length > 0) return completeCandidates[0][0];
 
   throw new Error(
-    "Unable to detect a CSS token prefix. Pass tokenPrefix in the Storybook Figma export addon options.",
+    "Unable to detect a ref/sys/comp token prefix. Pass tokenPrefix in the Storybook Figma export addon options.",
   );
 }
 
@@ -289,6 +289,16 @@ function parseRawValue(value: string): {
     };
   }
 
+  // hsl()/oklch()/color()/named tokens parse through the browser color engine
+  // so they export as COLOR variables instead of STRING fallbacks.
+  const cssColor = parseCssColorToRgba(trimmed);
+  if (cssColor) {
+    return {
+      type: "COLOR",
+      value: cssColor,
+    };
+  }
+
   return {
     type: "STRING",
     value: trimmed.replace(/^["']|["']$/g, ""),
@@ -346,7 +356,7 @@ function getTokenScopes(token: TokenDefinition, type: FigmaVariableType): string
     return ["GAP", "WIDTH_HEIGHT"];
   }
   if (token.name.includes("-weight-")) return ["FONT_WEIGHT"];
-  if (token.name.includes("-line-height-")) return ["LINE_HEIGHT"];
+  if (token.name.includes("-line-height")) return ["LINE_HEIGHT"];
   if (token.name.includes("-typescale-") && token.name.includes("-size")) {
     return ["FONT_SIZE"];
   }
@@ -381,6 +391,23 @@ function toFigmaVariableName(cssName: string): string {
   return cssName.replace(/^--/, "").replaceAll("-", "/");
 }
 
+function getExportTokenValue(
+  token: TokenDefinition,
+  parsed: { type: FigmaVariableType; value: FigmaVariableValue } | undefined,
+): FigmaVariableValue | undefined {
+  if (
+    token.family !== "opacity" ||
+    parsed?.type !== "FLOAT" ||
+    typeof parsed.value !== "number"
+  ) {
+    return parsed?.value;
+  }
+
+  return parsed.value >= 0 && parsed.value <= 1
+    ? parsed.value * 100
+    : parsed.value;
+}
+
 function toExportToken(
   token: TokenDefinition,
   tokenByName: Map<string, TokenDefinition>,
@@ -391,7 +418,7 @@ function toExportToken(
   const parsed = alias ? undefined : parseRawValue(token.value);
 
   return {
-    ...(alias ? { alias } : { value: parsed?.value }),
+    ...(alias ? { alias } : { value: getExportTokenValue(token, parsed) }),
     collection: token.layer,
     cssName: token.name,
     figmaName: toFigmaVariableName(token.name),

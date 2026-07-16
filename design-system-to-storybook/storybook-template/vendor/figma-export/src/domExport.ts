@@ -2,12 +2,15 @@ import type {
   FigmaBindingName,
   FigmaComponentReference,
   FigmaExportArtifactKind,
+  FigmaExportEffect,
   FigmaExportNode,
   FigmaNodeConstraints,
   FigmaLayoutStrategy,
   FigmaExportPayload,
+  FigmaRadiusCorners,
 } from "./types";
 import type { ResolvedFigmaExportAddonOptions } from "./options";
+import { isFullyTransparentColor, normalizeCssColorString } from "./color";
 import {
   collectTokensForExport,
   detectTokenSystem,
@@ -166,7 +169,15 @@ function cssLineHeightToNumber(value: string): number | "normal" | undefined {
 function cssColorValue(value: string): string | undefined {
   const normalized = value.trim();
   if (!normalized || transparentValues.has(normalized)) return undefined;
-  return normalized;
+
+  // Modern color spaces (oklch/lab/color()/hsl/named) are canonicalized to
+  // hex or rgb()/rgba() so the payload never carries values the Figma plugin
+  // cannot parse. Non-color paints (for example SVG url(#...)) pass through.
+  const canonical = normalizeCssColorString(normalized) ?? normalized;
+  if (transparentValues.has(canonical) || isFullyTransparentColor(canonical)) {
+    return undefined;
+  }
+  return canonical;
 }
 
 function clampUnit(value: number): number {
@@ -214,7 +225,7 @@ function parseGradientStop(
 ): { color: string; position: number } | undefined {
   const colorMatch = value
     .trim()
-    .match(/^(#[0-9a-f]{3,8}|rgba?\([^)]*\))/i);
+    .match(/^(#[0-9a-f]{3,8}|[a-z][a-z-]*\((?:[^()]|\([^()]*\))*\))/i);
   if (!colorMatch) return undefined;
 
   const color = cssColorValue(colorMatch[1]);
@@ -246,6 +257,102 @@ function parseLinearGradient(
     .filter((stop): stop is { color: string; position: number } => Boolean(stop));
 
   return stops.length >= 2 ? { angle: angle ?? 180, stops } : undefined;
+}
+
+// Computed shadow lists serialize color-first in Chromium and Firefox, e.g.
+// "rgba(0, 0, 0, 0.25) 0px 4px 12px 0px inset". Lengths follow the order
+// offsetX offsetY blur spread; text-shadow omits spread and inset.
+function parseShadowListToEffects(value: string): FigmaExportEffect[] {
+  const normalized = value.trim();
+  if (!normalized || normalized === "none") return [];
+
+  const effects: FigmaExportEffect[] = [];
+
+  for (const part of splitGradientArguments(normalized)) {
+    const inset = /\binset\b/.test(part);
+    let rest = part.replace(/\binset\b/g, " ");
+
+    const colorMatch = rest.match(
+      /(#[0-9a-f]{3,8}|[a-z][a-z-]*\((?:[^()]|\([^()]*\))*\))/i,
+    );
+    if (!colorMatch) continue;
+    rest = rest.replace(colorMatch[1], " ");
+
+    const color = cssColorValue(colorMatch[1]);
+    if (!color) continue;
+
+    const lengths = Array.from(
+      rest.matchAll(/(-?\d*\.?\d+)px/g),
+      (match) => Number(match[1]),
+    );
+    const [offsetX = 0, offsetY = 0, blur = 0, spread = 0] = lengths;
+
+    effects.push({
+      blur: toFiniteNumber(blur),
+      color,
+      offsetX: toFiniteNumber(offsetX),
+      offsetY: toFiniteNumber(offsetY),
+      spread: toFiniteNumber(spread),
+      type: inset ? "INNER_SHADOW" : "DROP_SHADOW",
+    });
+  }
+
+  return effects;
+}
+
+function getBoxShadowEffects(computed: CSSStyleDeclaration): FigmaExportEffect[] {
+  return parseShadowListToEffects(computed.boxShadow);
+}
+
+function getTextShadowEffects(computed: CSSStyleDeclaration): FigmaExportEffect[] {
+  return parseShadowListToEffects(computed.textShadow);
+}
+
+function cssRadiusToNumber(
+  value: string,
+  width: number,
+  height: number,
+): number {
+  const length = cssLengthToNumber(value);
+  if (length !== undefined) return length;
+
+  // Percentage radii (for example border-radius: 50% avatars) approximate to
+  // the shorter box side, which reproduces circles on square boxes.
+  const percent = value.trim().match(/^(-?\d+(?:\.\d+)?)%$/);
+  if (percent) {
+    return toFiniteNumber((Number(percent[1]) / 100) * Math.min(width, height));
+  }
+
+  return 0;
+}
+
+function getRadiusStyles(
+  computed: CSSStyleDeclaration,
+  width: number,
+  height: number,
+): { radius?: number; radiusCorners?: FigmaRadiusCorners } {
+  const topLeft = cssRadiusToNumber(computed.borderTopLeftRadius, width, height);
+  const topRight = cssRadiusToNumber(computed.borderTopRightRadius, width, height);
+  const bottomRight = cssRadiusToNumber(
+    computed.borderBottomRightRadius,
+    width,
+    height,
+  );
+  const bottomLeft = cssRadiusToNumber(
+    computed.borderBottomLeftRadius,
+    width,
+    height,
+  );
+
+  if (
+    topLeft === topRight &&
+    topLeft === bottomRight &&
+    topLeft === bottomLeft
+  ) {
+    return topLeft > 0 ? { radius: topLeft } : {};
+  }
+
+  return { radiusCorners: { bottomLeft, bottomRight, topLeft, topRight } };
 }
 
 function isColorTokenName(token: string): boolean {
@@ -702,6 +809,14 @@ function createInlineSvgNode(
   };
 }
 
+function mediaRuleMatches(rule: CSSMediaRule): boolean {
+  try {
+    return window.matchMedia(rule.conditionText).matches;
+  } catch {
+    return true;
+  }
+}
+
 function getCssRules(): CSSStyleRule[] {
   const rules: CSSStyleRule[] = [];
 
@@ -709,6 +824,12 @@ function getCssRules(): CSSStyleRule[] {
     for (const rule of Array.from(ruleList)) {
       if (rule instanceof CSSStyleRule) {
         rules.push(rule);
+        continue;
+      }
+
+      // Rules behind a non-matching media query are not in effect, so their
+      // var() declarations must not create token bindings.
+      if (rule instanceof CSSMediaRule && !mediaRuleMatches(rule)) {
         continue;
       }
 
@@ -733,19 +854,46 @@ function getCssRules(): CSSStyleRule[] {
   return rules;
 }
 
-function selectorMatches(element: Element, selectorText: string): boolean {
-  return selectorText.split(",").some((selector) => {
+// Simplified a-b-c specificity: ids, then classes/attributes/pseudo-classes,
+// then element types and pseudo-elements. !important and cascade layers are
+// intentionally out of scope — computed values stay authoritative for style
+// values; this only ranks which declaration supplies a token binding.
+function calculateSelectorSpecificity(selector: string): number {
+  const withoutPseudoElements = selector.replace(/::[a-z-]+(\([^)]*\))?/gi, " x");
+  const ids = withoutPseudoElements.match(/#[\w-]+/g)?.length ?? 0;
+  const classLike =
+    withoutPseudoElements.match(/\.[\w-]+|\[[^\]]*\]|:(?!:)[\w-]+(\([^)]*\))?/g)
+      ?.length ?? 0;
+  const typeLike =
+    withoutPseudoElements.match(/(^|[\s>+~(,])[a-z][\w-]*/gi)?.length ?? 0;
+  const pseudoElements = selector.match(/::[a-z-]+/gi)?.length ?? 0;
+
+  return ids * 1_000_000 + classLike * 1_000 + typeLike + pseudoElements;
+}
+
+function getMatchedSelectorSpecificity(
+  element: Element,
+  selectorText: string,
+): number | undefined {
+  let best: number | undefined;
+
+  for (const selector of selectorText.split(",")) {
     const trimmed = selector.trim();
     if (!trimmed || trimmed.includes(":hover") || trimmed.includes(":focus")) {
-      return false;
+      continue;
     }
 
     try {
-      return element.matches(trimmed);
+      if (!element.matches(trimmed)) continue;
     } catch {
-      return false;
+      continue;
     }
-  });
+
+    const specificity = calculateSelectorSpecificity(trimmed);
+    if (best === undefined || specificity > best) best = specificity;
+  }
+
+  return best;
 }
 
 function parseCssTextDeclarations(cssText: string): MatchedDeclaration[] {
@@ -787,32 +935,49 @@ function getMatchedDeclarations(
   element: Element,
   rules: CSSStyleRule[],
 ): MatchedDeclaration[] {
-  const declarations: MatchedDeclaration[] = [];
+  type OrderedDeclaration = MatchedDeclaration & {
+    order: number;
+    specificity: number;
+  };
+
+  const collected: OrderedDeclaration[] = [];
+  let order = 0;
+
+  const push = (property: string, value: string, specificity: number) => {
+    collected.push({ order: (order += 1), property, specificity, value });
+  };
 
   for (const rule of rules) {
-    if (!selectorMatches(element, rule.selectorText)) continue;
+    const specificity = getMatchedSelectorSpecificity(element, rule.selectorText);
+    if (specificity === undefined) continue;
 
     for (const property of Array.from(rule.style)) {
-      declarations.push({
-        property,
-        value: rule.style.getPropertyValue(property).trim(),
-      });
+      push(property, rule.style.getPropertyValue(property).trim(), specificity);
     }
-    declarations.push(...parseCssTextDeclarations(rule.style.cssText));
+    for (const declaration of parseCssTextDeclarations(rule.style.cssText)) {
+      push(declaration.property, declaration.value, specificity);
+    }
   }
 
   const inlineStyle = element.getAttribute("style");
   if (inlineStyle && element instanceof HTMLElement) {
-    declarations.push(...parseCssTextDeclarations(element.style.cssText));
+    for (const declaration of parseCssTextDeclarations(element.style.cssText)) {
+      push(declaration.property, declaration.value, Number.MAX_SAFE_INTEGER);
+    }
     for (const property of Array.from(element.style)) {
-      declarations.push({
+      push(
         property,
-        value: element.style.getPropertyValue(property).trim(),
-      });
+        element.style.getPropertyValue(property).trim(),
+        Number.MAX_SAFE_INTEGER,
+      );
     }
   }
 
-  return declarations;
+  // Later scanning is last-wins, so order by (specificity, source order) to
+  // let the highest-specificity matching declaration supply the binding.
+  return collected
+    .sort((a, b) => a.specificity - b.specificity || a.order - b.order)
+    .map(({ property, value }) => ({ property, value }));
 }
 
 function findTokenForProperty(
@@ -1172,6 +1337,10 @@ function createTextLeafNode({
   const color = cssColorValue(computed.color);
   const fontWeight = Number.parseInt(computed.fontWeight, 10);
   const lineHeight = cssLineHeightToNumber(computed.lineHeight);
+  const textShadowEffects = getTextShadowEffects(computed);
+  const letterSpacing = cssLengthToNumber(computed.letterSpacing);
+  const textDecoration = getTextDecoration(computed);
+  const italic = isItalicFontStyle(computed);
   const isSingleLineTruncatedText = isClippedSingleLineText(computed);
   const exportWidth =
     isSingleLineTruncatedText ||
@@ -1198,10 +1367,14 @@ function createTextLeafNode({
     styles: {
       ...(color ? { color } : {}),
       display: computed.display,
+      ...(textShadowEffects.length > 0 ? { effects: textShadowEffects } : {}),
       fontFamily: computed.fontFamily,
       fontSize: cssLengthToNumber(computed.fontSize) ?? 14,
+      ...(italic ? { fontStyle: "italic" as const } : {}),
       ...(Number.isFinite(fontWeight) ? { fontWeight } : {}),
       height,
+      ...(letterSpacing !== undefined && letterSpacing !== 0 ? { letterSpacing } : {}),
+      ...(textDecoration ? { textDecoration } : {}),
       ...(layoutAlign ? { layoutAlign } : {}),
       ...(layoutGrow ? { layoutGrow } : {}),
       ...(lineHeight ? { lineHeight } : {}),
@@ -1522,8 +1695,47 @@ function getDirectText(element: Element): string {
     .trim();
 }
 
+// innerText reflects rendered line breaks (<br> elements and preserved
+// white-space such as pre/pre-line), which textContent collapsing loses.
+function getRenderedLeafText(element: Element): string {
+  if (element instanceof HTMLElement) {
+    const rendered = element.innerText.trim();
+    if (rendered) return rendered;
+  }
+  return getDirectText(element);
+}
+
+function applyTextTransformToText(
+  text: string,
+  computed: CSSStyleDeclaration,
+): string {
+  const transform = computed.textTransform.trim().toLowerCase();
+  if (transform.includes("uppercase")) return text.toUpperCase();
+  if (transform.includes("lowercase")) return text.toLowerCase();
+  if (transform.includes("capitalize")) {
+    return text.replace(/\b\p{L}/gu, (character) => character.toUpperCase());
+  }
+  return text;
+}
+
+function getTextDecoration(
+  computed: CSSStyleDeclaration,
+): "STRIKETHROUGH" | "UNDERLINE" | undefined {
+  const line = (computed.textDecorationLine || "").toLowerCase();
+  if (line.includes("line-through")) return "STRIKETHROUGH";
+  if (line.includes("underline")) return "UNDERLINE";
+  return undefined;
+}
+
+function isItalicFontStyle(computed: CSSStyleDeclaration): boolean {
+  const fontStyle = computed.fontStyle.trim().toLowerCase();
+  return fontStyle.startsWith("italic") || fontStyle.startsWith("oblique");
+}
+
 function hasElementChildren(element: Element): boolean {
   return Array.from(element.children).some((child) => {
+    // <br> only breaks lines inside a text leaf; it is not structural content.
+    if (child.tagName === "BR") return false;
     const style = window.getComputedStyle(child);
     return style.display !== "none";
   });
@@ -1561,6 +1773,106 @@ function findExportRoot(scope: HTMLElement): Element | undefined {
   return scope.firstElementChild ?? undefined;
 }
 
+const rasterImageMaxDimension = 2048;
+
+type RasterImageCapture = {
+  imageBase64: string;
+  imageMimeType: string;
+};
+
+function getImageScaleMode(computed: CSSStyleDeclaration): "FILL" | "FIT" {
+  const objectFit = (computed.objectFit || "").trim().toLowerCase();
+  if (objectFit === "contain" || objectFit === "none" || objectFit === "scale-down") {
+    return "FIT";
+  }
+  return "FILL";
+}
+
+function dataUrlToRasterCapture(dataUrl: string): RasterImageCapture | undefined {
+  const match = dataUrl.match(/^data:(image\/[a-z0-9.+-]+);base64,(.+)$/i);
+  if (!match) return undefined;
+  return { imageBase64: match[2], imageMimeType: match[1] };
+}
+
+// Draws a decoded image source onto a capped canvas (longest side 2048) and
+// returns PNG base64 without the data: prefix. Fails on tainted canvases.
+function drawSourceToRasterCapture(
+  source: CanvasImageSource,
+  naturalWidth: number,
+  naturalHeight: number,
+): RasterImageCapture | undefined {
+  if (naturalWidth <= 0 || naturalHeight <= 0) return undefined;
+
+  const scale = Math.min(
+    1,
+    rasterImageMaxDimension / Math.max(naturalWidth, naturalHeight),
+  );
+  const width = Math.max(1, Math.round(naturalWidth * scale));
+  const height = Math.max(1, Math.round(naturalHeight * scale));
+
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("2d");
+    if (!context) return undefined;
+    context.drawImage(source, 0, 0, width, height);
+    return dataUrlToRasterCapture(canvas.toDataURL("image/png"));
+  } catch {
+    return undefined;
+  }
+}
+
+// Cross-origin images taint the canvas; refetching through fetch() yields
+// CORS-clean bytes that can be re-encoded (and downscaled) safely.
+async function fetchRasterCapture(src: string): Promise<RasterImageCapture | undefined> {
+  try {
+    const response = await fetch(src);
+    if (!response.ok) return undefined;
+    const blob = await response.blob();
+    if (!blob.type.startsWith("image/") || blob.type === "image/svg+xml") {
+      return undefined;
+    }
+
+    if (typeof createImageBitmap === "function") {
+      try {
+        const bitmap = await createImageBitmap(blob);
+        const capture = drawSourceToRasterCapture(bitmap, bitmap.width, bitmap.height);
+        bitmap.close();
+        if (capture) return capture;
+      } catch {
+        // Fall through to the raw data URL path below.
+      }
+    }
+
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(blob);
+    });
+    return dataUrlToRasterCapture(dataUrl);
+  } catch {
+    return undefined;
+  }
+}
+
+async function captureRasterImage(
+  element: HTMLImageElement,
+): Promise<RasterImageCapture | undefined> {
+  const src = element.currentSrc || element.src;
+  if (!src || src.startsWith("data:image/svg+xml")) return undefined;
+
+  const drawn = drawSourceToRasterCapture(
+    element,
+    element.naturalWidth,
+    element.naturalHeight,
+  );
+  if (drawn) return drawn;
+
+  return fetchRasterCapture(src);
+}
+
 async function fetchSvgText(
   element: HTMLImageElement,
   options: ResolvedFigmaExportAddonOptions,
@@ -1591,6 +1903,164 @@ async function fetchSvgText(
   } catch {
     return undefined;
   }
+}
+
+type AutoLayoutChildEntry = {
+  element: Element;
+  node: FigmaExportNode;
+};
+
+type AutoLayoutMeasurement = {
+  children: FigmaExportNode[];
+  counterAxisSpacing?: number;
+  gap?: number;
+  layoutWrap?: "WRAP";
+  paddingOverrides?: {
+    bottom?: number;
+    left?: number;
+    right?: number;
+    top?: number;
+  };
+  strategy: FigmaLayoutStrategy;
+};
+
+type MeasuredFlowChild = {
+  crossEnd: number;
+  crossStart: number;
+  mainEnd: number;
+  mainStart: number;
+  node: FigmaExportNode;
+};
+
+function isUniformSpacing(values: number[]): boolean {
+  if (values.length === 0) return true;
+  return Math.max(...values) - Math.min(...values) <= 1;
+}
+
+function averageSpacing(values: number[]): number {
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+// Derives auto-layout spacing from the children's real bounding rects instead
+// of trusting declared gap alone: margin-driven spacing, space-around/evenly
+// distributions, order/*-reverse visual order, and flex wrap lines all fall
+// out of measurement. Non-uniform spacing (that space-between cannot explain)
+// falls back to the absolute strategy so positions stay pixel-true.
+function measureAutoLayoutChildren({
+  childEntries,
+  computed,
+  containerRect,
+}: {
+  childEntries: AutoLayoutChildEntry[];
+  computed: CSSStyleDeclaration;
+  containerRect: DOMRect;
+}): AutoLayoutMeasurement | undefined {
+  const flowEntries = childEntries.filter((entry) => !entry.node.styles.outOfFlow);
+  const outOfFlowNodes = childEntries
+    .filter((entry) => entry.node.styles.outOfFlow)
+    .map((entry) => entry.node);
+  if (flowEntries.length === 0) return undefined;
+
+  const isColumn = computed.flexDirection.startsWith("column");
+  const measured: MeasuredFlowChild[] = flowEntries.map(({ element, node }) => {
+    const rect = element.getBoundingClientRect();
+    const x = rect.left - containerRect.left;
+    const y = rect.top - containerRect.top;
+    return {
+      crossEnd: isColumn ? x + rect.width : y + rect.height,
+      crossStart: isColumn ? x : y,
+      mainEnd: isColumn ? y + rect.height : x + rect.width,
+      mainStart: isColumn ? y : x,
+      node,
+    };
+  });
+
+  const sortedByCross = [...measured].sort(
+    (a, b) => a.crossStart - b.crossStart || a.mainStart - b.mainStart,
+  );
+  const lines: MeasuredFlowChild[][] = [];
+  for (const item of sortedByCross) {
+    const line = lines[lines.length - 1];
+    const lineEnd = line
+      ? Math.max(...line.map((entry) => entry.crossEnd))
+      : Number.NEGATIVE_INFINITY;
+    if (!line || item.crossStart >= lineEnd - 0.5) {
+      lines.push([item]);
+    } else {
+      line.push(item);
+    }
+  }
+  lines.forEach((line) => line.sort((a, b) => a.mainStart - b.mainStart));
+
+  const mainGaps: number[] = [];
+  for (const line of lines) {
+    for (let index = 0; index < line.length - 1; index += 1) {
+      mainGaps.push(line[index + 1].mainStart - line[index].mainEnd);
+    }
+  }
+  const crossGaps: number[] = [];
+  for (let index = 0; index < lines.length - 1; index += 1) {
+    const currentEnd = Math.max(...lines[index].map((entry) => entry.crossEnd));
+    const nextStart = Math.min(...lines[index + 1].map((entry) => entry.crossStart));
+    crossGaps.push(nextStart - currentEnd);
+  }
+
+  const justify = computed.justifyContent.trim();
+  const isSpaceBetween = justify === "space-between";
+  const hasOverlap =
+    mainGaps.some((value) => value < -0.5) || crossGaps.some((value) => value < -0.5);
+
+  if (
+    hasOverlap ||
+    !isUniformSpacing(crossGaps) ||
+    (!isUniformSpacing(mainGaps) && !isSpaceBetween)
+  ) {
+    return {
+      children: childEntries.map((entry) => entry.node),
+      strategy: "absolute",
+    };
+  }
+
+  const wrapDeclared =
+    computed.flexWrap === "wrap" || computed.flexWrap === "wrap-reverse";
+  const measurement: AutoLayoutMeasurement = {
+    children: [
+      ...lines.flatMap((line) => line.map((entry) => entry.node)),
+      ...outOfFlowNodes,
+    ],
+    strategy: "autoLayout",
+  };
+
+  if (mainGaps.length > 0 && !isSpaceBetween) {
+    measurement.gap = Math.max(0, toFiniteNumber(averageSpacing(mainGaps)));
+  }
+
+  if (wrapDeclared && lines.length > 1) {
+    measurement.layoutWrap = "WRAP";
+    if (crossGaps.length > 0) {
+      measurement.counterAxisSpacing = Math.max(
+        0,
+        toFiniteNumber(averageSpacing(crossGaps)),
+      );
+    }
+  }
+
+  const isStartJustified =
+    justify === "" ||
+    ["flex-start", "left", "normal", "start"].includes(justify);
+  if (isStartJustified) {
+    const leading = Math.min(...measured.map((entry) => entry.mainStart));
+    const containerMainSize = isColumn ? containerRect.height : containerRect.width;
+    const trailing =
+      containerMainSize - Math.max(...measured.map((entry) => entry.mainEnd));
+    const leadingPadding = Math.max(0, toFiniteNumber(leading));
+    const trailingPadding = Math.max(0, toFiniteNumber(trailing));
+    measurement.paddingOverrides = isColumn
+      ? { bottom: trailingPadding, top: leadingPadding }
+      : { left: leadingPadding, right: trailingPadding };
+  }
+
+  return measurement;
 }
 
 async function createExportNode(
@@ -1642,22 +2112,26 @@ async function createExportNode(
 
   const childElements = Array.from(element.children);
   const hasPositionedChildren = hasOutOfFlowPositionedChildren(childElements);
-  const childNodes = (
-    await Promise.all(
-      childElements.map((child) =>
-        createExportNode(
-          child,
-          rootRect,
-          rect,
-          rules,
-          tokenSystem,
-          options,
-          traversalState,
-          nextForceAbsoluteLayout && !child.hasAttribute("data-component"),
-        ),
+  const childNodeResults = await Promise.all(
+    childElements.map((child) =>
+      createExportNode(
+        child,
+        rootRect,
+        rect,
+        rules,
+        tokenSystem,
+        options,
+        traversalState,
+        nextForceAbsoluteLayout && !child.hasAttribute("data-component"),
       ),
-    )
-  ).filter((child): child is FigmaExportNode => Boolean(child));
+    ),
+  );
+  const childEntries: AutoLayoutChildEntry[] = [];
+  childElements.forEach((childElement, index) => {
+    const node = childNodeResults[index];
+    if (node) childEntries.push({ element: childElement, node });
+  });
+  const childNodes = childEntries.map((entry) => entry.node);
 
   const directText = getDirectText(element);
   const backgroundColor = cssColorValue(computed.backgroundColor);
@@ -1671,7 +2145,8 @@ async function createExportNode(
   const border = getUniformVisibleBorder(computed);
   const borderSideMap = getVisibleBorderSides(computed);
   const fontWeight = Number.parseInt(computed.fontWeight, 10);
-  const radius = cssLengthToNumber(computed.borderTopLeftRadius);
+  const radiusStyles = getRadiusStyles(computed, width, height);
+  const boxShadowEffects = getBoxShadowEffects(computed);
   const lineHeight = cssLineHeightToNumber(computed.lineHeight);
   const gap = cssLengthToNumber(computed.columnGap) ?? cssLengthToNumber(computed.gap);
   const layoutAlign = getLayoutAlign(element);
@@ -1727,6 +2202,7 @@ async function createExportNode(
   const elementOutOfFlow = isOutOfFlowPositioned(computed);
 
   if (directText && !hasElementChildren(element)) {
+    const leafText = applyTextTransformToText(getRenderedLeafText(element), computed);
     if (hasBoxedTextStyle(computed, border)) {
       const paddingLeft = cssLengthToNumber(computed.paddingLeft) ?? 0;
       const paddingRight = cssLengthToNumber(computed.paddingRight) ?? 0;
@@ -1738,7 +2214,7 @@ async function createExportNode(
         height: Math.max(1, height - paddingTop - paddingBottom),
         layoutStrategy: textLayoutStrategy,
         name: `${getElementName(element, options)}__text`,
-        text: directText,
+        text: leafText,
         textAutoResize: getTextAutoResize(element, computed),
         layoutAlign,
         layoutGrow,
@@ -1760,6 +2236,7 @@ async function createExportNode(
             alignItems: "center",
             ...(backgroundColor ? { backgroundColor } : {}),
             ...(backgroundLinearGradient ? { backgroundLinearGradient } : {}),
+            ...(boxShadowEffects.length > 0 ? { effects: boxShadowEffects } : {}),
             ...(border ? { borderColor: border.color, borderWidth: border.width } : {}),
             ...(borderSideMap ? { borderSides: borderSideMap } : {}),
             display: "flex",
@@ -1773,7 +2250,7 @@ async function createExportNode(
             paddingLeft,
             paddingRight,
             paddingTop,
-            ...(radius !== undefined && radius > 0 ? { radius } : {}),
+            ...radiusStyles,
             ...(layoutSizingHorizontal ? { layoutSizingHorizontal } : {}),
             ...(layoutSizingHorizontal && !bindings.height
               ? { layoutSizingVertical: "HUG" as const }
@@ -1795,6 +2272,7 @@ async function createExportNode(
         styles: {
           ...(backgroundColor ? { backgroundColor } : {}),
           ...(backgroundLinearGradient ? { backgroundLinearGradient } : {}),
+          ...(boxShadowEffects.length > 0 ? { effects: boxShadowEffects } : {}),
           ...(border ? { borderColor: border.color, borderWidth: border.width } : {}),
           ...(borderSideMap ? { borderSides: borderSideMap } : {}),
           display: getExportDisplay(computed, "absolute"),
@@ -1806,7 +2284,7 @@ async function createExportNode(
           paddingLeft,
           paddingRight,
           paddingTop,
-          ...(radius !== undefined && radius > 0 ? { radius } : {}),
+          ...radiusStyles,
           ...(layoutSizingHorizontal ? { layoutSizingHorizontal } : {}),
           width,
           x: toFiniteNumber(rect.left - parentRect.left),
@@ -1822,7 +2300,7 @@ async function createExportNode(
       layoutStrategy: textLayoutStrategy,
       name: getElementName(element, options),
       outOfFlow: elementOutOfFlow,
-      text: directText,
+      text: leafText,
       textAutoResize: getTextAutoResize(element, computed),
       layoutAlign,
       layoutGrow,
@@ -1833,38 +2311,76 @@ async function createExportNode(
     });
   }
 
-  const kind = element instanceof HTMLImageElement ? "image" : "frame";
+  const kind =
+    element instanceof HTMLImageElement || element instanceof HTMLCanvasElement
+      ? "image"
+      : "frame";
+  let imageSvgText: string | undefined;
+  let imageCapture: RasterImageCapture | undefined;
+  if (element instanceof HTMLImageElement) {
+    imageSvgText = await fetchSvgText(element, options);
+    if (!imageSvgText) imageCapture = await captureRasterImage(element);
+  } else if (element instanceof HTMLCanvasElement) {
+    imageCapture = drawSourceToRasterCapture(element, element.width, element.height);
+  }
   const elementName = getElementName(element, options);
+  const autoLayoutMeasurement =
+    kind === "frame" &&
+    frameLayoutStrategy === "autoLayout" &&
+    isFlexDisplay(computed.display) &&
+    childEntries.length > 0
+      ? measureAutoLayoutChildren({ childEntries, computed, containerRect: rect })
+      : undefined;
+  const effectiveLayoutStrategy = autoLayoutMeasurement?.strategy ?? frameLayoutStrategy;
+  const orderedChildNodes = autoLayoutMeasurement?.children ?? childNodes;
+  const paddingOverrides =
+    effectiveLayoutStrategy === "autoLayout"
+      ? autoLayoutMeasurement?.paddingOverrides
+      : undefined;
+  const measuredGap =
+    effectiveLayoutStrategy === "autoLayout" ? autoLayoutMeasurement?.gap : undefined;
+  const effectiveGap = measuredGap ?? gap;
   const frameStyles = {
     ...(computed.alignItems ? { alignItems: computed.alignItems } : {}),
     ...(backgroundColor ? { backgroundColor } : {}),
     ...(backgroundLinearGradient ? { backgroundLinearGradient } : {}),
+    ...(boxShadowEffects.length > 0 ? { effects: boxShadowEffects } : {}),
     ...(border ? { borderColor: border.color, borderWidth: border.width } : {}),
     ...(borderSideMap ? { borderSides: borderSideMap } : {}),
     ...(color ? { color } : {}),
-    display: getExportDisplay(computed, frameLayoutStrategy),
-    ...(frameLayoutStrategy === "autoLayout"
-      ? { flexDirection: computed.flexDirection }
+    ...(effectiveLayoutStrategy === "autoLayout" &&
+    autoLayoutMeasurement?.counterAxisSpacing !== undefined
+      ? { counterAxisSpacing: autoLayoutMeasurement.counterAxisSpacing }
+      : {}),
+    display: getExportDisplay(computed, effectiveLayoutStrategy),
+    ...(effectiveLayoutStrategy === "autoLayout"
+      ? { flexDirection: computed.flexDirection.replace("-reverse", "") }
       : {}),
     fontFamily: computed.fontFamily,
     fontSize: cssLengthToNumber(computed.fontSize) ?? 14,
     ...(Number.isFinite(fontWeight) ? { fontWeight } : {}),
-    ...(gap !== undefined && gap >= 0 ? { gap } : {}),
+    ...(effectiveGap !== undefined && effectiveGap >= 0 ? { gap: effectiveGap } : {}),
     height,
     ...(computed.justifyContent ? { justifyContent: computed.justifyContent } : {}),
     ...(frameLayoutAlign ? { layoutAlign: frameLayoutAlign } : {}),
     ...(layoutGrow ? { layoutGrow } : {}),
     ...(layoutSizingHorizontal ? { layoutSizingHorizontal } : {}),
     ...(layoutSizingVertical ? { layoutSizingVertical } : {}),
+    ...(effectiveLayoutStrategy === "autoLayout" && autoLayoutMeasurement?.layoutWrap
+      ? { layoutWrap: autoLayoutMeasurement.layoutWrap }
+      : {}),
     ...(lineHeight ? { lineHeight } : {}),
     opacity: Number(computed.opacity),
     ...(elementOutOfFlow ? { outOfFlow: true } : {}),
     overflow: computed.overflow,
-    paddingBottom: cssLengthToNumber(computed.paddingBottom) ?? 0,
-    paddingLeft: cssLengthToNumber(computed.paddingLeft) ?? 0,
-    paddingRight: cssLengthToNumber(computed.paddingRight) ?? 0,
-    paddingTop: cssLengthToNumber(computed.paddingTop) ?? 0,
-    ...(radius !== undefined && radius > 0 ? { radius } : {}),
+    paddingBottom:
+      paddingOverrides?.bottom ?? (cssLengthToNumber(computed.paddingBottom) ?? 0),
+    paddingLeft:
+      paddingOverrides?.left ?? (cssLengthToNumber(computed.paddingLeft) ?? 0),
+    paddingRight:
+      paddingOverrides?.right ?? (cssLengthToNumber(computed.paddingRight) ?? 0),
+    paddingTop: paddingOverrides?.top ?? (cssLengthToNumber(computed.paddingTop) ?? 0),
+    ...radiusStyles,
     ...(textAlignVertical ? { textAlignVertical } : {}),
     width,
     x: toFiniteNumber(rect.left - parentRect.left),
@@ -1872,15 +2388,16 @@ async function createExportNode(
   };
   return {
     bindings,
-    children: kind === "image" ? [] : [...childNodes, ...pseudoNodes],
+    children: kind === "image" ? [] : [...orderedChildNodes, ...pseudoNodes],
     ...(component ? { component } : {}),
+    ...(imageCapture ? { ...imageCapture } : {}),
     kind,
-    layoutStrategy: kind === "image" ? "absolute" : frameLayoutStrategy,
+    layoutStrategy: kind === "image" ? "absolute" : effectiveLayoutStrategy,
     name: elementName,
-    ...(kind === "image" && element instanceof HTMLImageElement
-      ? { svgText: await fetchSvgText(element, options) }
-      : {}),
-    styles: frameStyles,
+    ...(imageSvgText ? { svgText: imageSvgText } : {}),
+    styles: imageCapture
+      ? { ...frameStyles, imageScaleMode: getImageScaleMode(computed) }
+      : frameStyles,
   };
 }
 

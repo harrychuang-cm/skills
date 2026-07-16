@@ -155,9 +155,43 @@
   white-space: nowrap;
 }
 
+.sbfx-exporter__progress {
+  position: relative;
+  grid-column: 1 / -1;
+  overflow: hidden;
+  block-size: 3px;
+  background: rgb(255 255 255 / 8%);
+  border-radius: 999px;
+}
+
+.sbfx-exporter__progress::before {
+  position: absolute;
+  inset-block: 0;
+  inline-size: 42%;
+  content: "";
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--sbfx-accent-hover),
+    transparent
+  );
+  border-radius: inherit;
+  animation: sbfx-exporter-progress 1100ms ease-in-out infinite;
+}
+
+@keyframes sbfx-exporter-progress {
+  0% {
+    inset-inline-start: -42%;
+  }
+
+  100% {
+    inset-inline-start: 100%;
+  }
+}
+
 .sbfx-exporter__actions {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
   min-inline-size: 0;
   gap: 8px;
@@ -167,6 +201,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  flex: 1 1 auto;
   min-block-size: 36px;
   min-inline-size: 0;
   padding: 8px 14px;
@@ -218,6 +253,7 @@
 }
 
 .sbfx-exporter__button--icon {
+  flex: 0 0 auto;
   inline-size: 36px;
   min-inline-size: 36px;
   padding: 8px;
