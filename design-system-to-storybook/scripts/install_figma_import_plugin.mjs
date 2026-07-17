@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url";
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const skillRoot = resolve(scriptDir, "..");
 const bundledPluginRoot = join(skillRoot, "assets", "figma-plugin-code-to-design");
-const legacyRepoTarget = join("figma", "storybook-code-to-design");
+const repoCopyTarget = join("figma", "storybook-code-to-design");
 const repoCheckoutHint =
   "design-system-to-storybook/assets/figma-plugin-code-to-design/manifest.json";
 const excludedPathSegments = new Set([".git", "node_modules"]);
@@ -26,15 +26,18 @@ function printUsage() {
     [
       "Usage: node <skill-root>/scripts/install_figma_import_plugin.mjs [product-repo-root] [options]",
       "",
-      "Central distribution mode (default): validates the bundled Storybook Code To",
-      "Design importer, prints its version, the manifest path to load once per",
-      "machine in Figma Desktop, and the git-pull update flow. With a product repo",
-      "root, also flags legacy per-repo copies for cleanup.",
+      "Skill-folder mode (default, solo machines): validates the bundled Storybook",
+      "Code To Design importer, prints its version and the manifest path to load",
+      "once per machine in Figma Desktop, plus the update flow. With a product repo",
+      "root, also reports the state of a committed repo copy.",
       "",
       "Options:",
-      "  --copy-to <dir>  Fallback only: copy the plugin into <dir> (resolved against",
-      "                   the product repo root when relative). For air-gapped or",
-      "                   deliberately self-contained workspaces.",
+      "  --copy-to <dir>  Team distribution: copy the plugin into <dir> (resolved",
+      "                   against the product repo root when relative; use",
+      "                   figma/storybook-code-to-design by convention). Commit the",
+      "                   copy so designers get the plugin via git pull without any",
+      "                   agent skill install. Also for air-gapped or deliberately",
+      "                   self-contained workspaces.",
       "  --target <dir>   Deprecated alias of --copy-to.",
       "  --dry-run        With --copy-to: list what would be copied without copying.",
       "  --force          With --copy-to: overwrite changed files after approval.",
@@ -228,11 +231,17 @@ function readBundledPluginInfo() {
   };
 }
 
+function pathHasHiddenSegment(value) {
+  return value
+    .split(sep)
+    .some((part) => part.startsWith(".") && part !== "." && part !== "..");
+}
+
 function reportCentral(info, productRoot) {
   console.log(`Figma importer plugin: ${info.name}`);
   console.log(`Version: ${info.version}${info.stampedVersion ? ` (runtime stamp: ${info.stampedVersion})` : ""}`);
-  console.log(`Central manifest (this machine): ${info.manifestPath}`);
-  console.log(`Canonical git-pull source: the skills repo checkout at ${repoCheckoutHint}`);
+  console.log(`Skill-folder manifest (this machine): ${info.manifestPath}`);
+  console.log(`Canonical source: the skills repo checkout at ${repoCheckoutHint}`);
 
   if (info.stampedVersion && !info.stampedVersion.startsWith(`${info.version} (`)) {
     console.warn(
@@ -244,17 +253,30 @@ function reportCentral(info, productRoot) {
   console.log("One-time setup per machine (Figma Desktop):");
   console.log("1. Open Figma Desktop.");
   console.log("2. Go to Plugins > Development > Import plugin from manifest...");
-  console.log("3. Select the manifest above (prefer the skills repo checkout copy).");
+  console.log("3. Select the manifest above.");
+  if (pathHasHiddenSegment(info.manifestPath)) {
+    console.log(
+      "   Note: the path is inside a hidden folder, so the file dialog will not",
+    );
+    console.log(
+      "   show it. Press Cmd+Shift+G and paste the full path (or Cmd+Shift+. to",
+    );
+    console.log("   toggle hidden files).");
+  }
   console.log("4. In Storybook, export JSON, then import it with Storybook Code To Design.");
   console.log("");
-  console.log("Updates: git pull the skills repo checkout — a dev plugin re-reads its");
-  console.log("runtime on every run, so no re-import is needed. Skill copies refresh via");
-  console.log("install_agent_skill.mjs --force.");
+  console.log("Updates: refresh this skill copy (git pull the skills repo checkout, or");
+  console.log("install_agent_skill.mjs --force for installed skill folders) — a dev");
+  console.log("plugin re-reads its runtime on every run, so no re-import is needed.");
+  console.log("");
+  console.log("Team distribution: designer machines usually have no agent skill folder,");
+  console.log("and hidden paths are hard to select in the Figma file dialog. Commit a");
+  console.log(`repo copy instead: --copy-to ${toPosix(repoCopyTarget)} (see --help).`);
 
   if (!productRoot) return;
 
-  const legacyDir = join(productRoot, legacyRepoTarget);
-  if (!existsSync(legacyDir)) return;
+  const repoCopyDir = join(productRoot, repoCopyTarget);
+  if (!existsSync(repoCopyDir)) return;
 
   const isTemplateWorkspace = existsSync(
     join(productRoot, "scripts", "patch-figma-export-addon.mjs"),
@@ -262,14 +284,25 @@ function reportCentral(info, productRoot) {
   console.log("");
   if (isTemplateWorkspace) {
     console.log(
-      `Note: ${toPosix(relative(productRoot, legacyDir))} belongs to the bundled template workspace and stays self-contained.`,
+      `Note: ${toPosix(relative(productRoot, repoCopyDir))} belongs to the bundled template workspace and stays self-contained.`,
     );
+    return;
+  }
+
+  const repoManifestPath = join(repoCopyDir, "manifest.json");
+  const repoRuntimePath = join(repoCopyDir, info.runtimeEntry);
+  const repoCopyCurrent =
+    existsSync(repoManifestPath) &&
+    existsSync(repoRuntimePath) &&
+    !targetDiffersFromFile(join(bundledPluginRoot, "manifest.json"), repoManifestPath) &&
+    !targetDiffersFromFile(join(bundledPluginRoot, info.runtimeEntry), repoRuntimePath);
+  const repoCopyLabel = toPosix(relative(productRoot, repoCopyDir));
+  if (repoCopyCurrent) {
+    console.log(`Repo copy at ${repoCopyLabel} matches the bundled plugin (team channel is current).`);
   } else {
+    console.log(`Repo copy at ${repoCopyLabel} is outdated or incomplete.`);
     console.log(
-      `Legacy per-repo copy detected at ${toPosix(relative(productRoot, legacyDir))}.`,
-    );
-    console.log(
-      "The central model no longer needs it; delete it after confirming designers load the central manifest.",
+      `Refresh it with --copy-to ${toPosix(repoCopyTarget)} --force and commit, or delete it if this machine's designers load the skill-folder manifest instead.`,
     );
   }
 }
@@ -315,8 +348,9 @@ function copyPluginFiles({ productRoot, copyTarget, dryRun, force }) {
     chmodSync(targetPath, file.mode & 0o777);
   }
 
-  console.log(`Copied ${files.length} Figma importer plugin file(s) to ${copyTarget} (fallback copy).`);
-  console.log("Record the fallback reason in the implementation map; the central manifest stays the default channel.");
+  console.log(`Copied ${files.length} Figma importer plugin file(s) to ${copyTarget} (repo copy).`);
+  console.log("Commit the copy so designers get the plugin via git pull; record the");
+  console.log("distribution decision (repo copy vs skill-folder manifest) in the implementation map.");
   printCopyNextSteps(displayRoot, copyTarget);
 }
 
@@ -325,11 +359,15 @@ function printCopyNextSteps(displayRoot, copyTarget) {
   const relativeManifestPath = toPosix(relative(displayRoot, manifestPath));
 
   console.log("");
-  console.log("Figma Desktop setup:");
+  console.log("Figma Desktop setup (once per designer machine):");
   console.log("1. Open Figma Desktop.");
   console.log("2. Go to Plugins > Development > Import plugin from manifest...");
   console.log(`3. Select ${relativeManifestPath}`);
   console.log("4. In Storybook, export JSON, then import it with Storybook Code To Design.");
+  console.log("");
+  console.log("Updates: re-run this script with --copy-to and --force when the skill");
+  console.log("bundles a newer plugin, then commit; designers just git pull — a dev");
+  console.log("plugin re-reads its runtime on every run, so no re-import is needed.");
 }
 
 function toPosix(value) {
