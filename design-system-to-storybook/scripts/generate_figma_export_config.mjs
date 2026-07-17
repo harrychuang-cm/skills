@@ -64,7 +64,14 @@ const config = {
       ...existingConfig.addon.absoluteFidelityComponents,
     ]),
     componentClassPrefixes,
-    storyTitlePrefix: existingConfig.addon.storyTitlePrefix ?? storyTitlePrefix,
+    // Prefer an existing project value, but always collapse deep paths like
+    // "Components/Examples/" down to the top-level namespace "Components/".
+    // Without this, regenerating a config that was produced by the old detector
+    // would keep silently excluding sibling subcategories.
+    storyTitlePrefix: resolveStoryTitlePrefix(
+      existingConfig.addon.storyTitlePrefix,
+      storyTitlePrefix,
+    ),
     tokenPrefix: existingConfig.addon.tokenPrefix ?? tokenPrefix,
   },
   review: {
@@ -229,6 +236,28 @@ function detectStoryTitlePrefixes(root) {
 
   const values = [...prefixes].sort();
   return values.length ? values : false;
+}
+
+function normalizeStoryTitlePrefixes(value) {
+  if (value === false) return false;
+  if (!Array.isArray(value) || value.length === 0) return undefined;
+
+  const prefixes = new Set();
+  for (const item of value) {
+    if (typeof item !== "string") continue;
+    const first = item.trim().split("/").filter(Boolean)[0];
+    if (first) prefixes.add(`${first}/`);
+  }
+
+  const values = [...prefixes].sort();
+  return values.length ? values : false;
+}
+
+function resolveStoryTitlePrefix(existing, detected) {
+  if (existing === false) return false;
+  const normalizedExisting = normalizeStoryTitlePrefixes(existing);
+  if (normalizedExisting !== undefined) return normalizedExisting;
+  return detected;
 }
 
 function inferAbsoluteFidelityComponents(planRows, inventoryRows) {

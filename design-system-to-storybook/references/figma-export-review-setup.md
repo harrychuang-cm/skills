@@ -52,7 +52,7 @@ The generated config covers:
 4. Use plain `createFigmaExportDecorator` only if the user explicitly opts out of review/Open source.
 5. Set `tokenPrefix` only when the CSS token prefix is explicit or auto-detection would be ambiguous.
 6. Keep `tokenLayers` aligned to `ref`, `sys`, and `comp` unless the extraction uses different segment names.
-7. Set `storyTitlePrefix` to `false` when the project has no established story namespace; otherwise include every relevant top-level namespace such as `Components/`, `Pages/`, and `Foundations/`. Use `Components/`, not a deeper path like `Components/Examples/` — prefixes are `startsWith` matches, so a deep prefix excludes every sibling subcategory.
+7. Set `storyTitlePrefix` to `false` when the project has no established story namespace; otherwise include every relevant top-level namespace such as `Components/`, `Pages/`, and `Foundations/`. Use `Components/`, not a deeper path like `Components/Examples/` — prefixes are `startsWith` matches, so a deep prefix excludes every sibling subcategory. `generate_figma_export_config.mjs` detects and rewrites deep prefixes down to the top-level namespace when regenerating.
 8. Set `componentClassPrefixes` from component CSS class prefixes when available.
 9. Configure review/Open source using bundled addon helpers instead of copying a product-specific panel.
 10. Remember that the review overlay and Open source action render only when the Storybook `figmaExport` toolbar global is toggled on.
