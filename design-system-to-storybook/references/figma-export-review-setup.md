@@ -21,10 +21,12 @@ node <skill-root>/scripts/install_figma_export_addon.mjs <product-repo-root>
 
 The installer:
 
-- copies `assets/figma-export-addon/` into `<product-repo-root>/.storybook/vendor/figma-export-addon/`
+- packs `assets/figma-export-addon/` into `<product-repo-root>/.storybook/vendor/harrychuang-storybook-addon-figma-export-<version>.tgz`
 - detects `npm`, `pnpm`, `yarn`, or `bun`
-- installs `file:.storybook/vendor/figma-export-addon`
+- installs `file:.storybook/vendor/harrychuang-storybook-addon-figma-export-<version>.tgz`
 - installs `@storybook/icons@^1.0.0` only when the target package does not already declare `@storybook/icons`
+- upgrades in place when re-run with a newer bundled version, prunes superseded tarballs, and migrates the legacy `.storybook/vendor/figma-export-addon/` directory layout (kept as `figma-export-addon-legacy-backup` until deleted after verification)
+- reports bundled vs installed versions with `--check` (exit 0 up to date, 2 not installed, 3 update available or legacy layout)
 
 Generate config before editing Storybook files:
 

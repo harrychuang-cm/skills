@@ -226,7 +226,9 @@ Install it with the bundled installer:
 node <skill-root>/scripts/install_figma_export_addon.mjs <product-repo-root>
 ```
 
-The installer copies the vendored addon, detects the package manager, and installs the local `file:` dependency plus `@storybook/icons` when needed. Use `--copy-only` only when you need to inspect or manually install the vendored package. If the bundled addon asset is missing or incomplete, mark `figma-export-addon` as `blocked`; do not fall back to GitHub unless the user explicitly asks to refresh the vendored asset.
+The installer packs the vendored addon into a versioned tarball at `.storybook/vendor/harrychuang-storybook-addon-figma-export-<version>.tgz`, detects the package manager, and installs it as a local `file:` dependency plus `@storybook/icons` when needed. Commit the tarball together with `package.json` and the lockfile so teammates and CI install the same version. Re-running the installer upgrades an existing install in place when the skill bundles a newer version; `--check` reports bundled vs installed versions without changing files; `--copy-only` only produces the tarball. Older installs that copied the addon to `.storybook/vendor/figma-export-addon/` are migrated automatically on the next run — the tarball replaces the directory dependency and the old directory is kept as `figma-export-addon-legacy-backup` until it is deleted after verification. If the bundled addon asset is missing or incomplete, mark `figma-export-addon` as `blocked`; do not fall back to GitHub unless the user explicitly asks to refresh the vendored asset.
+
+To ship an addon update through this skill, refresh `assets/figma-export-addon/` with new `dist/` output and a version bump in its `package.json`, then re-run the installer in each product repo. The installer keys upgrades off that version, so never change `dist/` without bumping the version.
 
 If Storybook is missing or not version 10, do not auto-install or force the addon; mark `figma-export-addon` as `unavailable` or `blocked` with the reason and continue core Storybook implementation. Any Storybook 10 renderer is supported (the preview side imports no react); on non-React targets skip the React-only review panel wiring. Do not install, upgrade, or migrate the app solely for this addon.
 
@@ -238,7 +240,7 @@ node <skill-root>/scripts/generate_figma_export_config.mjs <design-system-packag
 
 Default output is `<product-repo-root>/.storybook/figma-export.config.ts`; keep project-specific URLs, node IDs, class prefixes, theme globals, local graphics, token imports, review API settings, and source fallbacks there or in product code, never inside the bundled addon package.
 
-Read `references/figma-export-review-setup.md` before wiring `.storybook/main.*` or `.storybook/preview.*`, and again if the toolbar, review overlay, or Open source action is missing. Record the copied vendor path, installed package spec, generated config path, config values, config files, options, and review helper usage in the implementation map.
+Read `references/figma-export-review-setup.md` before wiring `.storybook/main.*` or `.storybook/preview.*`, and again if the toolbar, review overlay, or Open source action is missing. Record the vendored tarball path, installed addon version, installed package spec, generated config path, config values, config files, options, and review helper usage in the implementation map.
 
 Read `references/figma-export-readiness.md` before implementing or changing a component/story with the addon installed. The component DOM, CSS, tokens, story metadata, and layout choices should be optimized for editable Figma JSON/importer output while preserving the extracted design. Prefer fixing DOM/CSS/token usage over patching generated export payloads.
 
@@ -286,7 +288,7 @@ Also record:
 - Storybook template decision, target root, project name, token prefix, package name, Figma URL, and installer command when template bootstrap is used or declined
 - target layout roots for co-located components, foundation docs, and pages
 - Figma export addon status and options
-- bundled addon vendor path in the product repo
+- bundled addon tarball path and installed addon version in the product repo
 - generated `.storybook/figma-export.config.ts` path and inferred project-specific values
 - Figma import plugin status, target directory, manifest path, installer command, and Figma Desktop loading instructions
 - Figma export readiness decisions: root `data-component` / `data-variant` naming, `componentClassPrefixes`, `absoluteFidelityComponents`, embedded SVG mappings, export payload validation results, and any accepted validator warnings
@@ -485,7 +487,7 @@ Run the cheapest reliable checks available:
 
 - selected framework/meta-framework build, typecheck, or compile check and confirmation that Storybook's configured renderer/builder match the recorded decision
 - Storybook build or relevant story preview
-- Figma export addon config check when installed
+- Figma export addon config check when installed, plus `install_figma_export_addon.mjs --check` to confirm the installed addon version matches the bundled one
 - Figma import plugin manifest check when export tooling is installed: confirm `figma/storybook-code-to-design/manifest.json` and its `main` runtime exist, and confirm `.git` and `node_modules` were not copied
 - component documentation check with `scripts/check_component_docs.mjs`; use `--strict` for CI-style failure when missing docs or inventory entries should block completion
 - lint and typecheck
@@ -574,6 +576,8 @@ Use the bundled addon installer instead of GitHub dependency specs. If `@storybo
 
 Keep project-specific addon settings in `.storybook/figma-export.config.ts`. Do not patch the bundled addon with product Figma file URLs, node overrides, token prefixes, theme globals, local image imports, or story sorting rules.
 
+Do not hand-edit the installed tarball, its lockfile entry, or a legacy vendored addon directory to change addon behavior. Ship addon changes by refreshing the skill's vendored asset with a version bump and re-running the installer; use `--check` to detect outdated installs.
+
 ### Figma Import Plugin Gate
 
 Do not present the Storybook-to-Figma workflow as ready without both a compatible exporter payload and an importer manifest that is installed, confirmed, or explicitly blocked with a reason. The importer alone does not provide renderer compatibility.
@@ -627,7 +631,7 @@ Do not rewrite product screens to use the new library until the relevant shared 
 - `scripts/check_component_docs.mjs`: audits product component folders against `design-system/components/*.md`, inventory entries, stories, token usage, and review status; use `--write` to create implementation-derived missing-doc drafts.
 - `scripts/install_agent_skill.mjs`: installs this skill into Claude Code, Codex, or Cursor user/project skill directories.
 - `scripts/generate_figma_export_config.mjs`: infers product-specific addon settings and writes `.storybook/figma-export.config.ts`.
-- `scripts/install_figma_export_addon.mjs`: copies the bundled Figma export addon into a product repo and installs it as a local `file:` dependency.
+- `scripts/install_figma_export_addon.mjs`: packs the bundled Figma export addon into a versioned tarball in the product repo, installs it as a local `file:` dependency, upgrades or migrates existing installs in place, and reports version status with `--check`.
 - `scripts/install_figma_import_plugin.mjs`: copies the bundled Figma importer plugin into `figma/storybook-code-to-design/` or a chosen target and reports the Figma Desktop manifest setup steps.
 - `scripts/install_storybook_template.mjs`: copies the bundled Storybook template into a fresh target root or subfolder, refuses collisions by default, and runs the template initializer.
 - `scripts/validate_figma_export_payload.mjs`: validates copied Storybook Figma export JSON for token binding, node naming, bounds, layout strategy, and editability issues.
