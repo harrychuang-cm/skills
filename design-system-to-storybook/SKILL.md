@@ -9,7 +9,9 @@ description: >-
   other frontend target; select the correct app root, renderer, builder, file
   conventions, and optional tooling; infer component dependency order; sync
   component documentation; plan batches; or bootstrap Storybook without
-  silently imposing React/Vite or migrating the product framework.
+  silently imposing React/Vite or migrating the product framework. Also use
+  when updating, version-checking, or explaining this skill's bundled tools:
+  the Figma export addon and the Storybook Code To Design Figma importer.
 ---
 
 # Design System to Storybook
@@ -30,7 +32,7 @@ This is a downstream implementation skill. Do not re-extract a design system her
 - **Extractor source evidence:** `DESIGN_EVIDENCE_MAP.md`, `SESSION_STATE.md`, component spec `Evidence` tables, component-review image links, and any Figma URLs/nodes, UI screenshots, graphic/brand/editorial image references, rendered routes, or frontend folders listed there.
 - **Documentation sync inputs:** existing component folders, co-located Storybook stories, component CSS token usage, explicit user component briefs, `COMPONENT_INVENTORY.md`, and component-review status JSON when design-system docs need auditing or backfilling.
 - **Bundled Figma export addon:** auto-install against Storybook 10 with any renderer (React, Vue, Svelte, Angular, Web Components) — the preview decorator is a renderer-agnostic pass-through and the export overlay is plain DOM. The optional review panel remains React-only; skip its wiring on non-React targets.
-- **Bundled Figma import plugin:** pair with a compatible exporter payload; it is not a renderer or exporter by itself.
+- **Bundled Figma import plugin:** centrally distributed, machine-level Figma tooling paired with a compatible exporter payload; it is not a renderer or exporter by itself and is not copied into product repos by default.
 - **Bundled Storybook template:** optional React + Vite + Storybook 10 workspace; ask before using it and never treat it as the universal bootstrap.
 - **Figma export readiness:** stable component node naming, token-bindable CSS, auto-layout-friendly DOM, source URL parameters, and export payload validation.
 - **Prototype handoff:** when the user wants PRD-led product prototypes or UI Flow, continue with `storybook-product-prototype`; record whether the template-only Prototype Inspector and Static Flow helpers are actually available.
@@ -48,7 +50,7 @@ This is a downstream implementation skill. Do not re-extract a design system her
 9. Run the component documentation checker for product repos that already contain components: `node <skill-root>/scripts/check_component_docs.mjs <product-repo-root> --design-system-root <design-system-package-root>`. Use `--write` only when the user asked to backfill missing docs or when this pass creates new components.
 10. Record an implementation map before code changes. Prefer `design-system/STORYBOOK_IMPLEMENTATION_MAP.md` when the design-system package lives in the product repo; otherwise use `docs/design-system/storybook-implementation.md`.
 11. Install the bundled Figma export addon, generate project-local addon config, and configure Storybook when Storybook 10 is present (any renderer). Wire the React-only review panel only on React targets.
-12. Install or confirm the paired Figma import plugin only when a compatible exporter payload is available.
+12. Confirm the centrally distributed Figma import plugin only when a compatible exporter payload is available: run the importer script to report its version, central manifest path, and once-per-machine Figma Desktop setup; copy into a repo only as an explicit fallback.
 13. Read `references/figma-export-readiness.md` before implementing components when the Figma export addon is installed or planned.
 14. If implementing more than one component, create or update a component queue before reading every spec or editing code.
 15. If the product has explicit design-system governance instructions, follow them. Otherwise apply the gates in this skill.
@@ -73,6 +75,10 @@ Do not compose product screens before the required shared components and stories
 ## Agent Installation
 
 If the user asks to install or share this skill with Claude Code, Codex, or Cursor, read `references/agent-installation.md` and use `scripts/install_agent_skill.mjs`. Install the full skill directory so `SKILL.md`, scripts, references, and the bundled Storybook addon asset remain together.
+
+## Tool Updates
+
+If the user asks to update this skill or its bundled tools, check tool versions, or understand how tool updates reach projects and Figma, read `references/tooling-updates.md` and follow its three-layer update journey: machine (skills repo pull + skill reinstall), project (export addon tarball re-run + commit), and Figma (one-time central manifest import, then git pull only). After any tool update, tell the user in their language which versions changed, what must be committed in the product repo, and whether a once-per-machine Figma step applies.
 
 ## Workflow
 
@@ -228,7 +234,7 @@ node <skill-root>/scripts/install_figma_export_addon.mjs <product-repo-root>
 
 The installer packs the vendored addon into a versioned tarball at `.storybook/vendor/harrychuang-storybook-addon-figma-export-<version>.tgz`, detects the package manager, and installs it as a local `file:` dependency plus `@storybook/icons` when needed. Commit the tarball together with `package.json` and the lockfile so teammates and CI install the same version. Re-running the installer upgrades an existing install in place when the skill bundles a newer version; `--check` reports bundled vs installed versions without changing files; `--copy-only` only produces the tarball. Older installs that copied the addon to `.storybook/vendor/figma-export-addon/` are migrated automatically on the next run — the tarball replaces the directory dependency and the old directory is kept as `figma-export-addon-legacy-backup` until it is deleted after verification. If the bundled addon asset is missing or incomplete, mark `figma-export-addon` as `blocked`; do not fall back to GitHub unless the user explicitly asks to refresh the vendored asset.
 
-To ship an addon update through this skill, refresh `assets/figma-export-addon/` with new `dist/` output and a version bump in its `package.json`, then re-run the installer in each product repo. The installer keys upgrades off that version, so never change `dist/` without bumping the version.
+To ship an addon update through this skill, refresh `assets/figma-export-addon/` with new `dist/` output and a version bump in its `package.json`, then re-run the installer in each product repo. The installer keys upgrades off that version, so never change `dist/` without bumping the version. Read `references/tooling-updates.md` for the full machine/project/Figma update journey and the user-facing reporting checklist.
 
 If Storybook is missing or not version 10, do not auto-install or force the addon; mark `figma-export-addon` as `unavailable` or `blocked` with the reason and continue core Storybook implementation. Any Storybook 10 renderer is supported (the preview side imports no react); on non-React targets skip the React-only review panel wiring. Do not install, upgrade, or migrate the app solely for this addon.
 
@@ -246,31 +252,40 @@ Read `references/figma-export-readiness.md` before implementing or changing a co
 
 ### 7. Figma Import Plugin
 
-Install or confirm the paired Figma importer only when the Figma export addon, bundled template, or another validated exporter produces a compatible payload. The importer consumes export JSON; it does not make an otherwise incompatible renderer export-ready. When compatible, leave a local manifest path that can be loaded directly in Figma Desktop.
+Confirm the paired Figma importer only when the Figma export addon, bundled template, or another validated exporter produces a compatible payload. The importer consumes export JSON; it does not make an otherwise incompatible renderer export-ready.
 
-If the bundled `storybook-template` was installed in this pass and `figma/storybook-code-to-design/manifest.json` exists, treat that importer as the baseline. Record the manifest path and loading instructions; do not run `install_figma_import_plugin.mjs` unless the template importer is missing or the product intentionally uses a different target path.
+The importer is machine-level Figma tooling, not a per-project dependency: it is distributed centrally and loaded once per designer machine. Do not copy it into product repos by default. The canonical source is the skills repo checkout at `design-system-to-storybook/assets/figma-plugin-code-to-design/manifest.json`; updating is `git pull` — a Figma dev plugin re-reads its built runtime on every run, so no re-import is needed.
 
-For compatible existing Storybook projects that are not using the bundled template importer, copy the bundled plugin with:
+Confirm and report it with:
 
 ```sh
-node <skill-root>/scripts/install_figma_import_plugin.mjs <product-repo-root>
+node <skill-root>/scripts/install_figma_import_plugin.mjs [product-repo-root]
 ```
 
-Default output is `<product-repo-root>/figma/storybook-code-to-design/manifest.json`. Use `--target <path>` only when the product already has a Figma tooling folder. Use `--dry-run` before copying into a non-empty target. Use `--force` only after explicit approval because it overwrites changed plugin files.
+The default central mode validates the bundled plugin (manifest, built runtime, and that the stamped `PLUGIN_VERSION` matches the plugin `package.json`), prints the plugin version, the manifest path to load once per machine, and the git-pull update flow. With a product root it also flags legacy per-repo copies at `figma/storybook-code-to-design/` for cleanup once designers use the central manifest.
 
-The importer plugin asset lives at `assets/figma-plugin-code-to-design/`. The installer must copy the plugin source and built runtime, including `manifest.json`, `ui.html`, `code.ts`, `code.js`, `package.json`, and lock/config files, while skipping `.git`, `node_modules`, and local OS artifacts. If `code.js` is missing, mark `figma-import-plugin` as `blocked`; the Figma manifest points to that built runtime.
+If the bundled `storybook-template` was installed in this pass and `figma/storybook-code-to-design/manifest.json` exists, treat that importer as the template workspace's baseline: the template stays self-contained. Record the manifest path and loading instructions instead of pointing that workspace at the central manifest.
 
-After installation, report the exact setup steps:
+Copying into a repo is an explicit fallback only, for example an air-gapped machine or a workspace that must stay self-contained:
+
+```sh
+node <skill-root>/scripts/install_figma_import_plugin.mjs <product-repo-root> --copy-to figma/storybook-code-to-design [--dry-run] [--force]
+```
+
+Fallback copies must include the plugin source and built runtime — `manifest.json`, `ui.html`, `code.ts`, `code.js`, `package.json`, and lock/config files — while skipping `.git`, `node_modules`, and local OS artifacts. If `code.js` is missing, mark `figma-import-plugin` as `blocked`; the Figma manifest points to that built runtime. Use `--dry-run` before copying into a non-empty target and `--force` only after explicit approval because it overwrites changed plugin files.
+
+Report the setup steps, which run once per machine rather than once per project:
 
 ```text
-Figma importer plugin:
+Figma importer plugin (once per machine):
 1. Open Figma Desktop.
 2. Go to Plugins > Development > Import plugin from manifest...
-3. Select <product-repo-root>/figma/storybook-code-to-design/manifest.json.
+3. Select design-system-to-storybook/assets/figma-plugin-code-to-design/manifest.json from the skills repo checkout.
 4. In Storybook, export JSON, then import it with Storybook Code To Design.
+5. To update later: git pull the skills repo — no re-import needed.
 ```
 
-Record the importer target path, manifest path, installer command, dry-run/force decision, and any blocked reason in the implementation map. Keep product-specific importer instructions in the product docs or closeout; do not patch the bundled plugin asset for a single product.
+Record the plugin version, central manifest path, machine setup status, any fallback copy decision with its reason, and any blocked reason in the implementation map. The plugin version constant and UI badge are stamped from the plugin `package.json` by its `prebuild` script; never hand-edit `PLUGIN_VERSION` or the badge, and never patch the bundled plugin asset for a single product. Read `references/tooling-updates.md` for the full update journey across machine, project, and Figma layers.
 
 ### 8. Implementation Map
 
@@ -290,7 +305,7 @@ Also record:
 - Figma export addon status and options
 - bundled addon tarball path and installed addon version in the product repo
 - generated `.storybook/figma-export.config.ts` path and inferred project-specific values
-- Figma import plugin status, target directory, manifest path, installer command, and Figma Desktop loading instructions
+- Figma import plugin version, central manifest path, machine setup status, fallback copy decision when used, and Figma Desktop loading instructions
 - Figma export readiness decisions: root `data-component` / `data-variant` naming, `componentClassPrefixes`, `absoluteFidelityComponents`, embedded SVG mappings, export payload validation results, and any accepted validator warnings
 - source trace path and per-component source IDs
 - component dependency plan path, recommended order, and current dependency decisions
@@ -488,7 +503,7 @@ Run the cheapest reliable checks available:
 - selected framework/meta-framework build, typecheck, or compile check and confirmation that Storybook's configured renderer/builder match the recorded decision
 - Storybook build or relevant story preview
 - Figma export addon config check when installed, plus `install_figma_export_addon.mjs --check` to confirm the installed addon version matches the bundled one
-- Figma import plugin manifest check when export tooling is installed: confirm `figma/storybook-code-to-design/manifest.json` and its `main` runtime exist, and confirm `.git` and `node_modules` were not copied
+- Figma import plugin check when export tooling is installed: run the importer script's central mode to confirm the bundled manifest and `main` runtime exist and the stamped version matches the plugin `package.json`; for fallback copies also confirm `.git` and `node_modules` were not copied
 - component documentation check with `scripts/check_component_docs.mjs`; use `--strict` for CI-style failure when missing docs or inventory entries should block completion
 - lint and typecheck
 - unit or interaction tests for changed components
@@ -519,7 +534,7 @@ Report:
 - design-system docs created or updated, including provenance (`extracted`, `brief-derived`, or `implementation-derived`)
 - tokens reused or added
 - bundled Figma export addon installed/configured or blocked reason
-- Figma import plugin installed/confirmed or blocked reason, including the exact manifest path and Figma Desktop setup steps
+- Figma import plugin confirmed (version and central manifest path), fallback copy, or blocked reason, including the once-per-machine Figma Desktop setup steps
 - Figma export readiness checks run, payload validator warnings, and accepted less-editable export decisions
 - components reused, extended, or created
 - stories added or updated
@@ -580,11 +595,11 @@ Do not hand-edit the installed tarball, its lockfile entry, or a legacy vendored
 
 ### Figma Import Plugin Gate
 
-Do not present the Storybook-to-Figma workflow as ready without both a compatible exporter payload and an importer manifest that is installed, confirmed, or explicitly blocked with a reason. The importer alone does not provide renderer compatibility.
+Do not present the Storybook-to-Figma workflow as ready without both a compatible exporter payload and an importer that is confirmed centrally, provided by the template workspace, copied as an explicit fallback, or explicitly blocked with a reason. The importer alone does not provide renderer compatibility.
 
-Use the bundled importer installer for non-template projects instead of asking developers to manually copy `assets/figma-plugin-code-to-design/`. If the bundled template already provides `figma/storybook-code-to-design/manifest.json`, record that path and the Figma Desktop loading steps instead of duplicating another importer.
+Do not copy the importer into product repos by default — the central manifest in the skills repo checkout is the distribution channel, and updates flow through `git pull`. Use the importer script's `--copy-to` fallback only with a recorded reason. If the bundled template already provides `figma/storybook-code-to-design/manifest.json`, record that path instead of duplicating another importer; flag other legacy per-repo copies for cleanup.
 
-Do not copy `.git`, `node_modules`, Storybook build output, or unrelated local artifacts into the product repo when installing the importer. Do not omit `code.js` from the copied plugin because `manifest.json` uses it as the Figma runtime entry.
+Do not copy `.git`, `node_modules`, Storybook build output, or unrelated local artifacts when making a fallback copy, and do not omit `code.js` because `manifest.json` uses it as the Figma runtime entry. Do not hand-edit `PLUGIN_VERSION` or the UI version badge; they are stamped from the plugin `package.json` by its `prebuild` script.
 
 ### Figma Export Readiness Gate
 
@@ -632,10 +647,11 @@ Do not rewrite product screens to use the new library until the relevant shared 
 - `scripts/install_agent_skill.mjs`: installs this skill into Claude Code, Codex, or Cursor user/project skill directories.
 - `scripts/generate_figma_export_config.mjs`: infers product-specific addon settings and writes `.storybook/figma-export.config.ts`.
 - `scripts/install_figma_export_addon.mjs`: packs the bundled Figma export addon into a versioned tarball in the product repo, installs it as a local `file:` dependency, upgrades or migrates existing installs in place, and reports version status with `--check`.
-- `scripts/install_figma_import_plugin.mjs`: copies the bundled Figma importer plugin into `figma/storybook-code-to-design/` or a chosen target and reports the Figma Desktop manifest setup steps.
+- `scripts/install_figma_import_plugin.mjs`: confirms the centrally distributed Figma importer — version, central manifest path, once-per-machine Figma Desktop steps, and legacy per-repo copy cleanup hints; `--copy-to` remains as an explicit fallback copier.
 - `scripts/install_storybook_template.mjs`: copies the bundled Storybook template into a fresh target root or subfolder, refuses collisions by default, and runs the template initializer.
 - `scripts/validate_figma_export_payload.mjs`: validates copied Storybook Figma export JSON for token binding, node naming, bounds, layout strategy, and editability issues.
 - `references/agent-installation.md`: target paths and verification checklist for Claude Code, Codex, and Cursor installation.
+- `references/tooling-updates.md`: three-layer distribution model (machine/project/Figma), the update journey for existing skill users, version visibility, the user-facing reporting checklist, and the maintainer release flow for the bundled addon and importer.
 - `references/documentation-sync.md`: detailed rules for auditing, backfilling, provenance-labeling, and closing out design-system component docs.
 - `references/framework-adaptation.md`: framework/root evidence order, ask-vs-infer and migration gates, renderer/builder selection, official CLI fallback, framework-native file conventions, decision record, and capability matrix.
 - `references/figma-export-readiness.md`: component DOM/CSS/token/story rules for editable Figma JSON/importer output.
