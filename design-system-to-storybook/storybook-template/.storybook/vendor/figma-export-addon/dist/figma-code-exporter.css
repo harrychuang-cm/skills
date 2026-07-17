@@ -359,3 +359,102 @@
 .sbfx-exporter[data-collapsed="true"] .sbfx-exporter__subtitle {
   display: none;
 }
+
+.sbfx-exporter-notice {
+  --sbfx-color: #f7f8ff;
+  --sbfx-muted: #b6bbd4;
+  --sbfx-surface: #171821;
+  --sbfx-border: #34384a;
+  --sbfx-accent-surface: #202044;
+
+  position: fixed;
+  z-index: var(--sbfx-z-index, 20);
+  inset-block-end: var(--sbfx-offset, 24px);
+  inset-inline-end: var(--sbfx-offset, 24px);
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+  box-sizing: border-box;
+  inline-size: min(392px, calc(100vw - (var(--sbfx-offset, 24px) * 2)));
+  padding: 12px 14px;
+  color: var(--sbfx-color);
+  background: var(--sbfx-surface);
+  border: 1px solid var(--sbfx-border);
+  border-radius: var(--sbfx-radius, 8px);
+  box-shadow:
+    0 18px 48px rgb(0 0 0 / 32%),
+    0 0 0 1px rgb(255 255 255 / 3%) inset;
+  font-family:
+    var(--sbfx-font-family, Inter),
+    ui-sans-serif,
+    system-ui,
+    sans-serif;
+}
+
+.sbfx-exporter-notice__mark {
+  display: inline-grid;
+  place-items: center;
+  inline-size: 28px;
+  block-size: 28px;
+  color: #ffffff;
+  background: var(--sbfx-accent-surface);
+  border: 1px solid rgb(111 99 255 / 44%);
+  border-radius: 7px;
+}
+
+.sbfx-exporter-notice__body {
+  display: grid;
+  min-inline-size: 0;
+  gap: 2px;
+}
+
+.sbfx-exporter-notice__title {
+  color: var(--sbfx-color);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 18px;
+}
+
+.sbfx-exporter-notice__message {
+  margin: 0;
+  color: var(--sbfx-muted);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 17px;
+  overflow-wrap: anywhere;
+}
+
+.sbfx-exporter-notice__dismiss {
+  display: inline-grid;
+  place-items: center;
+  inline-size: 24px;
+  block-size: 24px;
+  padding: 0;
+  color: var(--sbfx-muted);
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+  transition:
+    background-color 140ms ease,
+    color 140ms ease;
+}
+
+.sbfx-exporter-notice__dismiss:hover {
+  color: var(--sbfx-color);
+  background: rgb(255 255 255 / 8%);
+}
+
+.sbfx-exporter-notice__dismiss:focus-visible {
+  outline: 2px solid rgb(129 119 255 / 72%);
+  outline-offset: 2px;
+}
+
+@media (max-width: 640px) {
+  .sbfx-exporter-notice {
+    inline-size: calc(100vw - (var(--sbfx-mobile-offset, 16px) * 2));
+    inset-block-end: var(--sbfx-mobile-offset, 16px);
+    inset-inline-end: var(--sbfx-mobile-offset, 16px);
+  }
+}

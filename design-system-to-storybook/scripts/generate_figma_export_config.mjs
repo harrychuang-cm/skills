@@ -207,6 +207,14 @@ function detectTokenPrefix(...roots) {
   return [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || "";
 }
 
+// Derive the addon's storyTitlePrefix filter from existing story titles.
+// Only the TOP-LEVEL namespace is emitted ("Components/", "Foundations/",
+// "Pages/"), never a deeper path such as "Components/Examples/": prefixes are
+// matched with startsWith, so a deep prefix silently excludes every sibling
+// subcategory ("Components/Actions/...") and the export overlay never mounts
+// for those stories. Titles without a "/" are ignored, and when no titled
+// story can be detected at all the function returns false, which the addon
+// treats as "include every story".
 function detectStoryTitlePrefixes(root) {
   const storyFiles = walkSafe(path.join(root, "src"))
     .filter((file) => /\.stories\.[cm]?[jt]sx?$/.test(file));
@@ -214,8 +222,8 @@ function detectStoryTitlePrefixes(root) {
 
   for (const file of storyFiles) {
     const text = fs.readFileSync(file, "utf8");
-    for (const match of text.matchAll(/title\s*:\s*["'`]([^"'`]+\/)[^"'`]*["'`]/g)) {
-      prefixes.add(match[1]);
+    for (const match of text.matchAll(/title\s*:\s*["'`]([^"'`/]+)\/[^"'`]*["'`]/g)) {
+      prefixes.add(`${match[1].trim()}/`);
     }
   }
 

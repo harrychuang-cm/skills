@@ -39,7 +39,7 @@ Default output is `<product-repo-root>/.storybook/figma-export.config.ts`. Keep 
 The generated config covers:
 
 - `componentClassPrefixes` and `tokenPrefix`, inferred from token CSS variables such as `--cm-ref-*`, `--cm-sys-*`, and `--cm-comp-*`
-- `storyTitlePrefix`, inferred from existing story titles when possible
+- `storyTitlePrefix`, inferred from existing story titles when possible; the generator emits top-level namespaces only (`Components/`, `Foundations/`, `Pages/`) — never deeper paths like `Components/Examples/`, because prefixes are `startsWith` matches and a deep prefix silently excludes sibling subcategories — and falls back to `false` (include all stories) when no titled story is found. Re-running the generator preserves an existing `storyTitlePrefix` in the config; fix or remove a stale value in `.storybook/figma-export.config.ts` before regenerating
 - `absoluteFidelityComponents`, inferred from page/screen/composite/product-pattern entries and graphic or typographic lockups that need tighter visual parity
 - review API path, plugin name, and status JSON path
 - source fallback values, such as design-system Figma file URL and per-component node overrides from `STORYBOOK_SOURCE_TRACE.md`
@@ -52,7 +52,7 @@ The generated config covers:
 4. Use plain `createFigmaExportDecorator` only if the user explicitly opts out of review/Open source.
 5. Set `tokenPrefix` only when the CSS token prefix is explicit or auto-detection would be ambiguous.
 6. Keep `tokenLayers` aligned to `ref`, `sys`, and `comp` unless the extraction uses different segment names.
-7. Set `storyTitlePrefix` to `false` when the project has no established story namespace; otherwise include every relevant namespace such as `Components/`, `Pages/`, and `Foundations/`.
+7. Set `storyTitlePrefix` to `false` when the project has no established story namespace; otherwise include every relevant top-level namespace such as `Components/`, `Pages/`, and `Foundations/`. Use `Components/`, not a deeper path like `Components/Examples/` — prefixes are `startsWith` matches, so a deep prefix excludes every sibling subcategory.
 8. Set `componentClassPrefixes` from component CSS class prefixes when available.
 9. Configure review/Open source using bundled addon helpers instead of copying a product-specific panel.
 10. Remember that the review overlay and Open source action render only when the Storybook `figmaExport` toolbar global is toggled on.
@@ -64,7 +64,8 @@ Common causes:
 - `.storybook/preview.*` imports only `createFigmaExportDecorator`, not `createFigmaExportReviewDecorator`.
 - `.storybook/preview.*` does not import `@harrychuang/storybook-addon-figma-export/styles.css`; this stylesheet includes both exporter and review overlay styles.
 - Storybook toolbar global `figmaExport` is still `off`; the review overlay renders only after the toolbar is toggled on.
-- `figmaExportOptions.storyTitlePrefix` excludes the current story title. Use `false` to include all stories, or include every namespace such as `Components/`, `Pages/`, and `Foundations/`.
+- `figmaExportOptions.storyTitlePrefix` excludes the current story title. When this happens with the toolbar on, the preview shows a dismissible "Figma export" notice naming the configured prefixes. Check first that the filter covers the story's top-level namespace: the correct level is `Components/`, not `Components/Examples/`. Use `false` to include all stories, or include every top-level namespace such as `Components/`, `Pages/`, and `Foundations/`.
+- The current entry is a Docs page. The export overlay mounts in Story view only; with the toolbar on, the preview shows a notice saying so.
 - `.storybook/main.*` does not include `"@harrychuang/storybook-addon-figma-export"` in `addons`, so the toolbar control is missing.
 - `.storybook/main.*` does not mount `createFigmaReviewStatusPlugin`, so the overlay may show a save/load error after it renders.
 

@@ -37,6 +37,10 @@
     return document.querySelector("aside.sbfx-exporter");
   }
 
+  function noticeElement() {
+    return document.querySelector("aside.sbfx-exporter-notice");
+  }
+
   function waitFor(predicate, timeoutMs) {
     return new Promise((resolve) => {
       const startedAt = Date.now();
@@ -105,13 +109,65 @@
         Boolean(aside?.querySelector(".sbfx-exporter__version")),
       );
 
-      // Globals off unmounts the overlay.
+      // Globals off unmounts the overlay and shows no notice.
       decorator(() => sentinel, { ...baseContext, globals: { figmaExport: "off" } });
       check("overlay removed when global is off", overlayElement() === null);
+      check("no notice when global is off", noticeElement() === null);
 
-      // Docs view mode keeps the overlay unmounted.
+      // Docs view mode keeps the overlay unmounted but explains why.
       decorator(() => sentinel, { ...baseContext, viewMode: "docs" });
       check("overlay absent in docs view mode", overlayElement() === null);
+      const docsNotice = noticeElement();
+      check("docs view shows story-view-only notice", Boolean(docsNotice));
+      check(
+        "docs notice explains story view requirement",
+        (docsNotice?.textContent || "").includes("Story view"),
+      );
+      docsNotice?.querySelector(".sbfx-exporter-notice__dismiss")?.click();
+      check("notice removed after dismiss", noticeElement() === null);
+      decorator(() => sentinel, { ...baseContext, viewMode: "docs" });
+      check("dismissed notice stays hidden on re-render", noticeElement() === null);
+
+      // Excluded story: overlay stays unmounted, notice names storyTitlePrefix.
+      const prefixedDecorator = window.FigmaOverlayFixture.createFigmaExportDecorator({
+        storyTitlePrefix: ["Components/"],
+      });
+      const excludedContext = {
+        ...baseContext,
+        id: "foundations-colors--default",
+        name: "Default",
+        title: "Foundations/Colors",
+      };
+      prefixedDecorator(() => sentinel, excludedContext);
+      check("excluded story keeps overlay unmounted", overlayElement() === null);
+      const excludedNotice = noticeElement();
+      check("excluded story shows notice", Boolean(excludedNotice));
+      check(
+        "excluded notice names storyTitlePrefix",
+        (excludedNotice?.textContent || "").includes("storyTitlePrefix"),
+      );
+      check(
+        "excluded notice lists configured prefixes",
+        (excludedNotice?.textContent || "").includes("Components/"),
+      );
+
+      // A story matching the prefix mounts the overlay and clears the notice.
+      prefixedDecorator(() => sentinel, baseContext);
+      check("included story mounts overlay", Boolean(overlayElement()));
+      check("notice removed for included story", noticeElement() === null);
+
+      // Toggling off resets the dismissal so the notice can reappear.
+      prefixedDecorator(() => sentinel, {
+        ...excludedContext,
+        globals: { figmaExport: "off" },
+      });
+      prefixedDecorator(() => sentinel, excludedContext);
+      check("notice reappears after toolbar off/on", Boolean(noticeElement()));
+      prefixedDecorator(() => sentinel, {
+        ...excludedContext,
+        globals: { figmaExport: "off" },
+      });
+      check("notice removed when toolbar turns off", noticeElement() === null);
 
       // Re-enable and export via the Copy JSON button with a stubbed clipboard.
       document.title = "STEP:remount";

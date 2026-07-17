@@ -114,9 +114,7 @@ export const storybookTemplateProjectConfig =
       ],
       "embeddedSvgByDataGraphic": {},
       "storyTitlePrefix": [
-        "Components/Examples/",
         "Components/",
-        "Pages/Prototypes/",
         "Pages/"
       ]
     },

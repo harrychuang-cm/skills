@@ -118,7 +118,7 @@ const preview: Preview = {
 export default preview;
 ```
 
-Replace `your-prefix-` with the class prefix used by your component library, or use an empty array when you want the exporter to derive layer names without a project prefix. `storyTitlePrefix: false` keeps the addon available for every story; set it to a string or string array only when your project wants to filter exports.
+Replace `your-prefix-` with the class prefix used by your component library, or use an empty array when you want the exporter to derive layer names without a project prefix. `storyTitlePrefix: false` keeps the addon available for every story; set it to a string or string array only when your project wants to filter exports. Prefixes are matched with `startsWith` against the full story title, so use top-level namespaces such as `Components/` — a deeper prefix like `Components/Examples/` silently excludes every sibling subcategory (`Components/Actions/...`).
 
 Adjust `figmaExportOptions` for your design tokens and story naming.
 
@@ -224,10 +224,17 @@ Projects do not need all three default layers to export. The detector chooses th
 | `collections` | Figma variable collection names per layer |
 | `pluginDataKey` | Figma variable plugin data key for duplicate detection |
 | `globalName` | Storybook global for the toolbar switch |
-| `storyTitlePrefix` | Story title prefix filter, or `false` for all stories |
+| `storyTitlePrefix` | Story title prefix filter (top-level namespaces such as `Components/`), or `false` for all stories |
 | `componentClassPrefixes` | Class prefixes used when naming exported layers |
 | `absoluteFidelityComponents` | Components exported with absolute layout |
 | `embeddedSvgByDataGraphic` | Inline SVG map keyed by `data-graphic` |
+
+## Troubleshooting
+
+- **Toolbar shows "Figma export on" but no export tools appear.** The preview shows a small dismissible "Figma export" notice explaining why. The two causes:
+  - The current story is excluded by `storyTitlePrefix`. Check that the filter covers the story title's top-level namespace: use `Components/`, not a deeper path like `Components/Examples/` (prefixes are `startsWith` matches, so a deep prefix excludes `Components/Actions/...` and every other sibling). Set `storyTitlePrefix: false` to include all stories.
+  - You are in Docs view. The export overlay mounts in Story view only; open the entry as a story.
+- **No notice and no tools.** Confirm the preview imports `@harrychuang/storybook-addon-figma-export/styles.css` and that the decorator (`createFigmaExportDecorator` or `createFigmaExportReviewDecorator`) is registered.
 
 ## API exports
 

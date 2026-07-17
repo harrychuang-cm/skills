@@ -3506,7 +3506,7 @@ void (async function importStorybookStory(payload) {
 
 // src/version.ts
 function getAddonVersion() {
-  return true ? "0.2.0" : "dev";
+  return true ? "0.3.0" : "dev";
 }
 
 // src/overlay.ts
@@ -3529,7 +3529,8 @@ var svgIcons = {
   command: '<svg viewBox="0 0 14 14" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M5 5h4v4H5zM5 5H3.5A1.5 1.5 0 1 1 5 3.5V5zm4 0h1.5A1.5 1.5 0 1 0 9 3.5V5zM5 9H3.5A1.5 1.5 0 1 0 5 10.5V9zm4 0h1.5A1.5 1.5 0 1 1 9 10.5V9z"/></svg>',
   copy: '<svg viewBox="0 0 14 14" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><rect x="4.5" y="4.5" width="7" height="7" rx="1"/><path d="M9.5 4.5v-1a1 1 0 0 0-1-1h-5a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1h1"/></svg>',
   download: '<svg viewBox="0 0 14 14" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M7 2v7m0 0L4.5 6.5M7 9l2.5-2.5M2.5 11.5h9"/></svg>',
-  figma: '<svg viewBox="0 0 14 14" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M5.5 1.5h3a2 2 0 1 1 0 4 2 2 0 1 1 0 4 2 2 0 1 1-4 0v-2a2 2 0 0 1-1-3.73A2 2 0 0 1 5.5 1.5z" fill="none" stroke="currentColor" stroke-width="1.1"/><circle cx="8.5" cy="7.5" r="1.1"/></svg>'
+  figma: '<svg viewBox="0 0 14 14" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M5.5 1.5h3a2 2 0 1 1 0 4 2 2 0 1 1 0 4 2 2 0 1 1-4 0v-2a2 2 0 0 1-1-3.73A2 2 0 0 1 5.5 1.5z" fill="none" stroke="currentColor" stroke-width="1.1"/><circle cx="8.5" cy="7.5" r="1.1"/></svg>',
+  close: '<svg viewBox="0 0 14 14" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3.5 3.5 10.5 10.5M10.5 3.5 3.5 10.5"/></svg>'
 };
 function getExportComponentTitle(title, options) {
   if (!title) return "Component";
@@ -3980,16 +3981,89 @@ function unmountOverlay() {
   }
   overlayState = null;
 }
+var noticeElement = null;
+var mountedNoticeKey = null;
+var dismissedNoticeKey = null;
+function getNoticeMessage(reason, options) {
+  if (reason === "not-story-view") {
+    return "Figma export overlay is available in Story view only. Open this entry as a story to export it.";
+  }
+  const prefixes = options.storyTitlePrefix === false ? [] : options.storyTitlePrefix;
+  const prefixList = prefixes.length ? ` (${prefixes.join(", ")})` : "";
+  return `This story is excluded by storyTitlePrefix${prefixList}. Add this story's top-level namespace to storyTitlePrefix, or set it to false to include all stories.`;
+}
+function unmountNotice() {
+  if (noticeElement) {
+    noticeElement.remove();
+    noticeElement = null;
+  }
+  mountedNoticeKey = null;
+}
+function syncFigmaExportNotice(context, options, reason) {
+  const noticeKey = `${context.id ?? ""}|${reason}`;
+  if (dismissedNoticeKey === noticeKey) {
+    unmountNotice();
+    return;
+  }
+  if (noticeElement && mountedNoticeKey === noticeKey) {
+    if (!noticeElement.isConnected) document.body.append(noticeElement);
+    return;
+  }
+  unmountNotice();
+  const aside = document.createElement("aside");
+  aside.setAttribute("aria-label", "Figma export status");
+  aside.setAttribute("role", "status");
+  aside.className = "sbfx-exporter-notice";
+  aside.dataset.reason = reason;
+  aside.dataset.version = getAddonVersion();
+  const mark = createIconSpan(svgIcons.figma);
+  mark.className = "sbfx-exporter-notice__mark";
+  const body = document.createElement("div");
+  body.className = "sbfx-exporter-notice__body";
+  const title = document.createElement("span");
+  title.className = "sbfx-exporter-notice__title";
+  title.textContent = "Figma export";
+  const message = document.createElement("p");
+  message.className = "sbfx-exporter-notice__message";
+  message.textContent = getNoticeMessage(reason, options);
+  body.append(title, message);
+  const dismiss = document.createElement("button");
+  dismiss.type = "button";
+  dismiss.className = "sbfx-exporter-notice__dismiss";
+  dismiss.setAttribute("aria-label", "Dismiss Figma export notice");
+  dismiss.title = "Dismiss";
+  dismiss.append(createIconSpan(svgIcons.close));
+  dismiss.addEventListener("click", () => {
+    dismissedNoticeKey = noticeKey;
+    unmountNotice();
+  });
+  aside.append(mark, body, dismiss);
+  document.body.append(aside);
+  noticeElement = aside;
+  mountedNoticeKey = noticeKey;
+}
 function syncFigmaExportOverlay(context, options) {
   if (typeof document === "undefined") return;
   const resolvedOptions = resolveFigmaExportAddonOptions(options);
   const enabled = context.globals?.[resolvedOptions.globalName] === "on";
   const includedStory = isStoryIncludedForFigmaExport(context.title, resolvedOptions);
   const isStoryView = (context.viewMode ?? "story") === "story";
-  if (!enabled || !includedStory || !isStoryView) {
+  if (!enabled) {
     unmountOverlay();
+    unmountNotice();
+    dismissedNoticeKey = null;
     return;
   }
+  if (!isStoryView || !includedStory) {
+    unmountOverlay();
+    syncFigmaExportNotice(
+      context,
+      resolvedOptions,
+      !isStoryView ? "not-story-view" : "excluded-story"
+    );
+    return;
+  }
+  unmountNotice();
   if (!overlayRefs) {
     overlayRefs = buildOverlay();
   }

@@ -60,6 +60,8 @@ const svgIcons = {
     '<svg viewBox="0 0 14 14" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M7 2v7m0 0L4.5 6.5M7 9l2.5-2.5M2.5 11.5h9"/></svg>',
   figma:
     '<svg viewBox="0 0 14 14" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M5.5 1.5h3a2 2 0 1 1 0 4 2 2 0 1 1 0 4 2 2 0 1 1-4 0v-2a2 2 0 0 1-1-3.73A2 2 0 0 1 5.5 1.5z" fill="none" stroke="currentColor" stroke-width="1.1"/><circle cx="8.5" cy="7.5" r="1.1"/></svg>',
+  close:
+    '<svg viewBox="0 0 14 14" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3.5 3.5 10.5 10.5M10.5 3.5 3.5 10.5"/></svg>',
 };
 
 function getExportComponentTitle(
@@ -680,6 +682,94 @@ function unmountOverlay(): void {
   overlayState = null;
 }
 
+// When the toolbar is on but the export tools cannot mount, a silent unmount
+// looks like a broken addon. The notice explains why the tools are hidden for
+// the current story. It is dismissible per story+reason and never blocks the
+// story content (small fixed panel in the same corner as the exporter).
+type OverlayNoticeReason = "excluded-story" | "not-story-view";
+
+let noticeElement: HTMLElement | null = null;
+let mountedNoticeKey: string | null = null;
+let dismissedNoticeKey: string | null = null;
+
+function getNoticeMessage(
+  reason: OverlayNoticeReason,
+  options: ResolvedFigmaExportAddonOptions,
+): string {
+  if (reason === "not-story-view") {
+    return "Figma export overlay is available in Story view only. Open this entry as a story to export it.";
+  }
+
+  const prefixes =
+    options.storyTitlePrefix === false ? [] : options.storyTitlePrefix;
+  const prefixList = prefixes.length ? ` (${prefixes.join(", ")})` : "";
+  return `This story is excluded by storyTitlePrefix${prefixList}. Add this story's top-level namespace to storyTitlePrefix, or set it to false to include all stories.`;
+}
+
+function unmountNotice(): void {
+  if (noticeElement) {
+    noticeElement.remove();
+    noticeElement = null;
+  }
+  mountedNoticeKey = null;
+}
+
+function syncFigmaExportNotice(
+  context: FigmaExportPreviewContext,
+  options: ResolvedFigmaExportAddonOptions,
+  reason: OverlayNoticeReason,
+): void {
+  const noticeKey = `${context.id ?? ""}|${reason}`;
+
+  if (dismissedNoticeKey === noticeKey) {
+    unmountNotice();
+    return;
+  }
+
+  if (noticeElement && mountedNoticeKey === noticeKey) {
+    if (!noticeElement.isConnected) document.body.append(noticeElement);
+    return;
+  }
+
+  unmountNotice();
+
+  const aside = document.createElement("aside");
+  aside.setAttribute("aria-label", "Figma export status");
+  aside.setAttribute("role", "status");
+  aside.className = "sbfx-exporter-notice";
+  aside.dataset.reason = reason;
+  aside.dataset.version = getAddonVersion();
+
+  const mark = createIconSpan(svgIcons.figma);
+  mark.className = "sbfx-exporter-notice__mark";
+
+  const body = document.createElement("div");
+  body.className = "sbfx-exporter-notice__body";
+  const title = document.createElement("span");
+  title.className = "sbfx-exporter-notice__title";
+  title.textContent = "Figma export";
+  const message = document.createElement("p");
+  message.className = "sbfx-exporter-notice__message";
+  message.textContent = getNoticeMessage(reason, options);
+  body.append(title, message);
+
+  const dismiss = document.createElement("button");
+  dismiss.type = "button";
+  dismiss.className = "sbfx-exporter-notice__dismiss";
+  dismiss.setAttribute("aria-label", "Dismiss Figma export notice");
+  dismiss.title = "Dismiss";
+  dismiss.append(createIconSpan(svgIcons.close));
+  dismiss.addEventListener("click", () => {
+    dismissedNoticeKey = noticeKey;
+    unmountNotice();
+  });
+
+  aside.append(mark, body, dismiss);
+  document.body.append(aside);
+  noticeElement = aside;
+  mountedNoticeKey = noticeKey;
+}
+
 // Decorator side effect: mounts, updates, or removes the overlay for the
 // current story context. Safe to call on every story render.
 export function syncFigmaExportOverlay(
@@ -693,10 +783,25 @@ export function syncFigmaExportOverlay(
   const includedStory = isStoryIncludedForFigmaExport(context.title, resolvedOptions);
   const isStoryView = (context.viewMode ?? "story") === "story";
 
-  if (!enabled || !includedStory || !isStoryView) {
+  if (!enabled) {
     unmountOverlay();
+    unmountNotice();
+    // Toggling the toolbar off and on again re-shows a dismissed notice.
+    dismissedNoticeKey = null;
     return;
   }
+
+  if (!isStoryView || !includedStory) {
+    unmountOverlay();
+    syncFigmaExportNotice(
+      context,
+      resolvedOptions,
+      !isStoryView ? "not-story-view" : "excluded-story",
+    );
+    return;
+  }
+
+  unmountNotice();
 
   if (!overlayRefs) {
     overlayRefs = buildOverlay();

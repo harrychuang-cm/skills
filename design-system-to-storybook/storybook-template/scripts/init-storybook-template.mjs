@@ -206,12 +206,10 @@ function writeProjectConfig({
         absoluteFidelityComponents: [],
         componentClassPrefixes: [componentClassPrefix],
         embeddedSvgByDataGraphic: {},
-        storyTitlePrefix: [
-          "Components/Examples/",
-          "Components/",
-          "Pages/Prototypes/",
-          "Pages/",
-        ],
+        // Top-level namespaces only: prefixes are matched with startsWith, so
+        // a deeper prefix like "Components/Examples/" would silently exclude
+        // sibling subcategories from the Figma export overlay.
+        storyTitlePrefix: ["Components/", "Pages/"],
       },
       review: {
         apiPath: `/__${tokenPrefix}_figma_review_status`,
