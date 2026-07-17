@@ -29,9 +29,12 @@ Storybook review-server bridge (exports pushed via the addon's
 3. Press **Import selected** — each payload is fetched and fed through the
    same pipeline as pasted JSON, sequentially, with a final summary.
 
-`manifest.json` declares `networkAccess.devAllowedDomains` for
-`http://localhost:*` and `http://127.0.0.1:*`; re-import the manifest in
-Figma after updating so the permission takes effect. Fetch failures (bridge
+`manifest.json` declares `networkAccess.devAllowedDomains` for explicit
+localhost/127.0.0.1 ports (6006-6008 for Storybook dev, 8080 for a static
+preview server). Figma's manifest validation rejects wildcard ports such as
+`http://localhost:*` ("must be a valid URL"), so every port has to be listed
+individually; add your port to the list if Storybook runs elsewhere, then
+re-import the manifest in Figma so the permission takes effect. Fetch failures (bridge
 not running, CORS) surface in the status panel — pasting JSON and choosing a
 file keep working regardless.
 

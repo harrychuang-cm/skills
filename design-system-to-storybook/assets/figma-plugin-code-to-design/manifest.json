@@ -15,8 +15,14 @@
       "none"
     ],
     "devAllowedDomains": [
-      "http://localhost:*",
-      "http://127.0.0.1:*"
+      "http://localhost:6006",
+      "http://localhost:6007",
+      "http://localhost:6008",
+      "http://localhost:8080",
+      "http://127.0.0.1:6006",
+      "http://127.0.0.1:6007",
+      "http://127.0.0.1:6008",
+      "http://127.0.0.1:8080"
     ]
   }
 }
