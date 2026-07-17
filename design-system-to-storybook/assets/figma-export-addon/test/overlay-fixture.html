@@ -94,8 +94,16 @@
       const aside = overlayElement();
       check("overlay aside mounted on body", Boolean(aside && aside.parentElement === document.body));
       check("overlay starts idle", aside?.dataset.status === "idle");
-      const buttons = aside ? aside.querySelectorAll("button") : [];
+      const buttons = aside ? aside.querySelectorAll(".sbfx-exporter__actions button") : [];
       check("overlay has four action buttons", buttons.length === 4);
+      check(
+        "overlay reports addon version",
+        typeof aside?.dataset.version === "string" && aside.dataset.version.length > 0,
+      );
+      check(
+        "version badge rendered in title",
+        Boolean(aside?.querySelector(".sbfx-exporter__version")),
+      );
 
       // Globals off unmounts the overlay.
       decorator(() => sentinel, { ...baseContext, globals: { figmaExport: "off" } });
@@ -154,6 +162,39 @@
           (overlayElement()?.textContent || "").includes("[synced]"),
         );
       }
+
+      // Collapse toggle: state flips, persists to localStorage, and survives
+      // story changes; expanding restores the stored preference.
+      document.title = "STEP:collapse";
+      const toggleButton = overlayElement()?.querySelector(".sbfx-exporter__toggle");
+      check("collapse toggle present in header", Boolean(toggleButton));
+      check("overlay starts expanded", overlayElement()?.dataset.collapsed === "false");
+      check(
+        "toggle reports expanded state",
+        toggleButton?.getAttribute("aria-expanded") === "true",
+      );
+      toggleButton?.click();
+      check("overlay collapses on toggle", overlayElement()?.dataset.collapsed === "true");
+      check(
+        "toggle reports collapsed state",
+        toggleButton?.getAttribute("aria-expanded") === "false",
+      );
+      check(
+        "collapse preference persisted",
+        window.localStorage.getItem("sbfx:exporter-collapsed") === "1",
+      );
+      decorator(() => sentinel, { ...baseContext, id: "demo-card--hover", name: "Hover" });
+      check(
+        "collapse survives story change",
+        overlayElement()?.dataset.collapsed === "true",
+      );
+      toggleButton?.click();
+      check("overlay expands on second toggle", overlayElement()?.dataset.collapsed === "false");
+      check(
+        "expand preference persisted",
+        window.localStorage.getItem("sbfx:exporter-collapsed") === "0",
+      );
+      decorator(() => sentinel, baseContext);
 
       document.getElementById("fixture-result").textContent = toBase64Utf8(
         JSON.stringify({ diagnostics: { status: overlayElement()?.dataset.status ?? null, summary: overlayElement()?.textContent ?? "" }, payloadStoryId: payload?.storyId ?? null, results }),

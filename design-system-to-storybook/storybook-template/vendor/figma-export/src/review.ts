@@ -1,8 +1,19 @@
-import { EditIcon, FigmaIcon, LinkIcon } from "@storybook/icons";
+import {
+  ChevronDownIcon,
+  ChevronUpIcon,
+  EditIcon,
+  FigmaIcon,
+  LinkIcon,
+} from "@storybook/icons";
 import type { ReactNode } from "react";
 import { Fragment, createElement as h, useEffect, useRef, useState } from "react";
 
 import "./review.css";
+import {
+  readCollapsePreference,
+  reviewCollapseStorageKey,
+  writeCollapsePreference,
+} from "./collapsePreference";
 import {
   isStoryIncludedForFigmaExport,
   resolveFigmaExportAddonOptions,
@@ -11,6 +22,7 @@ import {
 } from "./options";
 import { createFigmaExportDecorator } from "./preview";
 import { getParameterUrl } from "./source";
+import { getAddonVersion } from "./version";
 
 export type FigmaReviewStatus =
   | "not-started"
@@ -219,6 +231,9 @@ export function FigmaExportReview({
     notes: "",
   }));
   const [isSourceEditing, setIsSourceEditing] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(() =>
+    readCollapsePreference(reviewCollapseStorageKey),
+  );
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [errorMessage, setErrorMessage] = useState("");
   const autoExportStoryRef = useRef<string | undefined>(undefined);
@@ -359,6 +374,14 @@ export function FigmaExportReview({
   const openableFigmaSourceUrl = getOpenableUrl(entry.figmaNodeUrl);
   const shouldEditFigmaSource = isSourceEditing || !openableFigmaSourceUrl;
 
+  function toggleCollapsed() {
+    setIsCollapsed((current) => {
+      const next = !current;
+      writeCollapsePreference(reviewCollapseStorageKey, next);
+      return next;
+    });
+  }
+
   function saveFigmaSourceUrl() {
     const figmaNodeUrl = normalizeFigmaSourceUrl(draftDetails.figmaNodeUrl);
     setDraftDetails((current) => ({
@@ -381,7 +404,9 @@ export function FigmaExportReview({
           {
             "aria-label": "Figma export review",
             className: "sbfx-review",
+            "data-collapsed": isCollapsed ? "true" : "false",
             "data-save-state": saveState,
+            "data-version": getAddonVersion(),
           },
           h(
             "header",
@@ -394,7 +419,19 @@ export function FigmaExportReview({
             h(
               "span",
               { className: "sbfx-review__heading" },
-              h("span", { className: "sbfx-review__title" }, labels.title),
+              h(
+                "span",
+                { className: "sbfx-review__title" },
+                labels.title,
+                h(
+                  "span",
+                  {
+                    className: "sbfx-review__version",
+                    title: `Figma export addon v${getAddonVersion()}`,
+                  },
+                  `v${getAddonVersion()}`,
+                ),
+              ),
               h(
                 "span",
                 { className: "sbfx-review__subtitle", title: componentTitle },
@@ -406,6 +443,22 @@ export function FigmaExportReview({
               { className: "sbfx-review__status" },
               h("span", { "aria-hidden": "true", className: "sbfx-review__status-dot" }),
               getStatusText(saveState),
+            ),
+            h(
+              "button",
+              {
+                "aria-expanded": !isCollapsed,
+                "aria-label": isCollapsed
+                  ? "Expand export review panel"
+                  : "Collapse export review panel",
+                className: "sbfx-review__toggle",
+                onClick: toggleCollapsed,
+                title: isCollapsed
+                  ? "Expand export review panel"
+                  : "Collapse export review panel",
+                type: "button",
+              },
+              h(isCollapsed ? ChevronDownIcon : ChevronUpIcon, { size: 14 }),
             ),
           ),
           h(

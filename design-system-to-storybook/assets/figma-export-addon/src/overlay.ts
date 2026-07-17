@@ -1,3 +1,8 @@
+import {
+  exporterCollapseStorageKey,
+  readCollapsePreference,
+  writeCollapsePreference,
+} from "./collapsePreference";
 import { createFigmaExportPayload } from "./domExport";
 import {
   isStoryIncludedForFigmaExport,
@@ -7,6 +12,7 @@ import {
 } from "./options";
 import { createFigmaExportJson, createFigmaPluginCode } from "./pluginCode";
 import type { FigmaExportNode, FigmaExportPayload } from "./types";
+import { getAddonVersion } from "./version";
 
 // Plain-DOM export overlay. It is mounted on document.body as a side effect of
 // the pass-through preview decorator, so it works in every Storybook renderer
@@ -42,6 +48,10 @@ const actionLabels: Record<CopyFormat, { busy: string; done: string; idle: strin
 const svgIcons = {
   check:
     '<svg viewBox="0 0 14 14" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2.5 7.5 5.5 10.5 11.5 3.5"/></svg>',
+  chevronDown:
+    '<svg viewBox="0 0 14 14" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3.5 5.5 7 9l3.5-3.5"/></svg>',
+  chevronUp:
+    '<svg viewBox="0 0 14 14" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3.5 8.5 7 5l3.5 3.5"/></svg>',
   command:
     '<svg viewBox="0 0 14 14" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M5 5h4v4H5zM5 5H3.5A1.5 1.5 0 1 1 5 3.5V5zm4 0h1.5A1.5 1.5 0 1 0 9 3.5V5zM5 9H3.5A1.5 1.5 0 1 0 5 10.5V9zm4 0h1.5A1.5 1.5 0 1 1 9 10.5V9z"/></svg>',
   copy:
@@ -312,6 +322,8 @@ type OverlayRefs = {
   statusLabel: Text;
   subtitle: HTMLElement;
   summary: HTMLElement;
+  toggle: HTMLButtonElement;
+  toggleIcon: HTMLElement;
 };
 
 type OverlayState = {
@@ -325,6 +337,22 @@ type OverlayState = {
 
 let overlayRefs: OverlayRefs | null = null;
 let overlayState: OverlayState | null = null;
+// Collapse preference lives outside overlayState so it survives story changes
+// and overlay remounts; null means "not read from storage yet".
+let overlayCollapsed: boolean | null = null;
+
+function isOverlayCollapsed(): boolean {
+  if (overlayCollapsed === null) {
+    overlayCollapsed = readCollapsePreference(exporterCollapseStorageKey);
+  }
+  return overlayCollapsed;
+}
+
+function setOverlayCollapsed(collapsed: boolean): void {
+  overlayCollapsed = collapsed;
+  writeCollapsePreference(exporterCollapseStorageKey, collapsed);
+  renderOverlay();
+}
 
 function createIconSpan(icon: string): HTMLElement {
   const span = document.createElement("span");
@@ -369,6 +397,7 @@ function buildOverlay(): OverlayRefs {
   aside.setAttribute("aria-label", "Figma export");
   aside.className = "sbfx-exporter";
   aside.dataset.status = "idle";
+  aside.dataset.version = getAddonVersion();
 
   const header = document.createElement("header");
   header.className = "sbfx-exporter__header";
@@ -379,10 +408,23 @@ function buildOverlay(): OverlayRefs {
   const title = document.createElement("span");
   title.className = "sbfx-exporter__title";
   title.textContent = "Figma export";
+  const versionBadge = document.createElement("span");
+  versionBadge.className = "sbfx-exporter__version";
+  versionBadge.textContent = `v${getAddonVersion()}`;
+  versionBadge.title = `Figma export addon v${getAddonVersion()}`;
+  title.append(versionBadge);
   const subtitle = document.createElement("span");
   subtitle.className = "sbfx-exporter__subtitle";
   heading.append(title, subtitle);
-  header.append(mark, heading);
+  const toggle = document.createElement("button");
+  toggle.type = "button";
+  toggle.className = "sbfx-exporter__toggle";
+  const toggleIcon = createIconSpan(svgIcons.chevronDown);
+  toggle.append(toggleIcon);
+  toggle.addEventListener("click", () => {
+    setOverlayCollapsed(!isOverlayCollapsed());
+  });
+  header.append(mark, heading, toggle);
 
   const info = document.createElement("div");
   info.className = "sbfx-exporter__info";
@@ -429,17 +471,29 @@ function buildOverlay(): OverlayRefs {
     statusLabel,
     subtitle,
     summary,
+    toggle,
+    toggleIcon,
   };
 }
 
 function renderOverlay(): void {
   if (!overlayRefs || !overlayState) return;
 
-  const { aside, buttons, info, statusLabel, subtitle, summary } = overlayRefs;
+  const { aside, buttons, info, statusLabel, subtitle, summary, toggle, toggleIcon } = overlayRefs;
   const { activeFormat, copiedFormat, options, status } = overlayState;
   const componentTitle = getExportComponentTitle(overlayState.context.title, options);
 
   aside.dataset.status = status;
+
+  const collapsed = isOverlayCollapsed();
+  aside.dataset.collapsed = collapsed ? "true" : "false";
+  const toggleLabel = collapsed
+    ? "Expand Figma export panel"
+    : "Collapse Figma export panel";
+  toggle.setAttribute("aria-expanded", String(!collapsed));
+  toggle.setAttribute("aria-label", toggleLabel);
+  toggle.title = toggleLabel;
+  toggleIcon.innerHTML = collapsed ? svgIcons.chevronUp : svgIcons.chevronDown;
   subtitle.textContent = componentTitle;
   subtitle.title = componentTitle;
   statusLabel.textContent = statusLabels[status];

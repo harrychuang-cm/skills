@@ -1,6 +1,31 @@
 // src/review.ts
-import { EditIcon, FigmaIcon, LinkIcon } from "@storybook/icons";
+import {
+  ChevronDownIcon,
+  ChevronUpIcon,
+  EditIcon,
+  FigmaIcon,
+  LinkIcon
+} from "@storybook/icons";
 import { Fragment, createElement as h, useEffect, useRef, useState } from "react";
+
+// src/collapsePreference.ts
+var exporterCollapseStorageKey = "sbfx:exporter-collapsed";
+var reviewCollapseStorageKey = "sbfx:review-collapsed";
+function readCollapsePreference(storageKey) {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(storageKey) === "1";
+  } catch {
+    return false;
+  }
+}
+function writeCollapsePreference(storageKey, collapsed) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(storageKey, collapsed ? "1" : "0");
+  } catch {
+  }
+}
 
 // src/options.ts
 var defaultFigmaExportGlobalName = "figmaExport";
@@ -3490,6 +3515,11 @@ void (async function importStorybookStory(payload) {
 `;
 }
 
+// src/version.ts
+function getAddonVersion() {
+  return true ? "0.2.0" : "dev";
+}
+
 // src/overlay.ts
 var statusLabels = {
   copied: "Copied",
@@ -3505,6 +3535,8 @@ var actionLabels = {
 };
 var svgIcons = {
   check: '<svg viewBox="0 0 14 14" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2.5 7.5 5.5 10.5 11.5 3.5"/></svg>',
+  chevronDown: '<svg viewBox="0 0 14 14" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3.5 5.5 7 9l3.5-3.5"/></svg>',
+  chevronUp: '<svg viewBox="0 0 14 14" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3.5 8.5 7 5l3.5 3.5"/></svg>',
   command: '<svg viewBox="0 0 14 14" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M5 5h4v4H5zM5 5H3.5A1.5 1.5 0 1 1 5 3.5V5zm4 0h1.5A1.5 1.5 0 1 0 9 3.5V5zM5 9H3.5A1.5 1.5 0 1 0 5 10.5V9zm4 0h1.5A1.5 1.5 0 1 1 9 10.5V9z"/></svg>',
   copy: '<svg viewBox="0 0 14 14" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><rect x="4.5" y="4.5" width="7" height="7" rx="1"/><path d="M9.5 4.5v-1a1 1 0 0 0-1-1h-5a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1h1"/></svg>',
   download: '<svg viewBox="0 0 14 14" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M7 2v7m0 0L4.5 6.5M7 9l2.5-2.5M2.5 11.5h9"/></svg>',
@@ -3698,6 +3730,18 @@ function resolveExportScope() {
 }
 var overlayRefs = null;
 var overlayState = null;
+var overlayCollapsed = null;
+function isOverlayCollapsed() {
+  if (overlayCollapsed === null) {
+    overlayCollapsed = readCollapsePreference(exporterCollapseStorageKey);
+  }
+  return overlayCollapsed;
+}
+function setOverlayCollapsed(collapsed) {
+  overlayCollapsed = collapsed;
+  writeCollapsePreference(exporterCollapseStorageKey, collapsed);
+  renderOverlay();
+}
 function createIconSpan(icon) {
   const span = document.createElement("span");
   span.setAttribute("aria-hidden", "true");
@@ -3730,6 +3774,7 @@ function buildOverlay() {
   aside.setAttribute("aria-label", "Figma export");
   aside.className = "sbfx-exporter";
   aside.dataset.status = "idle";
+  aside.dataset.version = getAddonVersion();
   const header = document.createElement("header");
   header.className = "sbfx-exporter__header";
   const mark = createIconSpan(svgIcons.figma);
@@ -3739,10 +3784,23 @@ function buildOverlay() {
   const title = document.createElement("span");
   title.className = "sbfx-exporter__title";
   title.textContent = "Figma export";
+  const versionBadge = document.createElement("span");
+  versionBadge.className = "sbfx-exporter__version";
+  versionBadge.textContent = `v${getAddonVersion()}`;
+  versionBadge.title = `Figma export addon v${getAddonVersion()}`;
+  title.append(versionBadge);
   const subtitle = document.createElement("span");
   subtitle.className = "sbfx-exporter__subtitle";
   heading.append(title, subtitle);
-  header.append(mark, heading);
+  const toggle = document.createElement("button");
+  toggle.type = "button";
+  toggle.className = "sbfx-exporter__toggle";
+  const toggleIcon = createIconSpan(svgIcons.chevronDown);
+  toggle.append(toggleIcon);
+  toggle.addEventListener("click", () => {
+    setOverlayCollapsed(!isOverlayCollapsed());
+  });
+  header.append(mark, heading, toggle);
   const info = document.createElement("div");
   info.className = "sbfx-exporter__info";
   const status = document.createElement("span");
@@ -3784,15 +3842,24 @@ function buildOverlay() {
     info,
     statusLabel,
     subtitle,
-    summary
+    summary,
+    toggle,
+    toggleIcon
   };
 }
 function renderOverlay() {
   if (!overlayRefs || !overlayState) return;
-  const { aside, buttons, info, statusLabel, subtitle, summary } = overlayRefs;
+  const { aside, buttons, info, statusLabel, subtitle, summary, toggle, toggleIcon } = overlayRefs;
   const { activeFormat, copiedFormat, options, status } = overlayState;
   const componentTitle = getExportComponentTitle(overlayState.context.title, options);
   aside.dataset.status = status;
+  const collapsed = isOverlayCollapsed();
+  aside.dataset.collapsed = collapsed ? "true" : "false";
+  const toggleLabel = collapsed ? "Expand Figma export panel" : "Collapse Figma export panel";
+  toggle.setAttribute("aria-expanded", String(!collapsed));
+  toggle.setAttribute("aria-label", toggleLabel);
+  toggle.title = toggleLabel;
+  toggleIcon.innerHTML = collapsed ? svgIcons.chevronUp : svgIcons.chevronDown;
   subtitle.textContent = componentTitle;
   subtitle.title = componentTitle;
   statusLabel.textContent = statusLabels[status];
@@ -4073,6 +4140,9 @@ function FigmaExportReview({
     notes: ""
   }));
   const [isSourceEditing, setIsSourceEditing] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(
+    () => readCollapsePreference(reviewCollapseStorageKey)
+  );
   const [saveState, setSaveState] = useState("idle");
   const [errorMessage, setErrorMessage] = useState("");
   const autoExportStoryRef = useRef(void 0);
@@ -4186,6 +4256,13 @@ function FigmaExportReview({
   const shouldShowPanel = enabled && Boolean(storyId);
   const openableFigmaSourceUrl = getOpenableUrl(entry.figmaNodeUrl);
   const shouldEditFigmaSource = isSourceEditing || !openableFigmaSourceUrl;
+  function toggleCollapsed() {
+    setIsCollapsed((current) => {
+      const next = !current;
+      writeCollapsePreference(reviewCollapseStorageKey, next);
+      return next;
+    });
+  }
   function saveFigmaSourceUrl() {
     const figmaNodeUrl = normalizeFigmaSourceUrl(draftDetails.figmaNodeUrl);
     setDraftDetails((current) => ({
@@ -4205,7 +4282,9 @@ function FigmaExportReview({
       {
         "aria-label": "Figma export review",
         className: "sbfx-review",
-        "data-save-state": saveState
+        "data-collapsed": isCollapsed ? "true" : "false",
+        "data-save-state": saveState,
+        "data-version": getAddonVersion()
       },
       h(
         "header",
@@ -4218,7 +4297,19 @@ function FigmaExportReview({
         h(
           "span",
           { className: "sbfx-review__heading" },
-          h("span", { className: "sbfx-review__title" }, labels.title),
+          h(
+            "span",
+            { className: "sbfx-review__title" },
+            labels.title,
+            h(
+              "span",
+              {
+                className: "sbfx-review__version",
+                title: `Figma export addon v${getAddonVersion()}`
+              },
+              `v${getAddonVersion()}`
+            )
+          ),
           h(
             "span",
             { className: "sbfx-review__subtitle", title: componentTitle },
@@ -4230,6 +4321,18 @@ function FigmaExportReview({
           { className: "sbfx-review__status" },
           h("span", { "aria-hidden": "true", className: "sbfx-review__status-dot" }),
           getStatusText(saveState)
+        ),
+        h(
+          "button",
+          {
+            "aria-expanded": !isCollapsed,
+            "aria-label": isCollapsed ? "Expand export review panel" : "Collapse export review panel",
+            className: "sbfx-review__toggle",
+            onClick: toggleCollapsed,
+            title: isCollapsed ? "Expand export review panel" : "Collapse export review panel",
+            type: "button"
+          },
+          h(isCollapsed ? ChevronDownIcon : ChevronUpIcon, { size: 14 })
         )
       ),
       h(
