@@ -39,6 +39,26 @@ Run these in order when helping a developer catch up to the latest tools:
 
 Template workspaces (created from the bundled `storybook-template`) are the exception: they stay self-contained. Their addon updates through the template's vendored copy plus `postinstall` patch script, and their bundled importer manifest stays valid.
 
+## Compatibility When Updating
+
+The payload contract stays at version 2 with optional fidelity fields, so the two tools never require lockstep updates:
+
+| Payload from | Old importer (≤1.1.8) | Current importer |
+|---|---|---|
+| Old export addon | imports as before | imports with behavior identical to 1.1.8 |
+| Current export addon | imports; new fidelity fields (shadows, per-corner radii, raster fills, wrap, text styles) are ignored and degrade visually | full fidelity |
+
+Data needs no migration: the importer keeps reading and writing the same plugin data keys (`storybookCssToken` plus the legacy `cmCssToken`), so variables in existing Figma files keep deduplicating, and previously downloaded `.sbfx.json` files stay importable.
+
+API watchlist when upgrading a product repo from a pre-0.2.0 addon (standard README wiring is unaffected — these only matter when project code reached into addon internals):
+
+- The `FigmaCodeExporter` React component no longer exists; the overlay is internal plain DOM driven by the standard decorator.
+- `registerFigmaExportTool` is importable only from the `/manager` subpath, no longer re-exported from the package root.
+- The `.sbfx-story-scope` wrapper element is gone; exports scope to the `storybook-root` preview element, so preview-only chrome belongs outside it.
+- The preview entry imports no react, so non-React Storybooks (Vue, Svelte, Angular, Web Components) can now install the addon; the optional review panel remains React-only.
+
+If the overlay badge still shows the old version after an upgrade, clear the Storybook prebundle cache and restart: `rm -rf node_modules/.cache/storybook`.
+
 ## Version Visibility
 
 Point the user at these instead of guessing:
