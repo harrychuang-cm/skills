@@ -35,6 +35,9 @@ const config: StorybookConfig = {
           apiPath: reviewStatusApiPath,
           filePath: reviewStatusFilePath,
           name: storybookTemplateProjectConfig.figmaExport.review.pluginName,
+          commentsEnabled: storybookTemplateProjectConfig.figmaExport.review.commentsEnabled,
+          commentsApiPath: storybookTemplateProjectConfig.figmaExport.review.commentsApiPath,
+          commentsDir: storybookTemplateProjectConfig.figmaExport.review.commentsDir,
         }),
       );
     }

@@ -61,7 +61,13 @@ function resolveFigmaExportAddonOptions(options) {
       ...defaultTokenLayers,
       ...options?.tokenLayers
     },
-    tokenPrefix: normalizeTokenPrefix(options?.tokenPrefix)
+    tokenPrefix: normalizeTokenPrefix(options?.tokenPrefix),
+    visualComments: {
+      enabled: options?.visualComments?.enabled ?? true,
+      apiPath: options?.visualComments?.apiPath ?? "/__figma_export_review_comments",
+      captureSelector: options?.visualComments?.captureSelector ?? "#storybook-root",
+      authorStorageKey: options?.visualComments?.authorStorageKey ?? "sbfx:review-author"
+    }
   };
 }
 function isStoryIncludedForFigmaExport(title, options) {
@@ -3517,7 +3523,7 @@ void (async function importStorybookStory(payload) {
 
 // src/version.ts
 function getAddonVersion() {
-  return true ? "0.3.0" : "dev";
+  return true ? "0.4.0" : "dev";
 }
 
 // src/overlay.ts
@@ -4111,11 +4117,222 @@ function getParameterUrl(value) {
   return typeof value.url === "string" ? value.url : void 0;
 }
 
+// src/visualComment.ts
+import { toSvg } from "html-to-image";
+var defaultVisualCommentsCaptureSelector = "#storybook-root";
+var VISUAL_COMMENT_LIMITS = {
+  maxRequestBytes: 4 * 1024 * 1024,
+  maxImageBytes: 2 * 1024 * 1024,
+  maxImageLongestSide: 2048,
+  maxImagePixels: 4 * 1024 * 1024,
+  maxSessionAssetsBytes: 100 * 1024 * 1024,
+  maxTitleLength: 120,
+  maxAuthorLength: 80,
+  maxBodyLength: 2e3
+};
+function clampRatio(value) {
+  return Math.min(1, Math.max(0, value));
+}
+function normalizeAuthorName(value) {
+  const name = typeof value === "string" ? value.trim() : "";
+  return name || "Anonymous";
+}
+function resolveVisualCommentTarget(selector, documentRef = document) {
+  const candidates = [selector, defaultVisualCommentsCaptureSelector, "body"].filter((value, index, values) => Boolean(value) && values.indexOf(value) === index);
+  for (const candidate of candidates) {
+    const element = documentRef.querySelector(candidate);
+    if (element) return element;
+  }
+  return null;
+}
+function getVisualCommentPin(rect, clientX, clientY) {
+  return {
+    xRatio: clampRatio((clientX - rect.left) / rect.width),
+    yRatio: clampRatio((clientY - rect.top) / rect.height)
+  };
+}
+function nextAnimationFrame() {
+  return new Promise((resolve) => requestAnimationFrame(() => resolve()));
+}
+function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error ?? new Error("Unable to read capture."));
+    reader.readAsDataURL(blob);
+  });
+}
+function encodeCanvas(canvas, quality) {
+  return new Promise(
+    (resolve, reject) => canvas.toBlob(
+      (value) => value ? resolve(value) : reject(new Error("Unable to encode capture.")),
+      "image/webp",
+      quality
+    )
+  );
+}
+async function captureVisualCommentTarget(target) {
+  const rect = target.getBoundingClientRect();
+  if (!rect.width || !rect.height) throw new Error("Capture target has zero bounds.");
+  await nextAnimationFrame();
+  await nextAnimationFrame();
+  const scale = Math.min(
+    2,
+    VISUAL_COMMENT_LIMITS.maxImageLongestSide / Math.max(rect.width, rect.height),
+    Math.sqrt(VISUAL_COMMENT_LIMITS.maxImagePixels / (rect.width * rect.height))
+  );
+  let width = Math.max(1, Math.round(rect.width * scale));
+  let height = Math.max(1, Math.round(rect.height * scale));
+  const svgDataUrl2 = await Promise.race([
+    toSvg(target, {
+      canvasHeight: height,
+      canvasWidth: width,
+      filter: (node) => !(node instanceof Element && node.hasAttribute("data-sbfx-capture-ignore")),
+      fontEmbedCSS: "",
+      height: rect.height,
+      pixelRatio: 1,
+      skipFonts: true,
+      skipAutoScale: true,
+      width: rect.width
+    }),
+    new Promise(
+      (_, reject) => window.setTimeout(() => reject(new Error("Timed out cloning UI.")), 8e3)
+    )
+  ]);
+  const image = await Promise.race([
+    new Promise((resolve, reject) => {
+      const value = new Image();
+      value.decoding = "sync";
+      value.onload = () => resolve(value);
+      value.onerror = () => reject(new Error("Unable to decode captured UI."));
+      value.src = svgDataUrl2;
+    }),
+    new Promise(
+      (_, reject) => window.setTimeout(() => reject(new Error("Timed out decoding captured UI.")), 8e3)
+    )
+  ]);
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  let context = canvas.getContext("2d");
+  if (!context) throw new Error("Unable to create capture canvas.");
+  context.drawImage(image, 0, 0, width, height);
+  try {
+    let encoded = await encodeCanvas(canvas, 0.82);
+    for (let attempt = 0; encoded.size > VISUAL_COMMENT_LIMITS.maxImageBytes && attempt < 4; attempt += 1) {
+      const ratio = Math.min(0.85, Math.sqrt(VISUAL_COMMENT_LIMITS.maxImageBytes / encoded.size) * 0.92);
+      width = Math.max(1, Math.floor(width * ratio));
+      height = Math.max(1, Math.floor(height * ratio));
+      const previous = document.createElement("canvas");
+      previous.width = canvas.width;
+      previous.height = canvas.height;
+      previous.getContext("2d")?.drawImage(canvas, 0, 0);
+      canvas.width = width;
+      canvas.height = height;
+      context = canvas.getContext("2d");
+      if (!context) throw new Error("Unable to resize capture canvas.");
+      context.drawImage(previous, 0, 0, width, height);
+      encoded = await encodeCanvas(canvas, Math.max(0.5, 0.76 - attempt * 0.08));
+    }
+    if (encoded.size > VISUAL_COMMENT_LIMITS.maxImageBytes) {
+      throw new Error("Captured image exceeds the 2 MiB limit.");
+    }
+    const mimeType = encoded.type === "image/webp" ? "image/webp" : "image/png";
+    const dataUrl = await blobToDataUrl(encoded);
+    return { dataUrl, mimeType, width, height, cssWidth: rect.width, cssHeight: rect.height };
+  } catch (error) {
+    throw error instanceof Error ? error : new Error("Unable to encode captured UI.");
+  }
+}
+function beginVisualCommentCapture({
+  capture = captureVisualCommentTarget,
+  documentRef = document,
+  onCancel,
+  onCaptured,
+  onError,
+  selector
+}) {
+  let active = true;
+  let cancelled = false;
+  let pointerStarted = false;
+  let cleanupTimer;
+  const cleanup = () => {
+    if (!active) return;
+    active = false;
+    if (cleanupTimer !== void 0) window.clearTimeout(cleanupTimer);
+    documentRef.removeEventListener("pointerdown", onPointerDown, true);
+    documentRef.removeEventListener("pointerup", swallowPointer, true);
+    documentRef.removeEventListener("click", onClick, true);
+    documentRef.removeEventListener("keydown", onKeyDown, true);
+    delete documentRef.documentElement.dataset.sbfxCaptureMode;
+  };
+  const cancel = () => {
+    if (cancelled) return;
+    cancelled = true;
+    cleanup();
+    onCancel?.();
+  };
+  const swallowPointer = (event) => {
+    if (!pointerStarted) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation();
+  };
+  const onClick = (event) => {
+    if (!pointerStarted) return;
+    swallowPointer(event);
+    cleanup();
+  };
+  const onKeyDown = (event) => {
+    if (event.key !== "Escape") return;
+    event.preventDefault();
+    cancel();
+  };
+  const onPointerDown = (event) => {
+    const eventTarget = event.target instanceof Element ? event.target : null;
+    if (eventTarget?.closest("[data-sbfx-capture-ignore]")) return;
+    const target = resolveVisualCommentTarget(selector, documentRef);
+    if (!target || !eventTarget || !target.contains(eventTarget)) return;
+    pointerStarted = true;
+    swallowPointer(event);
+    const rect = target.getBoundingClientRect();
+    const pin = getVisualCommentPin(rect, event.clientX, event.clientY);
+    const view = documentRef.defaultView ?? window;
+    const viewport = {
+      width: view.innerWidth,
+      height: view.innerHeight,
+      devicePixelRatio: view.devicePixelRatio,
+      scrollX: view.scrollX,
+      scrollY: view.scrollY
+    };
+    void capture(target).then((captured) => {
+      if (!cancelled) onCaptured({ capture: captured, pin, viewport });
+    }).catch((error) => {
+      if (!cancelled) {
+        onError(error instanceof Error ? error : new Error("Unable to capture UI."));
+      }
+    }).finally(() => {
+      if (active) cleanupTimer = window.setTimeout(cleanup, 2e3);
+    });
+  };
+  documentRef.documentElement.dataset.sbfxCaptureMode = "true";
+  documentRef.addEventListener("pointerdown", onPointerDown, true);
+  documentRef.addEventListener("pointerup", swallowPointer, true);
+  documentRef.addEventListener("click", onClick, true);
+  documentRef.addEventListener("keydown", onKeyDown, true);
+  return { cancel };
+}
+
 // src/review.ts
 var defaultFigmaReviewStatusApiPath = "/__figma_export_review_status";
 var defaultLabels = {
   approved: "Approved",
+  addVisualComment: "Add visual comment",
+  authorName: "Display name",
+  cancelCapture: "Cancel capture",
   closeNotes: "Close",
+  commentBody: "Comment",
+  endMeeting: "End meeting",
   editFigmaSource: "Edit Figma source",
   exported: "Exported",
   figmaSource: "Figma source",
@@ -4127,8 +4344,11 @@ var defaultLabels = {
   openNotes: "Open",
   openSource: "Open source",
   review: "Review",
+  startMeeting: "Start meeting",
+  submitComment: "Save comment",
   sourcePlaceholder: "https://www.figma.com/design/...",
-  title: "Export review"
+  title: "Export review",
+  visualComments: "Visual comments"
 };
 var defaultEntry = {
   figmaReviewStatus: "not-started"
@@ -4193,6 +4413,348 @@ function getReviewStatusOptions(labels) {
     { label: labels.approved, value: "approved" }
   ];
 }
+function defaultMeetingTitle() {
+  return `Design review ${(/* @__PURE__ */ new Date()).toLocaleString()}`;
+}
+function VisualCommentsSection({
+  componentTitle,
+  enabled,
+  labels,
+  options,
+  storyId,
+  storyName,
+  storyTitle,
+  storyUrl
+}) {
+  const apiPath = options?.apiPath ?? "/__figma_export_review_comments";
+  const authorStorageKey = options?.authorStorageKey ?? "sbfx:review-author";
+  const [overview, setOverview] = useState(null);
+  const [meetingTitle, setMeetingTitle] = useState(defaultMeetingTitle);
+  const [authorName, setAuthorName] = useState(() => {
+    try {
+      return localStorage.getItem(authorStorageKey) ?? "";
+    } catch {
+      return "";
+    }
+  });
+  const [commentBody, setCommentBody] = useState("");
+  const [pendingCapture, setPendingCapture] = useState(null);
+  const [isCapturing, setIsCapturing] = useState(false);
+  const [isBusy, setIsBusy] = useState(false);
+  const [visualError, setVisualError] = useState("");
+  const [reportPending, setReportPending] = useState(false);
+  const captureControllerRef = useRef(null);
+  async function refresh() {
+    const response = await fetch(`${apiPath}?storyId=${encodeURIComponent(storyId)}`);
+    if (!response.ok) throw new Error(`Visual comments HTTP ${response.status}`);
+    setOverview(await response.json());
+  }
+  useEffect(() => {
+    if (!enabled || options?.enabled === false) return;
+    let active = true;
+    const load = async () => {
+      try {
+        const response = await fetch(`${apiPath}?storyId=${encodeURIComponent(storyId)}`);
+        if (!response.ok) throw new Error(`Visual comments HTTP ${response.status}`);
+        const next = await response.json();
+        if (active) {
+          setOverview(next);
+          setVisualError("");
+        }
+      } catch (error) {
+        if (active) {
+          setVisualError(
+            error instanceof Error ? error.message : "Unable to load visual comments."
+          );
+        }
+      }
+    };
+    void load();
+    const interval = window.setInterval(load, 5e3);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
+  }, [apiPath, enabled, options?.enabled, storyId]);
+  useEffect(
+    () => () => {
+      captureControllerRef.current?.cancel();
+    },
+    []
+  );
+  if (!enabled || options?.enabled === false) return null;
+  async function mutate(path, body) {
+    setIsBusy(true);
+    setVisualError("");
+    try {
+      const response = await fetch(`${apiPath}${path}`, {
+        body: body === void 0 ? void 0 : JSON.stringify(body),
+        headers: body === void 0 ? void 0 : { "Content-Type": "application/json" },
+        method: "POST"
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error ?? `HTTP ${response.status}`);
+      setReportPending(Boolean(payload.reportStale));
+      await refresh();
+      return payload;
+    } finally {
+      setIsBusy(false);
+    }
+  }
+  function armCapture() {
+    if (!overview?.activeSession) return;
+    captureControllerRef.current?.cancel();
+    setVisualError("");
+    setPendingCapture(null);
+    setIsCapturing(true);
+    captureControllerRef.current = beginVisualCommentCapture({
+      onCancel: () => setIsCapturing(false),
+      onCaptured: (capture) => {
+        setPendingCapture(capture);
+        setIsCapturing(false);
+      },
+      onError: (error) => {
+        setIsCapturing(false);
+        setVisualError(error.message);
+      },
+      selector: options?.captureSelector
+    });
+  }
+  function cancelCapture() {
+    captureControllerRef.current?.cancel();
+    captureControllerRef.current = null;
+    setIsCapturing(false);
+    setPendingCapture(null);
+  }
+  async function submitComment() {
+    if (!overview?.activeSession || !pendingCapture || !commentBody.trim()) return;
+    const captureRoot = document.querySelector(
+      options?.captureSelector ?? "#storybook-root"
+    );
+    const metadataRoot = captureRoot?.matches("[data-prototype-root]") ? captureRoot : captureRoot?.querySelector("[data-prototype-root]");
+    const request = {
+      authorName: normalizeAuthorName(authorName).slice(
+        0,
+        VISUAL_COMMENT_LIMITS.maxAuthorLength
+      ),
+      body: commentBody.trim().slice(0, VISUAL_COMMENT_LIMITS.maxBodyLength),
+      capture: pendingCapture.capture,
+      clientRequestId: globalThis.crypto?.randomUUID?.() ?? `comment-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      pin: pendingCapture.pin,
+      story: {
+        id: storyId,
+        name: storyName,
+        title: storyTitle || componentTitle,
+        ...storyUrl ? { url: storyUrl } : {},
+        ...metadataRoot?.dataset.prototypeRoot ? { prototypeId: metadataRoot.dataset.prototypeRoot } : {},
+        ...metadataRoot?.dataset.route ? { routeId: metadataRoot.dataset.route } : {},
+        ...metadataRoot?.dataset.prototypeState ? { stateId: metadataRoot.dataset.prototypeState } : {}
+      },
+      viewport: pendingCapture.viewport
+    };
+    try {
+      localStorage.setItem(authorStorageKey, authorName);
+    } catch {
+    }
+    try {
+      await mutate(
+        `/sessions/${encodeURIComponent(overview.activeSession.id)}/comments`,
+        request
+      );
+      setPendingCapture(null);
+      setCommentBody("");
+    } catch (error) {
+      setVisualError(error instanceof Error ? error.message : "Unable to save comment.");
+    }
+  }
+  return h(
+    "section",
+    { className: "sbfx-review__visual-comments" },
+    h(
+      "div",
+      { className: "sbfx-review__visual-heading" },
+      h("span", { className: "sbfx-review__label" }, labels.visualComments),
+      overview?.reportUrl ? h(
+        "a",
+        {
+          className: "sbfx-review__report-link",
+          href: overview.reportUrl,
+          rel: "noreferrer",
+          target: "_blank"
+        },
+        "Reports"
+      ) : null
+    ),
+    overview?.activeSession ? h(
+      Fragment,
+      null,
+      h(
+        "div",
+        { className: "sbfx-review__meeting" },
+        h(
+          "span",
+          { className: "sbfx-review__meeting-title" },
+          overview.activeSession.title
+        ),
+        overview.activeReportUrl ? h(
+          "a",
+          {
+            className: "sbfx-review__report-link",
+            href: overview.activeReportUrl,
+            rel: "noreferrer",
+            target: "_blank"
+          },
+          "Open"
+        ) : null
+      ),
+      isCapturing ? h(
+        "div",
+        { className: "sbfx-review__capture-prompt" },
+        h("p", null, "Click the UI point to capture. Press Escape to cancel."),
+        h(
+          "button",
+          {
+            className: "sbfx-review__button sbfx-review__button--secondary",
+            onClick: cancelCapture,
+            type: "button"
+          },
+          labels.cancelCapture
+        )
+      ) : pendingCapture ? h(
+        "div",
+        { className: "sbfx-review__composer" },
+        h(
+          "div",
+          {
+            className: "sbfx-review__snapshot-preview",
+            style: {
+              aspectRatio: `${pendingCapture.capture.width}/${pendingCapture.capture.height}`
+            }
+          },
+          h("img", { alt: "Captured UI", src: pendingCapture.capture.dataUrl }),
+          h("span", {
+            "aria-label": "Comment pin",
+            className: "sbfx-review__pin",
+            style: {
+              left: `${pendingCapture.pin.xRatio * 100}%`,
+              top: `${pendingCapture.pin.yRatio * 100}%`
+            }
+          })
+        ),
+        h(
+          "label",
+          { className: "sbfx-review__field" },
+          h("span", null, labels.authorName),
+          h("input", {
+            maxLength: VISUAL_COMMENT_LIMITS.maxAuthorLength,
+            onChange: (event) => setAuthorName(event.currentTarget.value),
+            value: authorName
+          })
+        ),
+        h(
+          "label",
+          { className: "sbfx-review__field" },
+          h("span", null, labels.commentBody),
+          h("textarea", {
+            maxLength: VISUAL_COMMENT_LIMITS.maxBodyLength,
+            onChange: (event) => setCommentBody(event.currentTarget.value),
+            rows: 2,
+            value: commentBody
+          })
+        ),
+        h(
+          "div",
+          { className: "sbfx-review__visual-actions" },
+          h(
+            "button",
+            {
+              className: "sbfx-review__button",
+              disabled: isBusy || !commentBody.trim(),
+              onClick: () => void submitComment(),
+              type: "button"
+            },
+            labels.submitComment
+          ),
+          h(
+            "button",
+            {
+              className: "sbfx-review__button sbfx-review__button--secondary",
+              onClick: cancelCapture,
+              type: "button"
+            },
+            labels.closeNotes
+          )
+        )
+      ) : h(
+        "div",
+        { className: "sbfx-review__visual-actions" },
+        h(
+          "button",
+          {
+            className: "sbfx-review__button",
+            disabled: isBusy,
+            onClick: armCapture,
+            type: "button"
+          },
+          labels.addVisualComment
+        ),
+        h(
+          "button",
+          {
+            className: "sbfx-review__button sbfx-review__button--secondary",
+            disabled: isBusy,
+            onClick: () => {
+              void mutate(
+                `/sessions/${encodeURIComponent(overview.activeSession.id)}/close`
+              ).catch(
+                (error) => setVisualError(
+                  error instanceof Error ? error.message : "Unable to end meeting."
+                )
+              );
+            },
+            type: "button"
+          },
+          labels.endMeeting
+        )
+      ),
+      overview.comments.length ? h(
+        "p",
+        { className: "sbfx-review__meta" },
+        `${overview.comments.length} comment${overview.comments.length === 1 ? "" : "s"} on this story`
+      ) : null
+    ) : h(
+      "div",
+      { className: "sbfx-review__meeting-start" },
+      h("input", {
+        "aria-label": "Meeting title",
+        maxLength: VISUAL_COMMENT_LIMITS.maxTitleLength,
+        onChange: (event) => setMeetingTitle(event.currentTarget.value),
+        value: meetingTitle
+      }),
+      h(
+        "button",
+        {
+          className: "sbfx-review__button",
+          disabled: isBusy || !meetingTitle.trim(),
+          onClick: () => {
+            void mutate("/sessions", { title: meetingTitle }).catch(
+              (error) => {
+                setVisualError(
+                  error instanceof Error ? error.message : "Unable to start meeting."
+                );
+                void refresh().catch(() => void 0);
+              }
+            );
+          },
+          type: "button"
+        },
+        labels.startMeeting
+      )
+    ),
+    reportPending ? h("p", { className: "sbfx-review__error" }, "Comment saved; report rebuild pending.") : null,
+    visualError ? h("p", { className: "sbfx-review__error" }, visualError) : null
+  );
+}
 function FigmaExportReview({
   apiPath = defaultFigmaReviewStatusApiPath,
   autoMarkExported = true,
@@ -4204,7 +4766,10 @@ function FigmaExportReview({
   showNotes = true,
   storyId,
   storyName,
-  storyTitle
+  storyTitle,
+  storyUrl,
+  viewMode = "story",
+  visualComments
 }) {
   const labels = { ...defaultLabels, ...labelsOverride };
   const initialFigmaSourceUrl = normalizeFigmaSourceUrl(figmaSourceUrl ?? "");
@@ -4357,6 +4922,7 @@ function FigmaExportReview({
         "aria-label": "Figma export review",
         className: "sbfx-review",
         "data-collapsed": isCollapsed ? "true" : "false",
+        "data-sbfx-capture-ignore": "true",
         "data-save-state": saveState,
         "data-version": getAddonVersion()
       },
@@ -4523,6 +5089,16 @@ function FigmaExportReview({
           })
         ) : draftDetails.notes ? h("p", { className: "sbfx-review__notes-summary" }, labels.notesSaved) : null
       ) : null,
+      viewMode === "story" ? h(VisualCommentsSection, {
+        componentTitle,
+        enabled,
+        labels,
+        options: visualComments,
+        storyId,
+        storyName,
+        storyTitle,
+        storyUrl
+      }) : null,
       entry.updatedAt ? h(
         "p",
         { className: "sbfx-review__meta" },
@@ -4555,7 +5131,10 @@ function createFigmaExportReviewDecorator(figmaExportOptions, reviewOptions) {
         showNotes: reviewOptions?.showNotes,
         storyId: context.id ?? "unknown-story",
         storyName: context.name ?? "Story",
-        storyTitle: context.title ?? ""
+        storyTitle: context.title ?? "",
+        storyUrl: typeof window === "undefined" ? void 0 : window.location.href,
+        viewMode: context.viewMode,
+        visualComments: reviewOptions?.visualComments ?? resolvedOptions.visualComments
       },
       figmaExportDecorator(Story, context)
     );

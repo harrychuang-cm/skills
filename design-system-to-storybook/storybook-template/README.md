@@ -39,6 +39,16 @@ The command updates `.storybook/project.config.ts`, `package.json`, and starter 
 - `prototypeInspector`
 - `catalog.componentStoriesRoot`
 
+`figmaExport.review.visualComments` configures the same-origin meeting API,
+author storage key, and capture selector. The default `#storybook-root` captures
+the story; choose `body` for prototypes that render reviewable portals outside
+that root. Visual meetings are a trusted-LAN/no-auth workflow and persist
+canonical JSON, immutable screenshots, and portable relative-asset reports in
+`design-system/figma-export-review/`. DOM-to-image does not guarantee video,
+WebGL, nested iframe, cross-origin image, or framebuffer-perfect capture, and
+route metadata is not state replay. A rollback must leave saved review data in
+place.
+
 ## Add A Component
 
 1. Create the component under `src/components/<component-id>/`.

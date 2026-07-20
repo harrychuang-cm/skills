@@ -31,6 +31,15 @@ export type StorybookTemplateProjectConfig = {
     };
     review: {
       apiPath: string;
+      commentsApiPath: string;
+      commentsDir: string;
+      commentsEnabled: boolean;
+      visualComments: {
+        enabled: boolean;
+        apiPath: string;
+        captureSelector: string;
+        authorStorageKey: string;
+      };
       enabled: boolean;
       pluginName: string;
       statusFilePath: string;
@@ -120,6 +129,15 @@ export const storybookTemplateProjectConfig =
     },
     "review": {
       "apiPath": "/__sbt_figma_review_status",
+      "commentsApiPath": "/__figma_export_review_comments",
+      "commentsDir": "design-system/figma-export-review",
+      "commentsEnabled": true,
+      "visualComments": {
+        "enabled": true,
+        "apiPath": "/__figma_export_review_comments",
+        "captureSelector": "#storybook-root",
+        "authorStorageKey": "sbfx:review-author"
+      },
       "enabled": true,
       "pluginName": "sbt-figma-review-status-api",
       "statusFilePath": "design-system/figma-export-review-status.json"

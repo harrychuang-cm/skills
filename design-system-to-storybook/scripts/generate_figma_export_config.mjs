@@ -76,6 +76,15 @@ const config = {
   },
   review: {
     apiPath: existingConfig.review.apiPath ?? "/__figma_export_review_status",
+    commentsApiPath: existingConfig.review.commentsApiPath ?? "/__figma_export_review_comments",
+    commentsDir: existingConfig.review.commentsDir ?? "design-system/figma-export-review",
+    commentsEnabled: existingConfig.review.commentsEnabled ?? true,
+    visualComments: existingConfig.review.visualComments ?? {
+      enabled: true,
+      apiPath: "/__figma_export_review_comments",
+      captureSelector: "#storybook-root",
+      authorStorageKey: "sbfx:review-author",
+    },
     enabled: existingConfig.review.enabled ?? true,
     pluginName: existingConfig.review.pluginName ?? "figma-export-review-status-api",
     statusFilePath: existingConfig.review.statusFilePath ?? "design-system/figma-export-review-status.json",
@@ -346,6 +355,10 @@ function readExistingProjectConfig(file) {
     },
     review: {
       apiPath: undefined,
+      commentsApiPath: undefined,
+      commentsDir: undefined,
+      commentsEnabled: undefined,
+      visualComments: undefined,
       enabled: undefined,
       pluginName: undefined,
       statusFilePath: undefined,
@@ -359,6 +372,7 @@ function readExistingProjectConfig(file) {
   if (!fs.existsSync(file)) return empty;
 
   const text = fs.readFileSync(file, "utf8");
+  const visualCommentsBlock = extractObjectBlock(text, "visualComments");
   return {
     addon: {
       absoluteFidelityComponents: extractStringArray(text, "absoluteFidelityComponents"),
@@ -368,6 +382,23 @@ function readExistingProjectConfig(file) {
     },
     review: {
       apiPath: extractStringProperty(text, "apiPath"),
+      commentsApiPath: extractStringProperty(text, "commentsApiPath"),
+      commentsDir: extractStringProperty(text, "commentsDir"),
+      commentsEnabled: extractBooleanProperty(text, "commentsEnabled"),
+      visualComments: visualCommentsBlock
+        ? {
+            enabled: extractBooleanProperty(visualCommentsBlock, "enabled") ?? true,
+            apiPath:
+              extractStringProperty(visualCommentsBlock, "apiPath") ??
+              "/__figma_export_review_comments",
+            captureSelector:
+              extractStringProperty(visualCommentsBlock, "captureSelector") ??
+              "#storybook-root",
+            authorStorageKey:
+              extractStringProperty(visualCommentsBlock, "authorStorageKey") ??
+              "sbfx:review-author",
+          }
+        : undefined,
       enabled: extractBooleanProperty(text, "enabled"),
       pluginName: extractStringProperty(text, "pluginName"),
       statusFilePath: extractStringProperty(text, "statusFilePath"),
@@ -378,6 +409,34 @@ function readExistingProjectConfig(file) {
       nodeOverrides: extractObjectStringMap(text, "nodeOverrides"),
     },
   };
+}
+
+function extractObjectBlock(text, propertyName) {
+  const property = new RegExp(
+    `["']?${escapeRegExp(propertyName)}["']?\\s*:\\s*{`,
+  ).exec(text);
+  if (!property) return "";
+  const start = property.index + property[0].length;
+  let depth = 1;
+  let quote = "";
+  let escaped = false;
+  for (let index = start; index < text.length; index += 1) {
+    const character = text[index];
+    if (quote) {
+      if (escaped) escaped = false;
+      else if (character === "\\") escaped = true;
+      else if (character === quote) quote = "";
+      continue;
+    }
+    if (character === '"' || character === "'" || character === "`") {
+      quote = character;
+      continue;
+    }
+    if (character === "{") depth += 1;
+    if (character === "}") depth -= 1;
+    if (depth === 0) return text.slice(start, index);
+  }
+  return "";
 }
 
 function extractStringProperty(text, propertyName) {
@@ -428,6 +487,15 @@ function renderConfig(value) {
   };
   review: {
     apiPath: string;
+    commentsApiPath: string;
+    commentsDir: string;
+    commentsEnabled: boolean;
+    visualComments: {
+      enabled: boolean;
+      apiPath: string;
+      captureSelector: string;
+      authorStorageKey: string;
+    };
     enabled: boolean;
     pluginName: string;
     statusFilePath: string;

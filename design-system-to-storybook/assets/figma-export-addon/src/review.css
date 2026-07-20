@@ -386,3 +386,99 @@
 .sbfx-review[data-collapsed="true"] .sbfx-review__status {
   display: none;
 }
+
+[data-sbfx-capture-mode="true"],
+[data-sbfx-capture-mode="true"] * {
+  cursor: crosshair !important;
+}
+
+.sbfx-review__visual-comments,
+.sbfx-review__composer,
+.sbfx-review__meeting-start {
+  display: grid;
+  gap: 8px;
+  min-inline-size: 0;
+}
+
+.sbfx-review__visual-comments {
+  padding-block-start: 10px;
+  border-block-start: 1px solid var(--sbfx-border);
+}
+
+.sbfx-review__visual-heading,
+.sbfx-review__meeting,
+.sbfx-review__visual-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sbfx-review__visual-heading,
+.sbfx-review__meeting {
+  justify-content: space-between;
+}
+
+.sbfx-review__meeting-title {
+  overflow: hidden;
+  color: var(--sbfx-color);
+  font-size: 12px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sbfx-review__report-link {
+  color: var(--sbfx-accent-hover);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.sbfx-review__visual-actions > * {
+  flex: 1 1 0;
+}
+
+.sbfx-review__button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.sbfx-review__capture-prompt {
+  padding: 10px;
+  color: var(--sbfx-color);
+  background: var(--sbfx-accent-surface);
+  border: 1px solid var(--sbfx-accent-border);
+  border-radius: 8px;
+}
+
+.sbfx-review__capture-prompt p {
+  margin: 0 0 8px;
+  color: var(--sbfx-muted);
+  font-size: 11px;
+  line-height: 15px;
+}
+
+.sbfx-review__snapshot-preview {
+  position: relative;
+  overflow: hidden;
+  background: var(--sbfx-surface-raised);
+  border: 1px solid var(--sbfx-border);
+  border-radius: 8px;
+}
+
+.sbfx-review__snapshot-preview img {
+  display: block;
+  inline-size: 100%;
+  block-size: 100%;
+  object-fit: contain;
+}
+
+.sbfx-review__pin {
+  position: absolute;
+  inline-size: 14px;
+  block-size: 14px;
+  background: var(--sbfx-error);
+  border: 2px solid var(--sbfx-color);
+  border-radius: 999px;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 36%);
+  transform: translate(-50%, -50%);
+}

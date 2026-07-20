@@ -1,6 +1,7 @@
 import * as react from 'react';
 import { ReactNode } from 'react';
-import { R as ResolvedFigmaExportAddonOptions, b as FigmaExportAddonOptions } from './options-BxmVHgJe.js';
+import { R as ResolvedFigmaExportAddonOptions, b as FigmaExportAddonOptions } from './options-Bj3uxPVS.js';
+import { V as VisualCommentOptions } from './visualComment-CktpX_T5.js';
 
 type FigmaReviewStatus = "not-started" | "exported" | "imported" | "needs-fix" | "approved";
 type FigmaReviewEntry = {
@@ -15,7 +16,12 @@ type FigmaReviewEntry = {
 };
 type FigmaReviewLabels = Partial<{
     approved: string;
+    addVisualComment: string;
+    authorName: string;
+    cancelCapture: string;
     closeNotes: string;
+    commentBody: string;
+    endMeeting: string;
     editFigmaSource: string;
     exported: string;
     figmaSource: string;
@@ -27,8 +33,11 @@ type FigmaReviewLabels = Partial<{
     openNotes: string;
     openSource: string;
     review: string;
+    startMeeting: string;
+    submitComment: string;
     sourcePlaceholder: string;
     title: string;
+    visualComments: string;
 }>;
 type FigmaExportReviewOptions = {
     apiPath?: string;
@@ -38,6 +47,7 @@ type FigmaExportReviewOptions = {
     getFigmaSourceUrl?: (context: StorybookContext, componentTitle: string) => string | undefined;
     labels?: FigmaReviewLabels;
     showNotes?: boolean;
+    visualComments?: VisualCommentOptions;
 };
 type FigmaExportReviewProps = {
     apiPath?: string;
@@ -51,6 +61,9 @@ type FigmaExportReviewProps = {
     storyId: string;
     storyName: string;
     storyTitle: string;
+    storyUrl?: string;
+    viewMode?: string;
+    visualComments?: VisualCommentOptions;
 };
 type StorybookContext = {
     globals?: Record<string, unknown>;
@@ -58,12 +71,13 @@ type StorybookContext = {
     name?: string;
     parameters?: Record<string, unknown>;
     title?: string;
+    viewMode?: string;
 };
 type StorybookStory = () => ReactNode;
 declare const defaultFigmaReviewStatusApiPath = "/__figma_export_review_status";
 declare function getDefaultFigmaExportComponentTitle(title: string | undefined, options: ResolvedFigmaExportAddonOptions): string;
 declare function getDefaultFigmaSourceUrl(parameters: Record<string, unknown> | undefined): string | undefined;
-declare function FigmaExportReview({ apiPath, autoMarkExported, children, componentTitle, enabled, figmaSourceUrl, labels: labelsOverride, showNotes, storyId, storyName, storyTitle, }: FigmaExportReviewProps): react.FunctionComponentElement<react.FragmentProps>;
+declare function FigmaExportReview({ apiPath, autoMarkExported, children, componentTitle, enabled, figmaSourceUrl, labels: labelsOverride, showNotes, storyId, storyName, storyTitle, storyUrl, viewMode, visualComments, }: FigmaExportReviewProps): react.FunctionComponentElement<react.FragmentProps>;
 declare function createFigmaExportReviewDecorator(figmaExportOptions?: FigmaExportAddonOptions, reviewOptions?: FigmaExportReviewOptions): (Story: StorybookStory, context: StorybookContext) => react.FunctionComponentElement<FigmaExportReviewProps>;
 
 export { FigmaExportReview, type FigmaExportReviewOptions, type FigmaExportReviewProps, type FigmaReviewEntry, type FigmaReviewLabels, type FigmaReviewStatus, type StorybookContext, createFigmaExportReviewDecorator, defaultFigmaReviewStatusApiPath, getDefaultFigmaExportComponentTitle, getDefaultFigmaSourceUrl };

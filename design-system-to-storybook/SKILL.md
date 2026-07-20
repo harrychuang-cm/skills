@@ -224,7 +224,7 @@ Auto-install and configure the bundled `@harrychuang/storybook-addon-figma-expor
 
 If the bundled `storybook-template` was installed in this pass, treat its vendored addon package, `.storybook/figma-export.config.ts`, and review server wiring as the addon baseline. Update the template config and source URL mappings as needed; do not run `install_figma_export_addon.mjs` unless the vendored addon package is missing or the template wiring has been removed.
 
-The addon package is vendored in this skill at `assets/figma-export-addon/`, sourced from `harrychuang/storybook-addons#main:packages/figma-export`. Do not install it from GitHub during normal use.
+The addon package is vendored in this skill at `assets/figma-export-addon/`, sourced from `harrychuang/storybook-addons#main:packages/figma-export`. Do not install it from GitHub during normal use. On React Story view, its additive visual-comments workflow may persist trusted-LAN/no-auth meeting data and portable reports under `design-system/figma-export-review/`; keep `visualComments` and `commentsDir` project-local, treat screenshots as durable state evidence rather than state replay, and never delete that directory during addon rollback. DOM-to-image does not promise framebuffer-perfect capture for video, WebGL, nested iframes, or cross-origin images without CORS.
 
 Install it with the bundled installer:
 
@@ -246,7 +246,7 @@ node <skill-root>/scripts/generate_figma_export_config.mjs <design-system-packag
 
 Default output is `<product-repo-root>/.storybook/figma-export.config.ts`; keep project-specific URLs, node IDs, class prefixes, theme globals, local graphics, token imports, review API settings, and source fallbacks there or in product code, never inside the bundled addon package.
 
-Read `references/figma-export-review-setup.md` before wiring `.storybook/main.*` or `.storybook/preview.*`, and again if the toolbar, review overlay, or Open source action is missing. Record the vendored tarball path, installed addon version, installed package spec, generated config path, config values, config files, options, and review helper usage in the implementation map.
+Read `references/figma-export-review-setup.md` before wiring `.storybook/main.*` or `.storybook/preview.*`, and again if the toolbar, review overlay, Open source action, visual meeting API, or capture flow is missing. Record the vendored tarball path, installed addon version, installed package spec, generated config path, config values, config files, options, and review helper usage in the implementation map.
 
 Read `references/figma-export-readiness.md` before implementing or changing a component/story with the addon installed. The component DOM, CSS, tokens, story metadata, and layout choices should be optimized for editable Figma JSON/importer output while preserving the extracted design. Prefer fixing DOM/CSS/token usage over patching generated export payloads.
 

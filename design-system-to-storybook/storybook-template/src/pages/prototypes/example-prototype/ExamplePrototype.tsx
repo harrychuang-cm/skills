@@ -60,6 +60,8 @@ export function ExamplePrototype({
       ]
         .filter(Boolean)
         .join(" ")}
+      data-prototype-root="true"
+      data-route={visibleRoute}
     >
       <section
         className="sbt-example-prototype__shell"

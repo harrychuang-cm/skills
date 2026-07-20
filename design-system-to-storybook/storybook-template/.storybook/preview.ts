@@ -31,6 +31,7 @@ const figmaExportOptions = {
     figmaExportProjectConfig.addon.storyTitlePrefix === false
       ? false
       : [...figmaExportProjectConfig.addon.storyTitlePrefix],
+  visualComments: figmaExportProjectConfig.review.visualComments,
 } satisfies FigmaExportAddonOptions;
 
 const componentSpecModules = import.meta.glob<string>(

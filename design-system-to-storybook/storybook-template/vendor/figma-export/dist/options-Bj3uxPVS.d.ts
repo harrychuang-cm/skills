@@ -1,3 +1,5 @@
+import { V as VisualCommentOptions } from './visualComment-CktpX_T5.js';
+
 type TokenLayer = "ref" | "sys" | "comp";
 type FigmaVariableType = "BOOLEAN" | "COLOR" | "FLOAT" | "STRING";
 type FigmaVariableValue = boolean | number | string | {
@@ -152,6 +154,7 @@ type FigmaExportAddonOptions = {
     storyTitlePrefix?: false | string | string[];
     tokenLayers?: Partial<Record<TokenLayer, string>>;
     tokenPrefix?: string;
+    visualComments?: VisualCommentOptions;
 };
 type ResolvedFigmaExportAddonOptions = {
     absoluteFidelityComponents: Set<string>;
@@ -164,6 +167,7 @@ type ResolvedFigmaExportAddonOptions = {
     storyTitlePrefix: false | string[];
     tokenLayers: Record<TokenLayer, string>;
     tokenPrefix?: string;
+    visualComments: Required<VisualCommentOptions>;
 };
 declare const defaultFigmaExportGlobalName = "figmaExport";
 declare function resolveFigmaExportAddonOptions(options: FigmaExportAddonOptions | undefined): ResolvedFigmaExportAddonOptions;

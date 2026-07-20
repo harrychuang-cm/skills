@@ -2265,7 +2265,13 @@ function resolveFigmaExportAddonOptions(options) {
       ...defaultTokenLayers,
       ...options?.tokenLayers
     },
-    tokenPrefix: normalizeTokenPrefix(options?.tokenPrefix)
+    tokenPrefix: normalizeTokenPrefix(options?.tokenPrefix),
+    visualComments: {
+      enabled: options?.visualComments?.enabled ?? true,
+      apiPath: options?.visualComments?.apiPath ?? "/__figma_export_review_comments",
+      captureSelector: options?.visualComments?.captureSelector ?? "#storybook-root",
+      authorStorageKey: options?.visualComments?.authorStorageKey ?? "sbfx:review-author"
+    }
   };
 }
 function isStoryIncludedForFigmaExport(title, options) {
@@ -3506,7 +3512,7 @@ void (async function importStorybookStory(payload) {
 
 // src/version.ts
 function getAddonVersion() {
-  return true ? "0.3.0" : "dev";
+  return true ? "0.4.0" : "dev";
 }
 
 // src/overlay.ts

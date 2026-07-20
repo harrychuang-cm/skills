@@ -42,6 +42,8 @@ The generated config covers:
 - `storyTitlePrefix`, inferred from existing story titles when possible; the generator emits top-level namespaces only (`Components/`, `Foundations/`, `Pages/`) — never deeper paths like `Components/Examples/`, because prefixes are `startsWith` matches and a deep prefix silently excludes sibling subcategories — and falls back to `false` (include all stories) when no titled story is found. Re-running the generator preserves an existing `storyTitlePrefix` in the config; fix or remove a stale value in `.storybook/figma-export.config.ts` before regenerating
 - `absoluteFidelityComponents`, inferred from page/screen/composite/product-pattern entries and graphic or typographic lockups that need tighter visual parity
 - review API path, plugin name, and status JSON path
+- visual comment enablement, same-origin API path, capture selector, author
+  storage key, and canonical comments directory
 - source fallback values, such as design-system Figma file URL and per-component node overrides from `STORYBOOK_SOURCE_TRACE.md`
 
 ## Configuration Rules
@@ -100,6 +102,7 @@ export const decorators = [
   createFigmaExportReviewDecorator(figmaExportOptions, {
     apiPath: figmaExportProjectConfig.review.apiPath,
     enabled: figmaExportProjectConfig.review.enabled,
+    visualComments: figmaExportProjectConfig.review.visualComments,
     getFigmaSourceUrl: (context, componentTitle) =>
       getFigmaSourceUrl(context.parameters, componentTitle, {
         componentSpecModules,
@@ -139,6 +142,9 @@ export default {
         apiPath: figmaExportProjectConfig.review.apiPath,
         filePath: figmaExportProjectConfig.review.statusFilePath,
         name: figmaExportProjectConfig.review.pluginName,
+        commentsEnabled: figmaExportProjectConfig.review.visualComments.enabled,
+        commentsApiPath: figmaExportProjectConfig.review.visualComments.apiPath,
+        commentsDir: figmaExportProjectConfig.review.commentsDir,
       }),
     ];
     return config;
@@ -147,3 +153,23 @@ export default {
 ```
 
 For non-Vite Storybook builders, keep the preview decorator but record review-status persistence as blocked unless the project already has a middleware hook equivalent.
+
+## Visual Comment Safety And Capture Limits
+
+Visual comments are additive to the existing review status, Figma source, and
+notes. They work only in React Story view. The browser intercepts the selected
+pointer sequence before prototype handlers, captures the current in-memory UI,
+and stores a normalized pin plus immutable screenshot. Set
+`captureSelector: "body"` when portals outside `#storybook-root` must appear;
+addon chrome is excluded with `data-sbfx-capture-ignore`.
+
+Use this only on a trusted local network. There is no account or authentication
+layer, the middleware is same-origin, and its writable routes should not be
+published as a production service. `html-to-image` cannot guarantee exact
+framebuffer output for video, WebGL, nested iframes, or cross-origin images
+without CORS. The screenshot—not route metadata—is the durable state evidence;
+the addon does not replay component state.
+
+Reports under `design-system/figma-export-review/` use relative assets and may
+be copied or zipped with their session directory. When rolling back the addon,
+leave this directory intact so canonical JSON and reports remain readable.

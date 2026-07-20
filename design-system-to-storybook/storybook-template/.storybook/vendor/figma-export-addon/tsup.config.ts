@@ -20,6 +20,8 @@ export default defineConfig({
     review: "src/review.ts",
     "review-server": "src/review-server.ts",
     source: "src/source.ts",
+    "visual-comment-store": "src/visualCommentStore.ts",
+    "visual-comment-report": "src/visualCommentReport.ts",
   },
   external: [
     "react",

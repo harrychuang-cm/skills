@@ -1,6 +1,6 @@
 {
   "name": "@harrychuang/storybook-addon-figma-export",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Export Storybook stories to Figma import payloads with configurable CSS token layers",
   "type": "module",
   "license": "MIT",
@@ -52,13 +52,22 @@
       "types": "./dist/source.d.ts",
       "default": "./dist/source.js"
     },
+    "./visual-comment-store": {
+      "types": "./dist/visual-comment-store.d.ts",
+      "default": "./dist/visual-comment-store.js"
+    },
+    "./visual-comment-report": {
+      "types": "./dist/visual-comment-report.d.ts",
+      "default": "./dist/visual-comment-report.js"
+    },
     "./styles.css": "./dist/figma-code-exporter.css",
     "./review.css": "./dist/review.css",
     "./package.json": "./package.json"
   },
   "scripts": {
     "build": "tsup",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "test:visual-comments": "npm run build && node test/run-visual-comment-store-test.mjs && node test/run-visual-comment-http-test.mjs && node test/run-visual-comment-report-test.mjs && node test/run-visual-comment-fixture.mjs"
   },
   "peerDependencies": {
     "@storybook/icons": "^1.0.0",
@@ -72,8 +81,8 @@
     }
   },
   "devDependencies": {
-    "@types/node": "^22.15.29",
     "@storybook/icons": "^1.4.0",
+    "@types/node": "^22.15.29",
     "@types/react": "^19.1.8",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
@@ -84,5 +93,8 @@
   "storybook": {
     "displayName": "Figma Export",
     "unsupportedFrameworks": []
+  },
+  "dependencies": {
+    "html-to-image": "^1.11.13"
   }
 }

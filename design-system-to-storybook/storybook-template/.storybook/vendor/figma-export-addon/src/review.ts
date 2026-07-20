@@ -23,6 +23,15 @@ import {
 import { createFigmaExportDecorator } from "./preview";
 import { getParameterUrl } from "./source";
 import { getAddonVersion } from "./version";
+import {
+  VISUAL_COMMENT_LIMITS,
+  beginVisualCommentCapture,
+  normalizeAuthorName,
+  type CreateVisualCommentRequest,
+  type VisualCommentCaptureController,
+  type VisualCommentCaptureResult,
+  type VisualCommentOptions,
+} from "./visualComment";
 
 export type FigmaReviewStatus =
   | "not-started"
@@ -44,7 +53,12 @@ export type FigmaReviewEntry = {
 
 export type FigmaReviewLabels = Partial<{
   approved: string;
+  addVisualComment: string;
+  authorName: string;
+  cancelCapture: string;
   closeNotes: string;
+  commentBody: string;
+  endMeeting: string;
   editFigmaSource: string;
   exported: string;
   figmaSource: string;
@@ -56,8 +70,11 @@ export type FigmaReviewLabels = Partial<{
   openNotes: string;
   openSource: string;
   review: string;
+  startMeeting: string;
+  submitComment: string;
   sourcePlaceholder: string;
   title: string;
+  visualComments: string;
 }>;
 
 export type FigmaExportReviewOptions = {
@@ -74,6 +91,7 @@ export type FigmaExportReviewOptions = {
   ) => string | undefined;
   labels?: FigmaReviewLabels;
   showNotes?: boolean;
+  visualComments?: VisualCommentOptions;
 };
 
 export type FigmaExportReviewProps = {
@@ -88,6 +106,9 @@ export type FigmaExportReviewProps = {
   storyId: string;
   storyName: string;
   storyTitle: string;
+  storyUrl?: string;
+  viewMode?: string;
+  visualComments?: VisualCommentOptions;
 };
 
 export type StorybookContext = {
@@ -96,6 +117,7 @@ export type StorybookContext = {
   name?: string;
   parameters?: Record<string, unknown>;
   title?: string;
+  viewMode?: string;
 };
 
 type StorybookStory = () => ReactNode;
@@ -105,7 +127,12 @@ export const defaultFigmaReviewStatusApiPath = "/__figma_export_review_status";
 
 const defaultLabels = {
   approved: "Approved",
+  addVisualComment: "Add visual comment",
+  authorName: "Display name",
+  cancelCapture: "Cancel capture",
   closeNotes: "Close",
+  commentBody: "Comment",
+  endMeeting: "End meeting",
   editFigmaSource: "Edit Figma source",
   exported: "Exported",
   figmaSource: "Figma source",
@@ -117,8 +144,11 @@ const defaultLabels = {
   openNotes: "Open",
   openSource: "Open source",
   review: "Review",
+  startMeeting: "Start meeting",
+  submitComment: "Save comment",
   sourcePlaceholder: "https://www.figma.com/design/...",
   title: "Export review",
+  visualComments: "Visual comments",
 } satisfies Required<FigmaReviewLabels>;
 
 const defaultEntry = {
@@ -210,6 +240,416 @@ function getReviewStatusOptions(labels: Required<FigmaReviewLabels>) {
   ] satisfies Array<{ label: string; value: FigmaReviewStatus }>;
 }
 
+type VisualCommentOverview = {
+  activeSession: {
+    id: string;
+    title: string;
+    startedAt: string;
+    closedAt: string | null;
+  } | null;
+  activeReportUrl: string | null;
+  comments: Array<{
+    id: string;
+    authorName: string;
+    body: string;
+    createdAt: string;
+  }>;
+  reportUrl: string;
+};
+
+function defaultMeetingTitle(): string {
+  return `Design review ${new Date().toLocaleString()}`;
+}
+
+function VisualCommentsSection({
+  componentTitle,
+  enabled,
+  labels,
+  options,
+  storyId,
+  storyName,
+  storyTitle,
+  storyUrl,
+}: {
+  componentTitle: string;
+  enabled: boolean;
+  labels: Required<FigmaReviewLabels>;
+  options: VisualCommentOptions | undefined;
+  storyId: string;
+  storyName: string;
+  storyTitle: string;
+  storyUrl?: string;
+}) {
+  const apiPath = options?.apiPath ?? "/__figma_export_review_comments";
+  const authorStorageKey = options?.authorStorageKey ?? "sbfx:review-author";
+  const [overview, setOverview] = useState<VisualCommentOverview | null>(null);
+  const [meetingTitle, setMeetingTitle] = useState(defaultMeetingTitle);
+  const [authorName, setAuthorName] = useState(() => {
+    try {
+      return localStorage.getItem(authorStorageKey) ?? "";
+    } catch {
+      return "";
+    }
+  });
+  const [commentBody, setCommentBody] = useState("");
+  const [pendingCapture, setPendingCapture] =
+    useState<VisualCommentCaptureResult | null>(null);
+  const [isCapturing, setIsCapturing] = useState(false);
+  const [isBusy, setIsBusy] = useState(false);
+  const [visualError, setVisualError] = useState("");
+  const [reportPending, setReportPending] = useState(false);
+  const captureControllerRef = useRef<VisualCommentCaptureController | null>(null);
+
+  async function refresh() {
+    const response = await fetch(`${apiPath}?storyId=${encodeURIComponent(storyId)}`);
+    if (!response.ok) throw new Error(`Visual comments HTTP ${response.status}`);
+    setOverview((await response.json()) as VisualCommentOverview);
+  }
+
+  useEffect(() => {
+    if (!enabled || options?.enabled === false) return;
+    let active = true;
+    const load = async () => {
+      try {
+        const response = await fetch(`${apiPath}?storyId=${encodeURIComponent(storyId)}`);
+        if (!response.ok) throw new Error(`Visual comments HTTP ${response.status}`);
+        const next = (await response.json()) as VisualCommentOverview;
+        if (active) {
+          setOverview(next);
+          setVisualError("");
+        }
+      } catch (error) {
+        if (active) {
+          setVisualError(
+            error instanceof Error ? error.message : "Unable to load visual comments.",
+          );
+        }
+      }
+    };
+    void load();
+    const interval = window.setInterval(load, 5_000);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
+  }, [apiPath, enabled, options?.enabled, storyId]);
+
+  useEffect(
+    () => () => {
+      captureControllerRef.current?.cancel();
+    },
+    [],
+  );
+
+  if (!enabled || options?.enabled === false) return null;
+
+  async function mutate(path: string, body?: unknown) {
+    setIsBusy(true);
+    setVisualError("");
+    try {
+      const response = await fetch(`${apiPath}${path}`, {
+        body: body === undefined ? undefined : JSON.stringify(body),
+        headers: body === undefined ? undefined : { "Content-Type": "application/json" },
+        method: "POST",
+      });
+      const payload = (await response.json().catch(() => ({}))) as {
+        error?: string;
+        reportStale?: boolean;
+      };
+      if (!response.ok) throw new Error(payload.error ?? `HTTP ${response.status}`);
+      setReportPending(Boolean(payload.reportStale));
+      await refresh();
+      return payload;
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  function armCapture() {
+    if (!overview?.activeSession) return;
+    captureControllerRef.current?.cancel();
+    setVisualError("");
+    setPendingCapture(null);
+    setIsCapturing(true);
+    captureControllerRef.current = beginVisualCommentCapture({
+      onCancel: () => setIsCapturing(false),
+      onCaptured: (capture) => {
+        setPendingCapture(capture);
+        setIsCapturing(false);
+      },
+      onError: (error) => {
+        setIsCapturing(false);
+        setVisualError(error.message);
+      },
+      selector: options?.captureSelector,
+    });
+  }
+
+  function cancelCapture() {
+    captureControllerRef.current?.cancel();
+    captureControllerRef.current = null;
+    setIsCapturing(false);
+    setPendingCapture(null);
+  }
+
+  async function submitComment() {
+    if (!overview?.activeSession || !pendingCapture || !commentBody.trim()) return;
+    const captureRoot = document.querySelector<HTMLElement>(
+      options?.captureSelector ?? "#storybook-root",
+    );
+    const metadataRoot =
+      captureRoot?.matches("[data-prototype-root]")
+        ? captureRoot
+        : captureRoot?.querySelector<HTMLElement>("[data-prototype-root]");
+    const request: CreateVisualCommentRequest = {
+      authorName: normalizeAuthorName(authorName).slice(
+        0,
+        VISUAL_COMMENT_LIMITS.maxAuthorLength,
+      ),
+      body: commentBody.trim().slice(0, VISUAL_COMMENT_LIMITS.maxBodyLength),
+      capture: pendingCapture.capture,
+      clientRequestId:
+        globalThis.crypto?.randomUUID?.() ??
+        `comment-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      pin: pendingCapture.pin,
+      story: {
+        id: storyId,
+        name: storyName,
+        title: storyTitle || componentTitle,
+        ...(storyUrl ? { url: storyUrl } : {}),
+        ...(metadataRoot?.dataset.prototypeRoot
+          ? { prototypeId: metadataRoot.dataset.prototypeRoot }
+          : {}),
+        ...(metadataRoot?.dataset.route ? { routeId: metadataRoot.dataset.route } : {}),
+        ...(metadataRoot?.dataset.prototypeState
+          ? { stateId: metadataRoot.dataset.prototypeState }
+          : {}),
+      },
+      viewport: pendingCapture.viewport,
+    };
+    try {
+      localStorage.setItem(authorStorageKey, authorName);
+    } catch {
+      // Browser storage can be unavailable in private/restricted contexts.
+    }
+    try {
+      await mutate(
+        `/sessions/${encodeURIComponent(overview.activeSession.id)}/comments`,
+        request,
+      );
+      setPendingCapture(null);
+      setCommentBody("");
+    } catch (error) {
+      setVisualError(error instanceof Error ? error.message : "Unable to save comment.");
+    }
+  }
+
+  return h(
+    "section",
+    { className: "sbfx-review__visual-comments" },
+    h(
+      "div",
+      { className: "sbfx-review__visual-heading" },
+      h("span", { className: "sbfx-review__label" }, labels.visualComments),
+      overview?.reportUrl
+        ? h(
+            "a",
+            {
+              className: "sbfx-review__report-link",
+              href: overview.reportUrl,
+              rel: "noreferrer",
+              target: "_blank",
+            },
+            "Reports",
+          )
+        : null,
+    ),
+    overview?.activeSession
+      ? h(
+          Fragment,
+          null,
+          h(
+            "div",
+            { className: "sbfx-review__meeting" },
+            h(
+              "span",
+              { className: "sbfx-review__meeting-title" },
+              overview.activeSession.title,
+            ),
+            overview.activeReportUrl
+              ? h(
+                  "a",
+                  {
+                    className: "sbfx-review__report-link",
+                    href: overview.activeReportUrl,
+                    rel: "noreferrer",
+                    target: "_blank",
+                  },
+                  "Open",
+                )
+              : null,
+          ),
+          isCapturing
+            ? h(
+                "div",
+                { className: "sbfx-review__capture-prompt" },
+                h("p", null, "Click the UI point to capture. Press Escape to cancel."),
+                h(
+                  "button",
+                  {
+                    className: "sbfx-review__button sbfx-review__button--secondary",
+                    onClick: cancelCapture,
+                    type: "button",
+                  },
+                  labels.cancelCapture,
+                ),
+              )
+            : pendingCapture
+              ? h(
+                  "div",
+                  { className: "sbfx-review__composer" },
+                  h(
+                    "div",
+                    {
+                      className: "sbfx-review__snapshot-preview",
+                      style: {
+                        aspectRatio: `${pendingCapture.capture.width}/${pendingCapture.capture.height}`,
+                      },
+                    },
+                    h("img", { alt: "Captured UI", src: pendingCapture.capture.dataUrl }),
+                    h("span", {
+                      "aria-label": "Comment pin",
+                      className: "sbfx-review__pin",
+                      style: {
+                        left: `${pendingCapture.pin.xRatio * 100}%`,
+                        top: `${pendingCapture.pin.yRatio * 100}%`,
+                      },
+                    }),
+                  ),
+                  h(
+                    "label",
+                    { className: "sbfx-review__field" },
+                    h("span", null, labels.authorName),
+                    h("input", {
+                      maxLength: VISUAL_COMMENT_LIMITS.maxAuthorLength,
+                      onChange: (event) =>
+                        setAuthorName((event.currentTarget as HTMLInputElement).value),
+                      value: authorName,
+                    }),
+                  ),
+                  h(
+                    "label",
+                    { className: "sbfx-review__field" },
+                    h("span", null, labels.commentBody),
+                    h("textarea", {
+                      maxLength: VISUAL_COMMENT_LIMITS.maxBodyLength,
+                      onChange: (event) =>
+                        setCommentBody((event.currentTarget as HTMLTextAreaElement).value),
+                      rows: 2,
+                      value: commentBody,
+                    }),
+                  ),
+                  h(
+                    "div",
+                    { className: "sbfx-review__visual-actions" },
+                    h(
+                      "button",
+                      {
+                        className: "sbfx-review__button",
+                        disabled: isBusy || !commentBody.trim(),
+                        onClick: () => void submitComment(),
+                        type: "button",
+                      },
+                      labels.submitComment,
+                    ),
+                    h(
+                      "button",
+                      {
+                        className: "sbfx-review__button sbfx-review__button--secondary",
+                        onClick: cancelCapture,
+                        type: "button",
+                      },
+                      labels.closeNotes,
+                    ),
+                  ),
+                )
+              : h(
+                  "div",
+                  { className: "sbfx-review__visual-actions" },
+                  h(
+                    "button",
+                    {
+                      className: "sbfx-review__button",
+                      disabled: isBusy,
+                      onClick: armCapture,
+                      type: "button",
+                    },
+                    labels.addVisualComment,
+                  ),
+                  h(
+                    "button",
+                    {
+                      className: "sbfx-review__button sbfx-review__button--secondary",
+                      disabled: isBusy,
+                      onClick: () => {
+                        void mutate(
+                          `/sessions/${encodeURIComponent(overview.activeSession!.id)}/close`,
+                        ).catch((error: unknown) =>
+                          setVisualError(
+                            error instanceof Error ? error.message : "Unable to end meeting.",
+                          ),
+                        );
+                      },
+                      type: "button",
+                    },
+                    labels.endMeeting,
+                  ),
+                ),
+          overview.comments.length
+            ? h(
+                "p",
+                { className: "sbfx-review__meta" },
+                `${overview.comments.length} comment${overview.comments.length === 1 ? "" : "s"} on this story`,
+              )
+            : null,
+        )
+      : h(
+          "div",
+          { className: "sbfx-review__meeting-start" },
+          h("input", {
+            "aria-label": "Meeting title",
+            maxLength: VISUAL_COMMENT_LIMITS.maxTitleLength,
+            onChange: (event) =>
+              setMeetingTitle((event.currentTarget as HTMLInputElement).value),
+            value: meetingTitle,
+          }),
+          h(
+            "button",
+            {
+              className: "sbfx-review__button",
+              disabled: isBusy || !meetingTitle.trim(),
+              onClick: () => {
+                void mutate("/sessions", { title: meetingTitle }).catch(
+                  (error: unknown) => {
+                    setVisualError(
+                      error instanceof Error ? error.message : "Unable to start meeting.",
+                    );
+                    void refresh().catch(() => undefined);
+                  },
+                );
+              },
+              type: "button",
+            },
+            labels.startMeeting,
+          ),
+        ),
+    reportPending
+      ? h("p", { className: "sbfx-review__error" }, "Comment saved; report rebuild pending.")
+      : null,
+    visualError ? h("p", { className: "sbfx-review__error" }, visualError) : null,
+  );
+}
+
 export function FigmaExportReview({
   apiPath = defaultFigmaReviewStatusApiPath,
   autoMarkExported = true,
@@ -222,6 +662,9 @@ export function FigmaExportReview({
   storyId,
   storyName,
   storyTitle,
+  storyUrl,
+  viewMode = "story",
+  visualComments,
 }: FigmaExportReviewProps) {
   const labels = { ...defaultLabels, ...labelsOverride };
   const initialFigmaSourceUrl = normalizeFigmaSourceUrl(figmaSourceUrl ?? "");
@@ -405,6 +848,7 @@ export function FigmaExportReview({
             "aria-label": "Figma export review",
             className: "sbfx-review",
             "data-collapsed": isCollapsed ? "true" : "false",
+            "data-sbfx-capture-ignore": "true",
             "data-save-state": saveState,
             "data-version": getAddonVersion(),
           },
@@ -584,6 +1028,18 @@ export function FigmaExportReview({
                     : null,
               )
             : null,
+          viewMode === "story"
+            ? h(VisualCommentsSection, {
+                componentTitle,
+                enabled,
+                labels,
+                options: visualComments,
+                storyId,
+                storyName,
+                storyTitle,
+                storyUrl,
+              })
+            : null,
           entry.updatedAt
             ? h(
                 "p",
@@ -635,6 +1091,9 @@ export function createFigmaExportReviewDecorator(
         storyId: context.id ?? "unknown-story",
         storyName: context.name ?? "Story",
         storyTitle: context.title ?? "",
+        storyUrl: typeof window === "undefined" ? undefined : window.location.href,
+        viewMode: context.viewMode,
+        visualComments: reviewOptions?.visualComments ?? resolvedOptions.visualComments,
       },
       figmaExportDecorator(Story, context),
     );

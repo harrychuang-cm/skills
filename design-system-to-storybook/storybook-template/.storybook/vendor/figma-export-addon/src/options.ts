@@ -1,4 +1,5 @@
 import type { TokenLayer } from "./types";
+import type { VisualCommentOptions } from "./visualComment";
 
 export type FigmaExportAddonOptions = {
   absoluteFidelityComponents?: string[];
@@ -11,6 +12,7 @@ export type FigmaExportAddonOptions = {
   storyTitlePrefix?: false | string | string[];
   tokenLayers?: Partial<Record<TokenLayer, string>>;
   tokenPrefix?: string;
+  visualComments?: VisualCommentOptions;
 };
 
 export type ResolvedFigmaExportAddonOptions = {
@@ -24,6 +26,7 @@ export type ResolvedFigmaExportAddonOptions = {
   storyTitlePrefix: false | string[];
   tokenLayers: Record<TokenLayer, string>;
   tokenPrefix?: string;
+  visualComments: Required<VisualCommentOptions>;
 };
 
 export const defaultFigmaExportGlobalName = "figmaExport";
@@ -68,6 +71,12 @@ export function resolveFigmaExportAddonOptions(
       ...options?.tokenLayers,
     },
     tokenPrefix: normalizeTokenPrefix(options?.tokenPrefix),
+    visualComments: {
+      enabled: options?.visualComments?.enabled ?? true,
+      apiPath: options?.visualComments?.apiPath ?? "/__figma_export_review_comments",
+      captureSelector: options?.visualComments?.captureSelector ?? "#storybook-root",
+      authorStorageKey: options?.visualComments?.authorStorageKey ?? "sbfx:review-author",
+    },
   };
 }
 

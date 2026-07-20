@@ -42,6 +42,7 @@ Run from the addon root (after `npm run build` for the store test):
 node test/run-export-fixture.mjs      # capture features incl. shadow DOM case
 node test/run-overlay-fixture.mjs     # renderer-agnostic overlay + token-less + auto-sync
 node test/run-payload-store-test.mjs  # bridge store endpoints (CORS, sanitize, round trip)
+npm run test:visual-comments          # store, HTTP, safe report, CDP browser/UI fixture
 ```
 
 The browser runners bundle the sources, render the fixtures in headless Chromium, and assert the spec scenarios; payloads land in `test/.last-fixture-payload.json`.
@@ -192,6 +193,45 @@ for project-specific fallbacks, such as parsing local design-system Markdown.
 The fallback inputs (`componentSpecModules`, `designSystemFileUrl`, and
 `nodeOverrides`) should come from project-local Storybook config, not from the
 addon package.
+
+### Local visual review meetings
+
+The React review panel can also run append-only visual review meetings. Start a
+meeting, choose **Add visual comment**, then click the preview. The capture-phase
+handler blocks that pointer sequence before the prototype can change state,
+captures the current preview with `html-to-image`, removes nodes marked
+`data-sbfx-capture-ignore`, and opens a comment composer. Other browsers on the
+same Storybook host discover the active meeting through five-second polling.
+
+```ts
+createFigmaExportReviewDecorator(figmaExportOptions, {
+  visualComments: {
+    enabled: true,
+    apiPath: "/__figma_export_review_comments",
+    captureSelector: "#storybook-root", // use "body" when body portals matter
+    authorStorageKey: "sbfx:review-author",
+  },
+});
+
+createFigmaReviewStatusPlugin({
+  commentsEnabled: true,
+  commentsApiPath: "/__figma_export_review_comments",
+  commentsDir: "design-system/figma-export-review",
+});
+```
+
+Canonical `meeting.json` files and immutable PNG/WebP assets are written under
+`design-system/figma-export-review/`; `index.html` and per-meeting reports are
+derived, portable projections with relative asset paths. Screenshot pixels are
+the durable evidence—route/state fields are metadata, not state replay.
+
+This is a trusted-LAN, same-origin tool with no authentication. Do not expose
+the writable middleware to an untrusted network. DOM-to-image capture is not a
+framebuffer recorder: video, WebGL, nested iframes, cross-origin images without
+CORS, and some browser-only CSS may fail or differ. It does not promise
+pixel-perfect browser chrome capture. Rollback may remove the UI/middleware but
+must not delete the review directory; retained reports and canonical data stay
+readable.
 
 ### Manual manager registration (optional)
 

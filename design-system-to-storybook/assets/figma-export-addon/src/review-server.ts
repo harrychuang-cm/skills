@@ -2,6 +2,15 @@ import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { dirname, join, resolve } from "node:path";
 import type { FigmaReviewEntry, FigmaReviewStatus } from "./review";
+import {
+  VISUAL_COMMENT_LIMITS,
+  defaultVisualCommentsApiPath,
+  defaultVisualCommentsDir,
+} from "./visualComment";
+import {
+  VisualCommentStoreError,
+  createVisualCommentStore,
+} from "./visualCommentStore";
 
 export const defaultFigmaReviewStatusApiPath = "/__figma_export_review_status";
 export const defaultFigmaExportPayloadApiPath = "/__figma-export/payloads";
@@ -19,6 +28,9 @@ export type FigmaReviewStatusPluginOptions = {
   name?: string;
   payloadApiPath?: string;
   payloadDir?: string;
+  commentsEnabled?: boolean;
+  commentsApiPath?: string;
+  commentsDir?: string;
 };
 
 type MiddlewareHandler = (
@@ -170,6 +182,199 @@ async function handleReviewStatusRequest({
   file.stories[body.storyId] = entry;
   await writeReviewStatusFile(filePath, file);
   sendJson(response, 200, { entry, file });
+}
+
+class RequestBodyError extends Error {
+  constructor(message: string, readonly statusCode: number) {
+    super(message);
+  }
+}
+
+async function readRequestBodyLimited(request: IncomingMessage): Promise<unknown> {
+  const chunks: Buffer[] = [];
+  let bytes = 0;
+  for await (const chunk of request) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    bytes += buffer.length;
+    if (bytes > VISUAL_COMMENT_LIMITS.maxRequestBytes) {
+      throw new RequestBodyError("Request body exceeds 4 MiB.", 413);
+    }
+    chunks.push(buffer);
+  }
+  const value = Buffer.concat(chunks).toString("utf8").trim();
+  if (!value) return {};
+  try {
+    return JSON.parse(value);
+  } catch {
+    throw new RequestBodyError("Body must be valid JSON.", 400);
+  }
+}
+
+function visualCommentSegments(basePath: string, requestUrl: string | undefined) {
+  const url = new URL(requestUrl ?? "/", "http://storybook.local");
+  const pathname = url.pathname.startsWith(basePath)
+    ? url.pathname.slice(basePath.length)
+    : url.pathname;
+  return {
+    segments: pathname
+      .replace(/^\/+|\/+$/g, "")
+      .split("/")
+      .filter(Boolean)
+      .map((segment) => {
+        try {
+          return decodeURIComponent(segment);
+        } catch {
+          throw new RequestBodyError("Invalid URL path encoding.", 400);
+        }
+      }),
+    url,
+  };
+}
+
+function sendVisualCommentError(response: ServerResponse, error: unknown): void {
+  const storeError =
+    error instanceof Error &&
+    "statusCode" in error &&
+    typeof (error as { statusCode?: unknown }).statusCode === "number" &&
+    "code" in error &&
+    typeof (error as { code?: unknown }).code === "string";
+  const statusCode =
+    error instanceof RequestBodyError || storeError
+      ? (error as RequestBodyError | VisualCommentStoreError).statusCode
+      : 500;
+  sendJson(response, statusCode, {
+    error: error instanceof Error ? error.message : "Unknown visual comments error.",
+    ...(storeError
+      ? {
+          code: (error as VisualCommentStoreError).code,
+          ...("activeMeeting" in error
+            ? { activeMeeting: (error as VisualCommentStoreError & { activeMeeting?: unknown }).activeMeeting }
+            : {}),
+        }
+      : {}),
+  });
+}
+
+async function serveVisualCommentReport(
+  response: ServerResponse,
+  store: ReturnType<typeof createVisualCommentStore>,
+  segments: string[],
+) {
+  let filePath: string | null = null;
+  let contentType = "text/html; charset=utf-8";
+  if (segments.length === 1 || (segments.length === 2 && segments[1] === "index.html")) {
+    filePath = join(store.root, "index.html");
+  } else if (
+    segments.length === 4 &&
+    segments[1] === "sessions" &&
+    /^[a-z0-9-]+$/.test(segments[2]) &&
+    segments[3] === "index.html"
+  ) {
+    filePath = join(store.root, "sessions", segments[2], "index.html");
+  } else if (
+    segments.length === 5 &&
+    segments[1] === "sessions" &&
+    /^[a-z0-9-]+$/.test(segments[2]) &&
+    segments[3] === "assets" &&
+    /^[a-f0-9]{64}\.(?:png|webp)$/.test(segments[4])
+  ) {
+    filePath = join(store.root, "sessions", segments[2], "assets", segments[4]);
+    contentType = segments[4].endsWith(".png") ? "image/png" : "image/webp";
+  }
+  if (!filePath) {
+    sendJson(response, 404, { error: "Unknown report route." });
+    return;
+  }
+  try {
+    const content = await readFile(filePath);
+    response.statusCode = 200;
+    response.setHeader("Content-Type", contentType);
+    response.setHeader("X-Content-Type-Options", "nosniff");
+    response.end(content);
+  } catch (error) {
+    if (isNodeError(error) && error.code === "ENOENT") {
+      sendJson(response, 404, { error: "Report not found." });
+      return;
+    }
+    throw error;
+  }
+}
+
+export async function handleVisualCommentsRequest({
+  basePath,
+  request,
+  response,
+  store,
+}: {
+  basePath: string;
+  request: IncomingMessage;
+  response: ServerResponse;
+  store: ReturnType<typeof createVisualCommentStore>;
+}): Promise<void> {
+  try {
+    const { segments, url } = visualCommentSegments(basePath, request.url);
+    const method = request.method ?? "GET";
+    if (method === "GET" && segments[0] === "reports") {
+      await serveVisualCommentReport(response, store, segments);
+      return;
+    }
+    if (method === "GET" && segments.length === 0) {
+      const overview = await store.getOverview(url.searchParams.get("storyId") ?? undefined);
+      sendJson(response, 200, {
+        ...overview,
+        reportUrl: `${basePath}/reports`,
+        activeReportUrl: overview.activeSession
+          ? `${basePath}/reports/sessions/${encodeURIComponent(overview.activeSession.id)}/index.html`
+          : null,
+      });
+      return;
+    }
+    if (method === "POST" && segments[0] === "sessions" && segments.length === 1) {
+      const requestBody = await readRequestBodyLimited(request);
+      sendJson(
+        response,
+        201,
+        await store.startMeeting(isRecord(requestBody) ? requestBody.title as string : ""),
+      );
+      return;
+    }
+    if (segments[0] !== "sessions" || !segments[1]) {
+      sendJson(response, 404, { error: "Unknown visual comments route." });
+      return;
+    }
+    const sessionId = segments[1];
+    if (method === "GET" && segments.length === 2) {
+      sendJson(response, 200, await store.getMeeting(sessionId));
+      return;
+    }
+    if (method === "POST" && segments[2] === "close" && segments.length === 3) {
+      sendJson(response, 200, await store.closeMeeting(sessionId));
+      return;
+    }
+    if (method === "POST" && segments[2] === "comments" && segments.length === 3) {
+      const result = await store.createComment(sessionId, await readRequestBodyLimited(request));
+      sendJson(response, result.replay ? 200 : 201, result);
+      return;
+    }
+    sendJson(response, 405, { error: `Unsupported visual comments method ${method}.` });
+  } catch (error) {
+    sendVisualCommentError(response, error);
+  }
+}
+
+export function createVisualCommentsHandler(options: {
+  basePath?: string;
+  store: ReturnType<typeof createVisualCommentStore>;
+}): MiddlewareHandler {
+  const basePath = options.basePath ?? defaultVisualCommentsApiPath;
+  return (request, response) => {
+    void handleVisualCommentsRequest({
+      basePath,
+      request,
+      response,
+      store: options.store,
+    });
+  };
 }
 
 // --- Figma export payload store -------------------------------------------
@@ -339,6 +544,11 @@ export function createFigmaReviewStatusPlugin(
     options.cwd ?? process.cwd(),
     options.payloadDir ?? defaultFigmaExportPayloadDir,
   );
+  const commentsApiPath = options.commentsApiPath ?? defaultVisualCommentsApiPath;
+  const commentsStore = createVisualCommentStore({
+    cwd: options.cwd,
+    commentsDir: options.commentsDir ?? defaultVisualCommentsDir,
+  });
 
   return {
     configureServer(server: MiddlewareServer) {
@@ -357,6 +567,12 @@ export function createFigmaReviewStatusPlugin(
         payloadApiPath,
         createFigmaExportPayloadStoreHandler({ payloadDir }),
       );
+      if (options.commentsEnabled !== false) {
+        server.middlewares.use(
+          commentsApiPath,
+          createVisualCommentsHandler({ basePath: commentsApiPath, store: commentsStore }),
+        );
+      }
     },
     name: options.name ?? "figma-export-review-status-api",
   };
