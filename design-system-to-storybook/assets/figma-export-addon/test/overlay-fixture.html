@@ -162,10 +162,10 @@
 
       const canonicalFigmaPath =
         "M9.2 0H4.803A2.603 2.603 0 003.41 4.802a2.603 2.603 0 000 4.396 2.602 2.602 0 103.998 2.199v-2.51a2.603 2.603 0 103.187-4.085A2.604 2.604 0 009.2 0zM7.407 7a1.793 1.793 0 103.586 0 1.793 1.793 0 00-3.586 0zm-.81 2.603H4.803a1.793 1.793 0 101.794 1.794V9.603zM4.803 4.397h1.794V.81H4.803a1.793 1.793 0 000 3.587zm0 .81a1.793 1.793 0 000 3.586h1.794V5.207H4.803zm4.397-.81H7.407V.81H9.2a1.794 1.794 0 010 3.587z";
-      const canonicalChevronUpPath =
-        "M7.354 3.896l5.5 5.5a.5.5 0 01-.708.708L7 4.957l-5.146 5.147a.5.5 0 01-.708-.708l5.5-5.5a.5.5 0 01.708 0z";
-      const canonicalChevronDownPath =
-        "M1.146 4.604l5.5 5.5a.5.5 0 00.708 0l5.5-5.5a.5.5 0 00-.708-.708L7 9.043 1.854 3.896a.5.5 0 10-.708.708z";
+      const canonicalCollapsePath =
+        "M3.354.146a.5.5 0 10-.708.708l4 4a.5.5 0 00.708 0l4-4a.5.5 0 00-.708-.708L7 3.793 3.354.146zM6.646 9.146a.5.5 0 01.708 0l4 4a.5.5 0 01-.708.708L7 10.207l-3.646 3.647a.5.5 0 01-.708-.708l4-4z";
+      const canonicalUnfoldMorePath =
+        "M6.646.146a.5.5 0 01.708 0l4 4a.5.5 0 01-.708.708L7 1.207 3.354 4.854a.5.5 0 01-.708-.708l4-4zM3.354 9.146a.5.5 0 10-.708.708l4 4a.5.5 0 00.708 0l4-4a.5.5 0 00-.708-.708L7 12.793 3.354 9.146z";
       const figmaIconSvgs = aside
         ? [
             aside.querySelector(".sbfx-exporter__mark svg"),
@@ -237,12 +237,12 @@
       );
       const initialToggleSvg = aside?.querySelector(".sbfx-exporter__toggle svg");
       check(
-        "expanded export uses canonical Storybook up chevron",
+        "expanded export uses the canonical inward Collapse icon",
         initialToggleSvg?.getAttribute("viewBox") === "0 0 14 14" &&
           initialToggleSvg?.getAttribute("fill") === "none" &&
           !initialToggleSvg?.hasAttribute("stroke") &&
           initialToggleSvg?.querySelector("path")?.getAttribute("fill") === "currentColor" &&
-          initialToggleSvg?.querySelector("path")?.getAttribute("d") === canonicalChevronUpPath,
+          initialToggleSvg?.querySelector("path")?.getAttribute("d") === canonicalCollapsePath,
       );
 
       // Globals off unmounts the overlay and shows no notice.
@@ -377,6 +377,7 @@
       const collapsedSubtitle = overlayElement()?.querySelector(".sbfx-exporter__subtitle");
       const collapsedVersion = overlayElement()?.querySelector(".sbfx-exporter__version");
       const collapsedToggleIcon = toggleButton?.querySelector(".sbfx-exporter__toggle-icon");
+      const collapsedDisclosurePath = toggleButton?.querySelector("path")?.getAttribute("d") ?? null;
       check(
         "collapsed export disclosure hugs the Figma mark and version",
         Boolean(
@@ -417,11 +418,11 @@
         overlayElement()?.closest("[data-sbfx-workspace]")?.getAttribute("data-export-collapsed") === "true",
       );
       check(
-        "toggle reports collapsed state",
+        "compact toggle stores outward Unfold More state while hiding the glyph",
         toggleButton?.getAttribute("aria-expanded") === "false" &&
           toggleButton?.getAttribute("aria-label") === "Expand Figma export panel" &&
           toggleButton?.getAttribute("title") === "Expand Figma export panel" &&
-          toggleButton?.querySelector("path")?.getAttribute("d") === canonicalChevronDownPath,
+          collapsedDisclosurePath === canonicalUnfoldMorePath,
       );
       check(
         "collapse preference persisted",
@@ -456,11 +457,11 @@
         overlayElement()?.closest("[data-sbfx-workspace]")?.getAttribute("data-export-collapsed") === "false",
       );
       check(
-        "expanded toggle restores canonical up chevron and collapse semantics",
+        "expanded toggle restores the inward Collapse icon and collapse semantics",
         toggleButton?.getAttribute("aria-expanded") === "true" &&
           toggleButton?.getAttribute("aria-label") === "Collapse Figma export panel" &&
           toggleButton?.getAttribute("title") === "Collapse Figma export panel" &&
-          toggleButton?.querySelector("path")?.getAttribute("d") === canonicalChevronUpPath,
+          toggleButton?.querySelector("path")?.getAttribute("d") === canonicalCollapsePath,
       );
       check(
         "expand preference persisted",
@@ -469,7 +470,15 @@
       decorator(() => sentinel, baseContext);
 
       document.getElementById("fixture-result").textContent = toBase64Utf8(
-        JSON.stringify({ diagnostics: { status: overlayElement()?.dataset.status ?? null, summary: overlayElement()?.textContent ?? "" }, payloadStoryId: payload?.storyId ?? null, results }),
+        JSON.stringify({
+          diagnostics: { status: overlayElement()?.dataset.status ?? null, summary: overlayElement()?.textContent ?? "" },
+          disclosurePaths: {
+            collapsed: collapsedDisclosurePath,
+            expanded: toggleButton?.querySelector("path")?.getAttribute("d") ?? null,
+          },
+          payloadStoryId: payload?.storyId ?? null,
+          results,
+        }),
       );
       document.title = "OVERLAY_DONE";
     } catch (error) {

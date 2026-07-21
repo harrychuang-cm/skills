@@ -208,6 +208,12 @@ The fallback inputs (`componentSpecModules`, `designSystemFileUrl`, and
 `nodeOverrides`) should come from project-local Storybook config, not from the
 addon package.
 
+The Figma export and Export review disclosures use the same action-oriented
+14px icon language. Expanded controls show an inward **Collapse** pair, while a
+collapsed Export review control shows an outward **Unfold More** pair. The
+compact Figma export surface continues to hide its glyph and uses the full
+Figma-mark-plus-version surface as the accessible Expand control.
+
 ### Local visual review meetings
 
 The React review helper can also run append-only visual review meetings from a

@@ -192,7 +192,11 @@ The review and export sections share one responsive bottom-right workspace dock.
 On wide viewports it reserves inline Story space; on narrow viewports it reserves
 block space. The separate comments detail panel stays at the top-right and never
 overlaps the workspace; capture/composer state never removes either workspace
-header. The report index keeps current and closed meetings separate and shows
+header. Both workspace disclosures use action-oriented 14px paired icons:
+expanded controls show inward **Collapse** chevrons, while collapsed Export review
+shows outward **Unfold More** chevrons. The compact collapsed Figma export surface
+keeps the paired glyph hidden and remains operable through its full
+Figma-mark-plus-version surface. The report index keeps current and closed meetings separate and shows
 capture/comment counts only for meetings that still contain evidence. Meetings with
 zero captures and zero comments, plus any resulting empty group heading, are omitted;
 if every meeting is empty the index shows one empty state while canonical meeting JSON

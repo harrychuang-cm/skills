@@ -358,7 +358,7 @@ type ComponentSectionTarget = {
 
 // Bump this on every behavior change so the Figma UI badge confirms which
 // build is running (Figma re-reads code.js per run, but the badge removes doubt).
-const PLUGIN_VERSION = "1.2.2 (2026-07-17)";
+const PLUGIN_VERSION = "1.2.3 (2026-07-21)";
 
 const SUPPORTED_PAYLOAD_VERSIONS = [1, 2] as const;
 const DEFAULT_TOKEN_PLUGIN_DATA_KEY = "storybookCssToken";

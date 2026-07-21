@@ -26,7 +26,7 @@ When Figma export is enabled for an included Story view, the preview SHALL rende
 
 ### Requirement: Figma export controls workspace disclosure
 
-The Figma export collapse control SHALL act as the parent disclosure for the shared workspace. When Figma export is collapsed, the workspace SHALL hide the `Figma export` title label, Story subtitle, chevron glyph, and complete Export review slot without unmounting Review or changing its independent collapse preference. The collapsed workspace and standalone exporter SHALL use intrinsic／hug-content width smaller than 320 CSS pixels and SHALL visibly retain only the canonical Figma mark plus the addon version. The compact surface SHALL remain the accessible Expand control with synchronized `aria-expanded`, accessible label, click, and keyboard semantics. When Figma export is expanded again at a wide viewport, the workspace SHALL return to exactly 320 CSS pixels, restore the title, subtitle, up chevron, actions, and Export review slot in its prior internal collapse state. Narrow expanded viewports SHALL retain the existing full-width bottom-dock behavior. The only visible addon version label in the workspace SHALL be rendered in the Figma export header; the Export review header MUST NOT render version information.
+The Figma export collapse control SHALL act as the parent disclosure for the shared workspace. When Figma export is collapsed, the workspace SHALL hide the `Figma export` title label, Story subtitle, paired disclosure glyph, and complete Export review slot without unmounting Review or changing its independent collapse preference. The collapsed workspace and standalone exporter SHALL use intrinsic／hug-content width smaller than 320 CSS pixels and SHALL visibly retain only the canonical Figma mark plus the addon version. The compact surface SHALL remain the accessible Expand control with synchronized `aria-expanded`, accessible label, click, and keyboard semantics. When Figma export is expanded again at a wide viewport, the workspace SHALL return to exactly 320 CSS pixels, restore the title, subtitle, inward Collapse icon, actions, and Export review slot in its prior internal collapse state. Narrow expanded viewports SHALL retain the existing full-width bottom-dock behavior. The only visible addon version label in the workspace SHALL be rendered in the Figma export header; the Export review header MUST NOT render version information.
 
 #### Scenario: Collapsed workspace exposes only Figma export
 
@@ -154,14 +154,48 @@ The Export review header SHALL use the existing Storybook `EyeIcon` to represent
 
 ### Requirement: Consistent workspace collapse controls
 
-The Export review and Figma export header controls SHALL use the same canonical Storybook 14×14 filled chevron geometry and current text color. Each control SHALL display `ChevronDownIcon` when its section is collapsed and `ChevronUpIcon` when its section is expanded. Clicking either control MUST update that section's content visibility, icon, `aria-expanded`, accessible label, and independent persisted preference to the same resulting state.
+The Export review and Figma export header controls SHALL use the same action-oriented 14×14 filled disclosure geometry and current text color. When a visible section is expanded, its control SHALL display a Collapse icon whose upper chevron points down and lower chevron points up so both chevrons converge toward the center. When a visible section is collapsed, its control SHALL display an Unfold More icon whose upper chevron points up and lower chevron points down so both chevrons diverge away from the center. The Figma export parent disclosure SHALL continue to hide this glyph only in its existing compact icon-and-version collapsed state. Clicking either control MUST update that section's content visibility, icon, `aria-expanded`, accessible label, and independent persisted preference to the same resulting state.
 
-#### Scenario: Matching collapsed sections show matching down chevrons
+#### Scenario: Expanded sections show the inward Collapse icon
 
-- **WHEN** both Export review and Figma export sections are collapsed
-- **THEN** both controls display the canonical `ChevronDownIcon`, report `aria-expanded="false"`, and retain separate collapse preferences
+- **WHEN** Figma export and Export review are both expanded and their header controls are visible
+- **THEN** both controls display the same 14×14 inward Collapse geometry, report `aria-expanded="true"`, and expose Collapse accessible labels
 
-#### Scenario: Expanding one section updates its complete control state
+#### Scenario: Collapsed review shows the outward Unfold More icon
 
-- **WHEN** a participant activates the collapsed Figma export control
-- **THEN** only Figma export expands, its icon changes to the canonical `ChevronUpIcon`, its accessible label changes to Collapse, and `aria-expanded` becomes `true`
+- **WHEN** Export review is collapsed while the parent Figma export workspace remains expanded
+- **THEN** the Review control displays the 14×14 outward Unfold More geometry, reports `aria-expanded="false"`, exposes an Expand accessible label, and retains its independent collapse preference
+
+#### Scenario: Activating a disclosure updates its complete state
+
+- **WHEN** a participant activates a visible expanded or collapsed section control
+- **THEN** only that section changes state and its paired-chevron geometry, content visibility, `aria-expanded`, accessible label, and persisted preference all describe the same resulting state
+
+#### Scenario: Compact Figma export preserves its minimal disclosure
+
+- **WHEN** the participant collapses the Figma export parent disclosure into its icon-and-version compact state
+- **THEN** the paired-chevron glyph remains hidden, the compact surface reports `aria-expanded="false"` with an Expand accessible label, and activating the surface restores the expanded header with the inward Collapse icon
+
+### Requirement: Figma importer supports valid local development domains
+
+The bundled and Storybook-template Figma importer manifests SHALL list exactly `http://localhost:6006`, `http://localhost:6007`, `http://localhost:6008`, and `http://localhost:8080` in `networkAccess.devAllowedDomains`. They MUST NOT list IPv4 or IPv6 literal origins, wildcard ports, or additional development origins. The plugin URL input SHALL default to `http://localhost:6006`, and the installer SHALL fail validation before copying when the bundled manifest contains an IP-literal development domain. The existing bridge endpoint and export payload contracts MUST remain unchanged.
+
+#### Scenario: Bundled manifest imports with localhost development origins
+
+- **WHEN** Figma Desktop validates the bundled importer manifest for local Storybook development
+- **THEN** `devAllowedDomains` contains the four explicit localhost origins for ports 6006, 6007, 6008, and 8080 and contains no `127.0.0.1` or other IP-literal entry
+
+#### Scenario: Plugin defaults to the supported Storybook hostname
+
+- **WHEN** a participant opens the importer without a previously entered Storybook URL
+- **THEN** the URL field defaults to `http://localhost:6006` and the existing bridge request and payload shapes are preserved
+
+#### Scenario: Installer rejects an invalid bundled IP literal
+
+- **WHEN** installer validation reads a bundled manifest whose `devAllowedDomains` contains an IPv4 or IPv6 literal origin
+- **THEN** installation stops before target creation or file copy and reports the invalid entry with guidance to use `localhost`
+
+#### Scenario: Template importer matches the canonical bundle
+
+- **WHEN** the importer is rebuilt and synchronized into the self-contained Storybook template
+- **THEN** the canonical and template manifests have the same exact localhost-only allowlist, their generated runtime and visible version agree with the package patch version, and regression verification passes

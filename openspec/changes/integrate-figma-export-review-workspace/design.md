@@ -16,7 +16,7 @@ React Review header 已使用 `@storybook/icons` 的 `FigmaIcon`，但 renderer-
 
 Canonical Figma geometry 修正後，plain-DOM mark 仍繼承 `createIconSpan` 的 inline-flex display，覆蓋 mark 原本的 grid centering，造成 SVG 靠向容器左側；同時 Review 與 Export headers 都使用 Figma mark，兩個 section 的功能語意仍不易區分。
 
-Icon 語意區隔後，兩個 section 的 collapse controls 仍不一致：React Review 使用 Storybook filled `ChevronDownIcon`／`ChevronUpIcon`，plain-DOM Export 使用自製 stroke paths，且 Export 的 collapsed/expanded icon mapping 與 Review 相反。結果是同一個 workspace 中兩個已收合 section 顯示不同方向，視覺與操作提示互相衝突。
+Icon 語意與方向統一後，兩個 section 仍只以單一 `ChevronDownIcon`／`ChevronUpIcon` 表示收合狀態。使用者提供的 Collapse All／Unfold More 參考以兩個垂直 chevrons 的向內／向外關係直接表達下一個可執行動作，比單一方向箭頭更容易辨識為「收起內容」或「展開內容」。
 
 Session report目前將comment視為完全append-only evidence：comment record沒有處理狀態，static HTML也沒有mutation controls；既有spec更明確禁止delete API。這讓reviewer無法在report中維護待處理／已完成狀態，也無法移除誤建的單筆comment。
 
@@ -36,6 +36,8 @@ Save comment後，panel目前只顯示該Story的comment總數，無法直接確
 
 Add comment目前在Story UI上攔截pointer並計算normalized pin後直接開始async capture；capture完成前沒有任何point feedback，composer開啟後的preview pin也不可移動。使用者因此無法確認第一次點擊是否命中正確位置，只能取消整筆draft並重新capture。第一階段已讓尚未Save的draft可調整point；後續使用者確認已儲存comment進入Edit時也需要調整既有point，因此mutation contract必須在不重新capture或替換image的前提下，支援body與normalized pin的原子更新。
 
+Bundled Figma importer 的 canonical 與 Storybook template manifests 目前同時列出 `http://localhost:<port>` 與 `http://127.0.0.1:<port>`。Figma Desktop 在匯入manifest時會先驗證 `networkAccess.devAllowedDomains`，目前版本會將IP literal entry判定為invalid URL，因此plugin尚未執行就被拒絕。Importer UI原本已預設`http://localhost:6006`，問題集中於manifest、說明文件與缺少安裝前驗證；修正必須同時更新canonical source、generated runtime與self-contained template mirror，避免installer之後重新帶回無效domain。
+
 ## Goals / Non-Goals
 
 **Goals:**
@@ -51,7 +53,7 @@ Add comment目前在Story UI上攔截pointer並計算normalized pin後直接開�
 - 保持既有 public decorator、export payload、version 1 meeting JSON向後讀取能力與 renderer-agnostic exporter contract 相容。
 - Export header 與 `Copy design to Figma` action 顯示和 React Review 相同的 canonical Figma mark，且不改變其他 action icon 或 accessible name。
 - Export mark 的 SVG box 精確置中；Review header 使用既有 `EyeIcon` 表達 preview/review，Figma mark只保留在 Figma export section。
-- Review 與 Export collapse controls 使用相同的 Storybook canonical chevron geometry與狀態 mapping：collapsed 顯示向下、expanded 顯示向上，並保持 `aria-expanded`、accessible label及各自 preference一致。
+- Review 與 Export disclosure controls 使用相同的14×14 paired-chevron語彙與action-oriented mapping：collapsed顯示向外Unfold More、expanded顯示向內Collapse，並保持`aria-expanded`、accessible label及各自preference一致。
 - Figma export collapse control同時作為workspace父層disclosure：收合只顯示Figma export header，展開才顯示Export review slot；Export review自己的collapse preference不被父層收合改寫。可見addon版本只出現在Figma export header。
 - Wide viewport 的共用側邊 workspace 精確使用 320px inline size，並為其右側 offset 保留 344px Story canvas 空間；Copy JSON與Download JSON各佔full-width row，`Console script`與`Copy design to Figma`共用底部雙欄row。
 - Review panel只提供一個 `Reports` 瀏覽入口，不渲染 active `Open`、closed meeting history heading或per-session list；完整active/closed meeting導覽統一由Reports index提供。
@@ -63,6 +65,7 @@ Add comment目前在Story UI上攔截pointer並計算normalized pin後直接開�
 - Active與closed session report的comment cards提供相同的body／point Edit、Save／Cancel能力；comment edit不取代原作者、capture、screenshot或createdAt。
 - Static Reports的snapshot canvas在light／dark scheme都使用既有`--sbfx-surface-raised`暗灰semantic role，圖片仍以contain完整呈現。
 - Active meeting 的預設capture action顯示精簡的`Add comment`，並維持既有按鈕功能、accessible name與`addVisualComment` override contract。
+- Canonical與template Figma importer manifest只列出Figma可接受的明確localhost development origins（6006、6007、6008、8080），plugin預設連線使用`http://localhost:6006`，installer在複製前拒絕任何IP literal dev allowlist entry。
 
 **Non-Goals:**
 
@@ -71,12 +74,13 @@ Add comment目前在Story UI上攔截pointer並計算normalized pin後直接開�
 - 不改變 Figma export payload 或 Code To Design import protocol。
 - 不修改產品 component tokens 或為單一 Storybook 建立專屬視覺元件。
 - 不重畫 Figma 品牌、引入圖示套件到 plain-DOM exporter，或改動 Figma export 按鈕高度、顏色、DOM順序與操作流程。
-- 不新增 icon component、design token 或改變 header mark 的 32×32 visual slot。
+- 不新增public icon component、design token或改變header mark的32×32 visual slot；plain-DOM與React只共享本addon私有的paired disclosure path constants。
 - 不合併 Review 與 Export 的 collapse preference，也不改變header click target或預設展開狀態。
 - 不刪除 `recentSessions`／`activeReportUrl` response fields、空 meeting JSON、其他仍被引用的assets或static report pages，也不改變start/end meeting與comment capture流程；空 meeting 只從 Reports index projection 隱藏，直接 session URL 仍維持相容。
 - 不做批次或全域asset garbage collection；Delete只清理該comment釋放且不再被其他comment/capture引用的capture與image asset。
 - 不重新命名public `FigmaReviewLabels.addVisualComment` key，也不改動其他meeting、composer或report文案。
 - 不將comments移入Storybook manager，不提供rich-text／多人同步editor，也不允許替換既有capture或screenshot；本次只提供plain-text body edit與既有單筆lifecycle actions。
+- 不支援`localhost:*` wildcard、`127.0.0.1`、LAN／IPv6 literal、HTTPS localhost或新增remote origins；不改變Figma importer bridge payload、list endpoint、plugin registration方式或Storybook port discovery。
 
 ## Decisions
 
@@ -112,7 +116,7 @@ Workspace coordinator 建立 slots 時固定使用 `export`、`review` 的 DOM�
 
 Figma export既有collapse preference繼續由`sbfx:exporter-collapsed`保存，但每次render同時把目前collapsed state投影到共用workspace root的`data-export-collapsed`。當值為`true`時，workspace以layout規則隱藏整個review slot，只保留Figma export header；值為`false`時恢復review slot。Review component不會因此unmount，也不寫入`sbfx:review-collapsed`，所以重新展開父層後會回到使用者先前選擇的Review內部狀態。
 
-Figma export header繼續顯示addon patch version；Export review header移除重複的visible version badge。收合時，`Figma export` title label、Story subtitle與chevron glyph全部退出視覺layout，只留下24px Figma mark與版本文字；既有toggle以absolute inset覆蓋compact header作為完整click／focus target，所以compact surface本身仍具`aria-expanded="false"`、Expand label及Enter／Space button semantics。Workspace root與standalone exporter在此state皆使用intrinsic／max-content inline size，不再被320px parent width撐開。展開後恢復完整title、subtitle、up chevron與wide 320px workspace；窄viewport展開時仍維持既有full-width bottom dock。Diagnostics所需的非視覺data attribute不屬於header資訊，但workspace在任何展開狀態都不得同時呈現第二個visible version label。
+Figma export header繼續顯示addon patch version；Export review header移除重複的visible version badge。收合時，`Figma export` title label、Story subtitle與paired disclosure glyph全部退出視覺layout，只留下24px Figma mark與版本文字；既有toggle以absolute inset覆蓋compact header作為完整click／focus target，所以compact surface本身仍具`aria-expanded="false"`、Expand label及Enter／Space button semantics。Workspace root與standalone exporter在此state皆使用intrinsic／max-content inline size，不再被320px parent width撐開。展開後恢復完整title、subtitle、inward Collapse icon與wide 320px workspace；窄viewport展開時仍維持既有full-width bottom dock。Diagnostics所需的非視覺data attribute不屬於header資訊，但workspace在任何展開狀態都不得同時呈現第二個visible version label。
 
 替代方案是讓Figma export收合時同步改寫Review為collapsed，但這會混合兩個preference並讓重新展開失去使用者上下文，因此不採用。另一替代方案是unmount Review，會中斷其polling與local interaction state；使用CSS隱藏slot可保留既有component lifecycle。只隱藏chevron卻保留一個空白28px button column仍會浪費寬度，因此toggle在collapsed state改為覆蓋整個compact header；視覺最小化不犧牲keyboard或screen-reader展開能力。
 
@@ -242,11 +246,17 @@ Plain-DOM exporter 保持無 React、無 `@storybook/icons` runtime dependency�
 
 React `Export review` header 改為沿用 `@storybook/icons` 已存在的 `EyeIcon`，代表預覽與審查；下方 `Figma export` header及 `Copy design to Figma` action繼續使用 canonical `FigmaIcon`。替代方案是為 Review 自製新 SVG，但會重複既有 shared icon primitive，因此不採用。
 
-### 一致的 collapse chevron 與狀態映射
+### 對向的 disclosure 開合 icon
 
-React Review 繼續使用 `@storybook/icons` 的 `ChevronDownIcon`／`ChevronUpIcon`。Renderer-agnostic Export 不增加 React runtime dependency，而是讓 `svgIcons.chevronDown` 與 `svgIcons.chevronUp` 逐字對齊 Storybook 14×14 filled `currentColor` paths，移除原本的近似 stroke geometry。
+React Review 在expanded state沿用 `@storybook/icons` 的canonical 14×14 `CollapseIcon`：上方chevron朝下、下方chevron朝上，兩者向中央靠攏。Collapsed state使用相同14×14、filled `currentColor`語彙的Unfold More geometry：上方chevron朝上、下方chevron朝下，兩者向外展開。Renderer-agnostic Export不增加React runtime dependency，而是讓local SVG primitives逐字對齊這兩組paths；React與plain-DOM fixtures以exact path驗證兩端沒有漂移。
 
-兩個 controls 採用同一個 state-to-icon contract：`collapsed === true` 顯示 `ChevronDownIcon`，表示點擊可向下展開內容；`collapsed === false` 顯示 `ChevronUpIcon`，表示點擊可向上收合內容。兩者的 `aria-expanded` 仍為 `!collapsed`，accessible label/title依狀態切換 Expand／Collapse，兩份 localStorage preference維持獨立。替代方案是保留原本 Export 方向並只換 path，但仍會讓相同狀態顯示相反方向，因此不採用。
+兩個controls採用action-oriented state mapping：`collapsed === true` 顯示向外的Unfold More icon，表示下一次啟用會展開；`collapsed === false` 顯示向內的Collapse icon，表示下一次啟用會收合。兩者的`aria-expanded`仍為`!collapsed`，accessible label／title依狀態切換Expand／Collapse，兩份localStorage preference維持獨立。Figma export進入既有icon＋version compact state時仍隱藏glyph並以整個surface作為Expand control；本次不恢復compact chevron，也不改變任何collapse persistence或layout。替代方案是把單一chevron加粗或放大，但仍無法像向內／向外的雙chevron直接表達開合動作，因此不採用。
+
+### Figma importer localhost-only development allowlist
+
+Canonical `assets/figma-plugin-code-to-design/manifest.json`與self-contained Storybook template manifest SHALL共用精確且有序的四個development origins：`http://localhost:6006`、`http://localhost:6007`、`http://localhost:6008`、`http://localhost:8080`。不得保留`127.0.0.1`或其他IPv4／IPv6 literal，也不得以wildcard取代明確ports。Plugin URL input繼續預設`http://localhost:6006`，既有bridge endpoint與payload schema不變。
+
+Installer SHALL在讀取bundled plugin metadata時驗證 `devAllowedDomains`；發現IP literal SHALL在任何copy前失敗並指出應改用`localhost`。Regression verifier同時解析canonical與template manifests，鎖定精確allowlist與mirror parity。Importer package升一個patch version，執行既有stamp/build產生新的`code.js`與UI badge，再把manifest、runtime、README同步至template。替代方案是只修canonical manifest，但self-contained template會繼續散布無效設定；另一替代方案是保留IP entry並要求使用者忽略驗證，但Figma會在plugin執行前拒絕manifest，因此皆不採用。
 
 ## Implementation Contract
 
@@ -263,10 +273,11 @@ React Review 繼續使用 `@storybook/icons` 的 `ChevronDownIcon`／`ChevronUpI
 - Capture SHALL 包含 capture target 的實際可見 content。全透明輸出 MUST 產生 `Captured image contains no visible pixels.` 類型的可重試錯誤，MUST NOT 呼叫 create-comment API。
 - Review panel SHALL 提供且只提供一個 `Reports` meeting瀏覽入口，MUST NOT 渲染active `Open`、`Closed meeting history`、closed meeting cards或任何per-session report links。Reports index SHALL 使用不同label/section呈現current與closed meetings，並為每筆顯示capture/comment counts與session report link；closed meeting data MUST NOT合併進active meeting comment list。
 - Canonical Reports index URL SHALL end in `/reports/`，且 legacy `/reports` request SHALL redirect to that directory URL，讓index內的relative `sessions/<id>/index.html` links永遠解析到static report route而不會落入comments sessions API。
+- Bundled與template Figma importer manifests SHALL只包含`http://localhost:6006`、`:6007`、`:6008`、`:8080`四個`devAllowedDomains`，不得包含IP literal或wildcard；plugin URL input SHALL預設`http://localhost:6006`。Installer SHALL在copy前驗證bundled manifest並對IP literal fail closed，canonical/template runtime與manifest SHALL在build後保持同步，bridge endpoint與payload contract MUST NOT改變。
 - Review status 與 visual comments SHALL 顯示獨立 capability/error state。任何 404 訊息 MUST 包含失敗的 endpoint；comments 可用時，status path 失敗 MUST NOT 停用 meeting/report 功能。
 - Export header 與 `Copy design to Figma` icon-only action SHALL 顯示相同的 canonical Figma mark；兩者 MUST NOT 使用舊的近似 stroke/circle 圖形，其他 action icons MUST 保持原語意。
 - Export header mark內的 SVG box SHALL 水平與垂直置中。`Export review` header SHALL 顯示 `EyeIcon`，MUST NOT 和 `Figma export` header共用 Figma mark。
-- Export review header SHALL維持canonical 14×14 Storybook chevron state mapping。Figma export在expanded state SHALL顯示`ChevronUpIcon`；collapsed state SHALL隱藏chevron glyph並讓icon＋version compact surface本身作為可操作的Expand control。兩者click後內容可見性、`aria-expanded`與Expand／Collapse label SHALL同步更新。
+- Export review header SHALL使用canonical 14×14 action-oriented disclosure icon mapping：expanded state顯示上下chevrons向中央靠攏的`CollapseIcon`，collapsed state顯示上下chevrons向外展開的Unfold More icon。Figma export在expanded state SHALL顯示同一個`CollapseIcon`；collapsed compact state SHALL維持隱藏glyph並讓icon＋version surface本身作為可操作的Expand control。兩者click後內容可見性、`aria-expanded`、Expand／Collapse label與既有localStorage preference SHALL同步更新。
 - Wide viewport 的 expanded shared workspace SHALL 精確為 320 CSS pixels，Story canvas SHALL 保留包含既有 24px offset 的 344 CSS pixels。Collapsed workspace SHALL改用icon＋version內容的intrinsic／hug-content width且嚴格小於320px。Figma export actions SHALL 保持既有DOM順序：Copy JSON與Download JSON各自跨越兩欄使用full-width row，`Console script`與`Copy design to Figma`各佔一欄並共用底部row；窄viewport expanded state SHALL保持既有full-width bottom dock與相同action composition，collapsed state則同樣收斂為右側hug-content disclosure。
 - Shared workspace SHALL render and expose its named slots in the fixed DOM order `export` then `review`, so Figma export appears above Export review in both side and bottom orientations without changing either section's collapse state or controls.
 - When an active meeting can accept a new comment, the default primary capture action SHALL display and expose the accessible name `Add comment`; activating it SHALL enter the existing point-capture flow.
@@ -314,6 +325,7 @@ React Review 繼續使用 `@storybook/icons` 的 `ChevronDownIcon`／`ChevronUpI
 - Capture失敗、transparent rejection或使用者在capture完成前按Escape時 SHALL移除immediate live tag並保持create-comment request count為零。Preview drag移出bounds或keyboard adjustment超出邊界時 SHALL clamp而非丟失draft；target在scroll／resize期間不可解析時 SHALL暫時隱藏Story tag且MUST NOT清除pending screenshot、pin、author或body。Panel收合 SHALL隱藏live tag但沿用既有draft retention，重新展開後可繼續調整。
 - A stale or pre-upgrade derived report HTML file MUST NOT bypass the current Delete confirmation UI when its canonical meeting JSON is readable; GET regeneration failure SHALL surface through the existing report error response without modifying canonical evidence.
 - Confirmed Delete移除meeting最後一筆comment及其未引用capture後，regenerated Reports index MUST NOT保留該`0 captures · 0 comments` meeting card或空分組heading；filtering failure MUST NOT刪除canonical meeting JSON或破壞直接session report URL。
+- Bundled importer manifest若含IPv4／IPv6 literal development origin，installer SHALL在建立target或copy任何檔案前失敗並顯示該entry與`localhost`修正方向；manifest verifier若發現canonical／template allowlist漂移、缺少必要port或新增wildcard SHALL失敗。此驗證MUST NOT把既有bridge runtime可解析的一般URL誤當成manifest支援承諾。
 
 ### Acceptance criteria
 
@@ -332,7 +344,7 @@ React Review 繼續使用 `@storybook/icons` 的 `ChevronDownIcon`／`ChevronUpI
 - Report fixture SHALL驗證`.snapshot`在light與dark color schemes都由`--sbfx-surface-raised`提供暗灰computed background，圖片仍使用`object-fit: contain`且既有pin／comment actions不變。
 - Overlay fixture 與 Hero Title Lockup browser smoke確認 Export header／右下 action 的兩個 Figma icon 都使用 canonical geometry，且 copy/download/command icons 未改變。
 - Overlay fixture SHALL 量測 Export mark與SVG center delta不超過0.5 CSS pixel；visual-comment fixture與 Hero Title Lockup screenshot SHALL 確認 Review header為EyeIcon、Export header為置中FigmaIcon。
-- Overlay fixture SHALL驗證Export expanded state的canonical up path及collapsed state隱藏chevron glyph，同時兩個state的`aria-expanded`與labels保持正確；visual-comment fixture及Hero Title Lockup browser smoke SHALL驗證切換後內容／父層slot同步且preferences仍獨立。
+- Overlay fixture SHALL驗證Export expanded state的canonical inward Collapse path及collapsed compact state隱藏paired glyph，同時兩個state的`aria-expanded`與labels保持正確；visual-comment fixture及Hero Title Lockup browser smoke SHALL驗證expanded Export／Review使用相同Collapse path、collapsed Review使用outward Unfold More path，且切換後內容／父層slot同步、preferences仍獨立。
 - Overlay／visual-comment fixtures與Hero Title Lockup browser smoke SHALL驗證收合Figma export後workspace只留下Figma mark＋version、title／subtitle／chevron與review slot皆不可見或不佔layout、wide與narrow collapsed workspace皆為hug-content且小於320px；重新展開後wide workspace精確回到320px、完整header與Review先前內部collapse狀態恢復，且workspace只有一個visible version badge並位於Figma export header。
 - Report fixture SHALL驗證Delete icon button使用canonical Trash paths且為comment action row第一個element並貼齊container左側，`Copy AI prompt`、Edit與Complete／Reopen依序位於同一個貼齊container右側的group；同時驗證頁內dialog文案與accessible wiring完整，並以isolated action-script fixture證明initial click與Cancel皆為零requests、Confirm delete才送出一次DELETE。HTTP fixture SHALL覆寫derived session HTML為stale sentinel並證明下一次GET由canonical meeting重建新版dialog；downstream session report browser smoke SHALL確認左右分離的action composition、dialog可見且Cancel不移除comment。
 - Store／HTTP fixtures SHALL驗證edit PATCH對active與closed meetings皆可用，接受body-only、pin-only與body＋pin，原子更新指定comment supplied fields並preserve author／capture／createdAt／resolvedAt，拒絕empty／over-limit／non-finite／out-of-range／resolved混用／unknown-field payload且unknown comment回404。Report fixture SHALL驗證right group為Copy AI prompt→Edit→Complete／Reopen、Edit preview pin的pointer／keyboard adjustment、Cancel零request、成功Save以單一PATCH reload regenerated body／pin、失敗Save保留兩份draft並只顯示card-local error。
@@ -344,12 +356,13 @@ React Review 繼續使用 `@storybook/icons` 的 `ChevronDownIcon`／`ChevronUpI
 - Visual-comments HTTP fixture SHALL驗證既有overview `reportUrl`保持相容、legacy `/reports` redirect的`Location`，以及redirect後index內的session link可導向200 static report；browser smoke SHALL從Reports index實際點擊一筆`Open report`並看到session evidence而非405／blocked page。
 - Store／HTTP fixtures SHALL驗證version 1 legacy comments預設Open、Complete idempotency、Reopen、closed-meeting mutation、unknown ID errors，以及confirmed Delete減少commentCount與unreferenced captureCount、使unshared asset URL回404，同時保留仍被其他capture引用的shared asset；report fixture SHALL驗證明確confirmation copy、status/actions、escaped identifiers、nonce CSP與per-card error region。
 - Downstream browser smoke SHALL在closed session report完成Open→Completed→Open，取消一次Delete並確認comment與snapshot仍存在，再建立專用smoke comment、確認Delete後該comment與snapshot都消失且asset URL回404。
+- Figma importer manifest verifier SHALL確認canonical與template的`devAllowedDomains`精確等於四個localhost origins且不含`127.0.0.1`／其他IP literal／wildcard；`npm run build`與既有pure-functions／bridge-helper tests SHALL通過、package/runtime/UI badge版本一致、template `manifest.json`／`code.js`／`ui.html`／`README.md`與canonical發布內容同步，installer default report SHALL能讀取修正後bundle。Figma Desktop重新匯入canonical manifest後不再出現`127.0.0.1` invalid URL錯誤。
 - `spectra validate integrate-figma-export-review-workspace` and artifact analysis complete without Critical or Warning findings before archive.
 
 ### Scope boundaries
 
-- In scope: addon preview/review workspace layout（包含wide expanded 320px、collapsed icon＋version hug-content width、右下位置、兩個full-width export rows、底部雙欄utility row與export-before-review section order）、右上獨立且由Edit icon launcher展開的visual comments panel、compact subheading／outline Reports header、meeting與comment mutation期間的open-state continuity、目前Story／active meeting最新3筆comment管理、panel與Reports edit狀態的stored snapshot＋editable normalized pin evidence preview、Add comment Save前的immediate numbered live tag與pending pin click／drag／keyboard adjustment、meeting-wide連續comment ordinals、panel／active／closed report plain-text body與point原子edit、Reports暗灰snapshot canvas、`Console script` action copy、visual comment capture action預設copy、visual capture validity, report discoverability, left-aligned Delete and right-aligned prompt/edit/resolution action composition, confirmed per-comment resolve/delete mutation and reference-aware capture/asset cleanup, config generation/wiring, canonical build artifacts, vendor mirrors, tests and documentation.
-- Out of scope: Storybook manager panel architecture, remote persistence, authentication,已儲存comment的 author／capture／screenshot／`createdAt` editing or replacement, Story live tag直接拖曳, saved point edit時重新capture或project到目前Story DOM, rich text or collaborative editing, comments open-state persistence, panel closed-meeting history, bulk mutation, delete undo, unrelated/global asset garbage collection, product component redesign, Figma payload/import changes and committing downstream product files.
+- In scope: addon preview/review workspace layout（包含wide expanded 320px、collapsed icon＋version hug-content width、右下位置、兩個full-width export rows、底部雙欄utility row與export-before-review section order）、右上獨立且由Edit icon launcher展開的visual comments panel、compact subheading／outline Reports header、meeting與comment mutation期間的open-state continuity、目前Story／active meeting最新3筆comment管理、panel與Reports edit狀態的stored snapshot＋editable normalized pin evidence preview、Add comment Save前的immediate numbered live tag與pending pin click／drag／keyboard adjustment、meeting-wide連續comment ordinals、panel／active／closed report plain-text body與point原子edit、Reports暗灰snapshot canvas、`Console script` action copy、visual comment capture action預設copy、visual capture validity, report discoverability, left-aligned Delete and right-aligned prompt/edit/resolution action composition, confirmed per-comment resolve/delete mutation and reference-aware capture/asset cleanup, config generation/wiring, canonical build artifacts, vendor mirrors, tests and documentation，以及bundled／template Figma importer的localhost-only dev allowlist、installer驗證、patch build與文件同步。
+- Out of scope: Storybook manager panel architecture, remote persistence, authentication,已儲存comment的 author／capture／screenshot／`createdAt` editing or replacement, Story live tag直接拖曳, saved point edit時重新capture或project到目前Story DOM, rich text or collaborative editing, comments open-state persistence, panel closed-meeting history, bulk mutation, delete undo, unrelated/global asset garbage collection, product component redesign, Figma payload/import changes, remote／LAN／IP-literal importer development origins and committing downstream product files.
 
 ## Risks / Trade-offs
 
@@ -361,7 +374,7 @@ React Review 繼續使用 `@storybook/icons` 的 `ChevronDownIcon`／`ChevronUpI
 - [Legacy projects仍持有兩份 config] → Generator/reference 提供明確 migration；runtime error 顯示實際 endpoint，不靜默掛載 alias。
 - [Plain-DOM SVG 與上游 Storybook icon未來漂移] → 以 canonical path fixture鎖定目前契約；升級 `@storybook/icons` 時必須顯式更新兩端與 snapshot assertion。
 - [Icon wrapper inline style覆蓋layout class] → Mark class同時定義flex-axis alignment，並以實際DOMRect而非僅CSS文字做fixture驗證。
-- [Chevron方向被誤解為目前狀態或下一個動作] → 以兩個 section現有 Review convention為單一 contract：collapsed/down、expanded/up，並同時測試 icon path、`aria-expanded`、label與內容狀態。
+- [Paired icon被誤解為目前狀態而非下一個動作] → 明確採action-oriented contract：collapsed顯示向外Unfold More、expanded顯示向內Collapse，並同時測試exact path、`aria-expanded`、label與內容狀態。
 - [移除panel list讓使用者誤以為歷史資料被刪除] → 保留清楚且唯一的 `Reports` link，browser smoke實際打開Reports index並驗證closed meeting仍存在；只有使用者在session report明確確認Delete時才移除指定comment。
 - [無登入的local report mutation誤觸或被跨來源呼叫] → mutation routes不提供CORS、report script只使用same-origin fetch、Delete要求browser confirmation，且本能力明確限於本機Storybook review workspace。
 - [Delete誤刪其他comment共用的review evidence] → 只有在capture沒有其他comment reference時移除capture，只有在asset path沒有其他capture reference時unlink實體檔；store fixture覆蓋shared reference。
@@ -382,6 +395,8 @@ React Review 繼續使用 `@storybook/icons` 的 `ChevronDownIcon`／`ChevronUpI
 - [Immediate tag被截進evidence或遮住prototype click] → Point-selected callback先攔截原始pointer，再以capture-ignored body portal呈現non-interactive tag；production pixel fixture與pointer assertions同時驗證。
 - [Drag與Story live tag產生兩份pin state] → `pendingCapture.pin`是唯一draft source，兩個surface只做projection；Save request fixture比對最終normalized ratios。
 - [Small preview難以精準拖曳或不支援keyboard] → 同時提供click-to-move、Pointer Events drag、Arrow 1%與Shift+Arrow 5%，並沿用既有focus-visible token。
+- [只修canonical manifest但template或installer再次帶回IP entry] → verifier同時解析兩份manifest、installer在copy前fail closed，build後以明確parity check鎖定同步內容。
+- [既有使用者曾在plugin URL欄輸入`127.0.0.1`] → UI與README明確使用`http://localhost:6006`；不改寫使用者輸入或擴張allowlist，Figma本機流程統一改用localhost hostname。
 
 ## Migration Plan
 
@@ -392,6 +407,7 @@ React Review 繼續使用 `@storybook/icons` 的 `ChevronDownIcon`／`ChevronUpI
 5. 使用既有 meeting JSON/assets 驗證歷史 report，另建立暫時 meeting驗證真實 capture；測試 meeting 必須清楚命名並於驗證後關閉。
 6. Rollback 時還原 addon與 template版本；version 1 meeting JSON/assets保持可讀，不需資料 migration。
 7. 既有version 1 comments沒有`resolvedAt`時視為Open；不執行eager migration，首次Edit／Complete／Reopen／Delete才原子寫回該meeting並重建reports。Body edit不新增schema version或`updatedAt`。
+8. 將canonical與template importer manifest改為localhost-only四個ports，bump importer patch version、stamp/build並同步template；執行manifest／runtime tests與installer report。先前manifest匯入失敗的使用者重新從canonical `manifest.json`匯入；已成功註冊者直接重開plugin即可讀取更新檔案，Storybook URL使用`http://localhost:6006`。Rollback SHALL同時還原canonical與template importer，不保留IP literal作為fallback。
 
 ## Open Questions
 

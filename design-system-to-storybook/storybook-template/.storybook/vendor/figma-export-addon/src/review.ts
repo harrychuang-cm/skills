@@ -1,6 +1,5 @@
 import {
-  ChevronDownIcon,
-  ChevronUpIcon,
+  CollapseIcon,
   EditIcon,
   EyeIcon,
   LinkIcon,
@@ -15,6 +14,7 @@ import { Fragment, createElement as h, useEffect, useId, useRef, useState } from
 import { createPortal } from "react-dom";
 
 import "./review.css";
+import { unfoldMoreDisclosurePath } from "./disclosureIcon";
 import {
   readCollapsePreference,
   reviewCollapseStorageKey,
@@ -33,6 +33,7 @@ import {
   acquireFigmaWorkspaceSlot,
   type FigmaWorkspaceSlotHandle,
 } from "./workspace";
+
 import {
   VISUAL_COMMENT_LIMITS,
   beginVisualCommentCapture,
@@ -47,6 +48,20 @@ import {
   type VisualCommentPin,
   type VisualCommentPointSelection,
 } from "./visualComment";
+
+function UnfoldMoreDisclosureIcon(): ReactNode {
+  return h(
+    "svg",
+    {
+      "aria-hidden": "true",
+      fill: "none",
+      height: 14,
+      viewBox: "0 0 14 14",
+      width: 14,
+    },
+    h("path", { d: unfoldMoreDisclosurePath, fill: "currentColor" }),
+  );
+}
 
 export type FigmaReviewStatus =
   | "not-started"
@@ -1911,7 +1926,9 @@ export function FigmaExportReview({
                   : "Collapse export review panel",
                 type: "button",
               },
-              h(isCollapsed ? ChevronDownIcon : ChevronUpIcon, { size: 14 }),
+              isCollapsed
+                ? UnfoldMoreDisclosureIcon()
+                : h(CollapseIcon, { "aria-hidden": "true", size: 14 }),
             ),
           ),
           h(

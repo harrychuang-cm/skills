@@ -164,6 +164,16 @@ async function main() {
       `${base}/overlay-fixture.html?sync=/sync-payload`,
       "overlay-fixture-wide",
     );
+    assert.deepStrictEqual(
+      overlayResult.disclosurePaths,
+      {
+        collapsed:
+          "M6.646.146a.5.5 0 01.708 0l4 4a.5.5 0 01-.708.708L7 1.207 3.354 4.854a.5.5 0 01-.708-.708l4-4zM3.354 9.146a.5.5 0 10-.708.708l4 4a.5.5 0 00.708 0l4-4a.5.5 0 00-.708-.708L7 12.793 3.354 9.146z",
+        expanded:
+          "M3.354.146a.5.5 0 10-.708.708l4 4a.5.5 0 00.708 0l4-4a.5.5 0 00-.708-.708L7 3.793 3.354.146zM6.646 9.146a.5.5 0 01.708 0l4 4a.5.5 0 01-.708.708L7 10.207l-3.646 3.647a.5.5 0 01-.708-.708l4-4z",
+      },
+      "overlay exposes exact outward/inward disclosure geometry",
+    );
 
     await runFixture(
       chromeBinary,

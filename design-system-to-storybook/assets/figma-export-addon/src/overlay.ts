@@ -5,6 +5,10 @@ import {
 } from "./collapsePreference";
 import { createFigmaExportPayload } from "./domExport";
 import {
+  collapseDisclosureSvg,
+  unfoldMoreDisclosureSvg,
+} from "./disclosureIcon";
+import {
   isStoryIncludedForFigmaExport,
   resolveFigmaExportAddonOptions,
   type FigmaExportAddonOptions,
@@ -52,10 +56,7 @@ const actionLabels: Record<CopyFormat, { busy: string; done: string; idle: strin
 const svgIcons = {
   check:
     '<svg viewBox="0 0 14 14" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2.5 7.5 5.5 10.5 11.5 3.5"/></svg>',
-  chevronDown:
-    '<svg viewBox="0 0 14 14" width="14" height="14" fill="none" aria-hidden="true"><path d="M1.146 4.604l5.5 5.5a.5.5 0 00.708 0l5.5-5.5a.5.5 0 00-.708-.708L7 9.043 1.854 3.896a.5.5 0 10-.708.708z" fill="currentColor"/></svg>',
-  chevronUp:
-    '<svg viewBox="0 0 14 14" width="14" height="14" fill="none" aria-hidden="true"><path d="M7.354 3.896l5.5 5.5a.5.5 0 01-.708.708L7 4.957l-5.146 5.147a.5.5 0 01-.708-.708l5.5-5.5a.5.5 0 01.708 0z" fill="currentColor"/></svg>',
+  collapse: collapseDisclosureSvg,
   command:
     '<svg viewBox="0 0 14 14" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M5 5h4v4H5zM5 5H3.5A1.5 1.5 0 1 1 5 3.5V5zm4 0h1.5A1.5 1.5 0 1 0 9 3.5V5zM5 9H3.5A1.5 1.5 0 1 0 5 10.5V9zm4 0h1.5A1.5 1.5 0 1 1 9 10.5V9z"/></svg>',
   copy:
@@ -66,6 +67,7 @@ const svgIcons = {
     '<svg viewBox="0 0 14 14" width="14" height="14" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" clip-rule="evenodd" d="M9.2 0H4.803A2.603 2.603 0 003.41 4.802a2.603 2.603 0 000 4.396 2.602 2.602 0 103.998 2.199v-2.51a2.603 2.603 0 103.187-4.085A2.604 2.604 0 009.2 0zM7.407 7a1.793 1.793 0 103.586 0 1.793 1.793 0 00-3.586 0zm-.81 2.603H4.803a1.793 1.793 0 101.794 1.794V9.603zM4.803 4.397h1.794V.81H4.803a1.793 1.793 0 000 3.587zm0 .81a1.793 1.793 0 000 3.586h1.794V5.207H4.803zm4.397-.81H7.407V.81H9.2a1.794 1.794 0 010 3.587z"/></svg>',
   close:
     '<svg viewBox="0 0 14 14" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3.5 3.5 10.5 10.5M10.5 3.5 3.5 10.5"/></svg>',
+  unfoldMore: unfoldMoreDisclosureSvg,
 };
 
 function getExportComponentTitle(
@@ -428,7 +430,7 @@ function buildOverlay(): OverlayRefs {
   const toggle = document.createElement("button");
   toggle.type = "button";
   toggle.className = "sbfx-exporter__toggle";
-  const toggleIcon = createIconSpan(svgIcons.chevronDown);
+  const toggleIcon = createIconSpan(svgIcons.collapse);
   toggleIcon.classList.add("sbfx-exporter__toggle-icon");
   toggle.append(toggleIcon);
   toggle.addEventListener("click", () => {
@@ -506,7 +508,7 @@ function renderOverlay(): void {
   toggle.setAttribute("aria-expanded", String(!collapsed));
   toggle.setAttribute("aria-label", toggleLabel);
   toggle.title = toggleLabel;
-  toggleIcon.innerHTML = collapsed ? svgIcons.chevronDown : svgIcons.chevronUp;
+  toggleIcon.innerHTML = collapsed ? svgIcons.unfoldMore : svgIcons.collapse;
   toggleIcon.style.display = collapsed ? "none" : "inline-flex";
   subtitle.textContent = componentTitle;
   subtitle.title = componentTitle;

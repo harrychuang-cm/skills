@@ -9,6 +9,7 @@ import {
   readdirSync,
   statSync,
 } from "node:fs";
+import { isIP } from "node:net";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -20,6 +21,12 @@ const repoCheckoutHint =
   "design-system-to-storybook/assets/figma-plugin-code-to-design/manifest.json";
 const excludedPathSegments = new Set([".git", "node_modules"]);
 const excludedFiles = new Set([".DS_Store"]);
+const expectedDevelopmentDomains = [
+  "http://localhost:6006",
+  "http://localhost:6007",
+  "http://localhost:6008",
+  "http://localhost:8080",
+];
 
 function printUsage() {
   console.error(
@@ -203,6 +210,42 @@ function assertBundledPlugin() {
   }
 }
 
+export function assertValidDevelopmentDomains(manifest) {
+  const domains = manifest?.networkAccess?.devAllowedDomains;
+  if (!Array.isArray(domains)) {
+    throw new Error(
+      "Bundled Figma importer manifest must define networkAccess.devAllowedDomains.",
+    );
+  }
+
+  for (const domain of domains) {
+    if (typeof domain !== "string") {
+      continue;
+    }
+
+    let hostname = "";
+    try {
+      hostname = new URL(domain).hostname.replace(/^\[|\]$/g, "");
+    } catch {
+      // The exact allowlist check below reports malformed and wildcard values.
+    }
+    if (isIP(hostname) !== 0) {
+      throw new Error(
+        `Invalid devAllowedDomains entry "${domain}": Figma local development domains must use localhost, not an IP literal.`,
+      );
+    }
+  }
+
+  if (
+    domains.length !== expectedDevelopmentDomains.length ||
+    domains.some((domain, index) => domain !== expectedDevelopmentDomains[index])
+  ) {
+    throw new Error(
+      `Bundled Figma importer devAllowedDomains must exactly match: ${expectedDevelopmentDomains.join(", ")}.`,
+    );
+  }
+}
+
 function readBundledPluginInfo() {
   const packageJson = JSON.parse(
     readFileSync(join(bundledPluginRoot, "package.json"), "utf8"),
@@ -210,6 +253,7 @@ function readBundledPluginInfo() {
   const manifest = JSON.parse(
     readFileSync(join(bundledPluginRoot, "manifest.json"), "utf8"),
   );
+  assertValidDevelopmentDomains(manifest);
   const runtimeEntry = manifest.main || "code.js";
   const runtimePath = join(bundledPluginRoot, runtimeEntry);
 
@@ -374,21 +418,23 @@ function toPosix(value) {
   return value.split(sep).join("/");
 }
 
-try {
-  const options = parseArgs(process.argv.slice(2));
-  if (options.productRoot) {
-    assertProductRoot(options.productRoot);
-  }
-  assertBundledPlugin();
-  const info = readBundledPluginInfo();
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  try {
+    const options = parseArgs(process.argv.slice(2));
+    if (options.productRoot) {
+      assertProductRoot(options.productRoot);
+    }
+    assertBundledPlugin();
+    const info = readBundledPluginInfo();
 
-  if (options.copyTarget) {
-    copyPluginFiles(options);
-  } else {
-    reportCentral(info, options.productRoot);
+    if (options.copyTarget) {
+      copyPluginFiles(options);
+    } else {
+      reportCentral(info, options.productRoot);
+    }
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    printUsage();
+    process.exit(1);
   }
-} catch (error) {
-  console.error(error instanceof Error ? error.message : String(error));
-  printUsage();
-  process.exit(1);
 }

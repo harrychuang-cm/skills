@@ -14,10 +14,10 @@ import {
 const results: Array<{ name: string; passed: boolean; detail?: string }> = [];
 const resultElement = document.querySelector<HTMLElement>("#fixture-result")!;
 resultElement.dataset.stage = "started";
-const canonicalChevronUpPath =
-  "M7.354 3.896l5.5 5.5a.5.5 0 01-.708.708L7 4.957l-5.146 5.147a.5.5 0 01-.708-.708l5.5-5.5a.5.5 0 01.708 0z";
-const canonicalChevronDownPath =
-  "M1.146 4.604l5.5 5.5a.5.5 0 00.708 0l5.5-5.5a.5.5 0 00-.708-.708L7 9.043 1.854 3.896a.5.5 0 10-.708.708z";
+const canonicalCollapsePath =
+  "M3.354.146a.5.5 0 10-.708.708l4 4a.5.5 0 00.708 0l4-4a.5.5 0 00-.708-.708L7 3.793 3.354.146zM6.646 9.146a.5.5 0 01.708 0l4 4a.5.5 0 01-.708.708L7 10.207l-3.646 3.647a.5.5 0 01-.708-.708l4-4z";
+const canonicalUnfoldMorePath =
+  "M6.646.146a.5.5 0 01.708 0l4 4a.5.5 0 01-.708.708L7 1.207 3.354 4.854a.5.5 0 01-.708-.708l4-4zM3.354 9.146a.5.5 0 10-.708.708l4 4a.5.5 0 00.708 0l4-4a.5.5 0 00-.708-.708L7 12.793 3.354 9.146z";
 const canonicalEditPath =
   "M13.854 2.146l-2-2a.5.5 0 00-.708 0l-1.5 1.5-8.995 8.995a.499.499 0 00-.143.268L.012 13.39a.495.495 0 00.135.463.5.5 0 00.462.134l2.482-.496a.495.495 0 00.267-.143l8.995-8.995 1.5-1.5a.5.5 0 000-.708zM12 3.293l.793-.793L11.5 1.207 10.707 2 12 3.293zm-2-.586L1.707 11 3 12.293 11.293 4 10 2.707zM1.137 12.863l.17-.849.679.679-.849.17z";
 
@@ -658,11 +658,13 @@ async function run() {
   const initialReviewToggle = workspace.querySelector<HTMLButtonElement>(".sbfx-review__toggle");
   const initialExportToggle = workspace.querySelector<HTMLButtonElement>(".sbfx-exporter__toggle");
   check(
-    "expanded review and export use matching canonical up chevrons",
+    "expanded review and export use matching inward Collapse icons",
     initialReviewToggle?.getAttribute("aria-expanded") === "true" &&
       initialExportToggle?.getAttribute("aria-expanded") === "true" &&
-      initialReviewToggle?.querySelector("path")?.getAttribute("d") === canonicalChevronUpPath &&
-      initialExportToggle?.querySelector("path")?.getAttribute("d") === canonicalChevronUpPath,
+      initialReviewToggle?.getAttribute("aria-label") === "Collapse export review panel" &&
+      initialExportToggle?.getAttribute("aria-label") === "Collapse Figma export panel" &&
+      initialReviewToggle?.querySelector("path")?.getAttribute("d") === canonicalCollapsePath &&
+      initialExportToggle?.querySelector("path")?.getAttribute("d") === canonicalCollapsePath,
   );
   check(
     `${expectedOrientation} workspace orientation is applied`,
@@ -1408,7 +1410,8 @@ async function run() {
   check(
     "collapsed Figma export hides the complete review slot without changing review state",
     collapsedExportToggle?.getAttribute("aria-expanded") === "false" &&
-      collapsedExportToggle?.querySelector("path")?.getAttribute("d") === canonicalChevronDownPath &&
+      collapsedExportToggle?.getAttribute("aria-label") === "Expand Figma export panel" &&
+      collapsedExportToggle?.querySelector("path")?.getAttribute("d") === canonicalUnfoldMorePath &&
       getComputedStyle(reviewSlot).display === "none" &&
       reviewSlot.getBoundingClientRect().height === 0 &&
       exportReviewPanel()?.getAttribute("data-collapsed") === "false" &&
@@ -1453,8 +1456,10 @@ async function run() {
     exportReviewPanel()?.getAttribute("data-collapsed") === "true" &&
       localStorage.getItem("sbfx:review-collapsed") === "1" &&
       localStorage.getItem("sbfx:exporter-collapsed") === "0" &&
-      exportReviewPanel()?.querySelector(".sbfx-review__toggle path")?.getAttribute("d") === canonicalChevronDownPath &&
-      document.querySelector(".sbfx-exporter__toggle path")?.getAttribute("d") === canonicalChevronUpPath,
+      exportReviewPanel()?.querySelector(".sbfx-review__toggle")?.getAttribute("aria-label") === "Expand export review panel" &&
+      exportReviewPanel()?.querySelector(".sbfx-review__toggle path")?.getAttribute("d") === canonicalUnfoldMorePath &&
+      document.querySelector(".sbfx-exporter__toggle")?.getAttribute("aria-label") === "Collapse Figma export panel" &&
+      document.querySelector(".sbfx-exporter__toggle path")?.getAttribute("d") === canonicalCollapsePath,
   );
 
   syncFigmaExportOverlay(
