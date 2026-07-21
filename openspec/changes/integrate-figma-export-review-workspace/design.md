@@ -38,6 +38,8 @@ Add comment目前在Story UI上攔截pointer並計算normalized pin後直接開�
 
 Bundled Figma importer 的 canonical 與 Storybook template manifests 目前同時列出 `http://localhost:<port>` 與 `http://127.0.0.1:<port>`。Figma Desktop 在匯入manifest時會先驗證 `networkAccess.devAllowedDomains`，目前版本會將IP literal entry判定為invalid URL，因此plugin尚未執行就被拒絕。Importer UI原本已預設`http://localhost:6006`，問題集中於manifest、說明文件與缺少安裝前驗證；修正必須同時更新canonical source、generated runtime與self-contained template mirror，避免installer之後重新帶回無效domain。
 
+Product Spec Footer 的實際export含`"Helvetica Neue", Helvetica, "Arial Narrow", Arial, sans-serif`等CSS fallback清單。Importer先只載入第一個family，之後卻把保留完整清單的STRING variable綁到`TextNode.fontFamily`；Figma將整串內容視為單一family，直到parent `appendChild`才拋出unloaded font並留下未完成、字型metrics錯誤的圖層。相同variable／binding邏輯同時存在於bundled importer與addon產生的Console script，因此不能以單一Story或單一路徑的例外修補。
+
 ## Goals / Non-Goals
 
 **Goals:**
@@ -66,12 +68,13 @@ Bundled Figma importer 的 canonical 與 Storybook template manifests 目前同�
 - Static Reports的snapshot canvas在light／dark scheme都使用既有`--sbfx-surface-raised`暗灰semantic role，圖片仍以contain完整呈現。
 - Active meeting 的預設capture action顯示精簡的`Add comment`，並維持既有按鈕功能、accessible name與`addVisualComment` override contract。
 - Canonical與template Figma importer manifest只列出Figma可接受的明確localhost development origins（6006、6007、6008、8080），plugin預設連線使用`http://localhost:6006`，installer在複製前拒絕任何IP literal dev allowlist entry。
+- Figma export的font-family token SHALL保留完整CSS fallback於`rawValue`，但提供單一、無引號且可供Figma variable使用的`value`；bundled importer與Console script SHALL依序載入concrete family candidates並避免綁定任何未載入或仍為fallback清單的family。
 
 **Non-Goals:**
 
 - 不新增雲端同步、登入、權限、comment author／capture／screenshot／`createdAt` edit、批次delete、delete undo或live cursors；saved point edit只改變既有capture座標，不重新capture或替換image。
 - 不把 Figma workspace 移入 Storybook manager addon panel；manager/preview channel refactor 不在本 change 範圍。
-- 不改變 Figma export payload 或 Code To Design import protocol。
+- 不改變 Figma export payload schema或Code To Design import protocol；只正規化既有font-family token `value`並保留原始`rawValue`。
 - 不修改產品 component tokens 或為單一 Storybook 建立專屬視覺元件。
 - 不重畫 Figma 品牌、引入圖示套件到 plain-DOM exporter，或改動 Figma export 按鈕高度、顏色、DOM順序與操作流程。
 - 不新增public icon component、design token或改變header mark的32×32 visual slot；plain-DOM與React只共享本addon私有的paired disclosure path constants。
@@ -258,6 +261,12 @@ Canonical `assets/figma-plugin-code-to-design/manifest.json`與self-contained St
 
 Installer SHALL在讀取bundled plugin metadata時驗證 `devAllowedDomains`；發現IP literal SHALL在任何copy前失敗並指出應改用`localhost`。Regression verifier同時解析canonical與template manifests，鎖定精確allowlist與mirror parity。Importer package升一個patch version，執行既有stamp/build產生新的`code.js`與UI badge，再把manifest、runtime、README同步至template。替代方案是只修canonical manifest，但self-contained template會繼續散布無效設定；另一替代方案是保留IP entry並要求使用者忽略驗證，但Figma會在plugin執行前拒絕manifest，因此皆不採用。
 
+### Figma importer CSS font fallback normalization
+
+Exporter將每個由`fontFamily` binding使用的token與其alias chain視為Figma font-family token。非alias token在payload保留完整CSS清單於`rawValue`，`value`則正規化為清單中的第一個concrete family且移除CSS quotes；這維持既有schema與debug evidence，同時讓Figma STRING variable不再代表非法的多family字串。Standalone importer對舊payload重做相同正規化，使既有JSON不需重新export。
+
+建立TextNode時，runtime解析quoted CSS family list、略過generic family名稱，依原順序對每個concrete family嘗試weight／italic style candidates，最後才回退至Inter。Font-family variable只有在其正規化單一值成功載入時才綁定；若第一family不可用但後續fallback可載入，node直接使用後續family並跳過會覆寫成不可用family的variable binding。相同規則 SHALL存在於bundled importer與addon Console script。替代方案是直接呼叫`loadFontAsync`載入整串fallback，但Figma沒有CSS cascade語意且會把它視為單一family；另一替代方案是完全移除font variable binding，會讓有效的單一family tokens失去design-token連結，因此皆不採用。
+
 ## Implementation Contract
 
 ### Behavior
@@ -274,6 +283,7 @@ Installer SHALL在讀取bundled plugin metadata時驗證 `devAllowedDomains`；�
 - Review panel SHALL 提供且只提供一個 `Reports` meeting瀏覽入口，MUST NOT 渲染active `Open`、`Closed meeting history`、closed meeting cards或任何per-session report links。Reports index SHALL 使用不同label/section呈現current與closed meetings，並為每筆顯示capture/comment counts與session report link；closed meeting data MUST NOT合併進active meeting comment list。
 - Canonical Reports index URL SHALL end in `/reports/`，且 legacy `/reports` request SHALL redirect to that directory URL，讓index內的relative `sessions/<id>/index.html` links永遠解析到static report route而不會落入comments sessions API。
 - Bundled與template Figma importer manifests SHALL只包含`http://localhost:6006`、`:6007`、`:6008`、`:8080`四個`devAllowedDomains`，不得包含IP literal或wildcard；plugin URL input SHALL預設`http://localhost:6006`。Installer SHALL在copy前驗證bundled manifest並對IP literal fail closed，canonical/template runtime與manifest SHALL在build後保持同步，bridge endpoint與payload contract MUST NOT改變。
+- Font-family token SHALL在既有`rawValue`保存完整CSS fallback清單，供Figma variable使用的既有`value` SHALL只包含一個無引號family。Bundled importer與Console script SHALL在設定characters／appendChild之前載入選定FontName；後續fallback或Inter被選中時，MUST NOT綁定會把node覆寫回不可用第一family或完整清單的variable。
 - Review status 與 visual comments SHALL 顯示獨立 capability/error state。任何 404 訊息 MUST 包含失敗的 endpoint；comments 可用時，status path 失敗 MUST NOT 停用 meeting/report 功能。
 - Export header 與 `Copy design to Figma` icon-only action SHALL 顯示相同的 canonical Figma mark；兩者 MUST NOT 使用舊的近似 stroke/circle 圖形，其他 action icons MUST 保持原語意。
 - Export header mark內的 SVG box SHALL 水平與垂直置中。`Export review` header SHALL 顯示 `EyeIcon`，MUST NOT 和 `Figma export` header共用 Figma mark。
@@ -291,6 +301,7 @@ Installer SHALL在讀取bundled plugin metadata時驗證 `devAllowedDomains`；�
 - Comments DOM contract: one independent `.sbfx-comments-panel` portal carrying `data-sbfx-capture-ignore` and `data-expanded`; collapsed state exposes one 36×36 icon-only `EditIcon` launcher whose header uses one track with zero inter-column gap, and whose 14×14 SVG, button and panel centers differ by at most 0.5 CSS pixel on both axes. Expanded state contains one header grid whose left column stacks the subheading and unique outline Reports anchor while its right column contains the same launcher. The Reports anchor uses intrinsic width, start alignment and compact height/padding instead of filling the left column. The launcher controls one meeting/capture/composer detail region through `aria-controls` and synchronized `aria-expanded`, while the document root exposes comments-open state only while the panel is expanded. The active detail contains at most three current-story comment items sorted by descending `createdAt`; each item owns edit/delete controls and one item at a time may project body／pin drafts into a separate body-level `[data-comment-edit-modal]` backdrop carrying `data-sbfx-capture-ignore`, with a labelled `role="dialog"`／`aria-modal="true"` surface larger than the 320px panel at wide viewports and bounded within the viewport at narrow sizes. A private story-scoped `sessionStorage` continuation marker is written before Start／End／Save／Edit／Delete comment mutations, time-bounded, consumed on remount, and cleared by explicit collapse; it is not a persisted preference or public option.
 - Pending point DOM contract: after point selection and while the panel remains open, one body-level element marked `data-sbfx-live-comment-pin` and `data-sbfx-capture-ignore` SHALL mirror the draft pin as a fixed, `aria-hidden` numbered circle. The composer snapshot pin SHALL be a focusable button exposing the next ordinal and centralized adjustment instructions; preview pointer coordinates SHALL pass through `getVisualCommentPin`, Arrow keys SHALL change each ratio by`0.01`, Shift+Arrow by`0.05`, and every result SHALL be clamped to`0..1`. No live pin SHALL remain after Cancel, capture failure, successful Save or unmount.
 - Existing `createFigmaExportDecorator`, `createFigmaExportReviewDecorator`, `createFigmaReviewStatusPlugin` and public options remain source compatible.
+- Font token data contract: `FigmaExportToken` shape保持不變；由node `bindings.fontFamily`引用的token及其alias chain SHALL被視為font-family tokens。非alias token的`rawValue`保存完整CSS字串，`value`為第一個unquoted concrete family。Runtime parser SHALL辨識single／double quoted names與逗號分隔順序、略過CSS generic names，並讓single-family既有payload維持原結果。
 - Visual comment overview session summaries add integer `captureCount` and `commentCount` fields；overview `comments` remains the current active meeting filtered by optional `storyId` and exposes the stored `id`, `authorName`, `body`, `createdAt`, optional `resolvedAt`, top-level derived `ordinal: number`, and derived `preview: { imageUrl: string; width: number; height: number; pin: { xRatio: number; yRatio: number } } | null` needed by the panel. `ordinal` SHALL be computed from the unfiltered canonical meeting comment array before optional Story filtering；`imageUrl` SHALL be a same-origin `${basePath}/reports/sessions/<sessionId>/assets/<filename>` URL derived server-side from the comment's canonical capture. Canonical `meeting.json` version remains 1 and MUST NOT persist the derived URL or ordinal.
 - `.storybook/figma-export.config.ts` is the endpoint/config source consumed by both preview and server wiring. Generated configuration SHALL keep `review.apiPath`, `review.commentsApiPath`, `review.commentsDir`, `review.commentsEnabled`, `review.visualComments.apiPath`, `captureSelector` and `authorStorageKey` consistent.
 - Overview response 的 `recentSessions`、`activeReportUrl`、`captureCount`、`commentCount`與既有no-slash `reportUrl` fields保持相容；panel只使用overview `reportUrl`作為唯一Reports link。Static Reports index projection SHALL只渲染`captureCount > 0 || commentCount > 0`的meeting，空active／closed group SHALL不輸出heading，全部meeting皆空時SHALL輸出單一empty state。`${basePath}/reports` SHALL redirect至`${basePath}/reports/` canonical directory URL，而static session report paths、meeting JSON與既有comments API routes保持穩定。
@@ -326,11 +337,12 @@ Installer SHALL在讀取bundled plugin metadata時驗證 `devAllowedDomains`；�
 - A stale or pre-upgrade derived report HTML file MUST NOT bypass the current Delete confirmation UI when its canonical meeting JSON is readable; GET regeneration failure SHALL surface through the existing report error response without modifying canonical evidence.
 - Confirmed Delete移除meeting最後一筆comment及其未引用capture後，regenerated Reports index MUST NOT保留該`0 captures · 0 comments` meeting card或空分組heading；filtering failure MUST NOT刪除canonical meeting JSON或破壞直接session report URL。
 - Bundled importer manifest若含IPv4／IPv6 literal development origin，installer SHALL在建立target或copy任何檔案前失敗並顯示該entry與`localhost`修正方向；manifest verifier若發現canonical／template allowlist漂移、缺少必要port或新增wildcard SHALL失敗。此驗證MUST NOT把既有bridge runtime可解析的一般URL誤當成manifest支援承諾。
+- 舊payload的font token `value`若仍為CSS fallback清單，importer SHALL在variable write前正規化而不要求schema migration；任一concrete family／style載入失敗 SHALL繼續下一候選。只有後續fallback可載入時 SHALL使用該FontName並跳過不一致的variable binding；全部候選失敗時 SHALL載入Inter Regular並繼續建立node tree。任何路徑MUST NOT把完整fallback清單傳給`loadFontAsync`或讓`appendChild`拋出combined-family unloaded font。
 
 ### Acceptance criteria
 
 - `npm run test:visual-comments` passes including real-pixel capture, workspace layout/composer, HTTP and report history assertions.
-- Existing export, overlay and payload-store fixtures pass without changing export payload output.
+- Existing export, overlay and payload-store fixtures pass；font-family token `rawValue`保持完整，既有`value`欄位只對Figma font family用途正規化為單一family。
 - `node design-system-to-storybook/scripts/test_generate_figma_export_config.mjs` proves one config source drives preview and server endpoints.
 - Storybook template typecheck/build passes; canonical addon source/dist/package and both vendor mirrors match recursively.
 - Browser smoke at the Hero Title Lockup story confirms one dock, unoccluded Story UI, persistent Export entry during composer, non-empty screenshot preview, working status/comments requests and discoverable closed-session evidence.
@@ -357,12 +369,13 @@ Installer SHALL在讀取bundled plugin metadata時驗證 `devAllowedDomains`；�
 - Store／HTTP fixtures SHALL驗證version 1 legacy comments預設Open、Complete idempotency、Reopen、closed-meeting mutation、unknown ID errors，以及confirmed Delete減少commentCount與unreferenced captureCount、使unshared asset URL回404，同時保留仍被其他capture引用的shared asset；report fixture SHALL驗證明確confirmation copy、status/actions、escaped identifiers、nonce CSP與per-card error region。
 - Downstream browser smoke SHALL在closed session report完成Open→Completed→Open，取消一次Delete並確認comment與snapshot仍存在，再建立專用smoke comment、確認Delete後該comment與snapshot都消失且asset URL回404。
 - Figma importer manifest verifier SHALL確認canonical與template的`devAllowedDomains`精確等於四個localhost origins且不含`127.0.0.1`／其他IP literal／wildcard；`npm run build`與既有pure-functions／bridge-helper tests SHALL通過、package/runtime/UI badge版本一致、template `manifest.json`／`code.js`／`ui.html`／`README.md`與canonical發布內容同步，installer default report SHALL能讀取修正後bundle。Figma Desktop重新匯入canonical manifest後不再出現`127.0.0.1` invalid URL錯誤。
+- Export fixture SHALL證明`"Helvetica Neue", Helvetica, "Arial Narrow", Arial, sans-serif`保留為rawValue且variable value為`Helvetica Neue`；importer pure tests SHALL證明quoted list parsing、舊payload variable normalization、後續family候選與Inter fallback。指定Product Spec Footer browser payload smoke SHALL含單一family token values；Figma Desktop manual smoke若無法自動執行，node `337:310`的重新匯入 SHALL明確列為未自動驗證且不得宣稱已通過。
 - `spectra validate integrate-figma-export-review-workspace` and artifact analysis complete without Critical or Warning findings before archive.
 
 ### Scope boundaries
 
-- In scope: addon preview/review workspace layout（包含wide expanded 320px、collapsed icon＋version hug-content width、右下位置、兩個full-width export rows、底部雙欄utility row與export-before-review section order）、右上獨立且由Edit icon launcher展開的visual comments panel、compact subheading／outline Reports header、meeting與comment mutation期間的open-state continuity、目前Story／active meeting最新3筆comment管理、panel與Reports edit狀態的stored snapshot＋editable normalized pin evidence preview、Add comment Save前的immediate numbered live tag與pending pin click／drag／keyboard adjustment、meeting-wide連續comment ordinals、panel／active／closed report plain-text body與point原子edit、Reports暗灰snapshot canvas、`Console script` action copy、visual comment capture action預設copy、visual capture validity, report discoverability, left-aligned Delete and right-aligned prompt/edit/resolution action composition, confirmed per-comment resolve/delete mutation and reference-aware capture/asset cleanup, config generation/wiring, canonical build artifacts, vendor mirrors, tests and documentation，以及bundled／template Figma importer的localhost-only dev allowlist、installer驗證、patch build與文件同步。
-- Out of scope: Storybook manager panel architecture, remote persistence, authentication,已儲存comment的 author／capture／screenshot／`createdAt` editing or replacement, Story live tag直接拖曳, saved point edit時重新capture或project到目前Story DOM, rich text or collaborative editing, comments open-state persistence, panel closed-meeting history, bulk mutation, delete undo, unrelated/global asset garbage collection, product component redesign, Figma payload/import changes, remote／LAN／IP-literal importer development origins and committing downstream product files.
+- In scope: addon preview/review workspace layout（包含wide expanded 320px、collapsed icon＋version hug-content width、右下位置、兩個full-width export rows、底部雙欄utility row與export-before-review section order）、右上獨立且由Edit icon launcher展開的visual comments panel、compact subheading／outline Reports header、meeting與comment mutation期間的open-state continuity、目前Story／active meeting最新3筆comment管理、panel與Reports edit狀態的stored snapshot＋editable normalized pin evidence preview、Add comment Save前的immediate numbered live tag與pending pin click／drag／keyboard adjustment、meeting-wide連續comment ordinals、panel／active／closed report plain-text body與point原子edit、Reports暗灰snapshot canvas、`Console script` action copy、visual comment capture action預設copy、visual capture validity, report discoverability, left-aligned Delete and right-aligned prompt/edit/resolution action composition, confirmed per-comment resolve/delete mutation and reference-aware capture/asset cleanup, config generation/wiring, canonical build artifacts, vendor mirrors, tests and documentation，以及bundled／template Figma importer的localhost-only dev allowlist、CSS font fallback normalization、installer驗證、patch build與文件同步。
+- Out of scope: Storybook manager panel architecture, remote persistence, authentication,已儲存comment的 author／capture／screenshot／`createdAt` editing or replacement, Story live tag直接拖曳, saved point edit時重新capture或project到目前Story DOM, rich text or collaborative editing, comments open-state persistence, panel closed-meeting history, bulk mutation, delete undo, unrelated/global asset garbage collection, product component redesign, Figma payload schema／bridge protocol changes, remote／LAN／IP-literal importer development origins and committing downstream product files.
 
 ## Risks / Trade-offs
 
@@ -397,6 +410,8 @@ Installer SHALL在讀取bundled plugin metadata時驗證 `devAllowedDomains`；�
 - [Small preview難以精準拖曳或不支援keyboard] → 同時提供click-to-move、Pointer Events drag、Arrow 1%與Shift+Arrow 5%，並沿用既有focus-visible token。
 - [只修canonical manifest但template或installer再次帶回IP entry] → verifier同時解析兩份manifest、installer在copy前fail closed，build後以明確parity check鎖定同步內容。
 - [既有使用者曾在plugin URL欄輸入`127.0.0.1`] → UI與README明確使用`http://localhost:6006`；不改寫使用者輸入或擴張allowlist，Figma本機流程統一改用localhost hostname。
+- [第一family在Figma不可用但瀏覽器使用了後續fallback] → Text font loader依CSS順序嘗試所有concrete families；若選到後續family則跳過不一致的font-family variable binding，保留可用FontName與完整rawValue並在import summary留下warning。
+- [只修新payload讓舊JSON仍把fallback清單寫入variable] → Standalone importer與Console script在variable write前都重做font-family normalization，pure／generated runtime tests覆蓋pre-upgrade payload。
 
 ## Migration Plan
 
@@ -408,6 +423,7 @@ Installer SHALL在讀取bundled plugin metadata時驗證 `devAllowedDomains`；�
 6. Rollback 時還原 addon與 template版本；version 1 meeting JSON/assets保持可讀，不需資料 migration。
 7. 既有version 1 comments沒有`resolvedAt`時視為Open；不執行eager migration，首次Edit／Complete／Reopen／Delete才原子寫回該meeting並重建reports。Body edit不新增schema version或`updatedAt`。
 8. 將canonical與template importer manifest改為localhost-only四個ports，bump importer patch version、stamp/build並同步template；執行manifest／runtime tests與installer report。先前manifest匯入失敗的使用者重新從canonical `manifest.json`匯入；已成功註冊者直接重開plugin即可讀取更新檔案，Storybook URL使用`http://localhost:6006`。Rollback SHALL同時還原canonical與template importer，不保留IP literal作為fallback。
+9. 將addon與importer各升一個patch version，先build canonical source，再同步兩份addon vendor mirrors與template importer。既有payload可直接重新import；已建立且保存combined-family variable的Figma檔案在下一次import時由同名variable upsert成單一family。Rollback SHALL同時還原exporter normalization、兩條runtime及mirrors，不留下只修其中一條的混合版本。
 
 ## Open Questions
 

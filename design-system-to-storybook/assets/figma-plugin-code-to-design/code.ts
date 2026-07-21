@@ -358,7 +358,7 @@ type ComponentSectionTarget = {
 
 // Bump this on every behavior change so the Figma UI badge confirms which
 // build is running (Figma re-reads code.js per run, but the badge removes doubt).
-const PLUGIN_VERSION = "1.2.3 (2026-07-21)";
+const PLUGIN_VERSION = "1.2.4 (2026-07-21)";
 
 const SUPPORTED_PAYLOAD_VERSIONS = [1, 2] as const;
 const DEFAULT_TOKEN_PLUGIN_DATA_KEY = "storybookCssToken";
@@ -815,6 +815,7 @@ function createImportContext(payload: FigmaExportPayload) {
   const componentPluginDataKey =
     payload.componentSystem?.pluginDataKey ?? STORYBOOK_COMPONENT_PLUGIN_DATA_KEY;
   const tokenByCssName = new Map(tokens.map((token) => [token.cssName, token]));
+  const fontFamilyTokenNames = collectFontFamilyTokenNames(payload.root, tokenByCssName);
   const registry = new Map<string, Variable>();
   const componentRegistry = new Map<string, ComponentNode>();
   const componentDefinitionRecords = new Map<string, ComponentDefinitionRecord>();
@@ -940,7 +941,10 @@ function createImportContext(payload: FigmaExportPayload) {
       return;
     }
 
-    variable.setValueForMode(modeId, normalizeVariableValue(spec));
+    variable.setValueForMode(
+      modeId,
+      normalizeVariableValue(spec, fontFamilyTokenNames),
+    );
   }
 
   async function createNode(
@@ -2699,19 +2703,27 @@ function createImportContext(payload: FigmaExportPayload) {
     styles: FigmaExportNode["styles"],
     path: string,
   ): Promise<FontName> {
-    const family = getFontFamily(styles.fontFamily);
+    const families = getFontFamilyCandidates(styles.fontFamily);
     const styleCandidates = getFontStyleCandidates(
       styles.fontWeight ?? 400,
       styles.fontStyle === "italic",
     );
 
-    for (const style of styleCandidates) {
-      const candidate = { family, style };
-      try {
-        await figma.loadFontAsync(candidate);
-        return candidate;
-      } catch {
-        // Try the next style for the same family before falling back to Inter.
+    for (let familyIndex = 0; familyIndex < families.length; familyIndex += 1) {
+      const family = families[familyIndex];
+      for (const style of styleCandidates) {
+        const candidate = { family, style };
+        try {
+          await figma.loadFontAsync(candidate);
+          if (familyIndex > 0) {
+            warn(
+              `Loaded fallback font for ${path}; ${families[0]} was unavailable, using ${family} ${style}.`,
+            );
+          }
+          return candidate;
+        } catch {
+          // Try the next style, then the next concrete CSS family.
+        }
       }
     }
 
@@ -2719,7 +2731,7 @@ function createImportContext(payload: FigmaExportPayload) {
     try {
       await figma.loadFontAsync(fallback);
       warn(
-        `Loaded fallback font for ${path}; ${family} (${styleCandidates.join(", ")}) was unavailable.`,
+        `Loaded fallback font for ${path}; ${families.join(", ") || "CSS generic family"} (${styleCandidates.join(", ")}) was unavailable.`,
       );
       return fallback;
     } catch (error) {
@@ -2739,7 +2751,7 @@ function createImportContext(payload: FigmaExportPayload) {
     const token = tokenByCssName.get(tokenName);
     if (!token) return undefined;
     if (token.alias) return resolveTokenValue(token.alias, visited);
-    return token.value ?? token.rawValue;
+    return token.rawValue || token.value;
   }
 
   function getFontFamilyFromToken(tokenName: string | undefined): string | undefined {
@@ -2905,7 +2917,33 @@ function cssTokenToFigmaVariableName(cssName: string): string {
   return cssName.replace(/^--/, "").replace(/-/g, "/");
 }
 
-function normalizeVariableValue(spec: FigmaExportToken): VariableValue {
+function collectFontFamilyTokenNames(
+  root: FigmaExportNode,
+  tokenByCssName: ReadonlyMap<string, FigmaExportToken>,
+): Set<string> {
+  const names = new Set<string>();
+
+  function addAliasChain(tokenName: string | undefined): void {
+    let current = tokenName;
+    while (current && !names.has(current)) {
+      names.add(current);
+      current = tokenByCssName.get(current)?.alias;
+    }
+  }
+
+  function visit(node: FigmaExportNode): void {
+    addAliasChain(node.bindings?.fontFamily);
+    for (const child of node.children ?? []) visit(child);
+  }
+
+  visit(root);
+  return names;
+}
+
+function normalizeVariableValue(
+  spec: FigmaExportToken,
+  fontFamilyTokenNames: ReadonlySet<string> = new Set<string>(),
+): VariableValue {
   const value = spec.value ?? parseRawTokenValue(spec.rawValue, spec.type);
 
   if (spec.type === "COLOR") {
@@ -2916,6 +2954,13 @@ function normalizeVariableValue(spec: FigmaExportToken): VariableValue {
   }
   if (spec.type === "BOOLEAN") {
     return Boolean(value);
+  }
+  if (
+    spec.type === "STRING" &&
+    ((Array.isArray(spec.scopes) && spec.scopes.includes("FONT_FAMILY")) ||
+      fontFamilyTokenNames.has(spec.cssName))
+  ) {
+    return getFontFamily(String(spec.rawValue || spec.value || "Inter"));
   }
   return String(value ?? "");
 }
@@ -3469,9 +3514,65 @@ function getFontStyleCandidates(weight: number, italic = false): string[] {
   return italicCandidates.concat(upright);
 }
 
+const CSS_GENERIC_FONT_FAMILIES = new Set([
+  "cursive",
+  "emoji",
+  "fangsong",
+  "fantasy",
+  "math",
+  "monospace",
+  "sans-serif",
+  "serif",
+  "system-ui",
+  "ui-monospace",
+  "ui-rounded",
+  "ui-sans-serif",
+  "ui-serif",
+]);
+
+function getFontFamilyCandidates(fontFamily: string | undefined): string[] {
+  const candidates: string[] = [];
+  let buffer = "";
+  let quote: '"' | "'" | undefined;
+  let escaped = false;
+
+  function pushCandidate(): void {
+    const candidate = buffer.trim().replace(/^["']|["']$/g, "");
+    buffer = "";
+    if (!candidate || CSS_GENERIC_FONT_FAMILIES.has(candidate.toLowerCase())) return;
+    if (!candidates.includes(candidate)) candidates.push(candidate);
+  }
+
+  for (const character of String(fontFamily ?? "")) {
+    if (escaped) {
+      buffer += character;
+      escaped = false;
+      continue;
+    }
+    if (quote) {
+      if (character === "\\") {
+        escaped = true;
+      } else if (character === quote) {
+        quote = undefined;
+      } else {
+        buffer += character;
+      }
+      continue;
+    }
+    if (character === '"' || character === "'") {
+      quote = character;
+    } else if (character === ",") {
+      pushCandidate();
+    } else {
+      buffer += character;
+    }
+  }
+  pushCandidate();
+  return candidates;
+}
+
 function getFontFamily(fontFamily: string | undefined): string {
-  const first = String(fontFamily || "Inter").split(",")[0]?.trim();
-  return first ? first.replace(/^["']|["']$/g, "") : "Inter";
+  return getFontFamilyCandidates(fontFamily)[0] ?? "Inter";
 }
 
 function safeNumber(value: unknown, fallback: number): number {
@@ -3504,9 +3605,12 @@ function formatError(error: unknown): string {
 declare const module: { exports?: Record<string, unknown> } | undefined;
 if (typeof module !== "undefined" && module) {
   module.exports = {
+    collectFontFamilyTokenNames,
     colorFromCss,
+    getFontFamilyCandidates,
     getFontStyleCandidates,
     getLinearGradientTransform,
+    normalizeVariableValue,
     parsePayload,
   };
 }

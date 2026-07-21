@@ -1,6 +1,6 @@
 ## Summary
 
-整合 Storybook 內目前分離且互相遮擋的 Export review 與 Figma export 操作介面，並修正 preview/server 設定來源分裂、歷史 meeting 難以辨識、實際截圖只產生透明影像、已儲存 comments 無法在 panel 快速回看或於 panel／Reports 編輯、report comments 無法標記完成或安全刪除其截圖、workspace icons 語意混淆、側邊 workspace 過寬與 export action hierarchy 不清楚，以及 bundled Figma importer 因 `devAllowedDomains` 列出 `127.0.0.1` IP literal 而無法通過 Figma manifest 驗證的問題。
+整合 Storybook 內目前分離且互相遮擋的 Export review 與 Figma export 操作介面，並修正 preview/server 設定來源分裂、歷史 meeting 難以辨識、實際截圖只產生透明影像、已儲存 comments 無法在 panel 快速回看或於 panel／Reports 編輯、report comments 無法標記完成或安全刪除其截圖、workspace icons 語意混淆、側邊 workspace 過寬與 export action hierarchy 不清楚，以及 bundled Figma importer 的本機 manifest 與 CSS font-family fallback 清單不相容而造成安裝或文字節點匯入失敗的問題。
 
 ## Motivation
 
@@ -34,11 +34,12 @@
 - 讓 Reports 的 screenshot canvas 在 light／dark color scheme 都使用 addon 既有 `--sbfx-surface-raised` 暗灰 surface，避免透明區域或 contain letterbox 呈現白底並干擾視覺判讀。
 - 將 active meeting 的 comment capture action 預設文案由 `Add visual comment` 精簡為 `Add comment`，保留既有 `addVisualComment` label override key與capture流程。
 - 將 canonical 與 Storybook template 的 Figma importer `devAllowedDomains` 收斂為明確的 `http://localhost:6006`、`:6007`、`:6008`、`:8080`，移除所有 `127.0.0.1` IP literal；installer 在複製前驗證 bundled manifest，plugin URL 預設與文件一律使用 `http://localhost:6006`，並同步 importer patch version、build artifacts與template mirror。
+- 將 CSS `font-family` fallback 清單轉換為 Figma 可表示的單一 family variable value，同時保留原始 `rawValue`；文字匯入依序嘗試各 concrete family 與 style，只有已載入且和variable值一致的family才綁定，避免 `appendChild` 因把整串fallback視為未載入字型而中止。此相容層同時套用於Copy JSON importer與Console script，並保留既有payload schema。
 
 ## Non-Goals
 
 - 不把 review comments 上傳到雲端，也不新增帳號、權限、已儲存comment的author／capture／screenshot／`createdAt`編輯、批次刪除、刪除復原、preview panel跨meeting歷史清單或未被本次 comment Delete 釋放的 capture／asset 清理能力；saved point edit只更新既有screenshot內的normalized coordinates，不重新capture、替換image或讓Story live tag成為第二個editor。
-- 不改變 Figma export payload schema、Figma plugin import protocol 或 Storybook 的 Controls/Actions addon panel。
+- 不改變 Figma export payload schema、Figma plugin import protocol 或 Storybook 的 Controls/Actions addon panel；font-family token只將既有`value`正規化為Figma單一family，完整CSS清單仍保留在既有`rawValue`。
 - 不新增 wildcard port、LAN IP、IPv6 literal、HTTPS localhost或remote development origin；本次只修正 bundled importer manifest 的Figma相容本機allowlist，不改變bridge payload或endpoint contract。
 - 不為單一產品建立專屬元件或設計 token；整合介面沿用 addon 既有 `--sbfx-*` surface、color、spacing、radius 與 motion conventions。
 
@@ -51,7 +52,7 @@
 ### Modified Capabilities
 
 - `visual-export-review-comments`: 要求有效像素截圖、右上角獨立且由置中的Edit icon button展開的comments panel、收合時button／SVG與36×36 launcher surface同心、展開時使用subheading／compact hug-content outline Reports雙列header且meeting／comment mutation不收合panel、在panel顯示目前Story／active meeting最新3筆可編輯與可確認刪除的comments、panel Edit以較大的accessible overlay modal重現snapshot＋pin evidence並允許pointer／keyboard原子更新body與normalized point、Reports維持inline edit、同一meeting的comments跨captures使用一致且連續的pin序號、Add comment point選取後即時顯示numbered tag並允許Save前調整、以單一 Reports 入口瀏覽仍有evidence的active/history meeting reports並排除空meeting／空分組、Reports screenshot canvas使用暗灰surface、Reports逐comment body編輯與completion lifecycle、Delete icon button排序與頁內雙重確認、確認後刪除comment及其不再被引用的capture/screenshot、完整 comments API wiring，以及不可用時的明確降級狀態。
-- `figma-export-workflow`: 要求 review 與 export 共用右下角且不互相遮擋的 workspace、由Figma export父層disclosure控制Export review入口可見性，收合時只顯示Figma icon＋版本且hug content、展開時恢復wide 320px完整header與actions、在獨立comments panel的capture/composer狀態持續提供workspace入口，並讓兩個 section 使用置中且語意有別的 review／Figma icons、以向內Collapse／向外Unfold More雙chevron表達可執行的開合動作，以及一致的disclosure state與accessibility邏輯；bundled／template Figma importer另須以localhost-only明確ports通過manifest驗證並由installer拒絕IP literal development domains。
+- `figma-export-workflow`: 要求 review 與 export 共用右下角且不互相遮擋的 workspace、由Figma export父層disclosure控制Export review入口可見性，收合時只顯示Figma icon＋版本且hug content、展開時恢復wide 320px完整header與actions、在獨立comments panel的capture/composer狀態持續提供workspace入口，並讓兩個 section 使用置中且語意有別的 review／Figma icons、以向內Collapse／向外Unfold More雙chevron表達可執行的開合動作，以及一致的disclosure state與accessibility邏輯；bundled／template Figma importer另須以localhost-only明確ports通過manifest驗證、由installer拒絕IP literal development domains，並將CSS font fallback清單安全轉換為已載入的單一Figma family而不丟失原始raw token evidence。
 
 ## Impact
 
@@ -63,6 +64,8 @@
   - Modified: `design-system-to-storybook/assets/figma-export-addon/src/visualCommentReport.ts`
   - Modified: `design-system-to-storybook/assets/figma-export-addon/src/visualCommentStore.ts`
   - Modified: `design-system-to-storybook/assets/figma-export-addon/src/overlay.ts`
+  - Modified: `design-system-to-storybook/assets/figma-export-addon/src/tokenExport.ts`
+  - Modified: `design-system-to-storybook/assets/figma-export-addon/src/pluginCode.ts`
   - Modified: `design-system-to-storybook/assets/figma-export-addon/src/figma-code-exporter.css`
   - Modified: `design-system-to-storybook/assets/figma-export-addon/src/review-server.ts`
   - Modified: `design-system-to-storybook/assets/figma-export-addon/test/visual-comment-fixture-entry.ts`
@@ -71,6 +74,7 @@
   - Modified: `design-system-to-storybook/assets/figma-export-addon/test/run-visual-comment-http-test.mjs`
   - Modified: `design-system-to-storybook/assets/figma-export-addon/test/run-visual-comment-report-test.mjs`
   - Modified: `design-system-to-storybook/assets/figma-export-addon/test/run-overlay-fixture.mjs`
+  - Modified: `design-system-to-storybook/assets/figma-export-addon/test/run-export-fixture.mjs`
   - Modified: `design-system-to-storybook/scripts/generate_figma_export_config.mjs`
   - Modified: `design-system-to-storybook/scripts/test_generate_figma_export_config.mjs`
   - Modified: `design-system-to-storybook/storybook-template/.storybook/main.ts`

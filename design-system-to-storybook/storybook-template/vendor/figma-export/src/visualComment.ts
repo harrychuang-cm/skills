@@ -180,8 +180,10 @@ export async function captureVisualCommentTarget(target: HTMLElement): Promise<V
     VISUAL_COMMENT_LIMITS.maxImageLongestSide / Math.max(rect.width, rect.height),
     Math.sqrt(VISUAL_COMMENT_LIMITS.maxImagePixels / (rect.width * rect.height)),
   );
-  const intendedWidth = Math.max(1, Math.round(rect.width * scale));
-  const intendedHeight = Math.max(1, Math.round(rect.height * scale));
+  // `canvas.width = width * pixelRatio` truncates the fraction, so a target with a
+  // sub-pixel box legitimately lands up to one pixel short of the scaled intent.
+  const intendedWidth = Math.max(1, Math.trunc(rect.width * scale));
+  const intendedHeight = Math.max(1, Math.trunc(rect.height * scale));
   let canvas = await Promise.race([
     toCanvas(target, {
       backgroundColor: resolveCaptureBackground(target),
@@ -202,7 +204,12 @@ export async function captureVisualCommentTarget(target: HTMLElement): Promise<V
   ]);
   let width = canvas.width;
   let height = canvas.height;
-  if (width !== intendedWidth || height !== intendedHeight) {
+  if (
+    width < 1 ||
+    height < 1 ||
+    Math.abs(width - intendedWidth) > 1 ||
+    Math.abs(height - intendedHeight) > 1
+  ) {
     throw new Error(
       `Captured image dimensions are invalid (${width}×${height}; expected ${intendedWidth}×${intendedHeight}).`,
     );

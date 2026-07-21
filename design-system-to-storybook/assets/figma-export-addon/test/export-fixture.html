@@ -8,10 +8,13 @@
     --fx-ref-color-blue: #3366ff;
     --fx-ref-color-teal: hsl(210, 50%, 40%);
     --fx-ref-spacing-3: 12px;
+    --fx-ref-typeface-grotesque: "Helvetica Neue", Helvetica, "Arial Narrow", Arial, sans-serif;
     --fx-sys-color-primary: var(--fx-ref-color-blue);
     --fx-sys-color-accent: var(--fx-ref-color-teal);
     --fx-sys-spacing-gap: var(--fx-ref-spacing-3);
+    --fx-sys-typescale-label-family: var(--fx-ref-typeface-grotesque);
     --fx-comp-card-color-bg: var(--fx-sys-color-primary);
+    --fx-comp-caption-font-family: var(--fx-sys-typescale-label-family);
   }
 
   body { font-family: Arial, sans-serif; margin: 16px; }
@@ -71,6 +74,11 @@
     font-size: 14px; letter-spacing: 0.5px; text-decoration: underline;
   }
   .case-italic { font-size: 14px; font-style: italic; }
+  .case-font-stack {
+    font-family: var(--fx-comp-caption-font-family);
+    font-size: 14px;
+    font-weight: 700;
+  }
   .case-text-shadow { font-size: 14px; text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5); }
 
   .case-media-token { width: 120px; height: 40px; background-color: #dd4444; }
@@ -112,6 +120,7 @@
     <div data-component="case-multiline" class="case-multiline">Line one<br />Line two</div>
     <span data-component="case-letterspacing" class="case-letterspacing">Tracked underline</span>
     <span data-component="case-italic" class="case-italic">Italic note</span>
+    <span data-component="case-font-stack" class="case-font-stack">Fallback family</span>
     <span data-component="case-text-shadow" class="case-text-shadow">Shadowed text</span>
     <div data-component="case-media-token" class="case-media-token"></div>
     <div data-component="case-specificity" class="case-specificity spec-a spec-b"></div>

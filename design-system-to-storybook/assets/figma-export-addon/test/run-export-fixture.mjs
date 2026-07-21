@@ -209,6 +209,34 @@ function assertPayload(payload) {
   assert.strictEqual(letterSpacing.styles.textDecoration, "UNDERLINE", "underline decoration");
   const italic = findCase(root, "case-italic");
   assert.strictEqual(italic.styles.fontStyle, "italic", "italic font style");
+  const fontStack = findCase(root, "case-font-stack");
+  assert.strictEqual(
+    fontStack.bindings.fontFamily,
+    "--fx-comp-caption-font-family",
+    "font stack binds through the component token",
+  );
+  const fontStackRefToken = payload.tokens.find(
+    (token) => token.cssName === "--fx-ref-typeface-grotesque",
+  );
+  assert.ok(fontStackRefToken, "font stack ref token exported");
+  assert.strictEqual(
+    fontStackRefToken.rawValue,
+    '"Helvetica Neue", Helvetica, "Arial Narrow", Arial, sans-serif',
+    "font stack raw value preserves the CSS fallback list",
+  );
+  assert.strictEqual(
+    fontStackRefToken.value,
+    "Helvetica Neue",
+    "font stack variable value is one unquoted Figma family",
+  );
+  for (const cssName of [
+    "--fx-ref-typeface-grotesque",
+    "--fx-sys-typescale-label-family",
+    "--fx-comp-caption-font-family",
+  ]) {
+    const token = payload.tokens.find((candidate) => candidate.cssName === cssName);
+    assert.deepStrictEqual(token?.scopes, ["FONT_FAMILY"], `${cssName} uses FONT_FAMILY scope`);
+  }
   const textShadow = findCase(root, "case-text-shadow");
   assert.strictEqual(
     textShadow.styles.effects?.[0]?.type,

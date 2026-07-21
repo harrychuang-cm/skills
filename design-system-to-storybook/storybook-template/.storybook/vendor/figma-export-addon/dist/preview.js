@@ -161,6 +161,62 @@ var tokenLayerOrder = {
   sys: 1
 };
 var tokenLayers = ["ref", "sys", "comp"];
+var cssGenericFontFamilies = /* @__PURE__ */ new Set([
+  "cursive",
+  "emoji",
+  "fangsong",
+  "fantasy",
+  "math",
+  "monospace",
+  "sans-serif",
+  "serif",
+  "system-ui",
+  "ui-monospace",
+  "ui-rounded",
+  "ui-sans-serif",
+  "ui-serif"
+]);
+function getCssFontFamilyCandidates(value) {
+  const candidates = [];
+  let buffer = "";
+  let quote;
+  let escaped = false;
+  function pushCandidate() {
+    const candidate = buffer.trim().replace(/^['\"]|['\"]$/g, "");
+    buffer = "";
+    if (!candidate || cssGenericFontFamilies.has(candidate.toLowerCase())) return;
+    if (!candidates.includes(candidate)) candidates.push(candidate);
+  }
+  for (const character of String(value ?? "")) {
+    if (escaped) {
+      buffer += character;
+      escaped = false;
+      continue;
+    }
+    if (quote) {
+      if (character === "\\") {
+        escaped = true;
+      } else if (character === quote) {
+        quote = void 0;
+      } else {
+        buffer += character;
+      }
+      continue;
+    }
+    if (character === '"' || character === "'") {
+      quote = character;
+    } else if (character === ",") {
+      pushCandidate();
+    } else {
+      buffer += character;
+    }
+  }
+  pushCandidate();
+  return candidates;
+}
+function isFontFamilyTokenName(name) {
+  return /-typeface(?:-|$)/.test(name) || /-font-family(?:-|$)/.test(name) || name.includes("-typescale-") && name.endsWith("-family");
+}
 function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -168,7 +224,7 @@ function getTokenFamily(name) {
   if (name.includes("-color-")) return "color";
   if (name.includes("-opacity-")) return "opacity";
   if (name.includes("-shadow-")) return "shadow";
-  if (name.includes("-typeface-") || name.includes("-typescale-") || name.includes("-weight-") || name.includes("-line-height")) {
+  if (isFontFamilyTokenName(name) || name.includes("-typescale-") || name.includes("-weight-") || name.includes("-line-height")) {
     return "type";
   }
   if (name.includes("-spacing-")) return "spacing";
@@ -397,7 +453,7 @@ function getTokenScopes(token, type) {
     return ["FRAME_FILL", "SHAPE_FILL", "TEXT_FILL", "STROKE_COLOR"];
   }
   if (type === "STRING") {
-    if (token.name.includes("-typeface-")) return ["FONT_FAMILY"];
+    if (isFontFamilyTokenName(token.name)) return ["FONT_FAMILY"];
     return ["TEXT_CONTENT"];
   }
   if (type !== "FLOAT") return [];
@@ -432,6 +488,9 @@ function toFigmaVariableName(cssName) {
   return cssName.replace(/^--/, "").replaceAll("-", "/");
 }
 function getExportTokenValue(token, parsed) {
+  if (parsed?.type === "STRING" && isFontFamilyTokenName(token.name)) {
+    return getCssFontFamilyCandidates(token.value)[0] ?? "Inter";
+  }
   if (token.family !== "opacity" || parsed?.type !== "FLOAT" || typeof parsed.value !== "number") {
     return parsed?.value;
   }
@@ -2330,6 +2389,7 @@ void (async function importStorybookStory(payload) {
   const rawTokenByName = new Map(
     (payload.tokens || []).map((token) => [token.cssName, token]),
   );
+  const fontFamilyTokenNames = collectFontFamilyTokenNames(payload.root, rawTokenByName);
 
   function clamp(value, min, max) {
     return Math.min(max, Math.max(min, value));
@@ -2800,6 +2860,28 @@ void (async function importStorybookStory(payload) {
     }
   }
 
+  function collectFontFamilyTokenNames(root, tokenByName) {
+    const names = new Set();
+
+    function addAliasChain(tokenName) {
+      let current = tokenName;
+      while (current && !names.has(current)) {
+        names.add(current);
+        const token = tokenByName.get(current);
+        current = token && token.alias;
+      }
+    }
+
+    function visit(node) {
+      if (!node) return;
+      addAliasChain(node.bindings && node.bindings.fontFamily);
+      for (const child of node.children || []) visit(child);
+    }
+
+    visit(root);
+    return names;
+  }
+
   async function findExistingVariable(collection, spec) {
     const variables = await figma.variables.getLocalVariablesAsync();
     return variables.find((variable) => {
@@ -2818,6 +2900,14 @@ void (async function importStorybookStory(payload) {
   }
 
   function getVariableValueForMode(spec) {
+    if (
+      spec.type === "STRING" &&
+      ((Array.isArray(spec.scopes) && spec.scopes.includes("FONT_FAMILY")) ||
+        fontFamilyTokenNames.has(spec.cssName))
+    ) {
+      return getFontFamily(valueOr(spec.rawValue, spec.value));
+    }
+
     if (!isOpacityVariableSpec(spec)) return spec.value;
 
     const value = Number(spec.value);
@@ -3143,10 +3233,65 @@ void (async function importStorybookStory(payload) {
     return candidates;
   }
 
+  const CSS_GENERIC_FONT_FAMILIES = new Set([
+    "cursive",
+    "emoji",
+    "fangsong",
+    "fantasy",
+    "math",
+    "monospace",
+    "sans-serif",
+    "serif",
+    "system-ui",
+    "ui-monospace",
+    "ui-rounded",
+    "ui-sans-serif",
+    "ui-serif",
+  ]);
+
+  function getFontFamilyCandidates(fontFamily) {
+    const candidates = [];
+    let buffer = "";
+    let quote;
+    let escaped = false;
+
+    function pushCandidate() {
+      const candidate = buffer.trim().replace(/^["']|["']$/g, "");
+      buffer = "";
+      if (!candidate || CSS_GENERIC_FONT_FAMILIES.has(candidate.toLowerCase())) return;
+      if (!candidates.includes(candidate)) candidates.push(candidate);
+    }
+
+    for (const character of String(fontFamily || "")) {
+      if (escaped) {
+        buffer += character;
+        escaped = false;
+        continue;
+      }
+      if (quote) {
+        if (character === "\\\\") {
+          escaped = true;
+        } else if (character === quote) {
+          quote = undefined;
+        } else {
+          buffer += character;
+        }
+        continue;
+      }
+      if (character === String.fromCharCode(34) || character === "'") {
+        quote = character;
+      } else if (character === ",") {
+        pushCandidate();
+      } else {
+        buffer += character;
+      }
+    }
+    pushCandidate();
+    return candidates;
+  }
+
   function getFontFamily(fontFamily) {
-    const first = String(fontFamily || "Inter").split(",")[0];
-    const trimmed = first ? first.trim() : "";
-    return trimmed ? trimmed.replace(/^["']|["']$/g, "") : "Inter";
+    return getFontFamilyCandidates(fontFamily)[0] || "Inter";
   }
 
   function normalizeFontName(fontName) {
@@ -3175,7 +3320,7 @@ void (async function importStorybookStory(payload) {
     const token = rawTokenByName.get(tokenName);
     if (!token) return undefined;
     if (token.alias) return resolveTokenValue(token.alias, visited);
-    return valueOr(token.value, token.rawValue);
+    return valueOr(token.rawValue, token.value);
   }
 
   function getFontFamilyFromToken(tokenName) {
@@ -3214,16 +3359,18 @@ void (async function importStorybookStory(payload) {
   }
 
   async function loadTextFont(styles) {
-    const family = getFontFamily(styles.fontFamily);
+    const families = getFontFamilyCandidates(styles.fontFamily);
     const styleCandidates = getFontStyleCandidates(styles.fontWeight || 400);
 
-    for (const style of styleCandidates) {
-      const fontName = { family, style };
-      try {
-        await loadFont(fontName);
-        return fontName;
-      } catch (_error) {
-        // Try the next style for the same family before falling back.
+    for (const family of families) {
+      for (const style of styleCandidates) {
+        const fontName = { family, style };
+        try {
+          await loadFont(fontName);
+          return fontName;
+        } catch (_error) {
+          // Try the next style, then the next concrete CSS family.
+        }
       }
     }
 
@@ -3521,7 +3668,7 @@ void (async function importStorybookStory(payload) {
 
 // src/version.ts
 function getAddonVersion() {
-  return true ? "0.4.18" : "dev";
+  return true ? "0.4.19" : "dev";
 }
 
 // src/workspace.ts

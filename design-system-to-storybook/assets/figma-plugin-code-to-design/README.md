@@ -12,6 +12,7 @@ Payloads produced by the current exporter may carry additional optional fields; 
 - `styles.radiusCorners` → per-corner radii (`topLeftRadius` etc.)
 - `styles.layoutWrap` + `styles.counterAxisSpacing` → wrapped auto layout
 - `styles.letterSpacing` (px), `styles.textDecoration` (`UNDERLINE`/`STRIKETHROUGH`), `styles.fontStyle: "italic"` → text styling; font style resolution covers weights 100–900 with italic variants and upright fallback
+- CSS `font-family` fallback lists are parsed in source order. Figma variables receive one unquoted family, while `rawValue` retains the full CSS list. If the first family is unavailable, the importer tries later concrete families before Inter and skips an incompatible family binding instead of failing during `appendChild`.
 - `imageBase64` + `imageMimeType` + `styles.imageScaleMode` → raster fills via `figma.createImage` (decode failures warn and keep an empty frame)
 - `colorFromCss` also accepts 4/8-digit hex, `hsl()/hsla()`, and `rgb(r g b / a)` syntax; `linear-gradient` supports arbitrary angles
 

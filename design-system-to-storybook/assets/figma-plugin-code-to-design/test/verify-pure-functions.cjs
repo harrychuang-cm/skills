@@ -115,6 +115,89 @@ assert.ok(
 );
 assert.strictEqual(plugin.getFontStyleCandidates(100)[0], "Thin", "100 -> Thin");
 
+// --- CSS font-family fallback normalization -------------------------------
+
+const cssFontStack = '"Helvetica Neue", Helvetica, "Arial Narrow", Arial, sans-serif';
+assert.deepStrictEqual(
+  plugin.getFontFamilyCandidates(cssFontStack),
+  ["Helvetica Neue", "Helvetica", "Arial Narrow", "Arial"],
+  "quoted CSS fallback list parses in source order and omits the generic family",
+);
+assert.deepStrictEqual(
+  plugin.getFontFamilyCandidates('"Font, Display", Inter, serif'),
+  ["Font, Display", "Inter"],
+  "commas inside quoted family names are preserved",
+);
+assert.strictEqual(
+  plugin.normalizeVariableValue({
+    collection: "ref",
+    cssName: "--fx-ref-typeface-grotesque",
+    figmaName: "ref/typeface/grotesque",
+    rawValue: cssFontStack,
+    scopes: ["FONT_FAMILY"],
+    type: "STRING",
+    value: 'Helvetica Neue", Helvetica, "Arial Narrow", Arial, sans-serif',
+  }),
+  "Helvetica Neue",
+  "legacy multi-family token values normalize before Figma variable write",
+);
+assert.strictEqual(
+  plugin.normalizeVariableValue({
+    collection: "ref",
+    cssName: "--fx-ref-copy-example",
+    figmaName: "ref/copy/example",
+    rawValue: "Hello, world",
+    scopes: ["TEXT_CONTENT"],
+    type: "STRING",
+    value: "Hello, world",
+  }),
+  "Hello, world",
+  "non-font string variables retain commas",
+);
+const fontTokenMap = new Map([
+  [
+    "--fx-comp-caption-font-family",
+    { alias: "--fx-sys-label-family", cssName: "--fx-comp-caption-font-family" },
+  ],
+  [
+    "--fx-sys-label-family",
+    { alias: "--fx-ref-copy-example", cssName: "--fx-sys-label-family" },
+  ],
+  ["--fx-ref-copy-example", { cssName: "--fx-ref-copy-example" }],
+]);
+const fontFamilyTokenNames = plugin.collectFontFamilyTokenNames(
+  {
+    bindings: { fontFamily: "--fx-comp-caption-font-family" },
+    children: [],
+  },
+  fontTokenMap,
+);
+assert.deepStrictEqual(
+  Array.from(fontFamilyTokenNames),
+  [
+    "--fx-comp-caption-font-family",
+    "--fx-sys-label-family",
+    "--fx-ref-copy-example",
+  ],
+  "font-family binding marks its complete alias chain for legacy normalization",
+);
+assert.strictEqual(
+  plugin.normalizeVariableValue(
+    {
+      collection: "ref",
+      cssName: "--fx-ref-copy-example",
+      figmaName: "ref/copy/example",
+      rawValue: cssFontStack,
+      scopes: ["TEXT_CONTENT"],
+      type: "STRING",
+      value: 'Helvetica Neue", Helvetica, "Arial Narrow", Arial, sans-serif',
+    },
+    fontFamilyTokenNames,
+  ),
+  "Helvetica Neue",
+  "binding-derived font tokens normalize even when an old payload has TEXT_CONTENT scope",
+);
+
 // --- Payload compatibility ---------------------------------------------------
 
 // A minimal legacy payload (no new fields) parses without throwing.

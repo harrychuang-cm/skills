@@ -199,3 +199,27 @@ The bundled and Storybook-template Figma importer manifests SHALL list exactly `
 
 - **WHEN** the importer is rebuilt and synchronized into the self-contained Storybook template
 - **THEN** the canonical and template manifests have the same exact localhost-only allowlist, their generated runtime and visible version agree with the package patch version, and regression verification passes
+
+### Requirement: Figma importer normalizes CSS font fallback lists
+
+The Storybook exporter SHALL preserve a CSS font-family fallback list in the existing token `rawValue` while normalizing the token `value` used by Figma variables to one unquoted family. The bundled importer and generated Console script MUST parse quoted family lists, MUST try concrete family candidates in source order with the requested weight and italic style, and MUST load the selected `FontName` before assigning text or appending the text node. A font-family variable MUST be bound only when its normalized single-family value has been loaded; the runtime MUST NOT bind a CSS fallback list or an unavailable first family over a successfully loaded later fallback. Existing payloads with a multi-family `value` SHALL receive the same normalization during import without a schema migration.
+
+#### Scenario: CSS fallback token creates one Figma family value
+
+- **WHEN** a font-family token contains `"Helvetica Neue", Helvetica, "Arial Narrow", Arial, sans-serif`
+- **THEN** its Figma variable value is `Helvetica Neue`, its `rawValue` retains the complete CSS list, and no variable resolves to the complete list as one family name
+
+#### Scenario: Importer loads a later available fallback
+
+- **WHEN** the first concrete family or requested style is unavailable but a later concrete family can be loaded
+- **THEN** the text node uses the first loadable family and style in source order and skips any font-family binding whose normalized variable value would replace it with an unavailable family
+
+#### Scenario: Importer safely falls back to Inter
+
+- **WHEN** no concrete CSS family and requested style candidate can be loaded
+- **THEN** the text node uses loaded Inter Regular, import continues without an unloaded-font `appendChild` failure, and the original CSS list remains available in token `rawValue`
+
+#### Scenario: Both import entry points share the normalization
+
+- **WHEN** the same payload is imported through the bundled Code To Design plugin or the generated Console script
+- **THEN** both paths create only single-family Figma variable values, load text fonts before insertion, and complete the node tree without treating the CSS list as a Figma family

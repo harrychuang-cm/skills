@@ -112,7 +112,7 @@ function applyTextAlignmentFromSpec(node, spec, options, path) {
 }
 // Bump this on every behavior change so the Figma UI badge confirms which
 // build is running (Figma re-reads code.js per run, but the badge removes doubt).
-var PLUGIN_VERSION = "1.2.3 (2026-07-21)";
+var PLUGIN_VERSION = "1.2.4 (2026-07-21)";
 var SUPPORTED_PAYLOAD_VERSIONS = [1, 2];
 var DEFAULT_TOKEN_PLUGIN_DATA_KEY = "storybookCssToken";
 var LEGACY_CM_TOKEN_PLUGIN_DATA_KEY = "cmCssToken";
@@ -533,6 +533,7 @@ function createImportContext(payload) {
     var tokenPluginDataKey = (_d = (_c = payload.tokenSystem) === null || _c === void 0 ? void 0 : _c.pluginDataKey) !== null && _d !== void 0 ? _d : DEFAULT_TOKEN_PLUGIN_DATA_KEY;
     var componentPluginDataKey = (_f = (_e = payload.componentSystem) === null || _e === void 0 ? void 0 : _e.pluginDataKey) !== null && _f !== void 0 ? _f : STORYBOOK_COMPONENT_PLUGIN_DATA_KEY;
     var tokenByCssName = new Map(tokens.map(function (token) { return [token.cssName, token]; }));
+    var fontFamilyTokenNames = collectFontFamilyTokenNames(payload.root, tokenByCssName);
     var registry = new Map();
     var componentRegistry = new Map();
     var componentDefinitionRecords = new Map();
@@ -670,7 +671,7 @@ function createImportContext(payload) {
             });
             return;
         }
-        variable.setValueForMode(modeId, normalizeVariableValue(spec));
+        variable.setValueForMode(modeId, normalizeVariableValue(spec, fontFamilyTokenNames));
     }
     function createNode(spec_1, path_1) {
         return __awaiter(this, arguments, void 0, function (spec, path, options) {
@@ -2166,53 +2167,63 @@ function createImportContext(payload) {
     }
     function loadTextFont(styles, path) {
         return __awaiter(this, void 0, void 0, function () {
-            var family, styleCandidates, _i, styleCandidates_1, style, candidate, _a, fallback, error_2;
+            var families, styleCandidates, familyIndex, family, _i, styleCandidates_1, style, candidate, _a, fallback, error_2;
             var _b;
             return __generator(this, function (_c) {
                 switch (_c.label) {
                     case 0:
-                        family = getFontFamily(styles.fontFamily);
+                        families = getFontFamilyCandidates(styles.fontFamily);
                         styleCandidates = getFontStyleCandidates((_b = styles.fontWeight) !== null && _b !== void 0 ? _b : 400, styles.fontStyle === "italic");
-                        _i = 0, styleCandidates_1 = styleCandidates;
+                        familyIndex = 0;
                         _c.label = 1;
                     case 1:
-                        if (!(_i < styleCandidates_1.length)) return [3 /*break*/, 6];
-                        style = styleCandidates_1[_i];
-                        candidate = { family: family, style: style };
+                        if (!(familyIndex < families.length)) return [3 /*break*/, 8];
+                        family = families[familyIndex];
+                        _i = 0, styleCandidates_1 = styleCandidates;
                         _c.label = 2;
                     case 2:
-                        _c.trys.push([2, 4, , 5]);
-                        return [4 /*yield*/, figma.loadFontAsync(candidate)];
+                        if (!(_i < styleCandidates_1.length)) return [3 /*break*/, 7];
+                        style = styleCandidates_1[_i];
+                        candidate = { family: family, style: style };
+                        _c.label = 3;
                     case 3:
-                        _c.sent();
-                        return [2 /*return*/, candidate];
+                        _c.trys.push([3, 5, , 6]);
+                        return [4 /*yield*/, figma.loadFontAsync(candidate)];
                     case 4:
-                        _a = _c.sent();
-                        return [3 /*break*/, 5];
-                    case 5:
-                        _i++;
-                        return [3 /*break*/, 1];
-                    case 6:
-                        fallback = { family: "Inter", style: "Regular" };
-                        _c.label = 7;
-                    case 7:
-                        _c.trys.push([7, 9, , 10]);
-                        return [4 /*yield*/, figma.loadFontAsync(fallback)];
-                    case 8:
                         _c.sent();
-                        warn("Loaded fallback font for ".concat(path, "; ").concat(family, " (").concat(styleCandidates.join(", "), ") was unavailable."));
-                        return [2 /*return*/, fallback];
+                        if (familyIndex > 0) {
+                            warn("Loaded fallback font for ".concat(path, "; ").concat(families[0], " was unavailable, using ").concat(family, " ").concat(style, "."));
+                        }
+                        return [2 /*return*/, candidate];
+                    case 5:
+                        _a = _c.sent();
+                        return [3 /*break*/, 6];
+                    case 6:
+                        _i++;
+                        return [3 /*break*/, 2];
+                    case 7:
+                        familyIndex += 1;
+                        return [3 /*break*/, 1];
+                    case 8:
+                        fallback = { family: "Inter", style: "Regular" };
+                        _c.label = 9;
                     case 9:
+                        _c.trys.push([9, 11, , 12]);
+                        return [4 /*yield*/, figma.loadFontAsync(fallback)];
+                    case 10:
+                        _c.sent();
+                        warn("Loaded fallback font for ".concat(path, "; ").concat(families.join(", ") || "CSS generic family", " (").concat(styleCandidates.join(", "), ") was unavailable."));
+                        return [2 /*return*/, fallback];
+                    case 11:
                         error_2 = _c.sent();
                         warn("Could not load fallback font for ".concat(path, ": ").concat(formatError(error_2)));
                         throw error_2;
-                    case 10: return [2 /*return*/];
+                    case 12: return [2 /*return*/];
                 }
             });
         });
     }
     function resolveTokenValue(tokenName, visited) {
-        var _a;
         if (visited === void 0) { visited = new Set(); }
         if (!tokenName)
             return undefined;
@@ -2224,7 +2235,7 @@ function createImportContext(payload) {
             return undefined;
         if (token.alias)
             return resolveTokenValue(token.alias, visited);
-        return (_a = token.value) !== null && _a !== void 0 ? _a : token.rawValue;
+        return token.rawValue || token.value;
     }
     function getFontFamilyFromToken(tokenName) {
         var value = resolveTokenValue(tokenName);
@@ -2405,8 +2416,30 @@ function getVariantPropertyDisplayName(component) {
 function cssTokenToFigmaVariableName(cssName) {
     return cssName.replace(/^--/, "").replace(/-/g, "/");
 }
-function normalizeVariableValue(spec) {
+function collectFontFamilyTokenNames(root, tokenByCssName) {
+    var names = new Set();
+    function addAliasChain(tokenName) {
+        var _a;
+        var current = tokenName;
+        while (current && !names.has(current)) {
+            names.add(current);
+            current = (_a = tokenByCssName.get(current)) === null || _a === void 0 ? void 0 : _a.alias;
+        }
+    }
+    function visit(node) {
+        var _a, _b;
+        addAliasChain((_a = node.bindings) === null || _a === void 0 ? void 0 : _a.fontFamily);
+        for (var _i = 0, _c = (_b = node.children) !== null && _b !== void 0 ? _b : []; _i < _c.length; _i++) {
+            var child = _c[_i];
+            visit(child);
+        }
+    }
+    visit(root);
+    return names;
+}
+function normalizeVariableValue(spec, fontFamilyTokenNames) {
     var _a;
+    if (fontFamilyTokenNames === void 0) { fontFamilyTokenNames = new Set(); }
     var value = (_a = spec.value) !== null && _a !== void 0 ? _a : parseRawTokenValue(spec.rawValue, spec.type);
     if (spec.type === "COLOR") {
         return cloneColor(value);
@@ -2416,6 +2449,11 @@ function normalizeVariableValue(spec) {
     }
     if (spec.type === "BOOLEAN") {
         return Boolean(value);
+    }
+    if (spec.type === "STRING" &&
+        ((Array.isArray(spec.scopes) && spec.scopes.includes("FONT_FAMILY")) ||
+            fontFamilyTokenNames.has(spec.cssName))) {
+        return getFontFamily(String(spec.rawValue || spec.value || "Inter"));
     }
     return String(value !== null && value !== void 0 ? value : "");
 }
@@ -2914,10 +2952,69 @@ function getFontStyleCandidates(weight, italic) {
     });
     return italicCandidates.concat(upright);
 }
+var CSS_GENERIC_FONT_FAMILIES = new Set([
+    "cursive",
+    "emoji",
+    "fangsong",
+    "fantasy",
+    "math",
+    "monospace",
+    "sans-serif",
+    "serif",
+    "system-ui",
+    "ui-monospace",
+    "ui-rounded",
+    "ui-sans-serif",
+    "ui-serif",
+]);
+function getFontFamilyCandidates(fontFamily) {
+    var candidates = [];
+    var buffer = "";
+    var quote;
+    var escaped = false;
+    function pushCandidate() {
+        var candidate = buffer.trim().replace(/^["']|["']$/g, "");
+        buffer = "";
+        if (!candidate || CSS_GENERIC_FONT_FAMILIES.has(candidate.toLowerCase()))
+            return;
+        if (!candidates.includes(candidate))
+            candidates.push(candidate);
+    }
+    for (var _i = 0, _a = String(fontFamily !== null && fontFamily !== void 0 ? fontFamily : ""); _i < _a.length; _i++) {
+        var character = _a[_i];
+        if (escaped) {
+            buffer += character;
+            escaped = false;
+            continue;
+        }
+        if (quote) {
+            if (character === "\\") {
+                escaped = true;
+            }
+            else if (character === quote) {
+                quote = undefined;
+            }
+            else {
+                buffer += character;
+            }
+            continue;
+        }
+        if (character === '"' || character === "'") {
+            quote = character;
+        }
+        else if (character === ",") {
+            pushCandidate();
+        }
+        else {
+            buffer += character;
+        }
+    }
+    pushCandidate();
+    return candidates;
+}
 function getFontFamily(fontFamily) {
     var _a;
-    var first = (_a = String(fontFamily || "Inter").split(",")[0]) === null || _a === void 0 ? void 0 : _a.trim();
-    return first ? first.replace(/^["']|["']$/g, "") : "Inter";
+    return (_a = getFontFamilyCandidates(fontFamily)[0]) !== null && _a !== void 0 ? _a : "Inter";
 }
 function safeNumber(value, fallback) {
     return typeof value === "number" && Number.isFinite(value) ? value : fallback;
@@ -2939,9 +3036,12 @@ function formatError(error) {
 }
 if (typeof module !== "undefined" && module) {
     module.exports = {
+        collectFontFamilyTokenNames: collectFontFamilyTokenNames,
         colorFromCss: colorFromCss,
+        getFontFamilyCandidates: getFontFamilyCandidates,
         getFontStyleCandidates: getFontStyleCandidates,
         getLinearGradientTransform: getLinearGradientTransform,
+        normalizeVariableValue: normalizeVariableValue,
         parsePayload: parsePayload,
     };
 }

@@ -41,6 +41,71 @@ const tokenLayerOrder: Record<TokenLayer, number> = {
 
 const tokenLayers: TokenLayer[] = ["ref", "sys", "comp"];
 
+const cssGenericFontFamilies = new Set([
+  "cursive",
+  "emoji",
+  "fangsong",
+  "fantasy",
+  "math",
+  "monospace",
+  "sans-serif",
+  "serif",
+  "system-ui",
+  "ui-monospace",
+  "ui-rounded",
+  "ui-sans-serif",
+  "ui-serif",
+]);
+
+export function getCssFontFamilyCandidates(value: string): string[] {
+  const candidates: string[] = [];
+  let buffer = "";
+  let quote: "\"" | "'" | undefined;
+  let escaped = false;
+
+  function pushCandidate() {
+    const candidate = buffer.trim().replace(/^['\"]|['\"]$/g, "");
+    buffer = "";
+    if (!candidate || cssGenericFontFamilies.has(candidate.toLowerCase())) return;
+    if (!candidates.includes(candidate)) candidates.push(candidate);
+  }
+
+  for (const character of String(value ?? "")) {
+    if (escaped) {
+      buffer += character;
+      escaped = false;
+      continue;
+    }
+    if (quote) {
+      if (character === "\\") {
+        escaped = true;
+      } else if (character === quote) {
+        quote = undefined;
+      } else {
+        buffer += character;
+      }
+      continue;
+    }
+    if (character === "\"" || character === "'") {
+      quote = character;
+    } else if (character === ",") {
+      pushCandidate();
+    } else {
+      buffer += character;
+    }
+  }
+  pushCandidate();
+  return candidates;
+}
+
+function isFontFamilyTokenName(name: string): boolean {
+  return (
+    /-typeface(?:-|$)/.test(name) ||
+    /-font-family(?:-|$)/.test(name) ||
+    (name.includes("-typescale-") && name.endsWith("-family"))
+  );
+}
+
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -50,7 +115,7 @@ function getTokenFamily(name: string): TokenFamily {
   if (name.includes("-opacity-")) return "opacity";
   if (name.includes("-shadow-")) return "shadow";
   if (
-    name.includes("-typeface-") ||
+    isFontFamilyTokenName(name) ||
     name.includes("-typescale-") ||
     name.includes("-weight-") ||
     name.includes("-line-height")
@@ -372,7 +437,7 @@ function getTokenScopes(token: TokenDefinition, type: FigmaVariableType): string
   }
 
   if (type === "STRING") {
-    if (token.name.includes("-typeface-")) return ["FONT_FAMILY"];
+    if (isFontFamilyTokenName(token.name)) return ["FONT_FAMILY"];
     return ["TEXT_CONTENT"];
   }
 
@@ -427,6 +492,10 @@ function getExportTokenValue(
   token: TokenDefinition,
   parsed: { type: FigmaVariableType; value: FigmaVariableValue } | undefined,
 ): FigmaVariableValue | undefined {
+  if (parsed?.type === "STRING" && isFontFamilyTokenName(token.name)) {
+    return getCssFontFamilyCandidates(token.value)[0] ?? "Inter";
+  }
+
   if (
     token.family !== "opacity" ||
     parsed?.type !== "FLOAT" ||
