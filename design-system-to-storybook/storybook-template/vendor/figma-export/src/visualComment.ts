@@ -1,4 +1,4 @@
-import { toSvg } from "html-to-image";
+import { toCanvas } from "html-to-image";
 
 export const defaultVisualCommentsApiPath = "/__figma_export_review_comments";
 export const defaultVisualCommentsDir = "design-system/figma-export-review";
@@ -133,6 +133,36 @@ function encodeCanvas(canvas: HTMLCanvasElement, quality: number): Promise<Blob>
   );
 }
 
+function isTransparentColor(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  if (!normalized || normalized === "transparent") return true;
+  const functional = normalized.match(/^rgba?\((.*)\)$/);
+  if (!functional) return false;
+  const channels = functional[1].trim().split(/[\s,\/]+/).filter(Boolean);
+  return channels.length >= 4 && Number.parseFloat(channels.at(-1) ?? "1") === 0;
+}
+
+function resolveCaptureBackground(target: HTMLElement): string {
+  let current: HTMLElement | null = target;
+  while (current) {
+    const backgroundColor = getComputedStyle(current).backgroundColor;
+    if (!isTransparentColor(backgroundColor)) return backgroundColor;
+    current = current.parentElement;
+  }
+  // Browsers composite a transparent document canvas over white by default.
+  return "rgb(255 255 255)";
+}
+
+export function hasVisibleCanvasPixels(canvas: HTMLCanvasElement): boolean {
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  if (!context) throw new Error("Unable to inspect captured UI pixels.");
+  const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+  for (let index = 3; index < pixels.length; index += 4) {
+    if (pixels[index] !== 0) return true;
+  }
+  return false;
+}
+
 /** Browser capture seam backed by html-to-image; API and storage stay backend-agnostic. */
 export async function captureVisualCommentTarget(target: HTMLElement): Promise<VisualCommentCapture> {
   const rect = target.getBoundingClientRect();
@@ -145,43 +175,36 @@ export async function captureVisualCommentTarget(target: HTMLElement): Promise<V
     VISUAL_COMMENT_LIMITS.maxImageLongestSide / Math.max(rect.width, rect.height),
     Math.sqrt(VISUAL_COMMENT_LIMITS.maxImagePixels / (rect.width * rect.height)),
   );
-  let width = Math.max(1, Math.round(rect.width * scale));
-  let height = Math.max(1, Math.round(rect.height * scale));
-  const svgDataUrl = await Promise.race([
-    toSvg(target, {
-      canvasHeight: height,
-      canvasWidth: width,
+  const intendedWidth = Math.max(1, Math.round(rect.width * scale));
+  const intendedHeight = Math.max(1, Math.round(rect.height * scale));
+  let canvas = await Promise.race([
+    toCanvas(target, {
+      backgroundColor: resolveCaptureBackground(target),
+      canvasHeight: rect.height,
+      canvasWidth: rect.width,
       filter: (node) =>
         !(node instanceof Element && node.hasAttribute("data-sbfx-capture-ignore")),
       fontEmbedCSS: "",
       height: rect.height,
-      pixelRatio: 1,
+      pixelRatio: scale,
       skipFonts: true,
       skipAutoScale: true,
       width: rect.width,
     }),
     new Promise<never>((_, reject) =>
-      window.setTimeout(() => reject(new Error("Timed out cloning UI.")), 8_000),
+      window.setTimeout(() => reject(new Error("Timed out rendering captured UI.")), 8_000),
     ),
   ]);
-  const image = await Promise.race([
-    new Promise<HTMLImageElement>((resolve, reject) => {
-      const value = new Image();
-      value.decoding = "sync";
-      value.onload = () => resolve(value);
-      value.onerror = () => reject(new Error("Unable to decode captured UI."));
-      value.src = svgDataUrl;
-    }),
-    new Promise<never>((_, reject) =>
-      window.setTimeout(() => reject(new Error("Timed out decoding captured UI.")), 8_000),
-    ),
-  ]);
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-  let context = canvas.getContext("2d");
-  if (!context) throw new Error("Unable to create capture canvas.");
-  context.drawImage(image, 0, 0, width, height);
+  let width = canvas.width;
+  let height = canvas.height;
+  if (width !== intendedWidth || height !== intendedHeight) {
+    throw new Error(
+      `Captured image dimensions are invalid (${width}×${height}; expected ${intendedWidth}×${intendedHeight}).`,
+    );
+  }
+  if (!hasVisibleCanvasPixels(canvas)) {
+    throw new Error("Captured image contains no visible pixels. Try again after the UI finishes rendering.");
+  }
   try {
     let encoded = await encodeCanvas(canvas, 0.82);
     for (let attempt = 0; encoded.size > VISUAL_COMMENT_LIMITS.maxImageBytes && attempt < 4; attempt += 1) {
@@ -192,9 +215,10 @@ export async function captureVisualCommentTarget(target: HTMLElement): Promise<V
       previous.width = canvas.width;
       previous.height = canvas.height;
       previous.getContext("2d")?.drawImage(canvas, 0, 0);
+      canvas = document.createElement("canvas");
       canvas.width = width;
       canvas.height = height;
-      context = canvas.getContext("2d");
+      const context = canvas.getContext("2d");
       if (!context) throw new Error("Unable to resize capture canvas.");
       context.drawImage(previous, 0, 0, width, height);
       encoded = await encodeCanvas(canvas, Math.max(0.5, 0.76 - attempt * 0.08));

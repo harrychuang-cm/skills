@@ -142,8 +142,8 @@ export default {
         apiPath: figmaExportProjectConfig.review.apiPath,
         filePath: figmaExportProjectConfig.review.statusFilePath,
         name: figmaExportProjectConfig.review.pluginName,
-        commentsEnabled: figmaExportProjectConfig.review.visualComments.enabled,
-        commentsApiPath: figmaExportProjectConfig.review.visualComments.apiPath,
+        commentsEnabled: figmaExportProjectConfig.review.commentsEnabled,
+        commentsApiPath: figmaExportProjectConfig.review.commentsApiPath,
         commentsDir: figmaExportProjectConfig.review.commentsDir,
       }),
     ];
@@ -157,7 +157,9 @@ For non-Vite Storybook builders, keep the preview decorator but record review-st
 ## Visual Comment Safety And Capture Limits
 
 Visual comments are additive to the existing review status, Figma source, and
-notes. They work only in React Story view. The browser intercepts the selected
+notes, but render in a separate top-right panel instead of inside Export review.
+The panel defaults to an Edit icon launcher and expands on demand. They work only
+in React Story view. The browser intercepts the selected
 pointer sequence before prototype handlers, captures the current in-memory UI,
 and stores a normalized pin plus immutable screenshot. Set
 `captureSelector: "body"` when portals outside `#storybook-root` must appear;
@@ -173,3 +175,15 @@ the addon does not replay component state.
 Reports under `design-system/figma-export-review/` use relative assets and may
 be copied or zipped with their session directory. When rolling back the addon,
 leave this directory intact so canonical JSON and reports remain readable.
+
+The review and export sections share one responsive bottom-right workspace dock.
+On wide viewports it reserves inline Story space; on narrow viewports it reserves
+block space. The separate comments detail panel stays at the top-right and never
+overlaps the workspace; capture/composer state never removes either workspace
+header. The report index keeps current and closed meetings separate and shows
+capture/comment counts.
+
+If status or comments requests fail, the panel names the HTTP operation and
+configured endpoint. Fix `.storybook/figma-export.config.ts`; do not add legacy
+endpoint aliases. A status failure does not disable comments, while a comments
+failure disables only meeting/comment mutations until a successful poll.

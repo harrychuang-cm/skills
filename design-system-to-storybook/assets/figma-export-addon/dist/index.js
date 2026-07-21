@@ -3512,7 +3512,91 @@ void (async function importStorybookStory(payload) {
 
 // src/version.ts
 function getAddonVersion() {
-  return true ? "0.4.0" : "dev";
+  return true ? "0.4.11" : "dev";
+}
+
+// src/workspace.ts
+var workspaceSelector = "[data-sbfx-workspace]";
+var workspaceNarrowQuery = "(max-width: 720px)";
+var workspaceRoot = null;
+var workspaceMedia = null;
+var workspaceMediaCleanup = null;
+function setWorkspaceOrientation(root, media) {
+  const orientation = media.matches ? "bottom" : "side";
+  root.dataset.orientation = orientation;
+  document.documentElement.dataset.sbfxWorkspaceOrientation = orientation;
+}
+function connectWorkspaceOrientation(root) {
+  workspaceMediaCleanup?.();
+  workspaceMedia = window.matchMedia(workspaceNarrowQuery);
+  const update = () => setWorkspaceOrientation(root, workspaceMedia);
+  update();
+  workspaceMedia.addEventListener?.("change", update);
+  workspaceMediaCleanup = () => {
+    workspaceMedia?.removeEventListener?.("change", update);
+    workspaceMedia = null;
+    workspaceMediaCleanup = null;
+  };
+}
+function ensureWorkspaceRoot() {
+  if (workspaceRoot?.isConnected) return workspaceRoot;
+  const existing = document.querySelector(workspaceSelector);
+  if (existing) {
+    workspaceRoot = existing;
+    connectWorkspaceOrientation(existing);
+    document.documentElement.dataset.sbfxWorkspaceOpen = "true";
+    return existing;
+  }
+  const root = document.createElement("aside");
+  root.className = "sbfx-workspace";
+  root.dataset.sbfxCaptureIgnore = "true";
+  root.dataset.sbfxWorkspace = "true";
+  root.setAttribute("aria-label", "Figma workspace");
+  for (const name of ["export", "review"]) {
+    const slot = document.createElement("div");
+    slot.className = `sbfx-workspace__slot sbfx-workspace__slot--${name}`;
+    slot.dataset.sbfxWorkspaceSlot = name;
+    root.append(slot);
+  }
+  document.body.append(root);
+  workspaceRoot = root;
+  document.documentElement.dataset.sbfxWorkspaceOpen = "true";
+  connectWorkspaceOrientation(root);
+  return root;
+}
+function releaseWorkspaceIfEmpty() {
+  window.setTimeout(() => {
+    const root = workspaceRoot?.isConnected ? workspaceRoot : document.querySelector(workspaceSelector);
+    if (!root) return;
+    const activeSlot = Array.from(
+      root.querySelectorAll("[data-sbfx-workspace-slot]")
+    ).some((slot) => slot.dataset.active === "true" || slot.childElementCount > 0);
+    if (activeSlot) return;
+    root.remove();
+    workspaceRoot = null;
+    workspaceMediaCleanup?.();
+    delete document.documentElement.dataset.sbfxWorkspaceOpen;
+    delete document.documentElement.dataset.sbfxWorkspaceOrientation;
+  }, 0);
+}
+function acquireFigmaWorkspaceSlot(name) {
+  const root = ensureWorkspaceRoot();
+  const slot = root.querySelector(
+    `[data-sbfx-workspace-slot="${name}"]`
+  );
+  if (!slot) throw new Error(`Figma workspace slot ${name} is unavailable.`);
+  slot.dataset.active = "true";
+  let released = false;
+  return {
+    root,
+    slot,
+    release() {
+      if (released) return;
+      released = true;
+      delete slot.dataset.active;
+      releaseWorkspaceIfEmpty();
+    }
+  };
 }
 
 // src/overlay.ts
@@ -3526,16 +3610,16 @@ var actionLabels = {
   design: { busy: "", done: "", idle: "" },
   file: { busy: "Preparing", done: "Downloaded", idle: "Download JSON" },
   json: { busy: "Copying", done: "Copied", idle: "Copy JSON" },
-  script: { busy: "Copying", done: "Copied", idle: "Plugin Console Script" }
+  script: { busy: "Copying", done: "Copied", idle: "Console script" }
 };
 var svgIcons = {
   check: '<svg viewBox="0 0 14 14" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2.5 7.5 5.5 10.5 11.5 3.5"/></svg>',
-  chevronDown: '<svg viewBox="0 0 14 14" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3.5 5.5 7 9l3.5-3.5"/></svg>',
-  chevronUp: '<svg viewBox="0 0 14 14" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3.5 8.5 7 5l3.5 3.5"/></svg>',
+  chevronDown: '<svg viewBox="0 0 14 14" width="14" height="14" fill="none" aria-hidden="true"><path d="M1.146 4.604l5.5 5.5a.5.5 0 00.708 0l5.5-5.5a.5.5 0 00-.708-.708L7 9.043 1.854 3.896a.5.5 0 10-.708.708z" fill="currentColor"/></svg>',
+  chevronUp: '<svg viewBox="0 0 14 14" width="14" height="14" fill="none" aria-hidden="true"><path d="M7.354 3.896l5.5 5.5a.5.5 0 01-.708.708L7 4.957l-5.146 5.147a.5.5 0 01-.708-.708l5.5-5.5a.5.5 0 01.708 0z" fill="currentColor"/></svg>',
   command: '<svg viewBox="0 0 14 14" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M5 5h4v4H5zM5 5H3.5A1.5 1.5 0 1 1 5 3.5V5zm4 0h1.5A1.5 1.5 0 1 0 9 3.5V5zM5 9H3.5A1.5 1.5 0 1 0 5 10.5V9zm4 0h1.5A1.5 1.5 0 1 1 9 10.5V9z"/></svg>',
   copy: '<svg viewBox="0 0 14 14" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><rect x="4.5" y="4.5" width="7" height="7" rx="1"/><path d="M9.5 4.5v-1a1 1 0 0 0-1-1h-5a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1h1"/></svg>',
   download: '<svg viewBox="0 0 14 14" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M7 2v7m0 0L4.5 6.5M7 9l2.5-2.5M2.5 11.5h9"/></svg>',
-  figma: '<svg viewBox="0 0 14 14" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M5.5 1.5h3a2 2 0 1 1 0 4 2 2 0 1 1 0 4 2 2 0 1 1-4 0v-2a2 2 0 0 1-1-3.73A2 2 0 0 1 5.5 1.5z" fill="none" stroke="currentColor" stroke-width="1.1"/><circle cx="8.5" cy="7.5" r="1.1"/></svg>',
+  figma: '<svg viewBox="0 0 14 14" width="14" height="14" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" clip-rule="evenodd" d="M9.2 0H4.803A2.603 2.603 0 003.41 4.802a2.603 2.603 0 000 4.396 2.602 2.602 0 103.998 2.199v-2.51a2.603 2.603 0 103.187-4.085A2.604 2.604 0 009.2 0zM7.407 7a1.793 1.793 0 103.586 0 1.793 1.793 0 00-3.586 0zm-.81 2.603H4.803a1.793 1.793 0 101.794 1.794V9.603zM4.803 4.397h1.794V.81H4.803a1.793 1.793 0 000 3.587zm0 .81a1.793 1.793 0 000 3.586h1.794V5.207H4.803zm4.397-.81H7.407V.81H9.2a1.794 1.794 0 010 3.587z"/></svg>',
   close: '<svg viewBox="0 0 14 14" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3.5 3.5 10.5 10.5M10.5 3.5 3.5 10.5"/></svg>'
 };
 function getExportComponentTitle(title, options) {
@@ -3726,6 +3810,7 @@ function resolveExportScope() {
 }
 var overlayRefs = null;
 var overlayState = null;
+var overlayWorkspace = null;
 var overlayCollapsed = null;
 function isOverlayCollapsed() {
   if (overlayCollapsed === null) {
@@ -3779,12 +3864,14 @@ function buildOverlay() {
   heading.className = "sbfx-exporter__heading";
   const title = document.createElement("span");
   title.className = "sbfx-exporter__title";
-  title.textContent = "Figma export";
+  const titleLabel = document.createElement("span");
+  titleLabel.className = "sbfx-exporter__title-label";
+  titleLabel.textContent = "Figma export";
   const versionBadge = document.createElement("span");
   versionBadge.className = "sbfx-exporter__version";
   versionBadge.textContent = `v${getAddonVersion()}`;
   versionBadge.title = `Figma export addon v${getAddonVersion()}`;
-  title.append(versionBadge);
+  title.append(titleLabel, versionBadge);
   const subtitle = document.createElement("span");
   subtitle.className = "sbfx-exporter__subtitle";
   heading.append(title, subtitle);
@@ -3792,6 +3879,7 @@ function buildOverlay() {
   toggle.type = "button";
   toggle.className = "sbfx-exporter__toggle";
   const toggleIcon = createIconSpan(svgIcons.chevronDown);
+  toggleIcon.classList.add("sbfx-exporter__toggle-icon");
   toggle.append(toggleIcon);
   toggle.addEventListener("click", () => {
     setOverlayCollapsed(!isOverlayCollapsed());
@@ -3851,11 +3939,15 @@ function renderOverlay() {
   aside.dataset.status = status;
   const collapsed = isOverlayCollapsed();
   aside.dataset.collapsed = collapsed ? "true" : "false";
+  if (overlayWorkspace?.root.isConnected) {
+    overlayWorkspace.root.dataset.exportCollapsed = collapsed ? "true" : "false";
+  }
   const toggleLabel = collapsed ? "Expand Figma export panel" : "Collapse Figma export panel";
   toggle.setAttribute("aria-expanded", String(!collapsed));
   toggle.setAttribute("aria-label", toggleLabel);
   toggle.title = toggleLabel;
-  toggleIcon.innerHTML = collapsed ? svgIcons.chevronUp : svgIcons.chevronDown;
+  toggleIcon.innerHTML = collapsed ? svgIcons.chevronDown : svgIcons.chevronUp;
+  toggleIcon.style.display = collapsed ? "none" : "inline-flex";
   subtitle.textContent = componentTitle;
   subtitle.title = componentTitle;
   statusLabel.textContent = statusLabels[status];
@@ -3985,6 +4077,11 @@ function unmountOverlay() {
     overlayRefs.aside.remove();
     overlayRefs = null;
   }
+  if (overlayWorkspace?.root.isConnected) {
+    delete overlayWorkspace.root.dataset.exportCollapsed;
+  }
+  overlayWorkspace?.release();
+  overlayWorkspace = null;
   overlayState = null;
 }
 var noticeElement = null;
@@ -4083,7 +4180,8 @@ function syncFigmaExportOverlay(context, options) {
     summary: isNewStory ? "" : overlayState?.summary ?? ""
   };
   if (!overlayRefs.aside.isConnected) {
-    document.body.append(overlayRefs.aside);
+    overlayWorkspace ??= acquireFigmaWorkspaceSlot("export");
+    overlayWorkspace.slot.append(overlayRefs.aside);
   }
   renderOverlay();
 }

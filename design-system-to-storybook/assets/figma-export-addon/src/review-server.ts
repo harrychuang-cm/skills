@@ -261,6 +261,7 @@ async function serveVisualCommentReport(
   segments: string[],
 ) {
   let filePath: string | null = null;
+  let refreshSessionId: string | undefined;
   let contentType = "text/html; charset=utf-8";
   if (segments.length === 1 || (segments.length === 2 && segments[1] === "index.html")) {
     filePath = join(store.root, "index.html");
@@ -270,6 +271,7 @@ async function serveVisualCommentReport(
     /^[a-z0-9-]+$/.test(segments[2]) &&
     segments[3] === "index.html"
   ) {
+    refreshSessionId = segments[2];
     filePath = join(store.root, "sessions", segments[2], "index.html");
   } else if (
     segments.length === 5 &&
@@ -286,6 +288,9 @@ async function serveVisualCommentReport(
     return;
   }
   try {
+    if (contentType === "text/html; charset=utf-8") {
+      await store.refreshReports(refreshSessionId);
+    }
     const content = await readFile(filePath);
     response.statusCode = 200;
     response.setHeader("Content-Type", contentType);
@@ -314,6 +319,17 @@ export async function handleVisualCommentsRequest({
   try {
     const { segments, url } = visualCommentSegments(basePath, request.url);
     const method = request.method ?? "GET";
+    if (
+      method === "GET" &&
+      segments.length === 1 &&
+      segments[0] === "reports" &&
+      !url.pathname.endsWith("/")
+    ) {
+      response.statusCode = 308;
+      response.setHeader("Location", `${basePath}/reports/${url.search}`);
+      response.end();
+      return;
+    }
     if (method === "GET" && segments[0] === "reports") {
       await serveVisualCommentReport(response, store, segments);
       return;
@@ -355,6 +371,32 @@ export async function handleVisualCommentsRequest({
       const result = await store.createComment(sessionId, await readRequestBodyLimited(request));
       sendJson(response, result.replay ? 200 : 201, result);
       return;
+    }
+    if (segments[2] === "comments" && segments[3] && segments.length === 4) {
+      const commentId = segments[3];
+      if (method === "PATCH") {
+        const requestBody = await readRequestBodyLimited(request);
+        if (
+          !isRecord(requestBody) ||
+          Object.keys(requestBody).length !== 1 ||
+          typeof requestBody.resolved !== "boolean"
+        ) {
+          throw new RequestBodyError(
+            "Body must contain only a boolean resolved field.",
+            400,
+          );
+        }
+        sendJson(
+          response,
+          200,
+          await store.resolveComment(sessionId, commentId, requestBody.resolved),
+        );
+        return;
+      }
+      if (method === "DELETE") {
+        sendJson(response, 200, await store.deleteComment(sessionId, commentId));
+        return;
+      }
     }
     sendJson(response, 405, { error: `Unsupported visual comments method ${method}.` });
   } catch (error) {

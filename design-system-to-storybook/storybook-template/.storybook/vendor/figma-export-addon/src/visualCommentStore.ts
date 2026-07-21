@@ -8,7 +8,7 @@ import {
   unlink,
   writeFile,
 } from "node:fs/promises";
-import { basename, dirname, join, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import {
   VISUAL_COMMENT_LIMITS,
@@ -31,6 +31,11 @@ export type VisualMeeting = {
   title: string;
   startedAt: string;
   closedAt: string | null;
+};
+
+export type VisualMeetingSummary = VisualMeeting & {
+  captureCount: number;
+  commentCount: number;
 };
 
 export type VisualCapture = {
@@ -58,6 +63,7 @@ export type VisualComment = {
   body: string;
   pin: { xRatio: number; yRatio: number };
   createdAt: string;
+  resolvedAt?: string | null;
 };
 
 export type VisualMeetingFile = {
@@ -72,12 +78,19 @@ export type VisualCommentStoreState = {
   activeSessionId: string | null;
 };
 
+export type VisualCommentReportRenderContext = {
+  projectRelativeSessionPath: string | null;
+};
+
 export type VisualCommentStoreOptions = {
   cwd?: string;
   commentsDir?: string;
   reportRenderer?: {
-    index(meetings: VisualMeeting[], activeSessionId: string | null): string;
-    meeting(meeting: VisualMeetingFile): string;
+    index(meetings: VisualMeetingSummary[], activeSessionId: string | null): string;
+    meeting(
+      meeting: VisualMeetingFile,
+      context?: VisualCommentReportRenderContext,
+    ): string;
   };
   limits?: Partial<VisualCommentLimits>;
 };
@@ -337,8 +350,9 @@ function hashStoredRequest(
 
 export function createVisualCommentStore(options: VisualCommentStoreOptions = {}) {
   const limits = { ...VISUAL_COMMENT_LIMITS, ...options.limits };
+  const projectRoot = resolve(options.cwd ?? process.cwd());
   const root = resolve(
-    options.cwd ?? process.cwd(),
+    projectRoot,
     options.commentsDir ?? "design-system/figma-export-review",
   );
   const statePath = join(root, "state.json");
@@ -371,6 +385,18 @@ export function createVisualCommentStore(options: VisualCommentStoreOptions = {}
   const writeState = (state: VisualCommentStoreState) =>
     atomicWrite(statePath, `${JSON.stringify(state, null, 2)}\n`);
   const sessionDir = (id: string) => join(root, "sessions", assertSessionId(id));
+  const projectRelativeSessionPath = (id: string): string | null => {
+    const candidate = relative(projectRoot, sessionDir(id));
+    if (
+      !candidate ||
+      isAbsolute(candidate) ||
+      candidate === ".." ||
+      candidate.startsWith(`..${sep}`)
+    ) {
+      return null;
+    }
+    return candidate.split(sep).join("/");
+  };
   const readMeeting = (id: string) =>
     readJson<VisualMeetingFile>(join(sessionDir(id), "meeting.json"));
   const writeMeeting = (meeting: VisualMeetingFile) =>
@@ -379,7 +405,7 @@ export function createVisualCommentStore(options: VisualCommentStoreOptions = {}
       `${JSON.stringify(meeting, null, 2)}\n`,
     );
 
-  const listMeetings = async (): Promise<VisualMeeting[]> => {
+  const listMeetings = async (): Promise<VisualMeetingSummary[]> => {
     let entries: string[] = [];
     try {
       entries = await readdir(join(root, "sessions"));
@@ -392,14 +418,19 @@ export function createVisualCommentStore(options: VisualCommentStoreOptions = {}
         .filter((entry) => sessionIdPattern.test(entry))
         .map(async (id) => {
           try {
-            return (await readMeeting(id)).session;
+            const meeting = await readMeeting(id);
+            return {
+              ...meeting.session,
+              captureCount: Object.keys(meeting.captures).length,
+              commentCount: meeting.comments.length,
+            };
           } catch {
             return null;
           }
         }),
     );
     return meetings
-      .filter((meeting): meeting is VisualMeeting => Boolean(meeting))
+      .filter((meeting): meeting is VisualMeetingSummary => Boolean(meeting))
       .sort((a, b) => b.startedAt.localeCompare(a.startedAt));
   };
 
@@ -408,7 +439,11 @@ export function createVisualCommentStore(options: VisualCommentStoreOptions = {}
     if (meeting) {
       await atomicWrite(
         join(sessionDir(meeting.session.id), "index.html"),
-        reportRenderer.meeting(meeting),
+        reportRenderer.meeting(meeting, {
+          projectRelativeSessionPath: projectRelativeSessionPath(
+            meeting.session.id,
+          ),
+        }),
       );
     }
     const [state, meetings] = await Promise.all([readState(), listMeetings()]);
@@ -446,6 +481,11 @@ export function createVisualCommentStore(options: VisualCommentStoreOptions = {}
     root,
     getState: readState,
     listMeetings,
+    refreshReports: (sessionId?: string) =>
+      mutate(async () => {
+        const meeting = sessionId ? await readMeeting(sessionId) : undefined;
+        await rebuildReports(meeting);
+      }),
     getOverview: async (storyId?: string) => {
       const [state, recentSessions] = await Promise.all([
         readState(),
@@ -462,8 +502,16 @@ export function createVisualCommentStore(options: VisualCommentStoreOptions = {}
         : [];
       return {
         version: 1 as const,
-        activeSession: activeMeeting?.session ?? null,
-        recentSessions: recentSessions.slice(0, 20),
+        activeSession: activeMeeting
+          ? {
+              ...activeMeeting.session,
+              captureCount: Object.keys(activeMeeting.captures).length,
+              commentCount: activeMeeting.comments.length,
+            }
+          : null,
+        recentSessions: recentSessions
+          .filter((session) => session.id !== state.activeSessionId)
+          .slice(0, 20),
         comments,
       };
     },
@@ -595,6 +643,75 @@ export function createVisualCommentStore(options: VisualCommentStoreOptions = {}
         await writeMeeting(meeting);
         return withReportStatus(
           { comment, meeting, replay: false },
+          meeting,
+        );
+      }),
+    resolveComment: (id: string, commentId: string, resolved: boolean) =>
+      mutate(async () => {
+        const meeting = await readMeeting(id);
+        const comment = meeting.comments.find((entry) => entry.id === commentId);
+        if (!comment) {
+          fail("Comment not found.", "NOT_FOUND", 404);
+        }
+        if (resolved) {
+          comment.resolvedAt ??= new Date().toISOString();
+        } else {
+          delete comment.resolvedAt;
+        }
+        await writeMeeting(meeting);
+        return withReportStatus({ comment, meeting }, meeting);
+      }),
+    deleteComment: (id: string, commentId: string) =>
+      mutate(async () => {
+        const meeting = await readMeeting(id);
+        const commentIndex = meeting.comments.findIndex(
+          (comment) => comment.id === commentId,
+        );
+        if (commentIndex === -1) {
+          fail("Comment not found.", "NOT_FOUND", 404);
+        }
+        const [deletedComment] = meeting.comments.splice(commentIndex, 1);
+        const capture = meeting.captures[deletedComment!.captureId];
+        let deletedCaptureId: string | null = null;
+        let deletedAssetPath: string | null = null;
+        let assetFilePath: string | null = null;
+
+        if (
+          capture &&
+          !meeting.comments.some((comment) => comment.captureId === capture.id)
+        ) {
+          delete meeting.captures[capture.id];
+          deletedCaptureId = capture.id;
+          if (
+            !Object.values(meeting.captures).some(
+              (otherCapture) => otherCapture.image.path === capture.image.path,
+            )
+          ) {
+            const assetsDirectory = resolve(sessionDir(id), "assets");
+            const candidateAssetPath = resolve(sessionDir(id), capture.image.path);
+            if (dirname(candidateAssetPath) !== assetsDirectory) {
+              fail("Capture asset path is invalid.", "INVALID", 400);
+            }
+            deletedAssetPath = capture.image.path;
+            assetFilePath = candidateAssetPath;
+          }
+        }
+
+        await writeMeeting(meeting);
+        if (assetFilePath) {
+          try {
+            await unlink(assetFilePath);
+          } catch (error) {
+            if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+          }
+        }
+        return withReportStatus(
+          {
+            deletedAssetPath,
+            deletedCaptureId,
+            deletedCommentId: commentId,
+            meeting,
+          },
           meeting,
         );
       }),

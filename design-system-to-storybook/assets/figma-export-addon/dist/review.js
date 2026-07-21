@@ -3,10 +3,11 @@ import {
   ChevronDownIcon,
   ChevronUpIcon,
   EditIcon,
-  FigmaIcon,
+  EyeIcon,
   LinkIcon
 } from "@storybook/icons";
-import { Fragment, createElement as h, useEffect, useRef, useState } from "react";
+import { Fragment, createElement as h, useEffect, useId, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 // src/collapsePreference.ts
 var exporterCollapseStorageKey = "sbfx:exporter-collapsed";
@@ -3523,7 +3524,91 @@ void (async function importStorybookStory(payload) {
 
 // src/version.ts
 function getAddonVersion() {
-  return true ? "0.4.0" : "dev";
+  return true ? "0.4.11" : "dev";
+}
+
+// src/workspace.ts
+var workspaceSelector = "[data-sbfx-workspace]";
+var workspaceNarrowQuery = "(max-width: 720px)";
+var workspaceRoot = null;
+var workspaceMedia = null;
+var workspaceMediaCleanup = null;
+function setWorkspaceOrientation(root, media) {
+  const orientation = media.matches ? "bottom" : "side";
+  root.dataset.orientation = orientation;
+  document.documentElement.dataset.sbfxWorkspaceOrientation = orientation;
+}
+function connectWorkspaceOrientation(root) {
+  workspaceMediaCleanup?.();
+  workspaceMedia = window.matchMedia(workspaceNarrowQuery);
+  const update = () => setWorkspaceOrientation(root, workspaceMedia);
+  update();
+  workspaceMedia.addEventListener?.("change", update);
+  workspaceMediaCleanup = () => {
+    workspaceMedia?.removeEventListener?.("change", update);
+    workspaceMedia = null;
+    workspaceMediaCleanup = null;
+  };
+}
+function ensureWorkspaceRoot() {
+  if (workspaceRoot?.isConnected) return workspaceRoot;
+  const existing = document.querySelector(workspaceSelector);
+  if (existing) {
+    workspaceRoot = existing;
+    connectWorkspaceOrientation(existing);
+    document.documentElement.dataset.sbfxWorkspaceOpen = "true";
+    return existing;
+  }
+  const root = document.createElement("aside");
+  root.className = "sbfx-workspace";
+  root.dataset.sbfxCaptureIgnore = "true";
+  root.dataset.sbfxWorkspace = "true";
+  root.setAttribute("aria-label", "Figma workspace");
+  for (const name of ["export", "review"]) {
+    const slot = document.createElement("div");
+    slot.className = `sbfx-workspace__slot sbfx-workspace__slot--${name}`;
+    slot.dataset.sbfxWorkspaceSlot = name;
+    root.append(slot);
+  }
+  document.body.append(root);
+  workspaceRoot = root;
+  document.documentElement.dataset.sbfxWorkspaceOpen = "true";
+  connectWorkspaceOrientation(root);
+  return root;
+}
+function releaseWorkspaceIfEmpty() {
+  window.setTimeout(() => {
+    const root = workspaceRoot?.isConnected ? workspaceRoot : document.querySelector(workspaceSelector);
+    if (!root) return;
+    const activeSlot = Array.from(
+      root.querySelectorAll("[data-sbfx-workspace-slot]")
+    ).some((slot) => slot.dataset.active === "true" || slot.childElementCount > 0);
+    if (activeSlot) return;
+    root.remove();
+    workspaceRoot = null;
+    workspaceMediaCleanup?.();
+    delete document.documentElement.dataset.sbfxWorkspaceOpen;
+    delete document.documentElement.dataset.sbfxWorkspaceOrientation;
+  }, 0);
+}
+function acquireFigmaWorkspaceSlot(name) {
+  const root = ensureWorkspaceRoot();
+  const slot = root.querySelector(
+    `[data-sbfx-workspace-slot="${name}"]`
+  );
+  if (!slot) throw new Error(`Figma workspace slot ${name} is unavailable.`);
+  slot.dataset.active = "true";
+  let released = false;
+  return {
+    root,
+    slot,
+    release() {
+      if (released) return;
+      released = true;
+      delete slot.dataset.active;
+      releaseWorkspaceIfEmpty();
+    }
+  };
 }
 
 // src/overlay.ts
@@ -3537,16 +3622,16 @@ var actionLabels = {
   design: { busy: "", done: "", idle: "" },
   file: { busy: "Preparing", done: "Downloaded", idle: "Download JSON" },
   json: { busy: "Copying", done: "Copied", idle: "Copy JSON" },
-  script: { busy: "Copying", done: "Copied", idle: "Plugin Console Script" }
+  script: { busy: "Copying", done: "Copied", idle: "Console script" }
 };
 var svgIcons = {
   check: '<svg viewBox="0 0 14 14" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2.5 7.5 5.5 10.5 11.5 3.5"/></svg>',
-  chevronDown: '<svg viewBox="0 0 14 14" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3.5 5.5 7 9l3.5-3.5"/></svg>',
-  chevronUp: '<svg viewBox="0 0 14 14" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3.5 8.5 7 5l3.5 3.5"/></svg>',
+  chevronDown: '<svg viewBox="0 0 14 14" width="14" height="14" fill="none" aria-hidden="true"><path d="M1.146 4.604l5.5 5.5a.5.5 0 00.708 0l5.5-5.5a.5.5 0 00-.708-.708L7 9.043 1.854 3.896a.5.5 0 10-.708.708z" fill="currentColor"/></svg>',
+  chevronUp: '<svg viewBox="0 0 14 14" width="14" height="14" fill="none" aria-hidden="true"><path d="M7.354 3.896l5.5 5.5a.5.5 0 01-.708.708L7 4.957l-5.146 5.147a.5.5 0 01-.708-.708l5.5-5.5a.5.5 0 01.708 0z" fill="currentColor"/></svg>',
   command: '<svg viewBox="0 0 14 14" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M5 5h4v4H5zM5 5H3.5A1.5 1.5 0 1 1 5 3.5V5zm4 0h1.5A1.5 1.5 0 1 0 9 3.5V5zM5 9H3.5A1.5 1.5 0 1 0 5 10.5V9zm4 0h1.5A1.5 1.5 0 1 1 9 10.5V9z"/></svg>',
   copy: '<svg viewBox="0 0 14 14" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><rect x="4.5" y="4.5" width="7" height="7" rx="1"/><path d="M9.5 4.5v-1a1 1 0 0 0-1-1h-5a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1h1"/></svg>',
   download: '<svg viewBox="0 0 14 14" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M7 2v7m0 0L4.5 6.5M7 9l2.5-2.5M2.5 11.5h9"/></svg>',
-  figma: '<svg viewBox="0 0 14 14" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M5.5 1.5h3a2 2 0 1 1 0 4 2 2 0 1 1 0 4 2 2 0 1 1-4 0v-2a2 2 0 0 1-1-3.73A2 2 0 0 1 5.5 1.5z" fill="none" stroke="currentColor" stroke-width="1.1"/><circle cx="8.5" cy="7.5" r="1.1"/></svg>',
+  figma: '<svg viewBox="0 0 14 14" width="14" height="14" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" clip-rule="evenodd" d="M9.2 0H4.803A2.603 2.603 0 003.41 4.802a2.603 2.603 0 000 4.396 2.602 2.602 0 103.998 2.199v-2.51a2.603 2.603 0 103.187-4.085A2.604 2.604 0 009.2 0zM7.407 7a1.793 1.793 0 103.586 0 1.793 1.793 0 00-3.586 0zm-.81 2.603H4.803a1.793 1.793 0 101.794 1.794V9.603zM4.803 4.397h1.794V.81H4.803a1.793 1.793 0 000 3.587zm0 .81a1.793 1.793 0 000 3.586h1.794V5.207H4.803zm4.397-.81H7.407V.81H9.2a1.794 1.794 0 010 3.587z"/></svg>',
   close: '<svg viewBox="0 0 14 14" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3.5 3.5 10.5 10.5M10.5 3.5 3.5 10.5"/></svg>'
 };
 function getExportComponentTitle(title, options) {
@@ -3737,6 +3822,7 @@ function resolveExportScope() {
 }
 var overlayRefs = null;
 var overlayState = null;
+var overlayWorkspace = null;
 var overlayCollapsed = null;
 function isOverlayCollapsed() {
   if (overlayCollapsed === null) {
@@ -3790,12 +3876,14 @@ function buildOverlay() {
   heading.className = "sbfx-exporter__heading";
   const title = document.createElement("span");
   title.className = "sbfx-exporter__title";
-  title.textContent = "Figma export";
+  const titleLabel = document.createElement("span");
+  titleLabel.className = "sbfx-exporter__title-label";
+  titleLabel.textContent = "Figma export";
   const versionBadge = document.createElement("span");
   versionBadge.className = "sbfx-exporter__version";
   versionBadge.textContent = `v${getAddonVersion()}`;
   versionBadge.title = `Figma export addon v${getAddonVersion()}`;
-  title.append(versionBadge);
+  title.append(titleLabel, versionBadge);
   const subtitle = document.createElement("span");
   subtitle.className = "sbfx-exporter__subtitle";
   heading.append(title, subtitle);
@@ -3803,6 +3891,7 @@ function buildOverlay() {
   toggle.type = "button";
   toggle.className = "sbfx-exporter__toggle";
   const toggleIcon = createIconSpan(svgIcons.chevronDown);
+  toggleIcon.classList.add("sbfx-exporter__toggle-icon");
   toggle.append(toggleIcon);
   toggle.addEventListener("click", () => {
     setOverlayCollapsed(!isOverlayCollapsed());
@@ -3862,11 +3951,15 @@ function renderOverlay() {
   aside.dataset.status = status;
   const collapsed = isOverlayCollapsed();
   aside.dataset.collapsed = collapsed ? "true" : "false";
+  if (overlayWorkspace?.root.isConnected) {
+    overlayWorkspace.root.dataset.exportCollapsed = collapsed ? "true" : "false";
+  }
   const toggleLabel = collapsed ? "Expand Figma export panel" : "Collapse Figma export panel";
   toggle.setAttribute("aria-expanded", String(!collapsed));
   toggle.setAttribute("aria-label", toggleLabel);
   toggle.title = toggleLabel;
-  toggleIcon.innerHTML = collapsed ? svgIcons.chevronUp : svgIcons.chevronDown;
+  toggleIcon.innerHTML = collapsed ? svgIcons.chevronDown : svgIcons.chevronUp;
+  toggleIcon.style.display = collapsed ? "none" : "inline-flex";
   subtitle.textContent = componentTitle;
   subtitle.title = componentTitle;
   statusLabel.textContent = statusLabels[status];
@@ -3996,6 +4089,11 @@ function unmountOverlay() {
     overlayRefs.aside.remove();
     overlayRefs = null;
   }
+  if (overlayWorkspace?.root.isConnected) {
+    delete overlayWorkspace.root.dataset.exportCollapsed;
+  }
+  overlayWorkspace?.release();
+  overlayWorkspace = null;
   overlayState = null;
 }
 var noticeElement = null;
@@ -4094,7 +4192,8 @@ function syncFigmaExportOverlay(context, options) {
     summary: isNewStory ? "" : overlayState?.summary ?? ""
   };
   if (!overlayRefs.aside.isConnected) {
-    document.body.append(overlayRefs.aside);
+    overlayWorkspace ??= acquireFigmaWorkspaceSlot("export");
+    overlayWorkspace.slot.append(overlayRefs.aside);
   }
   renderOverlay();
 }
@@ -4118,7 +4217,7 @@ function getParameterUrl(value) {
 }
 
 // src/visualComment.ts
-import { toSvg } from "html-to-image";
+import { toCanvas } from "html-to-image";
 var defaultVisualCommentsCaptureSelector = "#storybook-root";
 var VISUAL_COMMENT_LIMITS = {
   maxRequestBytes: 4 * 1024 * 1024,
@@ -4171,6 +4270,32 @@ function encodeCanvas(canvas, quality) {
     )
   );
 }
+function isTransparentColor(value) {
+  const normalized = value.trim().toLowerCase();
+  if (!normalized || normalized === "transparent") return true;
+  const functional = normalized.match(/^rgba?\((.*)\)$/);
+  if (!functional) return false;
+  const channels = functional[1].trim().split(/[\s,\/]+/).filter(Boolean);
+  return channels.length >= 4 && Number.parseFloat(channels.at(-1) ?? "1") === 0;
+}
+function resolveCaptureBackground(target) {
+  let current = target;
+  while (current) {
+    const backgroundColor = getComputedStyle(current).backgroundColor;
+    if (!isTransparentColor(backgroundColor)) return backgroundColor;
+    current = current.parentElement;
+  }
+  return "rgb(255 255 255)";
+}
+function hasVisibleCanvasPixels(canvas) {
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  if (!context) throw new Error("Unable to inspect captured UI pixels.");
+  const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+  for (let index = 3; index < pixels.length; index += 4) {
+    if (pixels[index] !== 0) return true;
+  }
+  return false;
+}
 async function captureVisualCommentTarget(target) {
   const rect = target.getBoundingClientRect();
   if (!rect.width || !rect.height) throw new Error("Capture target has zero bounds.");
@@ -4181,42 +4306,35 @@ async function captureVisualCommentTarget(target) {
     VISUAL_COMMENT_LIMITS.maxImageLongestSide / Math.max(rect.width, rect.height),
     Math.sqrt(VISUAL_COMMENT_LIMITS.maxImagePixels / (rect.width * rect.height))
   );
-  let width = Math.max(1, Math.round(rect.width * scale));
-  let height = Math.max(1, Math.round(rect.height * scale));
-  const svgDataUrl2 = await Promise.race([
-    toSvg(target, {
-      canvasHeight: height,
-      canvasWidth: width,
+  const intendedWidth = Math.max(1, Math.round(rect.width * scale));
+  const intendedHeight = Math.max(1, Math.round(rect.height * scale));
+  let canvas = await Promise.race([
+    toCanvas(target, {
+      backgroundColor: resolveCaptureBackground(target),
+      canvasHeight: rect.height,
+      canvasWidth: rect.width,
       filter: (node) => !(node instanceof Element && node.hasAttribute("data-sbfx-capture-ignore")),
       fontEmbedCSS: "",
       height: rect.height,
-      pixelRatio: 1,
+      pixelRatio: scale,
       skipFonts: true,
       skipAutoScale: true,
       width: rect.width
     }),
     new Promise(
-      (_, reject) => window.setTimeout(() => reject(new Error("Timed out cloning UI.")), 8e3)
+      (_, reject) => window.setTimeout(() => reject(new Error("Timed out rendering captured UI.")), 8e3)
     )
   ]);
-  const image = await Promise.race([
-    new Promise((resolve, reject) => {
-      const value = new Image();
-      value.decoding = "sync";
-      value.onload = () => resolve(value);
-      value.onerror = () => reject(new Error("Unable to decode captured UI."));
-      value.src = svgDataUrl2;
-    }),
-    new Promise(
-      (_, reject) => window.setTimeout(() => reject(new Error("Timed out decoding captured UI.")), 8e3)
-    )
-  ]);
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-  let context = canvas.getContext("2d");
-  if (!context) throw new Error("Unable to create capture canvas.");
-  context.drawImage(image, 0, 0, width, height);
+  let width = canvas.width;
+  let height = canvas.height;
+  if (width !== intendedWidth || height !== intendedHeight) {
+    throw new Error(
+      `Captured image dimensions are invalid (${width}\xD7${height}; expected ${intendedWidth}\xD7${intendedHeight}).`
+    );
+  }
+  if (!hasVisibleCanvasPixels(canvas)) {
+    throw new Error("Captured image contains no visible pixels. Try again after the UI finishes rendering.");
+  }
   try {
     let encoded = await encodeCanvas(canvas, 0.82);
     for (let attempt = 0; encoded.size > VISUAL_COMMENT_LIMITS.maxImageBytes && attempt < 4; attempt += 1) {
@@ -4227,9 +4345,10 @@ async function captureVisualCommentTarget(target) {
       previous.width = canvas.width;
       previous.height = canvas.height;
       previous.getContext("2d")?.drawImage(canvas, 0, 0);
+      canvas = document.createElement("canvas");
       canvas.width = width;
       canvas.height = height;
-      context = canvas.getContext("2d");
+      const context = canvas.getContext("2d");
       if (!context) throw new Error("Unable to resize capture canvas.");
       context.drawImage(previous, 0, 0, width, height);
       encoded = await encodeCanvas(canvas, Math.max(0.5, 0.76 - attempt * 0.08));
@@ -4327,9 +4446,10 @@ function beginVisualCommentCapture({
 var defaultFigmaReviewStatusApiPath = "/__figma_export_review_status";
 var defaultLabels = {
   approved: "Approved",
-  addVisualComment: "Add visual comment",
+  addVisualComment: "Add comment",
   authorName: "Display name",
   cancelCapture: "Cancel capture",
+  closeVisualComments: "Close comments",
   closeNotes: "Close",
   commentBody: "Comment",
   endMeeting: "End meeting",
@@ -4343,6 +4463,7 @@ var defaultLabels = {
   notesSaved: "Notes saved",
   openNotes: "Open",
   openSource: "Open source",
+  openVisualComments: "Open comments",
   review: "Review",
   startMeeting: "Start meeting",
   submitComment: "Save comment",
@@ -4416,6 +4537,36 @@ function getReviewStatusOptions(labels) {
 function defaultMeetingTitle() {
   return `Design review ${(/* @__PURE__ */ new Date()).toLocaleString()}`;
 }
+var visualCommentsResumeKeyPrefix = "sbfx:visual-comments-resume:";
+var visualCommentsResumeWindowMs = 15e3;
+function visualCommentsResumeKey(storyId) {
+  return `${visualCommentsResumeKeyPrefix}${storyId}`;
+}
+function rememberVisualCommentsOpen(storyId) {
+  try {
+    sessionStorage.setItem(
+      visualCommentsResumeKey(storyId),
+      String(Date.now() + visualCommentsResumeWindowMs)
+    );
+  } catch {
+  }
+}
+function clearVisualCommentsResume(storyId) {
+  try {
+    sessionStorage.removeItem(visualCommentsResumeKey(storyId));
+  } catch {
+  }
+}
+function consumeVisualCommentsResume(storyId) {
+  try {
+    const key = visualCommentsResumeKey(storyId);
+    const expiresAt = Number(sessionStorage.getItem(key));
+    sessionStorage.removeItem(key);
+    return Number.isFinite(expiresAt) && expiresAt >= Date.now();
+  } catch {
+    return false;
+  }
+}
 function VisualCommentsSection({
   componentTitle,
   enabled,
@@ -4426,6 +4577,7 @@ function VisualCommentsSection({
   storyTitle,
   storyUrl
 }) {
+  const detailId = useId();
   const apiPath = options?.apiPath ?? "/__figma_export_review_comments";
   const authorStorageKey = options?.authorStorageKey ?? "sbfx:review-author";
   const [overview, setOverview] = useState(null);
@@ -4442,12 +4594,23 @@ function VisualCommentsSection({
   const [isCapturing, setIsCapturing] = useState(false);
   const [isBusy, setIsBusy] = useState(false);
   const [visualError, setVisualError] = useState("");
+  const [commentsCapability, setCommentsCapability] = useState("loading");
+  const [commentsCapabilityError, setCommentsCapabilityError] = useState("");
   const [reportPending, setReportPending] = useState(false);
+  const [isPanelOpen, setIsPanelOpen] = useState(
+    () => consumeVisualCommentsResume(storyId)
+  );
   const captureControllerRef = useRef(null);
   async function refresh() {
     const response = await fetch(`${apiPath}?storyId=${encodeURIComponent(storyId)}`);
-    if (!response.ok) throw new Error(`Visual comments HTTP ${response.status}`);
+    if (!response.ok) {
+      throw new Error(
+        `Visual comments GET ${apiPath} returned HTTP ${response.status}. Check the visual-comments server configuration.`
+      );
+    }
     setOverview(await response.json());
+    setCommentsCapability("available");
+    setCommentsCapabilityError("");
   }
   useEffect(() => {
     if (!enabled || options?.enabled === false) return;
@@ -4455,15 +4618,21 @@ function VisualCommentsSection({
     const load = async () => {
       try {
         const response = await fetch(`${apiPath}?storyId=${encodeURIComponent(storyId)}`);
-        if (!response.ok) throw new Error(`Visual comments HTTP ${response.status}`);
+        if (!response.ok) {
+          throw new Error(
+            `Visual comments GET ${apiPath} returned HTTP ${response.status}. Check the visual-comments server configuration.`
+          );
+        }
         const next = await response.json();
         if (active) {
           setOverview(next);
-          setVisualError("");
+          setCommentsCapability("available");
+          setCommentsCapabilityError("");
         }
       } catch (error) {
         if (active) {
-          setVisualError(
+          setCommentsCapability("error");
+          setCommentsCapabilityError(
             error instanceof Error ? error.message : "Unable to load visual comments."
           );
         }
@@ -4482,6 +4651,16 @@ function VisualCommentsSection({
     },
     []
   );
+  useEffect(() => {
+    if (isPanelOpen) {
+      document.documentElement.dataset.sbfxCommentsOpen = "true";
+    } else {
+      delete document.documentElement.dataset.sbfxCommentsOpen;
+    }
+    return () => {
+      delete document.documentElement.dataset.sbfxCommentsOpen;
+    };
+  }, [isPanelOpen]);
   if (!enabled || options?.enabled === false) return null;
   async function mutate(path, body) {
     setIsBusy(true);
@@ -4493,10 +4672,19 @@ function VisualCommentsSection({
         method: "POST"
       });
       const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(payload.error ?? `HTTP ${response.status}`);
+      if (!response.ok) {
+        throw new Error(
+          `Visual comments POST ${apiPath}${path} returned HTTP ${response.status}${payload.error ? `: ${payload.error}` : "."}`
+        );
+      }
       setReportPending(Boolean(payload.reportStale));
       await refresh();
       return payload;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Visual comments request failed.";
+      setCommentsCapability("error");
+      setCommentsCapabilityError(message);
+      throw error;
     } finally {
       setIsBusy(false);
     }
@@ -4525,6 +4713,14 @@ function VisualCommentsSection({
     captureControllerRef.current = null;
     setIsCapturing(false);
     setPendingCapture(null);
+  }
+  function togglePanel() {
+    if (isPanelOpen && isCapturing) cancelCapture();
+    if (isPanelOpen) clearVisualCommentsResume(storyId);
+    setIsPanelOpen(!isPanelOpen);
+  }
+  function preserveOpenPanelDuringMutation() {
+    if (isPanelOpen) rememberVisualCommentsOpen(storyId);
   }
   async function submitComment() {
     if (!overview?.activeSession || !pendingCapture || !commentBody.trim()) return;
@@ -4557,6 +4753,7 @@ function VisualCommentsSection({
     } catch {
     }
     try {
+      preserveOpenPanelDuringMutation();
       await mutate(
         `/sessions/${encodeURIComponent(overview.activeSession.id)}/comments`,
         request
@@ -4568,113 +4765,82 @@ function VisualCommentsSection({
     }
   }
   return h(
-    "section",
-    { className: "sbfx-review__visual-comments" },
+    "aside",
+    {
+      "aria-label": labels.visualComments,
+      className: "sbfx-review sbfx-comments-panel",
+      "data-expanded": isPanelOpen ? "true" : "false",
+      "data-sbfx-capture-ignore": "true",
+      "data-version": getAddonVersion()
+    },
     h(
-      "div",
-      { className: "sbfx-review__visual-heading" },
-      h("span", { className: "sbfx-review__label" }, labels.visualComments),
-      overview?.reportUrl ? h(
-        "a",
-        {
-          className: "sbfx-review__report-link",
-          href: overview.reportUrl,
-          rel: "noreferrer",
-          target: "_blank"
-        },
-        "Reports"
-      ) : null
-    ),
-    overview?.activeSession ? h(
-      Fragment,
-      null,
+      "header",
+      { className: "sbfx-comments-panel__header" },
       h(
         "div",
-        { className: "sbfx-review__meeting" },
+        {
+          className: "sbfx-comments-panel__header-copy",
+          hidden: !isPanelOpen
+        },
         h(
-          "span",
-          { className: "sbfx-review__meeting-title" },
-          overview.activeSession.title
+          "h2",
+          { className: "sbfx-review__label sbfx-comments-panel__subheading" },
+          labels.visualComments
         ),
-        overview.activeReportUrl ? h(
+        overview?.reportUrl ? h(
           "a",
           {
-            className: "sbfx-review__report-link",
-            href: overview.activeReportUrl,
+            className: "sbfx-review__button sbfx-review__button--secondary sbfx-review__report-link sbfx-comments-panel__reports",
+            href: overview.reportUrl,
             rel: "noreferrer",
             target: "_blank"
           },
-          "Open"
+          "Reports"
         ) : null
       ),
-      isCapturing ? h(
-        "div",
-        { className: "sbfx-review__capture-prompt" },
-        h("p", null, "Click the UI point to capture. Press Escape to cancel."),
-        h(
-          "button",
-          {
-            className: "sbfx-review__button sbfx-review__button--secondary",
-            onClick: cancelCapture,
-            type: "button"
-          },
-          labels.cancelCapture
-        )
-      ) : pendingCapture ? h(
-        "div",
-        { className: "sbfx-review__composer" },
-        h(
-          "div",
-          {
-            className: "sbfx-review__snapshot-preview",
-            style: {
-              aspectRatio: `${pendingCapture.capture.width}/${pendingCapture.capture.height}`
-            }
-          },
-          h("img", { alt: "Captured UI", src: pendingCapture.capture.dataUrl }),
-          h("span", {
-            "aria-label": "Comment pin",
-            className: "sbfx-review__pin",
-            style: {
-              left: `${pendingCapture.pin.xRatio * 100}%`,
-              top: `${pendingCapture.pin.yRatio * 100}%`
-            }
-          })
-        ),
-        h(
-          "label",
-          { className: "sbfx-review__field" },
-          h("span", null, labels.authorName),
-          h("input", {
-            maxLength: VISUAL_COMMENT_LIMITS.maxAuthorLength,
-            onChange: (event) => setAuthorName(event.currentTarget.value),
-            value: authorName
-          })
-        ),
-        h(
-          "label",
-          { className: "sbfx-review__field" },
-          h("span", null, labels.commentBody),
-          h("textarea", {
-            maxLength: VISUAL_COMMENT_LIMITS.maxBodyLength,
-            onChange: (event) => setCommentBody(event.currentTarget.value),
-            rows: 2,
-            value: commentBody
-          })
-        ),
+      h(
+        "button",
+        {
+          "aria-controls": detailId,
+          "aria-expanded": isPanelOpen,
+          "aria-label": isPanelOpen ? labels.closeVisualComments : labels.openVisualComments,
+          className: "sbfx-review__icon-button sbfx-comments-panel__toggle",
+          onClick: togglePanel,
+          title: isPanelOpen ? labels.closeVisualComments : labels.openVisualComments,
+          type: "button"
+        },
+        h(EditIcon, { size: 14 })
+      )
+    ),
+    h(
+      "section",
+      {
+        className: "sbfx-review__visual-comments sbfx-comments-panel__detail",
+        "data-comments-capability": commentsCapability,
+        hidden: !isPanelOpen,
+        id: detailId
+      },
+      overview?.activeSession ? h(
+        Fragment,
+        null,
         h(
           "div",
-          { className: "sbfx-review__visual-actions" },
+          { className: "sbfx-review__meeting" },
           h(
-            "button",
-            {
-              className: "sbfx-review__button",
-              disabled: isBusy || !commentBody.trim(),
-              onClick: () => void submitComment(),
-              type: "button"
-            },
-            labels.submitComment
-          ),
+            "span",
+            { className: "sbfx-review__meeting-title" },
+            overview.activeSession.title
+          )
+        ),
+        h(
+          "p",
+          { className: "sbfx-review__meta" },
+          `${overview.activeSession.captureCount} capture${overview.activeSession.captureCount === 1 ? "" : "s"} \xB7 ${overview.activeSession.commentCount} comment${overview.activeSession.commentCount === 1 ? "" : "s"}`
+        ),
+        isCapturing ? h(
+          "div",
+          { className: "sbfx-review__capture-prompt" },
+          h("p", null, "Click the UI point to capture. Press Escape to cancel."),
           h(
             "button",
             {
@@ -4682,77 +4848,145 @@ function VisualCommentsSection({
               onClick: cancelCapture,
               type: "button"
             },
-            labels.closeNotes
+            labels.cancelCapture
           )
-        )
+        ) : pendingCapture ? h(
+          "div",
+          { className: "sbfx-review__composer" },
+          h(
+            "div",
+            {
+              className: "sbfx-review__snapshot-preview",
+              style: {
+                aspectRatio: `${pendingCapture.capture.width}/${pendingCapture.capture.height}`
+              }
+            },
+            h("img", { alt: "Captured UI", src: pendingCapture.capture.dataUrl }),
+            h("span", {
+              "aria-label": "Comment pin",
+              className: "sbfx-review__pin",
+              style: {
+                left: `${pendingCapture.pin.xRatio * 100}%`,
+                top: `${pendingCapture.pin.yRatio * 100}%`
+              }
+            })
+          ),
+          h(
+            "label",
+            { className: "sbfx-review__field" },
+            h("span", null, labels.authorName),
+            h("input", {
+              maxLength: VISUAL_COMMENT_LIMITS.maxAuthorLength,
+              onChange: (event) => setAuthorName(event.currentTarget.value),
+              value: authorName
+            })
+          ),
+          h(
+            "label",
+            { className: "sbfx-review__field" },
+            h("span", null, labels.commentBody),
+            h("textarea", {
+              maxLength: VISUAL_COMMENT_LIMITS.maxBodyLength,
+              onChange: (event) => setCommentBody(event.currentTarget.value),
+              rows: 2,
+              value: commentBody
+            })
+          ),
+          h(
+            "div",
+            { className: "sbfx-review__visual-actions" },
+            h(
+              "button",
+              {
+                className: "sbfx-review__button",
+                disabled: commentsCapability !== "available" || isBusy || !commentBody.trim(),
+                onClick: () => void submitComment(),
+                type: "button"
+              },
+              labels.submitComment
+            ),
+            h(
+              "button",
+              {
+                className: "sbfx-review__button sbfx-review__button--secondary",
+                onClick: cancelCapture,
+                type: "button"
+              },
+              labels.closeNotes
+            )
+          )
+        ) : h(
+          "div",
+          { className: "sbfx-review__visual-actions" },
+          h(
+            "button",
+            {
+              className: "sbfx-review__button",
+              disabled: commentsCapability !== "available" || isBusy,
+              onClick: armCapture,
+              type: "button"
+            },
+            labels.addVisualComment
+          ),
+          h(
+            "button",
+            {
+              className: "sbfx-review__button sbfx-review__button--secondary",
+              disabled: commentsCapability !== "available" || isBusy,
+              onClick: () => {
+                preserveOpenPanelDuringMutation();
+                void mutate(
+                  `/sessions/${encodeURIComponent(overview.activeSession.id)}/close`
+                ).catch(
+                  (error) => setVisualError(
+                    error instanceof Error ? error.message : "Unable to end meeting."
+                  )
+                );
+              },
+              type: "button"
+            },
+            labels.endMeeting
+          )
+        ),
+        overview.comments.length ? h(
+          "p",
+          { className: "sbfx-review__meta" },
+          `${overview.comments.length} comment${overview.comments.length === 1 ? "" : "s"} on this story`
+        ) : null
       ) : h(
         "div",
-        { className: "sbfx-review__visual-actions" },
+        { className: "sbfx-review__meeting-start" },
+        h("input", {
+          "aria-label": "Meeting title",
+          maxLength: VISUAL_COMMENT_LIMITS.maxTitleLength,
+          onChange: (event) => setMeetingTitle(event.currentTarget.value),
+          value: meetingTitle
+        }),
         h(
           "button",
           {
             className: "sbfx-review__button",
-            disabled: isBusy,
-            onClick: armCapture,
-            type: "button"
-          },
-          labels.addVisualComment
-        ),
-        h(
-          "button",
-          {
-            className: "sbfx-review__button sbfx-review__button--secondary",
-            disabled: isBusy,
+            disabled: commentsCapability !== "available" || isBusy || !meetingTitle.trim(),
             onClick: () => {
-              void mutate(
-                `/sessions/${encodeURIComponent(overview.activeSession.id)}/close`
-              ).catch(
-                (error) => setVisualError(
-                  error instanceof Error ? error.message : "Unable to end meeting."
-                )
+              preserveOpenPanelDuringMutation();
+              void mutate("/sessions", { title: meetingTitle }).catch(
+                (error) => {
+                  setVisualError(
+                    error instanceof Error ? error.message : "Unable to start meeting."
+                  );
+                  void refresh().catch(() => void 0);
+                }
               );
             },
             type: "button"
           },
-          labels.endMeeting
+          labels.startMeeting
         )
       ),
-      overview.comments.length ? h(
-        "p",
-        { className: "sbfx-review__meta" },
-        `${overview.comments.length} comment${overview.comments.length === 1 ? "" : "s"} on this story`
-      ) : null
-    ) : h(
-      "div",
-      { className: "sbfx-review__meeting-start" },
-      h("input", {
-        "aria-label": "Meeting title",
-        maxLength: VISUAL_COMMENT_LIMITS.maxTitleLength,
-        onChange: (event) => setMeetingTitle(event.currentTarget.value),
-        value: meetingTitle
-      }),
-      h(
-        "button",
-        {
-          className: "sbfx-review__button",
-          disabled: isBusy || !meetingTitle.trim(),
-          onClick: () => {
-            void mutate("/sessions", { title: meetingTitle }).catch(
-              (error) => {
-                setVisualError(
-                  error instanceof Error ? error.message : "Unable to start meeting."
-                );
-                void refresh().catch(() => void 0);
-              }
-            );
-          },
-          type: "button"
-        },
-        labels.startMeeting
-      )
-    ),
-    reportPending ? h("p", { className: "sbfx-review__error" }, "Comment saved; report rebuild pending.") : null,
-    visualError ? h("p", { className: "sbfx-review__error" }, visualError) : null
+      reportPending ? h("p", { className: "sbfx-review__error" }, "Comment saved; report rebuild pending.") : null,
+      visualError ? h("p", { className: "sbfx-review__error" }, visualError) : null,
+      commentsCapabilityError ? h("p", { className: "sbfx-review__error" }, commentsCapabilityError) : null
+    )
   );
 }
 function FigmaExportReview({
@@ -4784,9 +5018,23 @@ function FigmaExportReview({
   );
   const [saveState, setSaveState] = useState("idle");
   const [errorMessage, setErrorMessage] = useState("");
+  const [workspaceSlot, setWorkspaceSlot] = useState(null);
   const autoExportStoryRef = useRef(void 0);
   const entryRef = useRef(entry);
   const saveQueueRef = useRef(Promise.resolve());
+  const shouldShowPanel = enabled && Boolean(storyId);
+  useEffect(() => {
+    if (!shouldShowPanel) {
+      setWorkspaceSlot(null);
+      return;
+    }
+    const workspace = acquireFigmaWorkspaceSlot("review");
+    setWorkspaceSlot(workspace.slot);
+    return () => {
+      setWorkspaceSlot(null);
+      workspace.release();
+    };
+  }, [shouldShowPanel]);
   useEffect(() => {
     entryRef.current = entry;
   }, [entry]);
@@ -4801,7 +5049,11 @@ function FigmaExportReview({
           `${apiPath}?storyId=${encodeURIComponent(storyId)}`,
           { signal: controller.signal }
         );
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        if (!response.ok) {
+          throw new Error(
+            `Review status GET ${apiPath} returned HTTP ${response.status}. Check the review-status server configuration.`
+          );
+        }
         const payload = await response.json();
         const savedFigmaNodeUrl = normalizeFigmaSourceUrl(
           payload.entry?.figmaNodeUrl ?? ""
@@ -4853,7 +5105,11 @@ function FigmaExportReview({
         },
         method: "PUT"
       });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      if (!response.ok) {
+        throw new Error(
+          `Review status PUT ${apiPath} returned HTTP ${response.status}. Check the review-status server configuration.`
+        );
+      }
       const payload = await response.json();
       const savedEntry = normalizeEntry(payload.entry ?? entryToSave);
       entryRef.current = savedEntry;
@@ -4892,7 +5148,6 @@ function FigmaExportReview({
       observer.disconnect();
     };
   }, [autoMarkExported, enabled, entry.figmaReviewStatus, storyId]);
-  const shouldShowPanel = enabled && Boolean(storyId);
   const openableFigmaSourceUrl = getOpenableUrl(entry.figmaNodeUrl);
   const shouldEditFigmaSource = isSourceEditing || !openableFigmaSourceUrl;
   function toggleCollapsed() {
@@ -4916,7 +5171,7 @@ function FigmaExportReview({
     Fragment,
     null,
     children,
-    shouldShowPanel ? h(
+    shouldShowPanel && workspaceSlot ? createPortal(h(
       "aside",
       {
         "aria-label": "Figma export review",
@@ -4932,7 +5187,7 @@ function FigmaExportReview({
         h(
           "span",
           { "aria-hidden": "true", className: "sbfx-review__mark" },
-          h(FigmaIcon, { size: 14 })
+          h(EyeIcon, { size: 14 })
         ),
         h(
           "span",
@@ -4940,15 +5195,7 @@ function FigmaExportReview({
           h(
             "span",
             { className: "sbfx-review__title" },
-            labels.title,
-            h(
-              "span",
-              {
-                className: "sbfx-review__version",
-                title: `Figma export addon v${getAddonVersion()}`
-              },
-              `v${getAddonVersion()}`
-            )
+            labels.title
           ),
           h(
             "span",
@@ -5089,7 +5336,15 @@ function FigmaExportReview({
           })
         ) : draftDetails.notes ? h("p", { className: "sbfx-review__notes-summary" }, labels.notesSaved) : null
       ) : null,
-      viewMode === "story" ? h(VisualCommentsSection, {
+      entry.updatedAt ? h(
+        "p",
+        { className: "sbfx-review__meta" },
+        `Updated ${new Date(entry.updatedAt).toLocaleString()}`
+      ) : null,
+      errorMessage ? h("p", { className: "sbfx-review__error" }, errorMessage) : null
+    ), workspaceSlot) : null,
+    shouldShowPanel && viewMode === "story" && typeof document !== "undefined" ? createPortal(
+      h(VisualCommentsSection, {
         componentTitle,
         enabled,
         labels,
@@ -5098,13 +5353,8 @@ function FigmaExportReview({
         storyName,
         storyTitle,
         storyUrl
-      }) : null,
-      entry.updatedAt ? h(
-        "p",
-        { className: "sbfx-review__meta" },
-        `Updated ${new Date(entry.updatedAt).toLocaleString()}`
-      ) : null,
-      errorMessage ? h("p", { className: "sbfx-review__error" }, errorMessage) : null
+      }),
+      document.body
     ) : null
   );
 }

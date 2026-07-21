@@ -2,9 +2,11 @@ import { createElement as h } from "react";
 import { createRoot } from "react-dom/client";
 
 import { FigmaExportReview } from "../src/review";
+import { syncFigmaExportOverlay } from "../src/overlay";
 import {
   beginVisualCommentCapture,
   captureVisualCommentTarget,
+  hasVisibleCanvasPixels,
   type VisualCommentCapture,
   type VisualCommentCaptureResult,
 } from "../src/visualComment";
@@ -12,6 +14,12 @@ import {
 const results: Array<{ name: string; passed: boolean; detail?: string }> = [];
 const resultElement = document.querySelector<HTMLElement>("#fixture-result")!;
 resultElement.dataset.stage = "started";
+const canonicalChevronUpPath =
+  "M7.354 3.896l5.5 5.5a.5.5 0 01-.708.708L7 4.957l-5.146 5.147a.5.5 0 01-.708-.708l5.5-5.5a.5.5 0 01.708 0z";
+const canonicalChevronDownPath =
+  "M1.146 4.604l5.5 5.5a.5.5 0 00.708 0l5.5-5.5a.5.5 0 00-.708-.708L7 9.043 1.854 3.896a.5.5 0 10-.708.708z";
+const canonicalEditPath =
+  "M13.854 2.146l-2-2a.5.5 0 00-.708 0l-1.5 1.5-8.995 8.995a.499.499 0 00-.143.268L.012 13.39a.495.495 0 00.135.463.5.5 0 00.462.134l2.482-.496a.495.495 0 00.267-.143l8.995-8.995 1.5-1.5a.5.5 0 000-.708zM12 3.293l.793-.793L11.5 1.207 10.707 2 12 3.293zm-2-.586L1.707 11 3 12.293 11.293 4 10 2.707zM1.137 12.863l.17-.849.679.679-.849.17z";
 
 function check(name: string, condition: unknown, detail?: string) {
   results.push({ name, passed: Boolean(condition), ...(detail ? { detail } : {}) });
@@ -52,6 +60,10 @@ function button(label: string): HTMLButtonElement | undefined {
   );
 }
 
+function exportReviewPanel(): HTMLElement | null {
+  return document.querySelector<HTMLElement>('[aria-label="Figma export review"]');
+}
+
 function setNativeValue(element: HTMLInputElement | HTMLTextAreaElement, value: string) {
   const prototype = element instanceof HTMLInputElement ? HTMLInputElement.prototype : HTMLTextAreaElement.prototype;
   Object.getOwnPropertyDescriptor(prototype, "value")?.set?.call(element, value);
@@ -71,6 +83,24 @@ async function sampleCapture(capture: VisualCommentCapture, cssX: number, cssY: 
   const x = Math.min(capture.width - 1, Math.round((cssX / capture.cssWidth) * capture.width));
   const y = Math.min(capture.height - 1, Math.round((cssY / capture.cssHeight) * capture.height));
   return context.getImageData(x, y, 1, 1).data;
+}
+
+async function captureContainsDarkPixel(capture: VisualCommentCapture) {
+  const image = new Image();
+  image.src = capture.dataUrl;
+  await image.decode();
+  const canvas = document.createElement("canvas");
+  canvas.width = capture.width;
+  canvas.height = capture.height;
+  const context = canvas.getContext("2d")!;
+  context.drawImage(image, 0, 0);
+  const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+  for (let index = 0; index < pixels.length; index += 4) {
+    if (pixels[index + 3] > 0 && pixels[index] < 80 && pixels[index + 1] < 80 && pixels[index + 2] < 80) {
+      return true;
+    }
+  }
+  return false;
 }
 
 async function run() {
@@ -188,7 +218,20 @@ async function run() {
   resultElement.dataset.stage = "bitmap-start";
   const cleanCapture = await captureVisualCommentTarget(root);
   resultElement.dataset.stage = "bitmap-captured";
+  const backgroundPixel = await sampleCapture(cleanCapture, 10, 10);
+  const modalPixel = await sampleCapture(cleanCapture, 100, 120);
   const ignoredPixel = await sampleCapture(cleanCapture, 380, 220);
+  check(
+    "captured bitmap contains resolved page background",
+    backgroundPixel[3] > 0 && backgroundPixel[0] > 230 && backgroundPixel[1] > 230,
+    Array.from(backgroundPixel).join(","),
+  );
+  check(
+    "captured bitmap contains rendered UI content",
+    modalPixel[3] > 0 && modalPixel[2] > modalPixel[0] && modalPixel[2] > modalPixel[1],
+    Array.from(modalPixel).join(","),
+  );
+  check("captured bitmap contains contrasting border or text pixels", await captureContainsDarkPixel(cleanCapture));
   check(
     "captured bitmap excludes addon chrome",
     !(ignoredPixel[0] > 220 && ignoredPixel[1] < 80 && ignoredPixel[2] < 80),
@@ -198,6 +241,11 @@ async function run() {
   check("capture respects 4MP", cleanCapture.width * cleanCapture.height <= 4 * 1024 * 1024);
   check("capture respects 2MiB", atob(cleanCapture.dataUrl.split(",")[1]).length <= 2 * 1024 * 1024);
 
+  const transparentCanvas = document.createElement("canvas");
+  transparentCanvas.width = 2;
+  transparentCanvas.height = 2;
+  check("all-transparent canvas is rejected", !hasVisibleCanvasPixels(transparentCanvas));
+
   let zeroError = "";
   await captureVisualCommentTarget(document.querySelector<HTMLElement>("#zero")!).catch((error: Error) => {
     zeroError = error.message;
@@ -205,12 +253,15 @@ async function run() {
   check("zero-size target fails without composer", /zero bounds/i.test(zeroError));
 
   let activeSession: VisualCommentOverview["activeSession"] = null;
+  let statusAvailable = true;
+  let commentsAvailable = true;
   const comments: Array<Record<string, unknown>> = [];
   const requests: Array<{ method: string; path: string; body?: unknown }> = [];
   const originalFetch = window.fetch.bind(window);
   window.fetch = async (input, init) => {
     const url = new URL(String(input), location.href);
     if (url.pathname === "/status") {
+      if (!statusAvailable) return new Response("not found", { status: 404 });
       return new Response(JSON.stringify({ entry: null }), { status: 200, headers: { "content-type": "application/json" } });
     }
     if (url.pathname.startsWith("/__comments")) {
@@ -218,8 +269,9 @@ async function run() {
       const method = init?.method ?? "GET";
       const body = init?.body ? JSON.parse(String(init.body)) : undefined;
       requests.push({ method, path, ...(body ? { body } : {}) });
+      if (!commentsAvailable) return new Response("not found", { status: 404 });
       if (method === "POST" && path === "/sessions") {
-        activeSession = { id: "meeting-1", title: body.title, startedAt: new Date().toISOString(), closedAt: null };
+        activeSession = { id: "meeting-1", title: body.title, startedAt: new Date().toISOString(), closedAt: null, captureCount: 0, commentCount: 0 };
         return new Response(JSON.stringify({ meeting: { session: activeSession }, reportStale: false }), { status: 201 });
       }
       if (method === "POST" && path.endsWith("/comments")) {
@@ -232,7 +284,14 @@ async function run() {
           activeSession,
           activeReportUrl: activeSession ? "/__comments/reports/sessions/meeting-1/index.html" : null,
           comments,
-          recentSessions: activeSession ? [activeSession] : [],
+          recentSessions: [{
+            id: "meeting-closed",
+            title: "Previous review",
+            startedAt: "2026-07-19T08:00:00.000Z",
+            closedAt: "2026-07-19T09:00:00.000Z",
+            captureCount: 1,
+            commentCount: 1,
+          }],
           reportUrl: "/__comments/reports",
           version: 1,
         }),
@@ -243,6 +302,29 @@ async function run() {
   };
 
   const mount = createRoot(document.querySelector("#review-mount")!);
+  syncFigmaExportOverlay(
+    {
+      globals: { figmaExport: "on" },
+      id: "demo--story",
+      name: "Story",
+      title: "Demo",
+      viewMode: "story",
+    },
+    { storyTitlePrefix: false },
+  );
+  const workspaceBeforeRerender = document.querySelector<HTMLElement>(
+    "[data-sbfx-workspace]",
+  );
+  syncFigmaExportOverlay(
+    {
+      globals: { figmaExport: "on" },
+      id: "demo--story",
+      name: "Story",
+      title: "Demo",
+      viewMode: "story",
+    },
+    { storyTitlePrefix: false },
+  );
   resultElement.dataset.stage = "review-mounted";
   mount.render(
     h(FigmaExportReview, {
@@ -258,36 +340,609 @@ async function run() {
       visualComments: { apiPath: "/__comments", captureSelector: "#storybook-root" },
     }),
   );
-  await waitFor(() => button("Start meeting"));
+  await waitFor(() => document.querySelector(".sbfx-comments-panel"));
+  let commentsPanel = document.querySelector<HTMLElement>(".sbfx-comments-panel")!;
+  let commentsToggle = commentsPanel.querySelector<HTMLButtonElement>(
+    ".sbfx-comments-panel__toggle",
+  )!;
+  let commentsDetail = commentsPanel.querySelector<HTMLElement>(
+    ".sbfx-comments-panel__detail",
+  )!;
+  const collapsedCommentsRect = commentsPanel.getBoundingClientRect();
+  const collapsedToggleRect = commentsToggle.getBoundingClientRect();
+  const collapsedEditIconRect = commentsToggle
+    .querySelector<SVGElement>("svg")
+    ?.getBoundingClientRect();
+  const expectedOffset = window.innerWidth <= 720 ? 16 : 24;
+  check(
+    "visual comments defaults to one top-right Edit icon launcher",
+    commentsPanel.dataset.expanded === "false" &&
+      commentsToggle.getAttribute("aria-expanded") === "false" &&
+      commentsToggle.getAttribute("aria-label") === "Open comments" &&
+      commentsToggle.getAttribute("aria-controls") === commentsDetail.id &&
+      commentsDetail.hidden &&
+      commentsToggle.querySelector("path")?.getAttribute("d") === canonicalEditPath &&
+      Math.abs(collapsedCommentsRect.top - expectedOffset) <= 1 &&
+      Math.abs(collapsedCommentsRect.right - (window.innerWidth - expectedOffset)) <= 1,
+  );
+  check(
+    "collapsed Edit launcher centers the button and icon in its surface",
+    Boolean(
+      collapsedEditIconRect &&
+        Math.abs(collapsedCommentsRect.width - 36) <= 0.5 &&
+        Math.abs(collapsedCommentsRect.height - 36) <= 0.5 &&
+        Math.abs(collapsedToggleRect.left - collapsedCommentsRect.left) <= 0.5 &&
+        Math.abs(collapsedToggleRect.top - collapsedCommentsRect.top) <= 0.5 &&
+        Math.abs(collapsedToggleRect.right - collapsedCommentsRect.right) <= 0.5 &&
+        Math.abs(collapsedToggleRect.bottom - collapsedCommentsRect.bottom) <= 0.5 &&
+        Math.abs(
+          collapsedToggleRect.left + collapsedToggleRect.width / 2 -
+            (collapsedEditIconRect.left + collapsedEditIconRect.width / 2),
+        ) <= 0.5 &&
+        Math.abs(
+          collapsedToggleRect.top + collapsedToggleRect.height / 2 -
+            (collapsedEditIconRect.top + collapsedEditIconRect.height / 2),
+        ) <= 0.5
+    ),
+    JSON.stringify({
+      collapsedCommentsRect,
+      collapsedEditIconRect,
+      collapsedToggleRect,
+    }),
+  );
+  check(
+    "visual comments is independent from the export review workspace slot",
+    !document.querySelector('[data-sbfx-workspace-slot="review"] .sbfx-review__visual-comments') &&
+      !commentsPanel.closest("[data-sbfx-workspace]"),
+  );
+  commentsToggle.click();
+  await waitFor(
+    () =>
+      commentsPanel.querySelector(".sbfx-review__visual-comments")?.getAttribute(
+        "data-comments-capability",
+      ) === "available" &&
+      !button("Start meeting")?.disabled &&
+      commentsPanel.querySelectorAll(".sbfx-review__report-link").length === 1,
+  );
   resultElement.dataset.stage = "review-loaded";
-  check("review panel is excluded from captures", Boolean(document.querySelector(".sbfx-review[data-sbfx-capture-ignore]")));
+  const workspace = document.querySelector<HTMLElement>("[data-sbfx-workspace]")!;
+  const workspaceRect = workspace.getBoundingClientRect();
+  const commentsRect = commentsPanel.getBoundingClientRect();
+  const storyRect = root.getBoundingClientRect();
+  const expectedOrientation = window.innerWidth <= 720 ? "bottom" : "side";
+  check(
+    "Edit launcher expands the comments detail accessibly",
+    commentsPanel.dataset.expanded === "true" &&
+      commentsToggle.getAttribute("aria-expanded") === "true" &&
+      commentsToggle.getAttribute("aria-label") === "Close comments" &&
+      !commentsDetail.hidden &&
+      document.documentElement.dataset.sbfxCommentsOpen === "true",
+  );
+  const commentsHeader = commentsPanel.querySelector<HTMLElement>(
+    ".sbfx-comments-panel__header",
+  );
+  const commentsHeaderCopy = commentsPanel.querySelector<HTMLElement>(
+    ".sbfx-comments-panel__header-copy",
+  );
+  const commentsSubheading = commentsPanel.querySelector<HTMLElement>(
+    ".sbfx-comments-panel__subheading",
+  );
+  const reportsButton = commentsPanel.querySelector<HTMLAnchorElement>(
+    ".sbfx-comments-panel__reports",
+  );
+  const commentsHeaderRect = commentsHeader?.getBoundingClientRect();
+  const commentsHeaderCopyRect = commentsHeaderCopy?.getBoundingClientRect();
+  const commentsSubheadingRect = commentsSubheading?.getBoundingClientRect();
+  const reportsButtonRect = reportsButton?.getBoundingClientRect();
+  const expandedToggleRect = commentsToggle.getBoundingClientRect();
+  const reportsButtonStyle = reportsButton ? getComputedStyle(reportsButton) : null;
+  check(
+    "expanded comments header stacks subheading and outline Reports beside Edit",
+    Boolean(
+      commentsHeaderRect &&
+        commentsHeaderCopyRect &&
+        commentsSubheadingRect &&
+        reportsButtonRect &&
+        reportsButtonStyle &&
+        commentsSubheading?.textContent?.trim() === "Visual comments" &&
+        reportsButton?.textContent?.trim() === "Reports" &&
+        commentsSubheadingRect.top < reportsButtonRect.top &&
+        Math.abs(commentsSubheadingRect.left - reportsButtonRect.left) <= 1 &&
+        reportsButtonRect.width < commentsHeaderCopyRect.width &&
+        reportsButtonRect.height < 32 &&
+        reportsButtonStyle.justifySelf === "start" &&
+        expandedToggleRect.left >= Math.max(commentsSubheadingRect.right, reportsButtonRect.right) &&
+        expandedToggleRect.top >= commentsHeaderRect.top - 1 &&
+        expandedToggleRect.bottom <= commentsHeaderRect.bottom + 1 &&
+        reportsButtonStyle.borderTopStyle === "solid" &&
+        Number.parseFloat(reportsButtonStyle.borderTopWidth) >= 1,
+    ),
+    JSON.stringify({
+      commentsHeaderRect,
+      commentsHeaderCopyRect,
+      commentsSubheadingRect,
+      expandedToggleRect,
+      reportsButtonRect,
+      reportsButtonStyle: reportsButtonStyle
+        ? {
+            backgroundColor: reportsButtonStyle.backgroundColor,
+            borderTopStyle: reportsButtonStyle.borderTopStyle,
+            borderTopWidth: reportsButtonStyle.borderTopWidth,
+            justifySelf: reportsButtonStyle.justifySelf,
+          }
+        : null,
+    }),
+  );
+  check(
+    "workspace has one idempotent root",
+    document.querySelectorAll("[data-sbfx-workspace]").length === 1 &&
+      workspace === workspaceBeforeRerender,
+  );
+  check(
+    "workspace contains review and export slots",
+    Boolean(
+      workspace.querySelector('[data-sbfx-workspace-slot="review"] .sbfx-review') &&
+        workspace.querySelector('[data-sbfx-workspace-slot="export"] .sbfx-exporter'),
+    ),
+  );
+  check(
+    "workspace exposes one visible version label on Figma export only",
+    workspace.querySelectorAll(".sbfx-exporter__version").length === 1 &&
+      !workspace.querySelector(".sbfx-review__version"),
+  );
+  const initialSlots = Array.from(
+    workspace.querySelectorAll<HTMLElement>(":scope > [data-sbfx-workspace-slot]"),
+  );
+  const initialExporterRect = workspace
+    .querySelector<HTMLElement>('.sbfx-exporter[aria-label="Figma export"]')
+    ?.getBoundingClientRect();
+  const initialReviewRect = workspace
+    .querySelector<HTMLElement>('.sbfx-review[aria-label="Figma export review"]')
+    ?.getBoundingClientRect();
+  check(
+    "workspace keeps export before review in DOM order",
+    initialSlots.length === 2 &&
+      initialSlots[0]?.dataset.sbfxWorkspaceSlot === "export" &&
+      initialSlots[1]?.dataset.sbfxWorkspaceSlot === "review",
+  );
+  check(
+    "Figma export is visually above Export review",
+    Boolean(
+      initialExporterRect &&
+        initialReviewRect &&
+        initialExporterRect.top < initialReviewRect.top,
+    ),
+  );
+  const reviewIcon = workspace.querySelector<SVGElement>(".sbfx-review__mark svg");
+  const reviewIconPaths = Array.from(reviewIcon?.querySelectorAll("path") ?? []).map(
+    (path) => path.getAttribute("d"),
+  );
+  check(
+    "Export review uses the Storybook Eye icon",
+    reviewIcon?.getAttribute("viewBox") === "0 0 14 14" &&
+      reviewIconPaths.length === 2 &&
+      reviewIconPaths[0] === "M7 9.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5z" &&
+      reviewIconPaths[1] === "M14 7l-.21.293C13.669 7.465 10.739 11.5 7 11.5S.332 7.465.21 7.293L0 7l.21-.293C.331 6.536 3.261 2.5 7 2.5s6.668 4.036 6.79 4.207L14 7zM2.896 5.302A12.725 12.725 0 001.245 7c.296.37.874 1.04 1.65 1.698C4.043 9.67 5.482 10.5 7 10.5c1.518 0 2.958-.83 4.104-1.802A12.72 12.72 0 0012.755 7c-.297-.37-.875-1.04-1.65-1.698C9.957 4.33 8.517 3.5 7 3.5c-1.519 0-2.958.83-4.104 1.802z" &&
+      reviewIcon.closest(".sbfx-review__mark")?.getAttribute("aria-hidden") === "true",
+  );
+  const initialReviewToggle = workspace.querySelector<HTMLButtonElement>(".sbfx-review__toggle");
+  const initialExportToggle = workspace.querySelector<HTMLButtonElement>(".sbfx-exporter__toggle");
+  check(
+    "expanded review and export use matching canonical up chevrons",
+    initialReviewToggle?.getAttribute("aria-expanded") === "true" &&
+      initialExportToggle?.getAttribute("aria-expanded") === "true" &&
+      initialReviewToggle?.querySelector("path")?.getAttribute("d") === canonicalChevronUpPath &&
+      initialExportToggle?.querySelector("path")?.getAttribute("d") === canonicalChevronUpPath,
+  );
+  check(
+    `${expectedOrientation} workspace orientation is applied`,
+    workspace.dataset.orientation === expectedOrientation &&
+      document.documentElement.dataset.sbfxWorkspaceOrientation === expectedOrientation,
+  );
+  check(
+    "workspace is anchored at the bottom-right",
+    Math.abs(workspaceRect.bottom - (window.innerHeight - expectedOffset)) <= 1 &&
+      Math.abs(workspaceRect.right - (window.innerWidth - expectedOffset)) <= 1,
+    JSON.stringify({ expectedOffset, workspaceRect }),
+  );
+  check(
+    "top-right comments detail does not overlap the bottom-right workspace",
+    commentsRect.bottom <= workspaceRect.top + 1,
+    JSON.stringify({ commentsRect, workspaceRect }),
+  );
+  check(
+    "workspace does not overlap Story canvas",
+    expectedOrientation === "side"
+      ? storyRect.right <= workspaceRect.left + 1
+      : storyRect.bottom <= workspaceRect.top + 1,
+    JSON.stringify({ expectedOrientation, storyRect, workspaceRect }),
+  );
+  check(
+    "workspace review and independent comments panel are excluded from captures",
+    Boolean(
+      workspace.querySelector('.sbfx-review[data-sbfx-capture-ignore]') &&
+        commentsPanel.matches('[data-sbfx-capture-ignore]'),
+    ),
+  );
+  const reportsLinks = commentsPanel.querySelectorAll<HTMLAnchorElement>(
+    ".sbfx-review__report-link",
+  );
+  check(
+    "panel delegates closed meeting browsing to one Reports link",
+    reportsLinks.length === 1 &&
+      reportsLinks[0]?.textContent === "Reports" &&
+      reportsLinks[0]?.href.endsWith("/__comments/reports") &&
+      !document.querySelector(".sbfx-review__history") &&
+      !document.querySelector(".sbfx-review__history-item") &&
+      !commentsPanel.textContent?.includes("Closed meeting history"),
+  );
   const startButton = button("Start meeting")!;
   check("Start meeting button is enabled", !startButton.disabled);
-  startButton.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+  await new Promise<void>((resolve) =>
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+  );
+  startButton.click();
   resultElement.dataset.stage = `start-clicked-${requests.length}`;
-  await waitFor(() => button("Add visual comment"));
+  await waitFor(() => requests.some((request) => request.method === "POST" && request.path === "/sessions"));
+  await waitFor(() => button("Add comment"));
   check("Start meeting performs API round trip", requests.some((request) => request.method === "POST" && request.path === "/sessions"));
-  button("Add visual comment")!.click();
+  check(
+    "Start meeting keeps the comments panel expanded",
+    commentsPanel.dataset.expanded === "true" &&
+      commentsToggle.getAttribute("aria-expanded") === "true" &&
+      !commentsDetail.hidden &&
+      Boolean(button("Add comment")),
+  );
+  check(
+    "default comment action uses concise copy",
+    Boolean(button("Add comment")) &&
+      !commentsPanel.textContent?.includes("Add visual comment"),
+  );
+  check(
+    "active meeting keeps Reports as the only report navigation",
+    commentsPanel.querySelectorAll(".sbfx-review__report-link").length === 1 &&
+      !Array.from(commentsPanel.querySelectorAll<HTMLAnchorElement>("a")).some(
+        (link) => link.textContent?.trim() === "Open",
+      ),
+  );
+
+  button("Add comment")!.click();
+  await waitFor(() => button("Cancel capture"));
+  commentsToggle.click();
+  await waitFor(
+    () =>
+      commentsToggle.getAttribute("aria-expanded") === "false" &&
+      document.documentElement.dataset.sbfxCaptureMode !== "true",
+  );
+  check(
+    "closing comments cancels armed point capture and hides details",
+    commentsDetail.hidden &&
+      !button("Cancel capture") &&
+      !commentsPanel.querySelector(".sbfx-review__capture-prompt"),
+  );
+  commentsToggle.click();
+  await waitFor(() => button("Add comment"));
+
+  const commentRequestsBeforeFailure = requests.filter((request) => request.path.endsWith("/comments")).length;
+  button("Add comment")!.click();
+  const originalGetImageData = CanvasRenderingContext2D.prototype.getImageData;
+  CanvasRenderingContext2D.prototype.getImageData = function (_x, _y, width, height) {
+    return { data: new Uint8ClampedArray(width * height * 4) } as ImageData;
+  };
+  dispatchPointerSequence(prototypeButton, 100, 64);
+  await waitFor(() => commentsPanel.querySelector(".sbfx-review__error")?.textContent?.includes("no visible pixels"));
+  CanvasRenderingContext2D.prototype.getImageData = originalGetImageData;
+  check(
+    "transparent production capture stays retryable and sends no comment request",
+    Boolean(button("Add comment")) &&
+      !button("Save comment") &&
+      requests.filter((request) => request.path.endsWith("/comments")).length === commentRequestsBeforeFailure,
+  );
+
+  button("Add comment")!.click();
   dispatchPointerSequence(prototypeButton, 100, 64);
   await waitFor(() => button("Save comment"));
   resultElement.dataset.stage = "composer-open";
-  const authorField = document.querySelector<HTMLInputElement>(".sbfx-review__composer input")!;
-  const textarea = document.querySelector<HTMLTextAreaElement>(".sbfx-review textarea")!;
+  check(
+    "Figma export stays visible while composer is open",
+    Boolean(workspace.querySelector('.sbfx-exporter[aria-label="Figma export"]')),
+  );
+  const authorField = commentsPanel.querySelector<HTMLInputElement>(".sbfx-review__composer input")!;
+  const textarea = commentsPanel.querySelector<HTMLTextAreaElement>("textarea")!;
   setNativeValue(authorField, "Mina");
   setNativeValue(textarea, "Keep this modal spacing");
   await waitFor(() => !button("Save comment")!.disabled);
+  commentsToggle.click();
+  await waitFor(() => commentsDetail.hidden);
+  check(
+    "closing a composer hides details without discarding its draft",
+    commentsToggle.getAttribute("aria-expanded") === "false" &&
+      authorField.value === "Mina" &&
+      textarea.value === "Keep this modal spacing",
+  );
+  commentsToggle.click();
+  await waitFor(() => !commentsDetail.hidden && button("Save comment"));
+  check(
+    "reopening comments restores the pending composer draft",
+    document.querySelector<HTMLInputElement>(".sbfx-comments-panel .sbfx-review__composer input")?.value === "Mina" &&
+      document.querySelector<HTMLTextAreaElement>(".sbfx-comments-panel textarea")?.value === "Keep this modal spacing",
+  );
+  const composerCommentsRect = commentsPanel.getBoundingClientRect();
+  const composerWorkspaceRect = workspace.getBoundingClientRect();
+  check(
+    "comment composer remains above the operable workspace",
+    composerCommentsRect.bottom <= composerWorkspaceRect.top + 1 &&
+      Boolean(workspace.querySelector('.sbfx-exporter[aria-label="Figma export"]')),
+    JSON.stringify({ composerCommentsRect, composerWorkspaceRect }),
+  );
   button("Save comment")!.click();
   await waitFor(() => requests.some((request) => request.method === "POST" && request.path.endsWith("/comments")));
   resultElement.dataset.stage = "comment-saved";
   check("comment composer posts screenshot and normalized pin", comments.length === 1 && typeof comments[0].capture === "object");
   check("author is stored locally", localStorage.getItem("sbfx:review-author") === "Mina");
   check("polling overview uses current story id", requests.some((request) => request.method === "GET" && request.path === ""));
+
+  mount.render(null);
+  await waitFor(() => !document.querySelector(".sbfx-comments-panel"));
+  mount.render(
+    h(FigmaExportReview, {
+      apiPath: "/status",
+      componentTitle: "Button",
+      enabled: true,
+      showNotes: false,
+      storyId: "demo--story",
+      storyName: "Story",
+      storyTitle: "Demo",
+      storyUrl: location.href,
+      viewMode: "story",
+      visualComments: { apiPath: "/__comments", captureSelector: "#storybook-root" },
+    }),
+  );
+  await waitFor(
+    () =>
+      document
+        .querySelector(".sbfx-comments-panel__detail")
+        ?.getAttribute("data-comments-capability") === "available",
+  );
+  commentsPanel = document.querySelector<HTMLElement>(".sbfx-comments-panel")!;
+  commentsToggle = commentsPanel.querySelector<HTMLButtonElement>(
+    ".sbfx-comments-panel__toggle",
+  )!;
+  commentsDetail = commentsPanel.querySelector<HTMLElement>(
+    ".sbfx-comments-panel__detail",
+  )!;
+  check(
+    "Save comment keeps the comments panel expanded across a same-story remount",
+    commentsPanel.dataset.expanded === "true" &&
+      commentsToggle.getAttribute("aria-expanded") === "true" &&
+      !commentsDetail.hidden &&
+      Boolean(button("Add comment")) &&
+      !button("Save comment"),
+  );
+
+  const reviewSlot = workspace.querySelector<HTMLElement>('[data-sbfx-workspace-slot="review"]')!;
+  const reviewPreferenceBeforeParentCollapse = localStorage.getItem("sbfx:review-collapsed");
+  document.querySelector<HTMLButtonElement>('[aria-label="Collapse Figma export panel"]')!.click();
+  await waitFor(() => workspace.dataset.exportCollapsed === "true");
+  const collapsedExportToggle = document.querySelector<HTMLButtonElement>('[aria-label="Expand Figma export panel"]');
+  const collapsedWorkspaceRect = workspace.getBoundingClientRect();
+  const collapsedExporter = workspace.querySelector<HTMLElement>(".sbfx-exporter")!;
+  const collapsedExporterRect = collapsedExporter.getBoundingClientRect();
+  const collapsedTitleLabel = collapsedExporter.querySelector<HTMLElement>(
+    ".sbfx-exporter__title-label",
+  );
+  const collapsedSubtitle = collapsedExporter.querySelector<HTMLElement>(
+    ".sbfx-exporter__subtitle",
+  );
+  const collapsedVersion = collapsedExporter.querySelector<HTMLElement>(
+    ".sbfx-exporter__version",
+  );
+  const collapsedToggleIcon = collapsedExportToggle?.querySelector<HTMLElement>(
+    ".sbfx-exporter__toggle-icon",
+  );
+  check(
+    "collapsed Figma export hugs only its mark and version",
+    Boolean(
+      collapsedWorkspaceRect.width < 320 &&
+        Math.abs(collapsedWorkspaceRect.width - collapsedExporterRect.width) <= 2.5 &&
+        collapsedTitleLabel &&
+        getComputedStyle(collapsedTitleLabel).display === "none" &&
+        collapsedSubtitle &&
+        getComputedStyle(collapsedSubtitle).display === "none" &&
+        collapsedVersion &&
+        getComputedStyle(collapsedVersion).display !== "none" &&
+        collapsedVersion.getBoundingClientRect().width > 0 &&
+        collapsedToggleIcon &&
+        getComputedStyle(collapsedToggleIcon).display === "none",
+    ),
+    JSON.stringify({ collapsedExporterRect, collapsedWorkspaceRect }),
+  );
+  check(
+    "collapsed Figma export hides the complete review slot without changing review state",
+    collapsedExportToggle?.getAttribute("aria-expanded") === "false" &&
+      collapsedExportToggle?.querySelector("path")?.getAttribute("d") === canonicalChevronDownPath &&
+      getComputedStyle(reviewSlot).display === "none" &&
+      reviewSlot.getBoundingClientRect().height === 0 &&
+      exportReviewPanel()?.getAttribute("data-collapsed") === "false" &&
+      localStorage.getItem("sbfx:review-collapsed") === reviewPreferenceBeforeParentCollapse,
+  );
+  collapsedExportToggle!.click();
+  await waitFor(
+    () =>
+      workspace.dataset.exportCollapsed === "false" &&
+      getComputedStyle(reviewSlot).display !== "none",
+  );
+  const restoredWorkspaceRect = workspace.getBoundingClientRect();
+  check(
+    "reopening Figma export restores the prior expanded review state",
+    document.querySelector(".sbfx-exporter")?.getAttribute("data-collapsed") === "false" &&
+      exportReviewPanel()?.getAttribute("data-collapsed") === "false" &&
+      localStorage.getItem("sbfx:review-collapsed") === reviewPreferenceBeforeParentCollapse &&
+      (expectedOrientation === "side"
+        ? Math.abs(restoredWorkspaceRect.width - 320) <= 0.5
+        : Math.abs(restoredWorkspaceRect.width - (window.innerWidth - 32)) <= 0.5) &&
+      Boolean(
+        collapsedTitleLabel &&
+          getComputedStyle(collapsedTitleLabel).display !== "none" &&
+          collapsedSubtitle &&
+          getComputedStyle(collapsedSubtitle).display !== "none" &&
+          collapsedToggleIcon &&
+          getComputedStyle(collapsedToggleIcon).display !== "none",
+      ),
+  );
+  document.querySelector<HTMLButtonElement>('[aria-label="Collapse export review panel"]')!.click();
+  await waitFor(() => exportReviewPanel()?.getAttribute("data-collapsed") === "true");
+  document.querySelector<HTMLButtonElement>('[aria-label="Collapse Figma export panel"]')!.click();
+  await waitFor(() => workspace.dataset.exportCollapsed === "true");
+  document.querySelector<HTMLButtonElement>('[aria-label="Expand Figma export panel"]')?.click();
+  await waitFor(
+    () =>
+      workspace.dataset.exportCollapsed === "false" &&
+      getComputedStyle(reviewSlot).display !== "none",
+  );
+  check(
+    "parent disclosure preserves a collapsed Export review preference",
+    exportReviewPanel()?.getAttribute("data-collapsed") === "true" &&
+      localStorage.getItem("sbfx:review-collapsed") === "1" &&
+      localStorage.getItem("sbfx:exporter-collapsed") === "0" &&
+      exportReviewPanel()?.querySelector(".sbfx-review__toggle path")?.getAttribute("d") === canonicalChevronDownPath &&
+      document.querySelector(".sbfx-exporter__toggle path")?.getAttribute("d") === canonicalChevronUpPath,
+  );
+
+  syncFigmaExportOverlay(
+    {
+      globals: { figmaExport: "on" },
+      id: "demo--story-two",
+      name: "Story two",
+      title: "Demo",
+      viewMode: "story",
+    },
+    { storyTitlePrefix: false },
+  );
+  mount.render(
+    h(FigmaExportReview, {
+      apiPath: "/status",
+      componentTitle: "Button",
+      enabled: true,
+      showNotes: false,
+      storyId: "demo--story-two",
+      storyName: "Story two",
+      storyTitle: "Demo",
+      storyUrl: location.href,
+      viewMode: "story",
+      visualComments: { apiPath: "/__comments", captureSelector: "#storybook-root" },
+    }),
+  );
+  await waitFor(() => exportReviewPanel()?.getAttribute("data-save-state") !== "loading");
+  check(
+    "story change preserves each panel preference without duplicating workspace",
+    exportReviewPanel()?.getAttribute("data-collapsed") === "true" &&
+      document.querySelector(".sbfx-exporter")?.getAttribute("data-collapsed") === "false" &&
+      workspace.dataset.exportCollapsed === "false" &&
+      document.querySelectorAll("[data-sbfx-workspace]").length === 1,
+  );
+  const rerenderedSlots = Array.from(
+    document.querySelectorAll<HTMLElement>(
+      "[data-sbfx-workspace] > [data-sbfx-workspace-slot]",
+    ),
+  );
+  check(
+    "story change preserves export-before-review slot order",
+    rerenderedSlots.length === 2 &&
+      rerenderedSlots[0]?.dataset.sbfxWorkspaceSlot === "export" &&
+      rerenderedSlots[1]?.dataset.sbfxWorkspaceSlot === "review",
+  );
+
+  statusAvailable = false;
+  mount.render(
+    h(FigmaExportReview, {
+      apiPath: "/status",
+      componentTitle: "Button",
+      enabled: true,
+      showNotes: false,
+      storyId: "demo--status-unavailable",
+      storyName: "Status unavailable",
+      storyTitle: "Demo",
+      storyUrl: location.href,
+      viewMode: "story",
+      visualComments: { apiPath: "/__comments", captureSelector: "#storybook-root" },
+    }),
+  );
+  await waitFor(() => exportReviewPanel()?.getAttribute("data-save-state") === "error");
+  check(
+    "status 404 names its endpoint without disabling comments",
+    exportReviewPanel()?.textContent?.includes("Review status GET /status returned HTTP 404") &&
+      commentsPanel.querySelector(".sbfx-review__visual-comments")?.getAttribute("data-comments-capability") === "available" &&
+      !button("Add comment")?.disabled,
+  );
+
+  statusAvailable = true;
+  commentsAvailable = false;
+  mount.render(
+    h(FigmaExportReview, {
+      apiPath: "/status",
+      componentTitle: "Button",
+      enabled: true,
+      showNotes: false,
+      storyId: "demo--comments-unavailable",
+      storyName: "Comments unavailable",
+      storyTitle: "Demo",
+      storyUrl: location.href,
+      viewMode: "story",
+      visualComments: { apiPath: "/__comments", captureSelector: "#storybook-root" },
+    }),
+  );
+  await waitFor(() => commentsPanel.querySelector(".sbfx-review__visual-comments")?.getAttribute("data-comments-capability") === "error");
+  check(
+    "comments 404 names its endpoint and disables only comments mutations",
+    exportReviewPanel()?.getAttribute("data-save-state") !== "error" &&
+      commentsPanel.textContent?.includes("Visual comments GET /__comments returned HTTP 404") &&
+      Boolean(button("Add comment")?.disabled) &&
+      commentsPanel.querySelectorAll(".sbfx-review__report-link").length === 1 &&
+      !commentsPanel.querySelector(".sbfx-review__history-item"),
+  );
+
+  commentsAvailable = true;
+  await waitFor(
+    () => commentsPanel.querySelector(".sbfx-review__visual-comments")?.getAttribute("data-comments-capability") === "available" &&
+      !button("Add comment")?.disabled,
+    8_000,
+  );
+  check(
+    "successful comments poll restores comments controls",
+    !commentsPanel.textContent?.includes("Visual comments GET /__comments returned HTTP 404"),
+  );
+  mount.render(
+    h(FigmaExportReview, {
+      apiPath: "/status",
+      componentTitle: "Button",
+      enabled: true,
+      labels: { addVisualComment: "Capture note" },
+      showNotes: false,
+      storyId: "demo--custom-comment-label",
+      storyName: "Custom comment label",
+      storyTitle: "Demo",
+      storyUrl: location.href,
+      viewMode: "story",
+      visualComments: { apiPath: "/__comments", captureSelector: "#storybook-root" },
+    }),
+  );
+  await waitFor(() => button("Capture note"));
+  button("Capture note")!.click();
+  await waitFor(() => button("Cancel capture"));
+  check(
+    "custom addVisualComment label preserves point capture",
+    Boolean(button("Cancel capture")) && !button("Add comment"),
+  );
+  button("Cancel capture")!.click();
+  document.querySelector<HTMLButtonElement>('[aria-label="Expand Figma export panel"]')?.click();
+  document.querySelector<HTMLButtonElement>('[aria-label="Expand export review panel"]')?.click();
   window.fetch = originalFetch;
   mount.unmount();
 }
 
 type VisualCommentOverview = {
-  activeSession: { id: string; title: string; startedAt: string; closedAt: string | null } | null;
+  activeSession: { id: string; title: string; startedAt: string; closedAt: string | null; captureCount: number; commentCount: number } | null;
 };
 
 run()
@@ -295,7 +950,10 @@ run()
     resultElement.textContent = btoa(JSON.stringify({ results }));
   })
   .catch((error: unknown) => {
-    const panelText = document.querySelector(".sbfx-review")?.outerHTML ?? "no review panel";
+    const panelText = [
+      document.querySelector('[aria-label="Figma export review"]')?.outerHTML,
+      document.querySelector(".sbfx-comments-panel")?.outerHTML,
+    ].filter(Boolean).join("\n") || "no review panels";
     resultElement.textContent = btoa(
       JSON.stringify({ error: `${error instanceof Error ? `${error.message}\n${error.stack ?? ""}` : String(error)}\nPanel: ${panelText}`, results }),
     );

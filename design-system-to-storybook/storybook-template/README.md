@@ -28,18 +28,21 @@ The command updates `.storybook/project.config.ts`, `package.json`, and starter 
 
 ## Project Config
 
-`.storybook/project.config.ts` is the template boundary. Storybook, Figma export review, token checks, catalog checks, and prototype defaults read project-specific values from this file:
+`.storybook/project.config.ts` is the core template boundary. Storybook, token checks, catalog checks, and prototype defaults read project-specific values from this file:
 
 - `project.tokenPrefix`
 - `project.componentClassPrefixes`
 - `storybook.stories`
 - `storybook.storySortOrder`
-- `figmaExport.review`
-- `figmaExport.source`
 - `prototypeInspector`
 - `catalog.componentStoriesRoot`
 
-`figmaExport.review.visualComments` configures the same-origin meeting API,
+`.storybook/figma-export.config.ts` is the single source for Figma export,
+review-status, and visual-comment settings. Both `.storybook/main.ts` and
+`.storybook/preview.ts` import `figmaExportProjectConfig` from that file so the
+server and browser cannot silently use different endpoints.
+
+`figmaExportProjectConfig.review.visualComments` configures the same-origin meeting API,
 author storage key, and capture selector. The default `#storybook-root` captures
 the story; choose `body` for prototypes that render reviewable portals outside
 that root. Visual meetings are a trusted-LAN/no-auth workflow and persist

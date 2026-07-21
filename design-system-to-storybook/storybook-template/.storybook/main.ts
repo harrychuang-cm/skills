@@ -2,13 +2,14 @@ import { resolve } from "node:path";
 import { createFigmaReviewStatusPlugin } from "@harrychuang/storybook-addon-figma-export/review-server";
 import type { StorybookConfig } from "@storybook/react-vite";
 
+import { figmaExportProjectConfig } from "./figma-export.config.ts";
 import { storybookTemplateProjectConfig } from "./project.config.ts";
 
 const reviewStatusApiPath =
-  storybookTemplateProjectConfig.figmaExport.review.apiPath;
+  figmaExportProjectConfig.review.apiPath;
 const reviewStatusFilePath = resolve(
   process.cwd(),
-  storybookTemplateProjectConfig.figmaExport.review.statusFilePath,
+  figmaExportProjectConfig.review.statusFilePath,
 );
 const prototypeInspectorAddonPreset = resolve(
   process.cwd(),
@@ -29,15 +30,15 @@ const config: StorybookConfig = {
   staticDirs: storybookTemplateProjectConfig.storybook.staticDirs,
   async viteFinal(config) {
     const plugins = [...(config.plugins ?? [])];
-    if (storybookTemplateProjectConfig.figmaExport.review.enabled) {
+    if (figmaExportProjectConfig.review.enabled) {
       plugins.push(
         createFigmaReviewStatusPlugin({
           apiPath: reviewStatusApiPath,
           filePath: reviewStatusFilePath,
-          name: storybookTemplateProjectConfig.figmaExport.review.pluginName,
-          commentsEnabled: storybookTemplateProjectConfig.figmaExport.review.commentsEnabled,
-          commentsApiPath: storybookTemplateProjectConfig.figmaExport.review.commentsApiPath,
-          commentsDir: storybookTemplateProjectConfig.figmaExport.review.commentsDir,
+          name: figmaExportProjectConfig.review.pluginName,
+          commentsEnabled: figmaExportProjectConfig.review.commentsEnabled,
+          commentsApiPath: figmaExportProjectConfig.review.commentsApiPath,
+          commentsDir: figmaExportProjectConfig.review.commentsDir,
         }),
       );
     }

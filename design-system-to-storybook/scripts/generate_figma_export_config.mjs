@@ -56,6 +56,18 @@ const nodeOverrides = {
   ...existingConfig.source.nodeOverrides,
 };
 const absoluteFidelityComponents = inferAbsoluteFidelityComponents(planRows, inventoryRows);
+const commentsApiPath = resolveMirroredValue({
+  label: "comments API path",
+  preview: existingConfig.review.visualComments?.apiPath,
+  server: existingConfig.review.commentsApiPath,
+  fallback: "/__figma_export_review_comments",
+});
+const commentsEnabled = resolveMirroredValue({
+  label: "comments enabled flag",
+  preview: existingConfig.review.visualComments?.enabled,
+  server: existingConfig.review.commentsEnabled,
+  fallback: true,
+});
 
 const config = {
   addon: {
@@ -64,6 +76,7 @@ const config = {
       ...existingConfig.addon.absoluteFidelityComponents,
     ]),
     componentClassPrefixes,
+    embeddedSvgByDataGraphic: existingConfig.addon.embeddedSvgByDataGraphic,
     // Prefer an existing project value, but always collapse deep paths like
     // "Components/Examples/" down to the top-level namespace "Components/".
     // Without this, regenerating a config that was produced by the old detector
@@ -76,14 +89,16 @@ const config = {
   },
   review: {
     apiPath: existingConfig.review.apiPath ?? "/__figma_export_review_status",
-    commentsApiPath: existingConfig.review.commentsApiPath ?? "/__figma_export_review_comments",
+    commentsApiPath,
     commentsDir: existingConfig.review.commentsDir ?? "design-system/figma-export-review",
-    commentsEnabled: existingConfig.review.commentsEnabled ?? true,
-    visualComments: existingConfig.review.visualComments ?? {
-      enabled: true,
-      apiPath: "/__figma_export_review_comments",
-      captureSelector: "#storybook-root",
-      authorStorageKey: "sbfx:review-author",
+    commentsEnabled,
+    visualComments: {
+      enabled: commentsEnabled,
+      apiPath: commentsApiPath,
+      captureSelector:
+        existingConfig.review.visualComments?.captureSelector ?? "#storybook-root",
+      authorStorageKey:
+        existingConfig.review.visualComments?.authorStorageKey ?? "sbfx:review-author",
     },
     enabled: existingConfig.review.enabled ?? true,
     pluginName: existingConfig.review.pluginName ?? "figma-export-review-status-api",
@@ -95,6 +110,15 @@ const config = {
     nodeOverrides,
   },
 };
+
+function resolveMirroredValue({ label, preview, server, fallback }) {
+  if (preview !== undefined && server !== undefined && preview !== server) {
+    throw new Error(
+      `Figma export ${label} mismatch: preview resolves ${JSON.stringify(preview)} while server resolves ${JSON.stringify(server)}. Update .storybook/figma-export.config.ts so both values match.`,
+    );
+  }
+  return server ?? preview ?? fallback;
+}
 
 if (jsonOnly) {
   process.stdout.write(`${JSON.stringify({ config, configPath }, null, 2)}\n`);
@@ -350,6 +374,7 @@ function readExistingProjectConfig(file) {
     addon: {
       absoluteFidelityComponents: [],
       componentClassPrefixes: [],
+      embeddedSvgByDataGraphic: {},
       storyTitlePrefix: undefined,
       tokenPrefix: undefined,
     },
@@ -377,6 +402,7 @@ function readExistingProjectConfig(file) {
     addon: {
       absoluteFidelityComponents: extractStringArray(text, "absoluteFidelityComponents"),
       componentClassPrefixes: extractStringArray(text, "componentClassPrefixes"),
+      embeddedSvgByDataGraphic: extractObjectStringMap(text, "embeddedSvgByDataGraphic"),
       storyTitlePrefix: extractStoryTitlePrefix(text),
       tokenPrefix: extractStringProperty(text, "tokenPrefix"),
     },
@@ -468,8 +494,8 @@ function extractObjectStringMap(text, propertyName) {
   if (!match) return {};
 
   return Object.fromEntries(
-    [...match[1].matchAll(/["']([^"']+)["']\s*:\s*["']([^"']+)["']/g)]
-      .map((item) => [item[1], item[2]]),
+    [...match[1].matchAll(/(?:["']([^"']+)["']|([A-Za-z_$][\w$-]*))\s*:\s*["']([^"']*)["']/g)]
+      .map((item) => [item[1] ?? item[2], item[3]]),
   );
 }
 
@@ -482,6 +508,7 @@ function renderConfig(value) {
   addon: {
     absoluteFidelityComponents: string[];
     componentClassPrefixes: string[];
+    embeddedSvgByDataGraphic: Record<string, string>;
     storyTitlePrefix: string[] | false;
     tokenPrefix?: string;
   };

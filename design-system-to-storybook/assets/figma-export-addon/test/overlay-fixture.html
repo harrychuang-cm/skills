@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <title>figma-export overlay fixture</title>
+<link rel="stylesheet" href="./.export-overlay.bundle.css" />
 <style>
   :root {
     --fx-ref-color-blue: #3366ff;
@@ -29,8 +30,8 @@
   }
 
   const results = [];
-  function check(name, condition) {
-    results.push({ name, passed: Boolean(condition) });
+  function check(name, condition, details) {
+    results.push({ name, passed: Boolean(condition), ...(details ? { details } : {}) });
   }
 
   function overlayElement() {
@@ -94,12 +95,62 @@
       const returned = decorator(() => sentinel, baseContext);
       check("decorator returns story result unchanged", returned === sentinel);
 
-      // Overlay mounts on document.body with the action buttons.
+      // Overlay mounts in the document-level workspace export slot.
       const aside = overlayElement();
-      check("overlay aside mounted on body", Boolean(aside && aside.parentElement === document.body));
+      check(
+        "overlay aside mounted in workspace export slot",
+        Boolean(
+          aside?.parentElement?.matches('[data-sbfx-workspace-slot="export"]') &&
+          aside.closest('[data-sbfx-workspace][data-sbfx-capture-ignore]'),
+        ),
+      );
       check("overlay starts idle", aside?.dataset.status === "idle");
       const buttons = aside ? aside.querySelectorAll(".sbfx-exporter__actions button") : [];
       check("overlay has four action buttons", buttons.length === 4);
+      const workspace = aside?.closest(".sbfx-workspace");
+      const workspaceRect = workspace?.getBoundingClientRect();
+      const workspaceStyle = workspace ? getComputedStyle(workspace) : null;
+      const isNarrowViewport = window.innerWidth <= 640;
+      check(
+        "workspace width matches its responsive dock mode",
+        isNarrowViewport
+          ? workspaceRect?.width === window.innerWidth - 32
+          : workspaceRect?.width === 320,
+      );
+      check(
+        "wide workspace reserves its width plus the 24 pixel offset",
+        isNarrowViewport ||
+          workspaceStyle?.getPropertyValue("--sbfx-workspace-reserved-inline-size").trim() ===
+            "min(344px, 100vw)",
+      );
+      const actionGroup = aside?.querySelector(".sbfx-exporter__actions");
+      const actionStyle = actionGroup ? getComputedStyle(actionGroup) : null;
+      const buttonRects = Array.from(buttons, (button) => button.getBoundingClientRect());
+      check(
+        "export actions use two explicit grid columns",
+        actionStyle?.display === "grid" && actionStyle.gridTemplateColumns.split(" ").length === 2,
+      );
+      check(
+        "export actions keep their existing order",
+        Array.from(buttons, (button) => button.textContent.trim()).join("|") ===
+          "Copy JSON|Download JSON|Console script|",
+      );
+      check(
+        "JSON actions occupy separate full-width rows",
+        buttonRects.length === 4 &&
+          Math.abs(buttonRects[0].left - buttonRects[1].left) <= 0.5 &&
+          Math.abs(buttonRects[0].width - buttonRects[1].width) <= 0.5 &&
+          Math.abs(buttonRects[0].width - actionGroup.getBoundingClientRect().width) <= 0.5 &&
+          buttonRects[1].top >= buttonRects[0].bottom,
+      );
+      check(
+        "Console script and Copy design to Figma share an equal-width bottom row",
+        buttonRects.length === 4 &&
+          buttonRects[2].top >= buttonRects[1].bottom &&
+          Math.abs(buttonRects[2].top - buttonRects[3].top) <= 0.5 &&
+          Math.abs(buttonRects[2].width - buttonRects[3].width) <= 0.5 &&
+          buttonRects[2].right <= buttonRects[3].left,
+      );
       check(
         "overlay reports addon version",
         typeof aside?.dataset.version === "string" && aside.dataset.version.length > 0,
@@ -107,6 +158,91 @@
       check(
         "version badge rendered in title",
         Boolean(aside?.querySelector(".sbfx-exporter__version")),
+      );
+
+      const canonicalFigmaPath =
+        "M9.2 0H4.803A2.603 2.603 0 003.41 4.802a2.603 2.603 0 000 4.396 2.602 2.602 0 103.998 2.199v-2.51a2.603 2.603 0 103.187-4.085A2.604 2.604 0 009.2 0zM7.407 7a1.793 1.793 0 103.586 0 1.793 1.793 0 00-3.586 0zm-.81 2.603H4.803a1.793 1.793 0 101.794 1.794V9.603zM4.803 4.397h1.794V.81H4.803a1.793 1.793 0 000 3.587zm0 .81a1.793 1.793 0 000 3.586h1.794V5.207H4.803zm4.397-.81H7.407V.81H9.2a1.794 1.794 0 010 3.587z";
+      const canonicalChevronUpPath =
+        "M7.354 3.896l5.5 5.5a.5.5 0 01-.708.708L7 4.957l-5.146 5.147a.5.5 0 01-.708-.708l5.5-5.5a.5.5 0 01.708 0z";
+      const canonicalChevronDownPath =
+        "M1.146 4.604l5.5 5.5a.5.5 0 00.708 0l5.5-5.5a.5.5 0 00-.708-.708L7 9.043 1.854 3.896a.5.5 0 10-.708.708z";
+      const figmaIconSvgs = aside
+        ? [
+            aside.querySelector(".sbfx-exporter__mark svg"),
+            aside.querySelector('button[aria-label="Copy design to Figma"] svg'),
+          ]
+        : [];
+      check(
+        "header and design action both render Figma icons",
+        figmaIconSvgs.length === 2 && figmaIconSvgs.every(Boolean),
+      );
+      check(
+        "both Figma icons use canonical filled geometry",
+        figmaIconSvgs.every(
+          (svg) =>
+            svg?.getAttribute("viewBox") === "0 0 14 14" &&
+            svg?.getAttribute("fill") === "currentColor" &&
+            svg?.querySelectorAll("path").length === 1 &&
+            svg?.querySelector("path")?.getAttribute("d") === canonicalFigmaPath,
+        ),
+      );
+      check(
+        "former approximate Figma geometry is absent",
+        figmaIconSvgs.every(
+          (svg) => !svg?.hasAttribute("stroke") && !svg?.querySelector("circle"),
+        ),
+      );
+      const exportMark = aside?.querySelector(".sbfx-exporter__mark");
+      const exportMarkSvg = exportMark?.querySelector("svg");
+      const exportMarkRect = exportMark?.getBoundingClientRect();
+      const exportMarkSvgRect = exportMarkSvg?.getBoundingClientRect();
+      const horizontalCenterDelta = exportMarkRect && exportMarkSvgRect
+        ? Math.abs(
+            exportMarkRect.left + exportMarkRect.width / 2 -
+            (exportMarkSvgRect.left + exportMarkSvgRect.width / 2),
+          )
+        : Number.POSITIVE_INFINITY;
+      const verticalCenterDelta = exportMarkRect && exportMarkSvgRect
+        ? Math.abs(
+            exportMarkRect.top + exportMarkRect.height / 2 -
+            (exportMarkSvgRect.top + exportMarkSvgRect.height / 2),
+          )
+        : Number.POSITIVE_INFINITY;
+      check(
+        "export header Figma icon is horizontally centered",
+        horizontalCenterDelta <= 0.5,
+      );
+      check(
+        "export header Figma icon is vertically centered",
+        verticalCenterDelta <= 0.5,
+      );
+      check(
+        "design action keeps its accessible name",
+        aside?.querySelector('button[aria-label="Copy design to Figma"]')?.getAttribute("title") ===
+          "Copy design to Figma",
+      );
+      check(
+        "non-Figma action icons keep distinct geometry",
+        Boolean(
+          Array.from(buttons)
+            .find((button) => button.textContent.includes("Copy JSON"))
+            ?.querySelector("rect") &&
+          Array.from(buttons)
+            .find((button) => button.textContent.includes("Download JSON"))
+            ?.querySelector('path[d="M7 2v7m0 0L4.5 6.5M7 9l2.5-2.5M2.5 11.5h9"]') &&
+          Array.from(buttons)
+            .find((button) => button.textContent.includes("Console script"))
+            ?.querySelector('path[d="M5 5h4v4H5zM5 5H3.5A1.5 1.5 0 1 1 5 3.5V5zm4 0h1.5A1.5 1.5 0 1 0 9 3.5V5zM5 9H3.5A1.5 1.5 0 1 0 5 10.5V9zm4 0h1.5A1.5 1.5 0 1 1 9 10.5V9z"]'),
+        ),
+      );
+      const initialToggleSvg = aside?.querySelector(".sbfx-exporter__toggle svg");
+      check(
+        "expanded export uses canonical Storybook up chevron",
+        initialToggleSvg?.getAttribute("viewBox") === "0 0 14 14" &&
+          initialToggleSvg?.getAttribute("fill") === "none" &&
+          !initialToggleSvg?.hasAttribute("stroke") &&
+          initialToggleSvg?.querySelector("path")?.getAttribute("fill") === "currentColor" &&
+          initialToggleSvg?.querySelector("path")?.getAttribute("d") === canonicalChevronUpPath,
       );
 
       // Globals off unmounts the overlay and shows no notice.
@@ -226,14 +362,66 @@
       check("collapse toggle present in header", Boolean(toggleButton));
       check("overlay starts expanded", overlayElement()?.dataset.collapsed === "false");
       check(
+        "workspace starts with expanded export disclosure state",
+        overlayElement()?.closest("[data-sbfx-workspace]")?.getAttribute("data-export-collapsed") === "false",
+      );
+      check(
         "toggle reports expanded state",
         toggleButton?.getAttribute("aria-expanded") === "true",
       );
       toggleButton?.click();
       check("overlay collapses on toggle", overlayElement()?.dataset.collapsed === "true");
+      const collapsedWorkspaceRect = workspace?.getBoundingClientRect();
+      const collapsedExporterRect = overlayElement()?.getBoundingClientRect();
+      const collapsedTitleLabel = overlayElement()?.querySelector(".sbfx-exporter__title-label");
+      const collapsedSubtitle = overlayElement()?.querySelector(".sbfx-exporter__subtitle");
+      const collapsedVersion = overlayElement()?.querySelector(".sbfx-exporter__version");
+      const collapsedToggleIcon = toggleButton?.querySelector(".sbfx-exporter__toggle-icon");
+      check(
+        "collapsed export disclosure hugs the Figma mark and version",
+        Boolean(
+          collapsedWorkspaceRect &&
+            collapsedExporterRect &&
+            collapsedWorkspaceRect.width < 320 &&
+            Math.abs(collapsedWorkspaceRect.width - collapsedExporterRect.width) <= 2.5 &&
+            collapsedTitleLabel &&
+            getComputedStyle(collapsedTitleLabel).display === "none" &&
+            collapsedSubtitle &&
+            getComputedStyle(collapsedSubtitle).display === "none" &&
+            collapsedVersion &&
+            getComputedStyle(collapsedVersion).display !== "none" &&
+            collapsedVersion.getBoundingClientRect().width > 0 &&
+            collapsedToggleIcon &&
+            getComputedStyle(collapsedToggleIcon).display === "none",
+        ),
+        JSON.stringify({
+          collapsedExporterRect,
+          collapsedWorkspaceRect,
+          titleLabelDisplay: collapsedTitleLabel
+            ? getComputedStyle(collapsedTitleLabel).display
+            : null,
+          subtitleDisplay: collapsedSubtitle
+            ? getComputedStyle(collapsedSubtitle).display
+            : null,
+          versionDisplay: collapsedVersion
+            ? getComputedStyle(collapsedVersion).display
+            : null,
+          versionWidth: collapsedVersion?.getBoundingClientRect().width ?? null,
+          toggleIconDisplay: collapsedToggleIcon
+            ? getComputedStyle(collapsedToggleIcon).display
+            : null,
+        }),
+      );
+      check(
+        "collapsed export state projects to the workspace root",
+        overlayElement()?.closest("[data-sbfx-workspace]")?.getAttribute("data-export-collapsed") === "true",
+      );
       check(
         "toggle reports collapsed state",
-        toggleButton?.getAttribute("aria-expanded") === "false",
+        toggleButton?.getAttribute("aria-expanded") === "false" &&
+          toggleButton?.getAttribute("aria-label") === "Expand Figma export panel" &&
+          toggleButton?.getAttribute("title") === "Expand Figma export panel" &&
+          toggleButton?.querySelector("path")?.getAttribute("d") === canonicalChevronDownPath,
       );
       check(
         "collapse preference persisted",
@@ -246,6 +434,34 @@
       );
       toggleButton?.click();
       check("overlay expands on second toggle", overlayElement()?.dataset.collapsed === "false");
+      const restoredWorkspaceRect = workspace?.getBoundingClientRect();
+      check(
+        "expanded export disclosure restores the complete responsive workspace",
+        Boolean(
+          restoredWorkspaceRect &&
+            (isNarrowViewport
+              ? restoredWorkspaceRect.width === window.innerWidth - 32
+              : restoredWorkspaceRect.width === 320) &&
+            collapsedTitleLabel &&
+            getComputedStyle(collapsedTitleLabel).display !== "none" &&
+            collapsedSubtitle &&
+            getComputedStyle(collapsedSubtitle).display !== "none" &&
+            collapsedToggleIcon &&
+            getComputedStyle(collapsedToggleIcon).display !== "none",
+        ),
+        JSON.stringify({ restoredWorkspaceRect }),
+      );
+      check(
+        "expanded export state projects to the workspace root",
+        overlayElement()?.closest("[data-sbfx-workspace]")?.getAttribute("data-export-collapsed") === "false",
+      );
+      check(
+        "expanded toggle restores canonical up chevron and collapse semantics",
+        toggleButton?.getAttribute("aria-expanded") === "true" &&
+          toggleButton?.getAttribute("aria-label") === "Collapse Figma export panel" &&
+          toggleButton?.getAttribute("title") === "Collapse Figma export panel" &&
+          toggleButton?.querySelector("path")?.getAttribute("d") === canonicalChevronUpPath,
+      );
       check(
         "expand preference persisted",
         window.localStorage.getItem("sbfx:exporter-collapsed") === "0",

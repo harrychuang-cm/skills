@@ -1,13 +1,14 @@
 # Figma Export Tooling
 
-This project uses the `storybook-addons/packages/figma-export` addon as the
-generic export/import engine, with ChipK-specific settings kept in
+This project uses the vendored Figma export addon as the generic export/import
+engine, with project-specific settings kept in
 `.storybook/figma-export.config.ts`.
 
 ## Boundaries
 
 - Generic tooling lives in the Storybook addon and its Figma importer payload.
 - Project settings live in `.storybook/figma-export.config.ts`.
+- Storybook preview and Vite middleware both import that same config object.
 - Component markup remains responsible for stable export hints such as
   `data-component`, `data-variant`, and `data-figma-*`.
 - Storybook review state is project-local and stored in
@@ -37,9 +38,18 @@ Figma importer understand the same payload schema.
 - component class prefixes, such as `cm-`
 - component names that use absolute-fidelity export
 - Storybook title prefixes
-- ChipK Figma source file fallback URL
+- Figma source file fallback URL
 - documented source-node overrides
 - review API path, plugin name, and status-file path
+- visual-comments API path, persistence directory, capture selector, and author storage key
+
+When review and export are enabled, both sections mount inside one responsive
+bottom-right workspace dock. The dock reserves right-side space on wide viewports
+and bottom space on narrow viewports. Visual comments use a separate top-right
+Edit icon launcher that expands the meeting, capture, composer, and Reports
+controls without overlapping the workspace. Both surfaces remain excluded from
+screenshots. Meeting reports separate the current meeting from closed history and
+show capture/comment counts.
 
 If another project adopts the tooling, create its own config instead of changing
 the addon or hard-coding values in Storybook preview files.

@@ -19,6 +19,7 @@ type FigmaReviewLabels = Partial<{
     addVisualComment: string;
     authorName: string;
     cancelCapture: string;
+    closeVisualComments: string;
     closeNotes: string;
     commentBody: string;
     endMeeting: string;
@@ -32,6 +33,7 @@ type FigmaReviewLabels = Partial<{
     notesSaved: string;
     openNotes: string;
     openSource: string;
+    openVisualComments: string;
     review: string;
     startMeeting: string;
     submitComment: string;

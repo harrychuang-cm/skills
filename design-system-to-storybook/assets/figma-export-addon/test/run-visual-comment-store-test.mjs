@@ -59,6 +59,47 @@ try {
   assert.equal((await restarted.getMeeting(meetingId)).comments.length, 2);
   const overview = await restarted.getOverview("components-button--primary");
   assert.equal(overview.comments.length, 2);
+  assert.equal(overview.comments[0].resolvedAt ?? null, null, "legacy comments default to Open");
+  assert.equal(overview.activeSession.captureCount, 2);
+  assert.equal(overview.activeSession.commentCount, 2);
+  assert.deepEqual(overview.recentSessions, [], "active meeting is not duplicated in closed history");
+
+  const immutableCommentFields = {
+    authorName: first.comment.authorName,
+    body: first.comment.body,
+    captureId: first.comment.captureId,
+    createdAt: first.comment.createdAt,
+    pin: first.comment.pin,
+  };
+  const completed = await restarted.resolveComment(meetingId, first.comment.id, true);
+  assert.ok(completed.comment.resolvedAt, "Complete stores a server timestamp");
+  assert.deepEqual(
+    {
+      authorName: completed.comment.authorName,
+      body: completed.comment.body,
+      captureId: completed.comment.captureId,
+      createdAt: completed.comment.createdAt,
+      pin: completed.comment.pin,
+    },
+    immutableCommentFields,
+    "resolving does not rewrite immutable comment content",
+  );
+  const repeatedComplete = await restarted.resolveComment(meetingId, first.comment.id, true);
+  assert.equal(
+    repeatedComplete.comment.resolvedAt,
+    completed.comment.resolvedAt,
+    "repeated Complete preserves the original timestamp",
+  );
+  const reopened = await restarted.resolveComment(meetingId, first.comment.id, false);
+  assert.equal(reopened.comment.resolvedAt ?? null, null, "Reopen clears resolved state");
+  await assert.rejects(
+    () => restarted.resolveComment(meetingId, "missing-comment", true),
+    (error) => error.code === "NOT_FOUND" && error.statusCode === 404,
+  );
+  await assert.rejects(
+    () => restarted.deleteComment(meetingId, "missing-comment"),
+    (error) => error.code === "NOT_FOUND" && error.statusCode === 404,
+  );
 
   const canonical = await readFile(
     join(root, "design-system/figma-export-review/sessions", meetingId, "meeting.json"),
@@ -66,6 +107,16 @@ try {
   );
   assert.doesNotMatch(canonical, /data:image/);
   assert.match(canonical, /assets\/[a-f0-9]{64}\.png/);
+  const generatedReport = await readFile(
+    join(root, "design-system/figma-export-review/sessions", meetingId, "index.html"),
+    "utf8",
+  );
+  assert.match(
+    generatedReport,
+    new RegExp(`"projectRelativePath":"design-system/figma-export-review/sessions/${meetingId}/assets/[a-f0-9]{64}\\.png"`),
+    "default report receives a repository-root-relative screenshot path",
+  );
+  assert.doesNotMatch(generatedReport, new RegExp(root.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   assert.equal(await readFile(legacyStatusPath, "utf8"), '{"version":1,"stories":{"demo":{"notes":"keep me"}}}\n');
 
   const countBeforeInvalid = (await restarted.getMeeting(meetingId)).comments.length;
@@ -88,6 +139,34 @@ try {
     () => restarted.createComment(meetingId, request("request-3")),
     (error) => error.code === "CLOSED" && error.statusCode === 409,
   );
+  const closedComplete = await restarted.resolveComment(meetingId, first.comment.id, true);
+  assert.ok(closedComplete.comment.resolvedAt, "closed meeting comments remain maintainable");
+  assert.ok(closedComplete.meeting.session.closedAt, "resolving does not reopen the meeting");
+
+  const secondCaptureId = second.comment.captureId;
+  const secondAssetPath = (await restarted.getMeeting(meetingId)).captures[secondCaptureId].image.path;
+  const deleted = await restarted.deleteComment(meetingId, second.comment.id);
+  assert.equal(deleted.deletedCommentId, second.comment.id);
+  assert.equal(deleted.deletedCaptureId, secondCaptureId);
+  assert.equal(deleted.deletedAssetPath, null, "shared image asset is not reported as deleted");
+  const afterDelete = await restarted.getMeeting(meetingId);
+  assert.equal(afterDelete.comments.length, 1, "Delete removes only one comment");
+  assert.equal(Object.keys(afterDelete.captures).length, 1, "Delete removes its unreferenced capture record");
+  assert.equal(afterDelete.captures[secondCaptureId], undefined, "the deleted comment's capture is removed");
+  assert.ok(
+    (await readFile(join(root, "design-system/figma-export-review/sessions", meetingId, secondAssetPath))).length > 0,
+    "Delete preserves an image asset still referenced by another capture",
+  );
+  const nextMeeting = await restarted.startMeeting("Next review");
+  const historyOverview = await restarted.getOverview();
+  assert.equal(historyOverview.activeSession.id, nextMeeting.meeting.session.id);
+  assert.equal(historyOverview.activeSession.captureCount, 0);
+  assert.equal(historyOverview.activeSession.commentCount, 0);
+  assert.equal(historyOverview.recentSessions[0].id, meetingId);
+  assert.equal(historyOverview.recentSessions[0].captureCount, 1);
+  assert.equal(historyOverview.recentSessions[0].commentCount, 1);
+  assert.ok(historyOverview.recentSessions[0].closedAt);
+  assert.equal((await restarted.getMeeting(meetingId)).version, 1, "existing storage schema remains version 1");
   assert.match(
     await readFile(join(root, "design-system/figma-export-review/index.html"), "utf8"),
     /Visual review meetings/,
@@ -140,6 +219,35 @@ try {
     );
   } finally {
     await rm(staleRoot, { recursive: true, force: true });
+  }
+
+  const externalProjectRoot = await mkdtemp(join(tmpdir(), "sbfx-comments-project-"));
+  const externalCommentsRoot = await mkdtemp(join(tmpdir(), "sbfx-comments-external-"));
+  try {
+    const externalStore = createVisualCommentStore({
+      cwd: externalProjectRoot,
+      commentsDir: externalCommentsRoot,
+    });
+    const externalMeeting = (await externalStore.startMeeting("External evidence")).meeting.session.id;
+    await externalStore.createComment(externalMeeting, request("external-1"));
+    const externalReport = await readFile(
+      join(externalCommentsRoot, "sessions", externalMeeting, "index.html"),
+      "utf8",
+    );
+    assert.match(
+      externalReport,
+      /"projectRelativePath":null/,
+      "reports outside the project mark the project-relative path unavailable",
+    );
+    assert.doesNotMatch(
+      externalReport,
+      new RegExp(externalCommentsRoot.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
+      "external absolute host paths are not embedded in reports",
+    );
+    assert.equal((await externalStore.getMeeting(externalMeeting)).version, 1);
+  } finally {
+    await rm(externalProjectRoot, { recursive: true, force: true });
+    await rm(externalCommentsRoot, { recursive: true, force: true });
   }
 
   const tempFiles = (await readdir(join(root, "design-system/figma-export-review"))).filter((file) => file.endsWith(".tmp"));

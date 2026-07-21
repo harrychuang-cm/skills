@@ -2,11 +2,12 @@ import {
   ChevronDownIcon,
   ChevronUpIcon,
   EditIcon,
-  FigmaIcon,
+  EyeIcon,
   LinkIcon,
 } from "@storybook/icons";
 import type { ReactNode } from "react";
-import { Fragment, createElement as h, useEffect, useRef, useState } from "react";
+import { Fragment, createElement as h, useEffect, useId, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 import "./review.css";
 import {
@@ -23,6 +24,10 @@ import {
 import { createFigmaExportDecorator } from "./preview";
 import { getParameterUrl } from "./source";
 import { getAddonVersion } from "./version";
+import {
+  acquireFigmaWorkspaceSlot,
+  type FigmaWorkspaceSlotHandle,
+} from "./workspace";
 import {
   VISUAL_COMMENT_LIMITS,
   beginVisualCommentCapture,
@@ -56,6 +61,7 @@ export type FigmaReviewLabels = Partial<{
   addVisualComment: string;
   authorName: string;
   cancelCapture: string;
+  closeVisualComments: string;
   closeNotes: string;
   commentBody: string;
   endMeeting: string;
@@ -69,6 +75,7 @@ export type FigmaReviewLabels = Partial<{
   notesSaved: string;
   openNotes: string;
   openSource: string;
+  openVisualComments: string;
   review: string;
   startMeeting: string;
   submitComment: string;
@@ -127,9 +134,10 @@ export const defaultFigmaReviewStatusApiPath = "/__figma_export_review_status";
 
 const defaultLabels = {
   approved: "Approved",
-  addVisualComment: "Add visual comment",
+  addVisualComment: "Add comment",
   authorName: "Display name",
   cancelCapture: "Cancel capture",
+  closeVisualComments: "Close comments",
   closeNotes: "Close",
   commentBody: "Comment",
   endMeeting: "End meeting",
@@ -143,6 +151,7 @@ const defaultLabels = {
   notesSaved: "Notes saved",
   openNotes: "Open",
   openSource: "Open source",
+  openVisualComments: "Open comments",
   review: "Review",
   startMeeting: "Start meeting",
   submitComment: "Save comment",
@@ -246,6 +255,8 @@ type VisualCommentOverview = {
     title: string;
     startedAt: string;
     closedAt: string | null;
+    captureCount: number;
+    commentCount: number;
   } | null;
   activeReportUrl: string | null;
   comments: Array<{
@@ -254,11 +265,56 @@ type VisualCommentOverview = {
     body: string;
     createdAt: string;
   }>;
+  recentSessions: Array<{
+    id: string;
+    title: string;
+    startedAt: string;
+    closedAt: string | null;
+    captureCount: number;
+    commentCount: number;
+  }>;
   reportUrl: string;
 };
 
 function defaultMeetingTitle(): string {
   return `Design review ${new Date().toLocaleString()}`;
+}
+
+const visualCommentsResumeKeyPrefix = "sbfx:visual-comments-resume:";
+const visualCommentsResumeWindowMs = 15_000;
+
+function visualCommentsResumeKey(storyId: string): string {
+  return `${visualCommentsResumeKeyPrefix}${storyId}`;
+}
+
+function rememberVisualCommentsOpen(storyId: string): void {
+  try {
+    sessionStorage.setItem(
+      visualCommentsResumeKey(storyId),
+      String(Date.now() + visualCommentsResumeWindowMs),
+    );
+  } catch {
+    // Session storage can be unavailable in private/restricted contexts.
+  }
+}
+
+function clearVisualCommentsResume(storyId: string): void {
+  try {
+    sessionStorage.removeItem(visualCommentsResumeKey(storyId));
+  } catch {
+    // Session storage can be unavailable in private/restricted contexts.
+  }
+}
+
+function consumeVisualCommentsResume(storyId: string): boolean {
+  try {
+    const key = visualCommentsResumeKey(storyId);
+    const expiresAt = Number(sessionStorage.getItem(key));
+    sessionStorage.removeItem(key);
+    return Number.isFinite(expiresAt) && expiresAt >= Date.now();
+  } catch {
+    return false;
+  }
 }
 
 function VisualCommentsSection({
@@ -280,6 +336,7 @@ function VisualCommentsSection({
   storyTitle: string;
   storyUrl?: string;
 }) {
+  const detailId = useId();
   const apiPath = options?.apiPath ?? "/__figma_export_review_comments";
   const authorStorageKey = options?.authorStorageKey ?? "sbfx:review-author";
   const [overview, setOverview] = useState<VisualCommentOverview | null>(null);
@@ -297,13 +354,26 @@ function VisualCommentsSection({
   const [isCapturing, setIsCapturing] = useState(false);
   const [isBusy, setIsBusy] = useState(false);
   const [visualError, setVisualError] = useState("");
+  const [commentsCapability, setCommentsCapability] = useState<
+    "available" | "error" | "loading"
+  >("loading");
+  const [commentsCapabilityError, setCommentsCapabilityError] = useState("");
   const [reportPending, setReportPending] = useState(false);
+  const [isPanelOpen, setIsPanelOpen] = useState(() =>
+    consumeVisualCommentsResume(storyId),
+  );
   const captureControllerRef = useRef<VisualCommentCaptureController | null>(null);
 
   async function refresh() {
     const response = await fetch(`${apiPath}?storyId=${encodeURIComponent(storyId)}`);
-    if (!response.ok) throw new Error(`Visual comments HTTP ${response.status}`);
+    if (!response.ok) {
+      throw new Error(
+        `Visual comments GET ${apiPath} returned HTTP ${response.status}. Check the visual-comments server configuration.`,
+      );
+    }
     setOverview((await response.json()) as VisualCommentOverview);
+    setCommentsCapability("available");
+    setCommentsCapabilityError("");
   }
 
   useEffect(() => {
@@ -312,15 +382,21 @@ function VisualCommentsSection({
     const load = async () => {
       try {
         const response = await fetch(`${apiPath}?storyId=${encodeURIComponent(storyId)}`);
-        if (!response.ok) throw new Error(`Visual comments HTTP ${response.status}`);
+        if (!response.ok) {
+          throw new Error(
+            `Visual comments GET ${apiPath} returned HTTP ${response.status}. Check the visual-comments server configuration.`,
+          );
+        }
         const next = (await response.json()) as VisualCommentOverview;
         if (active) {
           setOverview(next);
-          setVisualError("");
+          setCommentsCapability("available");
+          setCommentsCapabilityError("");
         }
       } catch (error) {
         if (active) {
-          setVisualError(
+          setCommentsCapability("error");
+          setCommentsCapabilityError(
             error instanceof Error ? error.message : "Unable to load visual comments.",
           );
         }
@@ -341,6 +417,17 @@ function VisualCommentsSection({
     [],
   );
 
+  useEffect(() => {
+    if (isPanelOpen) {
+      document.documentElement.dataset.sbfxCommentsOpen = "true";
+    } else {
+      delete document.documentElement.dataset.sbfxCommentsOpen;
+    }
+    return () => {
+      delete document.documentElement.dataset.sbfxCommentsOpen;
+    };
+  }, [isPanelOpen]);
+
   if (!enabled || options?.enabled === false) return null;
 
   async function mutate(path: string, body?: unknown) {
@@ -356,10 +443,19 @@ function VisualCommentsSection({
         error?: string;
         reportStale?: boolean;
       };
-      if (!response.ok) throw new Error(payload.error ?? `HTTP ${response.status}`);
+      if (!response.ok) {
+        throw new Error(
+          `Visual comments POST ${apiPath}${path} returned HTTP ${response.status}${payload.error ? `: ${payload.error}` : "."}`,
+        );
+      }
       setReportPending(Boolean(payload.reportStale));
       await refresh();
       return payload;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Visual comments request failed.";
+      setCommentsCapability("error");
+      setCommentsCapabilityError(message);
+      throw error;
     } finally {
       setIsBusy(false);
     }
@@ -390,6 +486,16 @@ function VisualCommentsSection({
     captureControllerRef.current = null;
     setIsCapturing(false);
     setPendingCapture(null);
+  }
+
+  function togglePanel() {
+    if (isPanelOpen && isCapturing) cancelCapture();
+    if (isPanelOpen) clearVisualCommentsResume(storyId);
+    setIsPanelOpen(!isPanelOpen);
+  }
+
+  function preserveOpenPanelDuringMutation() {
+    if (isPanelOpen) rememberVisualCommentsOpen(storyId);
   }
 
   async function submitComment() {
@@ -433,6 +539,7 @@ function VisualCommentsSection({
       // Browser storage can be unavailable in private/restricted contexts.
     }
     try {
+      preserveOpenPanelDuringMutation();
       await mutate(
         `/sessions/${encodeURIComponent(overview.activeSession.id)}/comments`,
         request,
@@ -445,25 +552,64 @@ function VisualCommentsSection({
   }
 
   return h(
-    "section",
-    { className: "sbfx-review__visual-comments" },
+    "aside",
+    {
+      "aria-label": labels.visualComments,
+      className: "sbfx-review sbfx-comments-panel",
+      "data-expanded": isPanelOpen ? "true" : "false",
+      "data-sbfx-capture-ignore": "true",
+      "data-version": getAddonVersion(),
+    },
     h(
-      "div",
-      { className: "sbfx-review__visual-heading" },
-      h("span", { className: "sbfx-review__label" }, labels.visualComments),
-      overview?.reportUrl
-        ? h(
-            "a",
-            {
-              className: "sbfx-review__report-link",
-              href: overview.reportUrl,
-              rel: "noreferrer",
-              target: "_blank",
-            },
-            "Reports",
-          )
-        : null,
+      "header",
+      { className: "sbfx-comments-panel__header" },
+      h(
+        "div",
+        {
+          className: "sbfx-comments-panel__header-copy",
+          hidden: !isPanelOpen,
+        },
+        h(
+          "h2",
+          { className: "sbfx-review__label sbfx-comments-panel__subheading" },
+          labels.visualComments,
+        ),
+        overview?.reportUrl
+          ? h(
+              "a",
+              {
+                className:
+                  "sbfx-review__button sbfx-review__button--secondary sbfx-review__report-link sbfx-comments-panel__reports",
+                href: overview.reportUrl,
+                rel: "noreferrer",
+                target: "_blank",
+              },
+              "Reports",
+            )
+          : null,
+      ),
+      h(
+        "button",
+        {
+          "aria-controls": detailId,
+          "aria-expanded": isPanelOpen,
+          "aria-label": isPanelOpen ? labels.closeVisualComments : labels.openVisualComments,
+          className: "sbfx-review__icon-button sbfx-comments-panel__toggle",
+          onClick: togglePanel,
+          title: isPanelOpen ? labels.closeVisualComments : labels.openVisualComments,
+          type: "button",
+        },
+        h(EditIcon, { size: 14 }),
+      ),
     ),
+    h(
+      "section",
+    {
+      className: "sbfx-review__visual-comments sbfx-comments-panel__detail",
+      "data-comments-capability": commentsCapability,
+      hidden: !isPanelOpen,
+      id: detailId,
+    },
     overview?.activeSession
       ? h(
           Fragment,
@@ -476,18 +622,11 @@ function VisualCommentsSection({
               { className: "sbfx-review__meeting-title" },
               overview.activeSession.title,
             ),
-            overview.activeReportUrl
-              ? h(
-                  "a",
-                  {
-                    className: "sbfx-review__report-link",
-                    href: overview.activeReportUrl,
-                    rel: "noreferrer",
-                    target: "_blank",
-                  },
-                  "Open",
-                )
-              : null,
+          ),
+          h(
+            "p",
+            { className: "sbfx-review__meta" },
+            `${overview.activeSession.captureCount} capture${overview.activeSession.captureCount === 1 ? "" : "s"} · ${overview.activeSession.commentCount} comment${overview.activeSession.commentCount === 1 ? "" : "s"}`,
           ),
           isCapturing
             ? h(
@@ -556,7 +695,8 @@ function VisualCommentsSection({
                       "button",
                       {
                         className: "sbfx-review__button",
-                        disabled: isBusy || !commentBody.trim(),
+                        disabled:
+                          commentsCapability !== "available" || isBusy || !commentBody.trim(),
                         onClick: () => void submitComment(),
                         type: "button",
                       },
@@ -580,7 +720,7 @@ function VisualCommentsSection({
                     "button",
                     {
                       className: "sbfx-review__button",
-                      disabled: isBusy,
+                      disabled: commentsCapability !== "available" || isBusy,
                       onClick: armCapture,
                       type: "button",
                     },
@@ -590,8 +730,9 @@ function VisualCommentsSection({
                     "button",
                     {
                       className: "sbfx-review__button sbfx-review__button--secondary",
-                      disabled: isBusy,
+                      disabled: commentsCapability !== "available" || isBusy,
                       onClick: () => {
+                        preserveOpenPanelDuringMutation();
                         void mutate(
                           `/sessions/${encodeURIComponent(overview.activeSession!.id)}/close`,
                         ).catch((error: unknown) =>
@@ -627,8 +768,10 @@ function VisualCommentsSection({
             "button",
             {
               className: "sbfx-review__button",
-              disabled: isBusy || !meetingTitle.trim(),
+              disabled:
+                commentsCapability !== "available" || isBusy || !meetingTitle.trim(),
               onClick: () => {
+                preserveOpenPanelDuringMutation();
                 void mutate("/sessions", { title: meetingTitle }).catch(
                   (error: unknown) => {
                     setVisualError(
@@ -647,6 +790,10 @@ function VisualCommentsSection({
       ? h("p", { className: "sbfx-review__error" }, "Comment saved; report rebuild pending.")
       : null,
     visualError ? h("p", { className: "sbfx-review__error" }, visualError) : null,
+    commentsCapabilityError
+      ? h("p", { className: "sbfx-review__error" }, commentsCapabilityError)
+      : null,
+    ),
   );
 }
 
@@ -679,9 +826,25 @@ export function FigmaExportReview({
   );
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [errorMessage, setErrorMessage] = useState("");
+  const [workspaceSlot, setWorkspaceSlot] = useState<HTMLElement | null>(null);
   const autoExportStoryRef = useRef<string | undefined>(undefined);
   const entryRef = useRef(entry);
   const saveQueueRef = useRef(Promise.resolve());
+  const shouldShowPanel = enabled && Boolean(storyId);
+
+  useEffect(() => {
+    if (!shouldShowPanel) {
+      setWorkspaceSlot(null);
+      return;
+    }
+
+    const workspace: FigmaWorkspaceSlotHandle = acquireFigmaWorkspaceSlot("review");
+    setWorkspaceSlot(workspace.slot);
+    return () => {
+      setWorkspaceSlot(null);
+      workspace.release();
+    };
+  }, [shouldShowPanel]);
 
   useEffect(() => {
     entryRef.current = entry;
@@ -700,7 +863,11 @@ export function FigmaExportReview({
           `${apiPath}?storyId=${encodeURIComponent(storyId)}`,
           { signal: controller.signal },
         );
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        if (!response.ok) {
+          throw new Error(
+            `Review status GET ${apiPath} returned HTTP ${response.status}. Check the review-status server configuration.`,
+          );
+        }
         const payload = (await response.json()) as {
           entry?: Partial<FigmaReviewEntry> | null;
         };
@@ -761,7 +928,11 @@ export function FigmaExportReview({
           },
           method: "PUT",
         });
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        if (!response.ok) {
+          throw new Error(
+            `Review status PUT ${apiPath} returned HTTP ${response.status}. Check the review-status server configuration.`,
+          );
+        }
         const payload = (await response.json()) as {
           entry?: Partial<FigmaReviewEntry>;
         };
@@ -813,7 +984,6 @@ export function FigmaExportReview({
     };
   }, [autoMarkExported, enabled, entry.figmaReviewStatus, storyId]);
 
-  const shouldShowPanel = enabled && Boolean(storyId);
   const openableFigmaSourceUrl = getOpenableUrl(entry.figmaNodeUrl);
   const shouldEditFigmaSource = isSourceEditing || !openableFigmaSourceUrl;
 
@@ -841,8 +1011,8 @@ export function FigmaExportReview({
     Fragment,
     null,
     children,
-    shouldShowPanel
-      ? h(
+    shouldShowPanel && workspaceSlot
+      ? createPortal(h(
           "aside",
           {
             "aria-label": "Figma export review",
@@ -858,7 +1028,7 @@ export function FigmaExportReview({
             h(
               "span",
               { "aria-hidden": "true", className: "sbfx-review__mark" },
-              h(FigmaIcon, { size: 14 }),
+              h(EyeIcon, { size: 14 }),
             ),
             h(
               "span",
@@ -867,14 +1037,6 @@ export function FigmaExportReview({
                 "span",
                 { className: "sbfx-review__title" },
                 labels.title,
-                h(
-                  "span",
-                  {
-                    className: "sbfx-review__version",
-                    title: `Figma export addon v${getAddonVersion()}`,
-                  },
-                  `v${getAddonVersion()}`,
-                ),
               ),
               h(
                 "span",
@@ -1028,18 +1190,6 @@ export function FigmaExportReview({
                     : null,
               )
             : null,
-          viewMode === "story"
-            ? h(VisualCommentsSection, {
-                componentTitle,
-                enabled,
-                labels,
-                options: visualComments,
-                storyId,
-                storyName,
-                storyTitle,
-                storyUrl,
-              })
-            : null,
           entry.updatedAt
             ? h(
                 "p",
@@ -1050,6 +1200,21 @@ export function FigmaExportReview({
           errorMessage
             ? h("p", { className: "sbfx-review__error" }, errorMessage)
             : null,
+        ), workspaceSlot)
+      : null,
+    shouldShowPanel && viewMode === "story" && typeof document !== "undefined"
+      ? createPortal(
+          h(VisualCommentsSection, {
+            componentTitle,
+            enabled,
+            labels,
+            options: visualComments,
+            storyId,
+            storyName,
+            storyTitle,
+            storyUrl,
+          }),
+          document.body,
         )
       : null,
   );

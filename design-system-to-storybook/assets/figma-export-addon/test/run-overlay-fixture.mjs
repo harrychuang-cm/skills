@@ -94,7 +94,7 @@ function startServer(syncedPayloads) {
   });
 }
 
-function runChrome(chromeBinary, url) {
+function runChrome(chromeBinary, url, width = 1200, height = 900) {
   return new Promise((resolve, reject) => {
     execFile(
       chromeBinary,
@@ -103,7 +103,7 @@ function runChrome(chromeBinary, url) {
         "--disable-gpu",
         "--hide-scrollbars",
         "--force-device-scale-factor=1",
-        "--window-size=1200,900",
+        `--window-size=${width},${height}`,
         "--virtual-time-budget=20000",
         "--dump-dom",
         url,
@@ -125,9 +125,10 @@ function extractResult(dom) {
   return JSON.parse(Buffer.from(match[1], "base64").toString("utf8"));
 }
 
-async function runFixture(chromeBinary, url, label, attempts = 3) {
+async function runFixture(chromeBinary, url, label, options = {}) {
+  const { attempts = 3, height = 900, width = 1200 } = options;
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
-    const dom = await runChrome(chromeBinary, url);
+    const dom = await runChrome(chromeBinary, url, width, height);
     const result = extractResult(dom);
     if (result) {
       if (result.error) {
@@ -137,7 +138,7 @@ async function runFixture(chromeBinary, url, label, attempts = 3) {
       assert.strictEqual(
         failed.length,
         0,
-        `${label} assertions failed: ${failed.map((entry) => entry.name).join("; ")}`,
+        `${label} assertions failed: ${failed.map((entry) => `${entry.name}${entry.details ? ` (${entry.details})` : ""}`).join("; ")}`,
       );
       console.log(`${label}: ${result.results.length} assertions passed`);
       return result;
@@ -161,7 +162,14 @@ async function main() {
     const overlayResult = await runFixture(
       chromeBinary,
       `${base}/overlay-fixture.html?sync=/sync-payload`,
-      "overlay-fixture",
+      "overlay-fixture-wide",
+    );
+
+    await runFixture(
+      chromeBinary,
+      `${base}/overlay-fixture.html`,
+      "overlay-fixture-narrow",
+      { height: 800, width: 640 },
     );
 
     assert.strictEqual(syncedPayloads.length, 1, "bridge received exactly one POST");

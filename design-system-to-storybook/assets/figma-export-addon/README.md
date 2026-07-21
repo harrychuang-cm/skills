@@ -1,6 +1,6 @@
 # @harrychuang/storybook-addon-figma-export
 
-Storybook 10 addon: export a rendered story into a Figma import payload (payload version 2). Works with any Storybook renderer — React, Vue, Svelte, Angular, or Web Components — because the preview decorator is a pass-through (it returns the story result unchanged) and the export overlay is plain DOM mounted on document.body; the preview bundle imports no react. Exports are scoped to the `storybook-root` preview element (falling back to document.body with a warning). The optional review panel (`/review` entry) remains React-only. Prefers a three-layer CSS token model (`ref`, `sys`, `comp`); projects without layered tokens still export with an empty variable set.
+Storybook 10 addon: export a rendered story into a Figma import payload (payload version 2). Works with any Storybook renderer — React, Vue, Svelte, Angular, or Web Components — because the preview decorator is a pass-through (it returns the story result unchanged) and the export overlay is plain DOM mounted on document.body; the preview bundle imports no react. Exports are scoped to the `storybook-root` preview element (falling back to document.body with a warning). The optional review panel (`/review` entry) remains React-only. When both tools are enabled, Figma export and Export review share one responsive bottom-right workspace dock that reserves Story canvas space instead of covering the rendered UI. Collapsing Figma export reduces that workspace to an intrinsic-width disclosure showing only the Figma mark and addon version; the complete compact surface remains the accessible Expand control. Expanding restores the full 320px desktop workspace, Figma export header/actions, and Export review in its prior internal collapse state. The visible addon version appears only beside Figma export. Prefers a three-layer CSS token model (`ref`, `sys`, `comp`); projects without layered tokens still export with an empty variable set.
 
 ## Visual fidelity capture
 
@@ -81,10 +81,11 @@ export default config;
 ```
 
 This loads the addon preset and registers the Figma export toolbar toggle.
-When the toolbar toggle is on, the exporter overlay provides `Copy JSON`,
-`Plugin Console Script`, and an icon-only `Copy design to Figma` action. The
-Figma copy action writes an SVG design representation to the clipboard so it can
-be pasted directly into Figma for quick visual review.
+When the toolbar toggle is on, the exporter overlay renders `Copy JSON` and
+`Download JSON` as separate full-width rows. `Console script` and the icon-only
+`Copy design to Figma` action share one equal-width two-column row. The Figma
+copy action writes an SVG design representation to the clipboard so it can be
+pasted directly into Figma for quick visual review.
 
 ### 2. Wire preview (decorator + globals)
 
@@ -130,11 +131,16 @@ Figma source URL and export/import review state. The
 `design-system-to-storybook` skill wires this review decorator by default so the
 Open source action is available when source URLs can be resolved.
 
+Keep review settings in one project-local `.storybook/figma-export.config.ts`.
+Both the preview decorator and Vite plugin must import that same object; do not
+repeat status or comments endpoint strings in `main.ts` and `preview.ts`.
+
 `.storybook/main.ts`:
 
 ```ts
 import type { StorybookConfig } from "storybook";
 import { createFigmaReviewStatusPlugin } from "@harrychuang/storybook-addon-figma-export/review-server";
+import { figmaExportProjectConfig } from "./figma-export.config";
 
 const config: StorybookConfig = {
   // ...stories, addons, framework
@@ -144,7 +150,12 @@ const config: StorybookConfig = {
       plugins: [
         ...(config.plugins ?? []),
         createFigmaReviewStatusPlugin({
-          filePath: "design-system/figma-export-review-status.json",
+          apiPath: figmaExportProjectConfig.review.apiPath,
+          filePath: figmaExportProjectConfig.review.statusFilePath,
+          name: figmaExportProjectConfig.review.pluginName,
+          commentsEnabled: figmaExportProjectConfig.review.commentsEnabled,
+          commentsApiPath: figmaExportProjectConfig.review.commentsApiPath,
+          commentsDir: figmaExportProjectConfig.review.commentsDir,
         }),
       ],
     };
@@ -164,11 +175,14 @@ import {
 } from "@harrychuang/storybook-addon-figma-export/preview";
 import { createFigmaExportReviewDecorator } from "@harrychuang/storybook-addon-figma-export/review";
 import { getFigmaSourceUrl } from "@harrychuang/storybook-addon-figma-export/source";
+import { figmaExportProjectConfig } from "./figma-export.config";
 import "@harrychuang/storybook-addon-figma-export/styles.css";
 
 const preview: Preview = {
   decorators: [
     createFigmaExportReviewDecorator(figmaExportOptions, {
+      apiPath: figmaExportProjectConfig.review.apiPath,
+      visualComments: figmaExportProjectConfig.review.visualComments,
       getFigmaSourceUrl(context) {
         return getFigmaSourceUrl(context.parameters, context.title ?? "", {
           componentSpecModules,
@@ -196,34 +210,55 @@ addon package.
 
 ### Local visual review meetings
 
-The React review panel can also run append-only visual review meetings. Start a
-meeting, choose **Add visual comment**, then click the preview. The capture-phase
+The React review helper can also run append-only visual review meetings from a
+separate top-right comments panel. It defaults to a 36px Edit icon launcher whose
+button and 14px icon remain centered in the collapsed surface; open it,
+then the expanded header places the **Visual comments** subheading above an
+compact, content-width outline **Reports** button beside the same Edit control.
+Starting or ending a meeting and saving a comment keep the panel expanded, including
+across a same-Story preview remount triggered by the local evidence write. Choose
+**Add comment**, then click the preview. The capture-phase
 handler blocks that pointer sequence before the prototype can change state,
 captures the current preview with `html-to-image`, removes nodes marked
 `data-sbfx-capture-ignore`, and opens a comment composer. Other browsers on the
 same Storybook host discover the active meeting through five-second polling.
+The current meeting and closed history remain visible together with capture and
+comment counts; each session report contains its immutable snapshots, pins,
+authors, comments, timestamps, and Story metadata.
 
 ```ts
 createFigmaExportReviewDecorator(figmaExportOptions, {
-  visualComments: {
-    enabled: true,
-    apiPath: "/__figma_export_review_comments",
-    captureSelector: "#storybook-root", // use "body" when body portals matter
-    authorStorageKey: "sbfx:review-author",
-  },
+  apiPath: figmaExportProjectConfig.review.apiPath,
+  visualComments: figmaExportProjectConfig.review.visualComments,
 });
 
 createFigmaReviewStatusPlugin({
-  commentsEnabled: true,
-  commentsApiPath: "/__figma_export_review_comments",
-  commentsDir: "design-system/figma-export-review",
+  apiPath: figmaExportProjectConfig.review.apiPath,
+  commentsEnabled: figmaExportProjectConfig.review.commentsEnabled,
+  commentsApiPath: figmaExportProjectConfig.review.commentsApiPath,
+  commentsDir: figmaExportProjectConfig.review.commentsDir,
 });
 ```
 
-Canonical `meeting.json` files and immutable PNG/WebP assets are written under
-`design-system/figma-export-review/`; `index.html` and per-meeting reports are
-derived, portable projections with relative asset paths. Screenshot pixels are
-the durable evidence—route/state fields are metadata, not state replay.
+Canonical `meeting.json` files and content-addressed PNG/WebP assets are written
+under `design-system/figma-export-review/`; `index.html` and per-meeting reports
+are derived, portable projections with relative asset paths. Each comment places
+an accessible **Copy AI prompt** action before the Trash icon and Complete/Reopen.
+It produces the same provider-neutral Markdown for Claude, Cursor, Codex, and
+other assistants, including the review text, Story metadata, normalized pin,
+viewport, a repository-root-relative screenshot path when safe, the report path,
+and the same-origin screenshot URL. The report first attempts one clipboard item
+with both Markdown and a PNG screenshot. Browsers without rich clipboard support
+fall back to text, and the prompt tells an assistant to request a manual image
+attachment instead of guessing when it cannot inspect any screenshot reference.
+No absolute host path, provider command, API key, or AI network request is added.
+
+The Trash icon's first activation only opens an accessible in-page confirmation
+without depending on the native dialog API; Cancel, Escape, or clicking the
+backdrop sends no request, and Confirm delete removes the comment, its
+unreferenced capture record, and an image asset only after no remaining capture
+shares that path. Screenshot pixels are otherwise durable evidence—route/state
+fields are metadata, not state replay.
 
 This is a trusted-LAN, same-origin tool with no authentication. Do not expose
 the writable middleware to an untrusted network. DOM-to-image capture is not a

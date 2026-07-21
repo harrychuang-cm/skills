@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url";
 const testDir = path.dirname(fileURLToPath(import.meta.url));
 const addonRoot = path.dirname(testDir);
 const bundlePath = path.join(testDir, ".visual-comment-fixture.bundle.js");
+const bundleCssPath = path.join(testDir, ".visual-comment-fixture.bundle.css");
 const chrome = [
   process.env.CHROME_PATH,
   "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
@@ -25,7 +26,7 @@ execFileSync(
     path.join(testDir, "visual-comment-fixture-entry.ts"),
     "--bundle",
     "--format=iife",
-    "--loader:.css=empty",
+    "--loader:.css=css",
     `--outfile=${bundlePath}`,
   ],
   { stdio: "inherit" },
@@ -38,8 +39,13 @@ const server = http.createServer((request, response) => {
     response.writeHead(404).end("not found");
     return;
   }
+  const extension = path.extname(filePath);
   response.writeHead(200, {
-    "content-type": path.extname(filePath) === ".html" ? "text/html; charset=utf-8" : "text/javascript; charset=utf-8",
+    "content-type": extension === ".html"
+      ? "text/html; charset=utf-8"
+      : extension === ".css"
+        ? "text/css; charset=utf-8"
+        : "text/javascript; charset=utf-8",
   });
   response.end(readFileSync(filePath));
 });
@@ -109,37 +115,66 @@ try {
     socket.addEventListener("error", reject, { once: true });
   });
   const cdp = new CdpClient(socket);
-  const { targetId } = await cdp.send("Target.createTarget", { url: fixtureUrl });
-  const { sessionId } = await cdp.send("Target.attachToTarget", { flatten: true, targetId });
-  await cdp.send("Runtime.enable", {}, sessionId);
-
-  const deadline = Date.now() + 45_000;
-  let encoded = "";
-  let stage = "not-loaded";
-  while (Date.now() < deadline) {
-    const evaluation = await cdp.send(
-      "Runtime.evaluate",
+  for (const viewport of [
+    { height: 800, label: "wide", width: 1000 },
+    { height: 800, label: "narrow", width: 640 },
+  ]) {
+    const { targetId } = await cdp.send("Target.createTarget", { url: "about:blank" });
+    const { sessionId } = await cdp.send("Target.attachToTarget", { flatten: true, targetId });
+    await cdp.send("Runtime.enable", {}, sessionId);
+    await cdp.send("Page.enable", {}, sessionId);
+    await cdp.send(
+      "Emulation.setDeviceMetricsOverride",
       {
-        expression: `(() => { const node = document.querySelector('#fixture-result'); return { text: node?.textContent || '', stage: node?.dataset.stage || 'missing' }; })()`,
-        returnByValue: true,
+        deviceScaleFactor: 1,
+        height: viewport.height,
+        mobile: false,
+        width: viewport.width,
       },
       sessionId,
     );
-    encoded = evaluation.result?.value?.text ?? "";
-    stage = evaluation.result?.value?.stage ?? stage;
-    if (encoded) break;
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await cdp.send(
+      "Page.navigate",
+      { url: `${fixtureUrl}?viewport=${viewport.label}` },
+      sessionId,
+    );
+
+    const deadline = Date.now() + 45_000;
+    let encoded = "";
+    let stage = "not-loaded";
+    while (Date.now() < deadline) {
+      const evaluation = await cdp.send(
+        "Runtime.evaluate",
+        {
+          expression: `(() => { const node = document.querySelector('#fixture-result'); return { text: node?.textContent || '', stage: node?.dataset.stage || 'missing' }; })()`,
+          returnByValue: true,
+        },
+        sessionId,
+      );
+      encoded = evaluation.result?.value?.text ?? "";
+      stage = evaluation.result?.value?.stage ?? stage;
+      if (encoded) break;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    assert.ok(
+      encoded,
+      `visual comment fixture (${viewport.label}) did not finish (stage: ${stage})`,
+    );
+    const result = JSON.parse(Buffer.from(encoded, "base64").toString("utf8"));
+    if (result.error) {
+      throw new Error(`${result.error}\nfixture viewport: ${viewport.label}\nfixture stage: ${stage}`);
+    }
+    const failed = result.results.filter((entry) => !entry.passed);
+    assert.equal(
+      failed.length,
+      0,
+      failed.map((entry) => `${entry.name}: ${entry.detail ?? "failed"}`).join("; "),
+    );
+    console.log(
+      `visual-comment-fixture (${viewport.label}): ${result.results.length} assertions passed`,
+    );
+    await cdp.send("Target.closeTarget", { targetId });
   }
-  assert.ok(encoded, `visual comment fixture did not finish (stage: ${stage})`);
-  const result = JSON.parse(Buffer.from(encoded, "base64").toString("utf8"));
-  if (result.error) throw new Error(`${result.error}\nfixture stage: ${stage}`);
-  const failed = result.results.filter((entry) => !entry.passed);
-  assert.equal(
-    failed.length,
-    0,
-    failed.map((entry) => `${entry.name}: ${entry.detail ?? "failed"}`).join("; "),
-  );
-  console.log(`visual-comment-fixture: ${result.results.length} assertions passed`);
 } finally {
   socket?.close();
   const browserExited = new Promise((resolve) => browser.once("exit", resolve));
@@ -151,4 +186,5 @@ try {
   await new Promise((resolve) => server.close(resolve));
   await rm(profileDir, { recursive: true, force: true });
   await unlink(bundlePath).catch(() => undefined);
+  await unlink(bundleCssPath).catch(() => undefined);
 }

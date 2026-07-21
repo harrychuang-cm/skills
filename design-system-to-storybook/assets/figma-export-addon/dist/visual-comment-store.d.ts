@@ -9,6 +9,10 @@ type VisualMeeting = {
     startedAt: string;
     closedAt: string | null;
 };
+type VisualMeetingSummary = VisualMeeting & {
+    captureCount: number;
+    commentCount: number;
+};
 type VisualCapture = {
     id: string;
     capturedAt: string;
@@ -36,6 +40,7 @@ type VisualComment = {
         yRatio: number;
     };
     createdAt: string;
+    resolvedAt?: string | null;
 };
 type VisualMeetingFile = {
     version: 1;
@@ -47,12 +52,15 @@ type VisualCommentStoreState = {
     version: 1;
     activeSessionId: string | null;
 };
+type VisualCommentReportRenderContext = {
+    projectRelativeSessionPath: string | null;
+};
 type VisualCommentStoreOptions = {
     cwd?: string;
     commentsDir?: string;
     reportRenderer?: {
-        index(meetings: VisualMeeting[], activeSessionId: string | null): string;
-        meeting(meeting: VisualMeetingFile): string;
+        index(meetings: VisualMeetingSummary[], activeSessionId: string | null): string;
+        meeting(meeting: VisualMeetingFile, context?: VisualCommentReportRenderContext): string;
     };
     limits?: Partial<VisualCommentLimits>;
 };
@@ -64,11 +72,19 @@ declare class VisualCommentStoreError extends Error {
 declare function createVisualCommentStore(options?: VisualCommentStoreOptions): {
     root: string;
     getState: () => Promise<VisualCommentStoreState>;
-    listMeetings: () => Promise<VisualMeeting[]>;
+    listMeetings: () => Promise<VisualMeetingSummary[]>;
+    refreshReports: (sessionId?: string) => Promise<void>;
     getOverview: (storyId?: string) => Promise<{
         version: 1;
-        activeSession: VisualMeeting | null;
-        recentSessions: VisualMeeting[];
+        activeSession: {
+            captureCount: number;
+            commentCount: number;
+            id: string;
+            title: string;
+            startedAt: string;
+            closedAt: string | null;
+        } | null;
+        recentSessions: VisualMeetingSummary[];
         comments: VisualComment[];
     }>;
     getMeeting: (id: string) => Promise<VisualMeetingFile>;
@@ -89,6 +105,20 @@ declare function createVisualCommentStore(options?: VisualCommentStoreOptions): 
     } & {
         reportStale: boolean;
     }>;
+    resolveComment: (id: string, commentId: string, resolved: boolean) => Promise<{
+        comment: VisualComment;
+        meeting: VisualMeetingFile;
+    } & {
+        reportStale: boolean;
+    }>;
+    deleteComment: (id: string, commentId: string) => Promise<{
+        deletedAssetPath: string | null;
+        deletedCaptureId: string | null;
+        deletedCommentId: string;
+        meeting: VisualMeetingFile;
+    } & {
+        reportStale: boolean;
+    }>;
 };
 
-export { type VisualCapture, type VisualComment, VisualCommentStoreError, type VisualCommentStoreOptions, type VisualCommentStoreState, type VisualMeeting, type VisualMeetingFile, createVisualCommentStore };
+export { type VisualCapture, type VisualComment, type VisualCommentReportRenderContext, VisualCommentStoreError, type VisualCommentStoreOptions, type VisualCommentStoreState, type VisualMeeting, type VisualMeetingFile, type VisualMeetingSummary, createVisualCommentStore };
