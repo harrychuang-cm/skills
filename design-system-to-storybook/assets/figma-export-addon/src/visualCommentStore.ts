@@ -66,6 +66,21 @@ export type VisualComment = {
   resolvedAt?: string | null;
 };
 
+export type VisualCommentDetailsPatch = {
+  body?: string;
+  pin?: VisualComment["pin"];
+};
+
+export type VisualCommentOverviewComment = VisualComment & {
+  ordinal: number;
+  preview: {
+    imagePath: string;
+    width: number;
+    height: number;
+    pin: VisualComment["pin"];
+  } | null;
+};
+
 export type VisualMeetingFile = {
   version: 1;
   session: VisualMeeting;
@@ -140,6 +155,43 @@ function assertFinite(value: unknown, name: string): number {
 function assertSessionId(value: string): string {
   if (!sessionIdPattern.test(value)) fail("Invalid session ID.");
   return value;
+}
+
+function normalizeCommentDetailsPatch(
+  value: unknown,
+  limits: VisualCommentLimits,
+): VisualCommentDetailsPatch {
+  const patch = assertRecord(value, "patch");
+  const keys = Object.keys(patch);
+  if (
+    keys.length === 0 ||
+    keys.length > 2 ||
+    keys.some((key) => key !== "body" && key !== "pin")
+  ) {
+    fail("patch must contain body, pin, or both.");
+  }
+  const normalized: VisualCommentDetailsPatch = {};
+  if (Object.prototype.hasOwnProperty.call(patch, "body")) {
+    normalized.body = assertText(patch.body, "body", limits.maxBodyLength);
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, "pin")) {
+    const pin = assertRecord(patch.pin, "pin");
+    if (
+      Object.keys(pin).length !== 2 ||
+      !Object.prototype.hasOwnProperty.call(pin, "xRatio") ||
+      !Object.prototype.hasOwnProperty.call(pin, "yRatio") ||
+      !isFiniteRatio(pin.xRatio) ||
+      !isFiniteRatio(pin.yRatio) ||
+      pin.xRatio < 0 ||
+      pin.xRatio > 1 ||
+      pin.yRatio < 0 ||
+      pin.yRatio > 1
+    ) {
+      fail("pin must contain finite xRatio and yRatio values between 0 and 1.");
+    }
+    normalized.pin = { xRatio: pin.xRatio, yRatio: pin.yRatio };
+  }
+  return normalized;
 }
 
 function getPngDimensions(bytes: Buffer): { width: number; height: number } | null {
@@ -477,6 +529,24 @@ export function createVisualCommentStore(options: VisualCommentStoreOptions = {}
     }
   };
 
+  const updateCommentDetails = (
+    id: string,
+    commentId: string,
+    patchValue: unknown,
+  ) =>
+    mutate(async () => {
+      const patch = normalizeCommentDetailsPatch(patchValue, limits);
+      const meeting = await readMeeting(id);
+      const comment = meeting.comments.find((entry) => entry.id === commentId);
+      if (!comment) {
+        fail("Comment not found.", "NOT_FOUND", 404);
+      }
+      if (patch.body !== undefined) comment.body = patch.body;
+      if (patch.pin !== undefined) comment.pin = patch.pin;
+      await writeMeeting(meeting);
+      return withReportStatus({ comment, meeting }, meeting);
+    });
+
   return {
     root,
     getState: readState,
@@ -494,11 +564,38 @@ export function createVisualCommentStore(options: VisualCommentStoreOptions = {}
       const activeMeeting = state.activeSessionId
         ? await readMeeting(state.activeSessionId).catch(() => null)
         : null;
-      const comments = activeMeeting
-        ? activeMeeting.comments.filter((comment) => {
-            const capture = activeMeeting.captures[comment.captureId];
-            return !storyId || capture?.story.id === storyId;
-          })
+      const comments: VisualCommentOverviewComment[] = activeMeeting
+        ? activeMeeting.comments
+            .map((comment, index) => ({ comment, ordinal: index + 1 }))
+            .filter(({ comment }) => {
+              const capture = activeMeeting.captures[comment.captureId];
+              return !storyId || capture?.story.id === storyId;
+            })
+            .map(({ comment, ordinal }) => {
+              const capture = activeMeeting.captures[comment.captureId];
+              const image = capture?.image;
+              const hasPreview =
+                typeof image?.path === "string" &&
+                /^assets\/[a-f0-9]{64}\.(?:png|webp)$/.test(image.path) &&
+                typeof image.width === "number" &&
+                Number.isFinite(image.width) &&
+                image.width > 0 &&
+                typeof image.height === "number" &&
+                Number.isFinite(image.height) &&
+                image.height > 0;
+              return {
+                ...comment,
+                ordinal,
+                preview: hasPreview
+                  ? {
+                      imagePath: image.path,
+                      width: image.width,
+                      height: image.height,
+                      pin: comment.pin,
+                    }
+                  : null,
+              };
+            })
         : [];
       return {
         version: 1 as const,
@@ -646,6 +743,9 @@ export function createVisualCommentStore(options: VisualCommentStoreOptions = {}
           meeting,
         );
       }),
+    updateCommentDetails,
+    updateCommentBody: (id: string, commentId: string, body: string) =>
+      updateCommentDetails(id, commentId, { body }),
     resolveComment: (id: string, commentId: string, resolved: boolean) =>
       mutate(async () => {
         const meeting = await readMeeting(id);

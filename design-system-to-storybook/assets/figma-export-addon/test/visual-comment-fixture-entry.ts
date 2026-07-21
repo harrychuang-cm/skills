@@ -162,6 +162,7 @@ async function run() {
 
   let resolveDelayedCapture!: (capture: VisualCommentCapture) => void;
   let delayedComposerCount = 0;
+  let delayedPoint: { xRatio: number; yRatio: number } | null = null;
   const delayedController = beginVisualCommentCapture({
     capture: () =>
       new Promise<VisualCommentCapture>((resolve) => {
@@ -172,8 +173,15 @@ async function run() {
       delayedComposerCount += 1;
     },
     onError: () => undefined,
+    onPointSelected: ({ pin }) => {
+      delayedPoint = pin;
+    },
   });
   dispatchPointerSequence(prototypeButton, 100, 64);
+  check(
+    "point callback runs before delayed capture settles",
+    delayedPoint !== null && delayedComposerCount === 0,
+  );
   delayedController.cancel();
   resolveDelayedCapture(fakeCapture());
   await Promise.resolve();
@@ -255,6 +263,7 @@ async function run() {
   let activeSession: VisualCommentOverview["activeSession"] = null;
   let statusAvailable = true;
   let commentsAvailable = true;
+  let failNextCommentPatch = false;
   const comments: Array<Record<string, unknown>> = [];
   const requests: Array<{ method: string; path: string; body?: unknown }> = [];
   const originalFetch = window.fetch.bind(window);
@@ -275,15 +284,136 @@ async function run() {
         return new Response(JSON.stringify({ meeting: { session: activeSession }, reportStale: false }), { status: 201 });
       }
       if (method === "POST" && path.endsWith("/comments")) {
-        comments.push({ id: "comment-1", ...body, createdAt: new Date().toISOString() });
-        return new Response(JSON.stringify({ comment: comments.at(-1), reportStale: false }), { status: 201 });
+        const savedComment = {
+          id: "comment-current-4",
+          ...body,
+          createdAt: "2026-07-20T00:00:04.000Z",
+        };
+        comments.push(
+          {
+            id: "comment-current-1",
+            authorName: "Ari",
+            body: "Oldest current-story comment",
+            createdAt: "2026-07-20T00:00:01.000Z",
+            story: { id: "demo--story" },
+          },
+          {
+            id: "comment-current-2",
+            authorName: "Bo",
+            body: "Middle current-story comment",
+            createdAt: "2026-07-20T00:00:02.000Z",
+            resolvedAt: "2026-07-20T00:30:00.000Z",
+            story: { id: "demo--story" },
+          },
+          {
+            id: "comment-current-3",
+            authorName: "Cy",
+            body: "Recent current-story comment",
+            createdAt: "2026-07-20T00:00:03.000Z",
+            story: { id: "demo--story" },
+          },
+          {
+            id: "comment-other-story",
+            authorName: "Dee",
+            body: "Newest but belongs to another story",
+            createdAt: "2026-07-20T00:00:05.000Z",
+            story: { id: "demo--other" },
+          },
+          savedComment,
+        );
+        if (activeSession) {
+          activeSession = {
+            ...activeSession,
+            captureCount: 1,
+            commentCount: 5,
+          };
+        }
+        return new Response(JSON.stringify({ comment: savedComment, reportStale: false }), { status: 201 });
+      }
+      const commentMatch = path.match(/^\/sessions\/meeting-1\/comments\/([^/]+)$/);
+      if (commentMatch && method === "PATCH") {
+        const comment = comments.find((entry) => entry.id === decodeURIComponent(commentMatch[1]));
+        if (!comment) return new Response(JSON.stringify({ error: "Comment not found." }), { status: 404 });
+        if (failNextCommentPatch) {
+          failNextCommentPatch = false;
+          return new Response(JSON.stringify({ error: "Temporary comment update failure." }), { status: 500 });
+        }
+        const keys = body && typeof body === "object" ? Object.keys(body) : [];
+        const pin = body?.pin;
+        if (
+          !body ||
+          keys.length < 1 ||
+          keys.length > 2 ||
+          keys.some((key) => key !== "body" && key !== "pin") ||
+          ("body" in body &&
+            (typeof body.body !== "string" ||
+              !body.body.trim() ||
+              body.body.trim().length > 2_000)) ||
+          ("pin" in body &&
+            (!pin ||
+              typeof pin.xRatio !== "number" ||
+              !Number.isFinite(pin.xRatio) ||
+              pin.xRatio < 0 ||
+              pin.xRatio > 1 ||
+              typeof pin.yRatio !== "number" ||
+              !Number.isFinite(pin.yRatio) ||
+              pin.yRatio < 0 ||
+              pin.yRatio > 1))
+        ) {
+          return new Response(JSON.stringify({ error: "Comment edit is invalid." }), { status: 400 });
+        }
+        if (typeof body.body === "string") comment.body = body.body.trim();
+        if (pin) comment.pin = { xRatio: pin.xRatio, yRatio: pin.yRatio };
+        return new Response(JSON.stringify({ comment, reportStale: false }), { status: 200 });
+      }
+      if (commentMatch && method === "DELETE") {
+        const commentId = decodeURIComponent(commentMatch[1]);
+        const commentIndex = comments.findIndex((entry) => entry.id === commentId);
+        if (commentIndex < 0) return new Response(JSON.stringify({ error: "Comment not found." }), { status: 404 });
+        comments.splice(commentIndex, 1);
+        if (activeSession) {
+          activeSession = {
+            ...activeSession,
+            commentCount: Math.max(0, activeSession.commentCount - 1),
+          };
+        }
+        return new Response(JSON.stringify({ deletedCommentId: commentId, reportStale: false }), { status: 200 });
       }
       if (method === "POST" && path.endsWith("/close")) activeSession = null;
+      const requestedStoryId = url.searchParams.get("storyId");
+      const storyComments = requestedStoryId
+        ? comments.filter(
+            (comment) =>
+              (comment.story as { id?: string } | undefined)?.id === requestedStoryId,
+          )
+        : comments;
+      const overviewComments = storyComments.map((comment) => {
+        const ordinal = comments.indexOf(comment) + 1;
+        const pin =
+          (comment.pin as { xRatio: number; yRatio: number } | undefined) ??
+          { xRatio: 0.15 + ordinal * 0.1, yRatio: 0.2 + ordinal * 0.08 };
+        return {
+          ...comment,
+          ordinal,
+          preview:
+            comment.id === "comment-current-1"
+              ? null
+              : {
+                  imageUrl:
+                    comment.id === "comment-current-3"
+                      ? "/missing-comment-evidence.png"
+                      : fakeCapture().dataUrl,
+                  width: 400,
+                  height: 240,
+                  pin,
+                },
+        };
+      });
       return new Response(
         JSON.stringify({
           activeSession,
           activeReportUrl: activeSession ? "/__comments/reports/sessions/meeting-1/index.html" : null,
-          comments,
+          comments: activeSession ? overviewComments : [],
           recentSessions: [{
             id: "meeting-closed",
             title: "Previous review",
@@ -636,16 +766,108 @@ async function run() {
     "transparent production capture stays retryable and sends no comment request",
     Boolean(button("Add comment")) &&
       !button("Save comment") &&
+      !document.querySelector("[data-sbfx-live-comment-pin]") &&
       requests.filter((request) => request.path.endsWith("/comments")).length === commentRequestsBeforeFailure,
   );
 
   button("Add comment")!.click();
   dispatchPointerSequence(prototypeButton, 100, 64);
+  await waitFor(() => document.querySelector("[data-sbfx-live-comment-pin]"));
+  check(
+    "point selection shows a capture-ignored next-ordinal live tag",
+    document.querySelector("[data-sbfx-live-comment-pin]")?.textContent === "1" &&
+      document
+        .querySelector("[data-sbfx-live-comment-pin]")
+        ?.hasAttribute("data-sbfx-capture-ignore") === true,
+  );
   await waitFor(() => button("Save comment"));
   resultElement.dataset.stage = "composer-open";
   check(
     "Figma export stays visible while composer is open",
     Boolean(workspace.querySelector('.sbfx-exporter[aria-label="Figma export"]')),
+  );
+  const pendingPreview = commentsPanel.querySelector<HTMLElement>(
+    "[data-pending-comment-preview]",
+  )!;
+  const pendingPin = () =>
+    commentsPanel.querySelector<HTMLButtonElement>("[data-pending-comment-pin]")!;
+  check(
+    "pending preview and Story tag show the next meeting ordinal",
+    pendingPin().textContent === "1" &&
+      pendingPin().getAttribute("aria-label") === "Adjust comment point 1" &&
+      document.querySelector("[data-sbfx-live-comment-pin]")?.textContent === "1",
+  );
+  const pendingPreviewRect = pendingPreview.getBoundingClientRect();
+  dispatchPointerSequence(
+    pendingPreview,
+    pendingPreviewRect.right + 100,
+    pendingPreviewRect.bottom + 100,
+  );
+  await waitFor(
+    () => pendingPin().style.left === "100%" && pendingPin().style.top === "100%",
+  );
+  pendingPin().dispatchEvent(
+    new KeyboardEvent("keydown", {
+      bubbles: true,
+      cancelable: true,
+      key: "ArrowRight",
+      shiftKey: true,
+    }),
+  );
+  check(
+    "pointer and keyboard adjustment clamp the draft to preview bounds",
+    pendingPin().style.left === "100%" && pendingPin().style.top === "100%",
+  );
+  pendingPin().dispatchEvent(
+    new PointerEvent("pointerdown", {
+      bubbles: true,
+      cancelable: true,
+      clientX: pendingPreviewRect.right,
+      clientY: pendingPreviewRect.bottom,
+      pointerId: 7,
+    }),
+  );
+  pendingPreview.dispatchEvent(
+    new PointerEvent("pointermove", {
+      bubbles: true,
+      cancelable: true,
+      clientX: pendingPreviewRect.left + pendingPreviewRect.width * 0.6,
+      clientY: pendingPreviewRect.top + pendingPreviewRect.height * 0.7,
+      pointerId: 7,
+    }),
+  );
+  pendingPreview.dispatchEvent(
+    new PointerEvent("pointerup", {
+      bubbles: true,
+      cancelable: true,
+      clientX: pendingPreviewRect.left + pendingPreviewRect.width * 0.6,
+      clientY: pendingPreviewRect.top + pendingPreviewRect.height * 0.7,
+      pointerId: 7,
+    }),
+  );
+  await waitFor(
+    () => pendingPin().style.left === "60%" && pendingPin().style.top === "70%",
+  );
+  pendingPin().focus();
+  pendingPin().dispatchEvent(
+    new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "ArrowRight" }),
+  );
+  await waitFor(() => pendingPin().style.left === "61%");
+  pendingPin().dispatchEvent(
+    new KeyboardEvent("keydown", {
+      bubbles: true,
+      cancelable: true,
+      key: "ArrowDown",
+      shiftKey: true,
+    }),
+  );
+  await waitFor(() => pendingPin().style.top === "75%");
+  check(
+    "preview click and keyboard adjustment update one focusable clamped draft pin",
+    pendingPin().style.left === "61%" &&
+      pendingPin().style.top === "75%" &&
+      document.activeElement === pendingPin() &&
+      document.querySelector("[data-sbfx-live-comment-pin]") !== null,
   );
   const authorField = commentsPanel.querySelector<HTMLInputElement>(".sbfx-review__composer input")!;
   const textarea = commentsPanel.querySelector<HTMLTextAreaElement>("textarea")!;
@@ -658,14 +880,18 @@ async function run() {
     "closing a composer hides details without discarding its draft",
     commentsToggle.getAttribute("aria-expanded") === "false" &&
       authorField.value === "Mina" &&
-      textarea.value === "Keep this modal spacing",
+      textarea.value === "Keep this modal spacing" &&
+      !document.querySelector("[data-sbfx-live-comment-pin]"),
   );
   commentsToggle.click();
   await waitFor(() => !commentsDetail.hidden && button("Save comment"));
   check(
     "reopening comments restores the pending composer draft",
     document.querySelector<HTMLInputElement>(".sbfx-comments-panel .sbfx-review__composer input")?.value === "Mina" &&
-      document.querySelector<HTMLTextAreaElement>(".sbfx-comments-panel textarea")?.value === "Keep this modal spacing",
+      document.querySelector<HTMLTextAreaElement>(".sbfx-comments-panel textarea")?.value === "Keep this modal spacing" &&
+      pendingPin().style.left === "61%" &&
+      pendingPin().style.top === "75%" &&
+      document.querySelector("[data-sbfx-live-comment-pin]")?.textContent === "1",
   );
   const composerCommentsRect = commentsPanel.getBoundingClientRect();
   const composerWorkspaceRect = workspace.getBoundingClientRect();
@@ -677,8 +903,33 @@ async function run() {
   );
   button("Save comment")!.click();
   await waitFor(() => requests.some((request) => request.method === "POST" && request.path.endsWith("/comments")));
+  await waitFor(
+    () => !button("Save comment") && !document.querySelector("[data-sbfx-live-comment-pin]"),
+  );
   resultElement.dataset.stage = "comment-saved";
-  check("comment composer posts screenshot and normalized pin", comments.length === 1 && typeof comments[0].capture === "object");
+  const finalCreateRequest = requests.find(
+    (request) => request.method === "POST" && request.path.endsWith("/comments"),
+  );
+  const finalPin = (finalCreateRequest?.body as { pin?: { xRatio: number; yRatio: number } })
+    ?.pin;
+  check(
+    "comment composer posts screenshot and normalized pin",
+    comments.length === 5 &&
+      typeof comments.find((comment) => comment.id === "comment-current-4")?.capture ===
+        "object" &&
+      Boolean(
+        finalPin &&
+          Math.abs(finalPin.xRatio - 0.61) < 0.0001 &&
+          Math.abs(finalPin.yRatio - 0.75) < 0.0001,
+      ) &&
+      !document.querySelector("[data-sbfx-live-comment-pin]"),
+    JSON.stringify({
+      commentsLength: comments.length,
+      createRequest: finalCreateRequest,
+      livePin: document.querySelector("[data-sbfx-live-comment-pin]")?.outerHTML,
+      savedComment: comments.find((comment) => comment.id === "comment-current-4"),
+    }),
+  );
   check("author is stored locally", localStorage.getItem("sbfx:review-author") === "Mina");
   check("polling overview uses current story id", requests.some((request) => request.method === "GET" && request.path === ""));
 
@@ -719,6 +970,403 @@ async function run() {
       Boolean(button("Add comment")) &&
       !button("Save comment"),
   );
+
+  const currentCommentCards = () =>
+    Array.from(
+      commentsPanel.querySelectorAll<HTMLElement>(
+        ".sbfx-comments-panel__comment[data-comment-id]",
+      ),
+    );
+  await waitFor(() => currentCommentCards().length === 3);
+  check(
+    "panel shows only the newest three comments for the current story",
+    currentCommentCards().map((card) => card.dataset.commentId).join(",") ===
+      "comment-current-4,comment-current-3,comment-current-2" &&
+      !commentsPanel.textContent?.includes("Newest but belongs to another story") &&
+      !commentsPanel.textContent?.includes("Oldest current-story comment"),
+  );
+  check(
+    "panel exposes author time body and Open or Completed status",
+    currentCommentCards().every(
+      (card) =>
+        Boolean(card.querySelector("time")?.getAttribute("datetime")) &&
+        Boolean(card.querySelector(".sbfx-comments-panel__comment-body")) &&
+        Boolean(card.querySelector(".sbfx-comments-panel__comment-status")),
+    ) &&
+      currentCommentCards()[2]?.textContent?.includes("Completed") === true,
+  );
+
+  const createCommentRequestCount = () =>
+    requests.filter(
+      (request) => request.method === "POST" && request.path.endsWith("/comments"),
+    ).length;
+  const patchCount = () =>
+    requests.filter((request) => request.method === "PATCH").length;
+  const savedEvidenceCard = () =>
+    commentsPanel.querySelector<HTMLElement>(
+      '.sbfx-comments-panel__comment[data-comment-id="comment-current-4"]',
+    )!;
+  const commentEditModal = () =>
+    document.querySelector<HTMLElement>("[data-comment-edit-modal]")!;
+  const commentEditDialog = () =>
+    commentEditModal().querySelector<HTMLElement>('[role="dialog"]')!;
+  const captureRequestsBeforeSavedEdit = createCommentRequestCount();
+  const savedEditTrigger = savedEvidenceCard().querySelector<HTMLButtonElement>(
+    '[aria-label="Edit comment"]',
+  )!;
+  savedEditTrigger.click();
+  await waitFor(() => document.querySelector("[data-comment-edit-modal]"));
+  const savedEvidencePreview = commentEditModal().querySelector<HTMLElement>(
+    "[data-comment-evidence-preview]",
+  )!;
+  const editModalRect = commentEditDialog().getBoundingClientRect();
+  const editPreviewRect = savedEvidencePreview.getBoundingClientRect();
+  const commentsPanelRect = commentsPanel.getBoundingClientRect();
+  check(
+    "saved comment edit opens one accessible body-level modal instead of an inline card editor",
+    !commentsPanel.contains(commentEditModal()) &&
+      commentEditDialog().getAttribute("aria-modal") === "true" &&
+      Boolean(commentEditDialog().getAttribute("aria-labelledby")) &&
+      commentEditModal().getAttribute("data-sbfx-capture-ignore") === "true" &&
+      !savedEvidenceCard().querySelector("textarea") &&
+      editModalRect.width > commentsPanelRect.width &&
+      editPreviewRect.width > commentsPanelRect.width &&
+      editModalRect.left >= 0 &&
+      editModalRect.right <= window.innerWidth &&
+      editModalRect.top >= 0 &&
+      editModalRect.bottom <= window.innerHeight,
+    JSON.stringify({
+      outsidePanel: !commentsPanel.contains(commentEditModal()),
+      modal: {
+        bottom: editModalRect.bottom,
+        left: editModalRect.left,
+        right: editModalRect.right,
+        top: editModalRect.top,
+        width: editModalRect.width,
+      },
+      panelWidth: commentsPanelRect.width,
+      previewWidth: editPreviewRect.width,
+      viewport: { height: window.innerHeight, width: window.innerWidth },
+    }),
+  );
+  check(
+    "saved comment modal shows its stored aspect ratio pin and meeting-wide ordinal",
+    savedEvidencePreview.style.aspectRatio === "400 / 240" &&
+      savedEvidencePreview.querySelector("[data-comment-edit-pin]")?.textContent === "5" &&
+      savedEvidencePreview.querySelector("[data-comment-edit-pin]")?.getAttribute("aria-label") ===
+        "Adjust comment point 5" &&
+      document.activeElement === savedEvidencePreview.querySelector("[data-comment-edit-pin]"),
+  );
+  const savedEditPin = () =>
+    commentEditModal().querySelector<HTMLButtonElement>("[data-comment-edit-pin]")!;
+  const savedPreviewRect = savedEvidencePreview.getBoundingClientRect();
+  dispatchPointerSequence(
+    savedEvidencePreview,
+    savedPreviewRect.left + savedPreviewRect.width * 0.4,
+    savedPreviewRect.top + savedPreviewRect.height * 0.55,
+  );
+  await waitFor(
+    () => savedEditPin().style.left === "40%" && savedEditPin().style.top === "55%",
+  );
+  savedEditPin().focus();
+  savedEditPin().dispatchEvent(
+    new KeyboardEvent("keydown", {
+      bubbles: true,
+      cancelable: true,
+      key: "ArrowRight",
+    }),
+  );
+  savedEditPin().dispatchEvent(
+    new KeyboardEvent("keydown", {
+      bubbles: true,
+      cancelable: true,
+      key: "ArrowDown",
+      shiftKey: true,
+    }),
+  );
+  await waitFor(
+    () => savedEditPin().style.left === "41%" && savedEditPin().style.top === "60%",
+  );
+  check(
+    "saved comment point supports pointer and keyboard draft adjustment without a Story tag",
+    patchCount() === 0 &&
+      createCommentRequestCount() === captureRequestsBeforeSavedEdit &&
+      !document.querySelector("[data-sbfx-live-comment-pin]"),
+  );
+  commentEditModal()
+    .querySelector<HTMLButtonElement>("[data-comment-edit-cancel]")!
+    .click();
+  await waitFor(
+    () =>
+      !document.querySelector("[data-comment-edit-modal]") &&
+      document.activeElement === savedEditTrigger,
+  );
+  check(
+    "cancelling a saved evidence modal restores its canonical point without a request and returns focus",
+    patchCount() === 0 &&
+      createCommentRequestCount() === captureRequestsBeforeSavedEdit &&
+      document.activeElement === savedEditTrigger,
+  );
+
+  savedEditTrigger.click();
+  await waitFor(() => document.querySelector("[data-comment-edit-pin]"));
+  check(
+    "reopening a cancelled saved edit restores the canonical point",
+    savedEditPin().style.left === "61%" && savedEditPin().style.top === "75%",
+  );
+  const retryPreview = commentEditModal().querySelector<HTMLElement>(
+    "[data-comment-evidence-preview]",
+  )!;
+  const retryPreviewRect = retryPreview.getBoundingClientRect();
+  dispatchPointerSequence(
+    retryPreview,
+    retryPreviewRect.left + retryPreviewRect.width * 0.32,
+    retryPreviewRect.top + retryPreviewRect.height * 0.46,
+  );
+  await waitFor(
+    () => savedEditPin().style.left === "32%" && savedEditPin().style.top === "46%",
+  );
+  const savedBodyDraft = commentEditModal().querySelector<HTMLTextAreaElement>("textarea")!;
+  setNativeValue(savedBodyDraft, "Updated saved comment and point");
+  failNextCommentPatch = true;
+  commentEditModal()
+    .querySelector<HTMLButtonElement>("[data-comment-edit-save]")!
+    .click();
+  await waitFor(
+    () =>
+      patchCount() === 1 &&
+      commentEditModal().textContent?.includes("Temporary comment update failure."),
+  );
+  check(
+    "failed saved point edit retains both drafts in the open modal",
+    savedBodyDraft.value === "Updated saved comment and point" &&
+      savedEditPin().style.left === "32%" &&
+      savedEditPin().style.top === "46%",
+  );
+  commentEditModal()
+    .querySelector<HTMLButtonElement>("[data-comment-edit-save]")!
+    .click();
+  await waitFor(
+    () =>
+      patchCount() === 2 &&
+      !document.querySelector("[data-comment-edit-modal]") &&
+      savedEvidenceCard().textContent?.includes("Updated saved comment and point"),
+  );
+  const savedEditPayload = requests.filter((request) => request.method === "PATCH").at(-1)
+    ?.body as { body?: string; pin?: { xRatio: number; yRatio: number } } | undefined;
+  check(
+    "saving a saved point edit sends one atomic body and pin payload and keeps the panel expanded",
+    savedEditPayload?.body === "Updated saved comment and point" &&
+      Math.abs((savedEditPayload?.pin?.xRatio ?? -1) - 0.32) < 0.0001 &&
+      Math.abs((savedEditPayload?.pin?.yRatio ?? -1) - 0.46) < 0.0001 &&
+      commentsPanel.dataset.expanded === "true" &&
+      !commentsDetail.hidden &&
+      createCommentRequestCount() === captureRequestsBeforeSavedEdit,
+  );
+
+  const editableCard = () =>
+    commentsPanel.querySelector<HTMLElement>(
+      '.sbfx-comments-panel__comment[data-comment-id="comment-current-3"]',
+    )!;
+  editableCard()
+    .querySelector<HTMLButtonElement>('[aria-label="Edit comment"]')!
+    .click();
+  await waitFor(() => document.querySelector("[data-comment-edit-modal] textarea"));
+  await waitFor(() =>
+    document.querySelector("[data-comment-edit-modal] [data-comment-evidence-unavailable]"),
+  );
+  check(
+    "failed evidence image keeps the comment body editor usable",
+    commentEditModal().textContent?.includes("Screenshot evidence is unavailable.") === true &&
+      Boolean(commentEditModal().querySelector("textarea")) &&
+      document.activeElement === commentEditModal().querySelector("textarea"),
+  );
+  const cancelledDraft = commentEditModal().querySelector<HTMLTextAreaElement>("textarea")!;
+  setNativeValue(cancelledDraft, "Cancelled edit");
+  commentEditModal().querySelector<HTMLButtonElement>("[data-comment-edit-cancel]")!.click();
+  await waitFor(
+    () =>
+      !document.querySelector("[data-comment-edit-modal]") &&
+      editableCard().textContent?.includes("Recent current-story comment"),
+  );
+  check(
+    "cancelled panel edit sends no request and restores the stored body",
+    patchCount() === 2 &&
+      createCommentRequestCount() === captureRequestsBeforeSavedEdit &&
+      editableCard().textContent?.includes("Recent current-story comment") === true &&
+      !document.querySelector("[data-comment-edit-modal]"),
+  );
+
+  const editableTrigger = editableCard().querySelector<HTMLButtonElement>(
+    '[aria-label="Edit comment"]',
+  )!;
+  editableTrigger.click();
+  await waitFor(() => document.querySelector("[data-comment-edit-modal] textarea"));
+  const editDraft = commentEditModal().querySelector<HTMLTextAreaElement>("textarea")!;
+  setNativeValue(editDraft, "   ");
+  const saveEditButton = commentEditModal().querySelector<HTMLButtonElement>(
+    "[data-comment-edit-save]",
+  )!;
+  check(
+    "invalid panel edit is blocked without a request",
+    saveEditButton.disabled && patchCount() === 2,
+  );
+  setNativeValue(editDraft, "Updated recent comment");
+  await waitFor(() => !saveEditButton.disabled);
+  document.dispatchEvent(
+    new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "Escape" }),
+  );
+  await waitFor(
+    () =>
+      !document.querySelector("[data-comment-edit-modal]") &&
+      document.activeElement === editableTrigger,
+  );
+  check(
+    "Escape closes the comment edit modal without a request and returns focus",
+    patchCount() === 2 && document.activeElement === editableTrigger,
+  );
+  editableTrigger.click();
+  await waitFor(() => document.querySelector("[data-comment-edit-modal]"));
+  commentEditModal().dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await waitFor(
+    () =>
+      !document.querySelector("[data-comment-edit-modal]") &&
+      document.activeElement === editableTrigger,
+  );
+  check(
+    "backdrop closes the comment edit modal without a request and returns focus",
+    patchCount() === 2 && document.activeElement === editableTrigger,
+  );
+  editableTrigger.click();
+  await waitFor(() => document.querySelector("[data-comment-edit-modal] textarea"));
+  setNativeValue(
+    commentEditModal().querySelector<HTMLTextAreaElement>("textarea")!,
+    "Updated recent comment",
+  );
+  const retrySaveEditButton = commentEditModal().querySelector<HTMLButtonElement>(
+    "[data-comment-edit-save]",
+  )!;
+  await waitFor(() => !retrySaveEditButton.disabled);
+  retrySaveEditButton.click();
+  await waitFor(
+    () =>
+      patchCount() === 3 &&
+      editableCard().textContent?.includes("Updated recent comment"),
+  );
+  check(
+    "missing evidence saves a body-only PATCH and keeps the panel expanded",
+    JSON.stringify(
+      requests.filter((request) => request.method === "PATCH").at(-1)?.body,
+    ) === JSON.stringify({ body: "Updated recent comment" }) &&
+      commentsPanel.dataset.expanded === "true" &&
+      !commentsDetail.hidden,
+  );
+
+  const deletableCard = () =>
+    commentsPanel.querySelector<HTMLElement>(
+      '.sbfx-comments-panel__comment[data-comment-id="comment-current-2"]',
+    );
+  const deleteCount = () =>
+    requests.filter((request) => request.method === "DELETE").length;
+  const openDeleteDialog = () => {
+    deletableCard()
+      ?.querySelector<HTMLButtonElement>('[aria-label="Delete comment"]')
+      ?.click();
+  };
+  openDeleteDialog();
+  await waitFor(() => commentsPanel.querySelector('[role="dialog"]'));
+  const deleteDialog = () =>
+    commentsPanel.querySelector<HTMLElement>('[role="dialog"]')!;
+  const deleteTrigger = deletableCard()!.querySelector<HTMLButtonElement>(
+    '[aria-label="Delete comment"]',
+  )!;
+  deleteDialog().querySelector<HTMLButtonElement>("[data-comment-delete-cancel]")!.click();
+  await waitFor(
+    () =>
+      !commentsPanel.querySelector('[role="dialog"]') &&
+      document.activeElement === deleteTrigger,
+  );
+  check(
+    "panel delete Cancel sends no request and restores focus",
+    deleteCount() === 0 && document.activeElement === deleteTrigger,
+  );
+  openDeleteDialog();
+  await waitFor(() => commentsPanel.querySelector('[role="dialog"]'));
+  document.dispatchEvent(
+    new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "Escape" }),
+  );
+  await waitFor(
+    () =>
+      !commentsPanel.querySelector('[role="dialog"]') &&
+      document.activeElement === deleteTrigger,
+  );
+  check(
+    "panel delete Escape sends no request and restores focus",
+    deleteCount() === 0 && document.activeElement === deleteTrigger,
+  );
+  openDeleteDialog();
+  await waitFor(() => commentsPanel.querySelector('[role="dialog"]'));
+  deleteDialog().dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await waitFor(
+    () =>
+      !commentsPanel.querySelector('[role="dialog"]') &&
+      document.activeElement === deleteTrigger,
+  );
+  check(
+    "panel delete backdrop sends no request and restores focus",
+    deleteCount() === 0 && document.activeElement === deleteTrigger,
+  );
+  openDeleteDialog();
+  await waitFor(() => commentsPanel.querySelector('[role="dialog"]'));
+  deleteDialog()
+    .querySelector<HTMLButtonElement>("[data-comment-delete-confirm]")!
+    .click();
+  await waitFor(() => deleteCount() === 1 && !deletableCard());
+  check(
+    "panel delete confirmation sends one request and keeps the panel expanded",
+    commentsPanel.dataset.expanded === "true" &&
+      !commentsDetail.hidden &&
+      currentCommentCards().map((card) => card.dataset.commentId).join(",") ===
+        "comment-current-4,comment-current-3,comment-current-1",
+  );
+  check(
+    "Delete recomputes current panel comments to contiguous meeting-wide ordinals",
+    currentCommentCards()[0]?.querySelector("[aria-label='Edit comment']") !== null &&
+      comments.findIndex((comment) => comment.id === "comment-current-4") + 1 === 4,
+  );
+  const missingEvidenceCard = commentsPanel.querySelector<HTMLElement>(
+    '.sbfx-comments-panel__comment[data-comment-id="comment-current-1"]',
+  )!;
+  missingEvidenceCard
+    .querySelector<HTMLButtonElement>('[aria-label="Edit comment"]')!
+    .click();
+  await waitFor(() =>
+    document.querySelector("[data-comment-edit-modal] [data-comment-evidence-unavailable]"),
+  );
+  check(
+    "null evidence fallback keeps the body editor usable without recapture",
+    Boolean(commentEditModal().querySelector("textarea")) &&
+      createCommentRequestCount() === captureRequestsBeforeSavedEdit,
+  );
+  commentEditModal()
+    .querySelector<HTMLButtonElement>("[data-comment-edit-cancel]")!
+    .click();
+  missingEvidenceCard
+    .querySelector<HTMLButtonElement>('[aria-label="Edit comment"]')!
+    .click();
+  await waitFor(() => document.querySelector("[data-comment-edit-modal]"));
+  commentsToggle.click();
+  await waitFor(
+    () =>
+      !document.querySelector("[data-comment-edit-modal]") &&
+      commentsPanel.dataset.expanded === "false",
+  );
+  check(
+    "collapsing Visual comments removes the body-level edit overlay without a request",
+    patchCount() === 3 && !document.querySelector("[data-comment-edit-modal]"),
+  );
+  commentsToggle.click();
+  await waitFor(() => commentsPanel.dataset.expanded === "true");
 
   const reviewSlot = workspace.querySelector<HTMLElement>('[data-sbfx-workspace-slot="review"]')!;
   const reviewPreferenceBeforeParentCollapse = localStorage.getItem("sbfx:review-collapsed");
@@ -935,10 +1583,20 @@ async function run() {
     Boolean(button("Cancel capture")) && !button("Add comment"),
   );
   button("Cancel capture")!.click();
+  await waitFor(() => button("Capture note"));
   document.querySelector<HTMLButtonElement>('[aria-label="Expand Figma export panel"]')?.click();
   document.querySelector<HTMLButtonElement>('[aria-label="Expand export review panel"]')?.click();
+  const createRequestsBeforeUnmount = createCommentRequestCount();
+  button("Capture note")!.click();
+  dispatchPointerSequence(prototypeButton, 100, 64);
   window.fetch = originalFetch;
   mount.unmount();
+  await new Promise((resolve) => window.setTimeout(resolve, 100));
+  check(
+    "unmount clears an in-flight live tag without creating a comment",
+    !document.querySelector("[data-sbfx-live-comment-pin]") &&
+      createCommentRequestCount() === createRequestsBeforeUnmount,
+  );
 }
 
 type VisualCommentOverview = {

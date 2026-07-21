@@ -1,6 +1,6 @@
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import type { FigmaReviewEntry, FigmaReviewStatus } from "./review";
 import {
   VISUAL_COMMENT_LIMITS,
@@ -338,6 +338,17 @@ export async function handleVisualCommentsRequest({
       const overview = await store.getOverview(url.searchParams.get("storyId") ?? undefined);
       sendJson(response, 200, {
         ...overview,
+        comments: overview.comments.map((comment) => ({
+          ...comment,
+          preview: comment.preview
+            ? {
+                imageUrl: `${basePath}/reports/sessions/${encodeURIComponent(overview.activeSession!.id)}/assets/${encodeURIComponent(basename(comment.preview.imagePath))}`,
+                width: comment.preview.width,
+                height: comment.preview.height,
+                pin: comment.preview.pin,
+              }
+            : null,
+        })),
         reportUrl: `${basePath}/reports`,
         activeReportUrl: overview.activeSession
           ? `${basePath}/reports/sessions/${encodeURIComponent(overview.activeSession.id)}/index.html`
@@ -376,22 +387,41 @@ export async function handleVisualCommentsRequest({
       const commentId = segments[3];
       if (method === "PATCH") {
         const requestBody = await readRequestBodyLimited(request);
-        if (
-          !isRecord(requestBody) ||
-          Object.keys(requestBody).length !== 1 ||
-          typeof requestBody.resolved !== "boolean"
-        ) {
+        if (!isRecord(requestBody)) {
           throw new RequestBodyError(
-            "Body must contain only a boolean resolved field.",
+            "Body must contain resolved, body, pin, or body and pin fields.",
             400,
           );
         }
-        sendJson(
-          response,
-          200,
-          await store.resolveComment(sessionId, commentId, requestBody.resolved),
+        const keys = Object.keys(requestBody);
+        if (
+          keys.length === 1 &&
+          keys[0] === "resolved" &&
+          typeof requestBody.resolved === "boolean"
+        ) {
+          sendJson(
+            response,
+            200,
+            await store.resolveComment(sessionId, commentId, requestBody.resolved),
+          );
+          return;
+        }
+        if (
+          keys.length >= 1 &&
+          keys.length <= 2 &&
+          keys.every((key) => key === "body" || key === "pin")
+        ) {
+          sendJson(
+            response,
+            200,
+            await store.updateCommentDetails(sessionId, commentId, requestBody),
+          );
+          return;
+        }
+        throw new RequestBodyError(
+          "Body must contain exclusive boolean resolved or one or both of body and pin.",
+          400,
         );
-        return;
       }
       if (method === "DELETE") {
         sendJson(response, 200, await store.deleteComment(sessionId, commentId));

@@ -57,6 +57,11 @@ export type VisualCommentCaptureResult = {
   viewport: VisualCommentViewport;
 };
 
+export type VisualCommentPointSelection = {
+  pin: VisualCommentPin;
+  viewport: VisualCommentViewport;
+};
+
 export type VisualCommentCaptureController = {
   cancel(): void;
 };
@@ -244,6 +249,7 @@ export function beginVisualCommentCapture({
   onCancel,
   onCaptured,
   onError,
+  onPointSelected,
   selector,
 }: {
   capture?: (target: HTMLElement) => Promise<VisualCommentCapture>;
@@ -251,6 +257,7 @@ export function beginVisualCommentCapture({
   onCancel?: () => void;
   onCaptured(result: VisualCommentCaptureResult): void;
   onError(error: Error): void;
+  onPointSelected?: (selection: VisualCommentPointSelection) => void;
   selector?: string;
 }): VisualCommentCaptureController {
   let active = true;
@@ -307,6 +314,7 @@ export function beginVisualCommentCapture({
       scrollX: view.scrollX,
       scrollY: view.scrollY,
     };
+    onPointSelected?.({ pin, viewport });
     void capture(target)
       .then((captured) => {
         if (!cancelled) onCaptured({ capture: captured, pin, viewport });

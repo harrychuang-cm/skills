@@ -213,18 +213,37 @@ addon package.
 The React review helper can also run append-only visual review meetings from a
 separate top-right comments panel. It defaults to a 36px Edit icon launcher whose
 button and 14px icon remain centered in the collapsed surface; open it,
-then the expanded header places the **Visual comments** subheading above an
+then the expanded header places the **Visual comments** subheading above a
 compact, content-width outline **Reports** button beside the same Edit control.
 Starting or ending a meeting and saving a comment keep the panel expanded, including
 across a same-Story preview remount triggered by the local evidence write. Choose
-**Add comment**, then click the preview. The capture-phase
-handler blocks that pointer sequence before the prototype can change state,
-captures the current preview with `html-to-image`, removes nodes marked
-`data-sbfx-capture-ignore`, and opens a comment composer. Other browsers on the
+**Add comment**, then click the preview. A numbered, non-interactive Story tag
+appears as soon as the point is selected. The capture-phase handler blocks that
+pointer sequence before the prototype can change state, captures the current
+preview with `html-to-image`, removes nodes marked `data-sbfx-capture-ignore`,
+and opens a comment composer. Before Save, move the point by clicking or dragging
+inside the snapshot preview, or use Arrow keys (1%) and Shift+Arrow keys (5%).
+The Story tag mirrors the final normalized point and is never captured. Other browsers on the
 same Storybook host discover the active meeting through five-second polling.
-The current meeting and closed history remain visible together with capture and
-comment counts; each session report contains its immutable snapshots, pins,
-authors, comments, timestamps, and Story metadata.
+While a meeting is active, the panel shows only the current Story's newest three
+comments, with author, timestamp, body, Open/Completed status, body edit,
+the original read-only screenshot plus an adjustable pin, and confirmed deletion.
+Choosing Edit opens a capture-ignored overlay modal instead of expanding the
+editor inside the 320px panel, so the stored screenshot and numbered point are
+shown at a larger responsive size. While editing, click or drag the numbered pin
+or use Arrow keys (1%) and Shift+Arrow keys (5%); **Save changes** stores the body
+and normalized point in one atomic update. Cancel, Escape, or the backdrop
+restores both local drafts and returns focus to Edit. A failed update keeps the
+modal and drafts open; a successful update closes only the modal and leaves
+Visual comments expanded. Pins use one
+meeting-wide `1..N` sequence across Stories and captures; deleting a comment
+recomputes a contiguous sequence. The **Reports** route remains the single place to browse
+active and closed meetings that still contain a capture or comment. Meetings with
+`0 captures · 0 comments` and empty group headings are omitted; when no meeting has
+evidence, the index renders one empty state. Canonical meeting JSON and direct session
+report URLs remain readable. Each session report contains its
+snapshots on the addon's dark raised surface, pins, authors, comments, timestamps,
+and Story metadata.
 
 ```ts
 createFigmaExportReviewDecorator(figmaExportOptions, {
@@ -243,7 +262,12 @@ createFigmaReviewStatusPlugin({
 Canonical `meeting.json` files and content-addressed PNG/WebP assets are written
 under `design-system/figma-export-review/`; `index.html` and per-meeting reports
 are derived, portable projections with relative asset paths. Each comment places
-an accessible **Copy AI prompt** action before the Trash icon and Complete/Reopen.
+an accessible Trash icon aligned to the left edge, with **Copy AI prompt**, Edit,
+and Complete/Reopen grouped in that order at the right edge. Both active and
+closed reports show the stored screenshot inside each comment editor and allow
+its body and normalized point to be edited in place; Save changes updates both
+in one request without recapturing or replacing the image, while Cancel keeps
+the canonical comment unchanged.
 It produces the same provider-neutral Markdown for Claude, Cursor, Codex, and
 other assistants, including the review text, Story metadata, normalized pin,
 viewport, a repository-root-relative screenshot path when safe, the report path,

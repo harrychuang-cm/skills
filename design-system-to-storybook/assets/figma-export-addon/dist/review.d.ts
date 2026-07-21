@@ -17,13 +17,23 @@ type FigmaReviewEntry = {
 type FigmaReviewLabels = Partial<{
     approved: string;
     addVisualComment: string;
+    adjustCommentPoint: string;
+    adjustCommentPointHint: string;
     authorName: string;
     cancelCapture: string;
+    cancelCommentEdit: string;
+    cancelDelete: string;
     closeVisualComments: string;
     closeNotes: string;
     commentBody: string;
+    confirmDelete: string;
+    deleteComment: string;
+    deleteCommentDescription: string;
+    deleteCommentTitle: string;
     endMeeting: string;
+    editComment: string;
     editFigmaSource: string;
+    evidenceUnavailable: string;
     exported: string;
     figmaSource: string;
     imported: string;
@@ -35,6 +45,7 @@ type FigmaReviewLabels = Partial<{
     openSource: string;
     openVisualComments: string;
     review: string;
+    saveCommentChanges: string;
     startMeeting: string;
     submitComment: string;
     sourcePlaceholder: string;

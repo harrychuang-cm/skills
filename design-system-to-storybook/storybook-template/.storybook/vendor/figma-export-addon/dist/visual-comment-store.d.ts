@@ -42,6 +42,19 @@ type VisualComment = {
     createdAt: string;
     resolvedAt?: string | null;
 };
+type VisualCommentDetailsPatch = {
+    body?: string;
+    pin?: VisualComment["pin"];
+};
+type VisualCommentOverviewComment = VisualComment & {
+    ordinal: number;
+    preview: {
+        imagePath: string;
+        width: number;
+        height: number;
+        pin: VisualComment["pin"];
+    } | null;
+};
 type VisualMeetingFile = {
     version: 1;
     session: VisualMeeting;
@@ -85,7 +98,7 @@ declare function createVisualCommentStore(options?: VisualCommentStoreOptions): 
             closedAt: string | null;
         } | null;
         recentSessions: VisualMeetingSummary[];
-        comments: VisualComment[];
+        comments: VisualCommentOverviewComment[];
     }>;
     getMeeting: (id: string) => Promise<VisualMeetingFile>;
     startMeeting: (title: string) => Promise<{
@@ -105,6 +118,18 @@ declare function createVisualCommentStore(options?: VisualCommentStoreOptions): 
     } & {
         reportStale: boolean;
     }>;
+    updateCommentDetails: (id: string, commentId: string, patchValue: unknown) => Promise<{
+        comment: VisualComment;
+        meeting: VisualMeetingFile;
+    } & {
+        reportStale: boolean;
+    }>;
+    updateCommentBody: (id: string, commentId: string, body: string) => Promise<{
+        comment: VisualComment;
+        meeting: VisualMeetingFile;
+    } & {
+        reportStale: boolean;
+    }>;
     resolveComment: (id: string, commentId: string, resolved: boolean) => Promise<{
         comment: VisualComment;
         meeting: VisualMeetingFile;
@@ -121,4 +146,4 @@ declare function createVisualCommentStore(options?: VisualCommentStoreOptions): 
     }>;
 };
 
-export { type VisualCapture, type VisualComment, type VisualCommentReportRenderContext, VisualCommentStoreError, type VisualCommentStoreOptions, type VisualCommentStoreState, type VisualMeeting, type VisualMeetingFile, type VisualMeetingSummary, createVisualCommentStore };
+export { type VisualCapture, type VisualComment, type VisualCommentDetailsPatch, type VisualCommentOverviewComment, type VisualCommentReportRenderContext, VisualCommentStoreError, type VisualCommentStoreOptions, type VisualCommentStoreState, type VisualMeeting, type VisualMeetingFile, type VisualMeetingSummary, createVisualCommentStore };

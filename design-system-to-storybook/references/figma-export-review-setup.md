@@ -161,7 +161,19 @@ notes, but render in a separate top-right panel instead of inside Export review.
 The panel defaults to an Edit icon launcher and expands on demand. They work only
 in React Story view. The browser intercepts the selected
 pointer sequence before prototype handlers, captures the current in-memory UI,
-and stores a normalized pin plus immutable screenshot. Set
+and stores a normalized pin plus immutable screenshot. Point selection immediately
+shows the next meeting-wide numbered tag. Before Save, the point can be adjusted
+inside the snapshot by click, Pointer Events drag, Arrow keys (1%), or Shift+Arrow
+keys (5%). Saved-comment Edit in the Visual comments panel opens a capture-ignored
+overlay modal with a larger responsive screenshot and numbered pin; Reports keeps
+its inline editor. Both surfaces keep the original screenshot read-only while
+allowing the numbered pin to move with the same pointer and keyboard controls.
+**Save changes** atomically stores the body and normalized point without
+recapturing or replacing the screenshot. Cancel, Escape, or the modal backdrop
+restores both drafts and returns focus; a failed save retains the modal drafts,
+while success closes the modal and keeps Visual comments expanded. If the stored
+image is unavailable, body-only editing remains usable.
+Set
 `captureSelector: "body"` when portals outside `#storybook-root` must appear;
 addon chrome is excluded with `data-sbfx-capture-ignore`.
 
@@ -181,7 +193,14 @@ On wide viewports it reserves inline Story space; on narrow viewports it reserve
 block space. The separate comments detail panel stays at the top-right and never
 overlaps the workspace; capture/composer state never removes either workspace
 header. The report index keeps current and closed meetings separate and shows
-capture/comment counts.
+capture/comment counts only for meetings that still contain evidence. Meetings with
+zero captures and zero comments, plus any resulting empty group heading, are omitted;
+if every meeting is empty the index shows one empty state while canonical meeting JSON
+and direct session report URLs remain readable.
+Comment ordinals are derived from the full meeting before Story/capture filtering,
+so panel previews and Reports use the same continuous `1..N` sequence. Reports use
+the existing dark `--sbfx-surface-raised` surface behind contained screenshots in
+both light and dark color schemes.
 
 If status or comments requests fail, the panel names the HTTP operation and
 configured endpoint. Fix `.storybook/figma-export.config.ts`; do not add legacy
