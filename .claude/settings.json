@@ -1,3 +1,10 @@
 {
-  "includeGitInstructions": false
+  "includeGitInstructions": false,
+  "permissions": {
+    "allow": [
+      "Bash(md5 assets/figma-export-addon/src/visualComment.ts storybook-template/vendor/figma-export/src/visualComment.ts storybook-template/.storybook/vendor/figma-export-addon/src/visualComment.ts)",
+      "Bash(awk '{print $6, $7, $8, $9, $NF}')",
+      "Bash(git --version)"
+    ]
+  }
 }
