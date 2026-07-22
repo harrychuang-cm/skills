@@ -486,7 +486,11 @@ void (async function importStorybookStory(payload) {
       const styles = spec.styles || {};
       const bindings = spec.bindings || {};
       safeResize(node, styles.width, styles.height);
-      if ("clipsContent" in node) node.clipsContent = styles.overflow === "hidden";
+      if ("clipsContent" in node) {
+        node.clipsContent = /(hidden|clip|auto|scroll|overlay)/i.test(
+          String(styles.overflow || ""),
+        );
+      }
       if ("opacity" in node) node.opacity = valueOr(styles.opacity, 1);
       setFrameFills(node, styles, bindings);
       setStrokes(node, styles, bindings);
@@ -1170,7 +1174,9 @@ void (async function importStorybookStory(payload) {
     const bindings = spec.bindings || {};
     node.name = spec.name;
     safeResize(node, styles.width, styles.height);
-    node.clipsContent = styles.overflow === "hidden";
+    node.clipsContent = /(hidden|clip|auto|scroll|overlay)/i.test(
+      String(styles.overflow || ""),
+    );
     node.opacity = valueOr(styles.opacity, 1);
     setFrameFills(node, styles, bindings);
     setStrokes(node, styles, bindings);

@@ -1,6 +1,6 @@
 import * as react from 'react';
 import { ReactNode } from 'react';
-import { R as ResolvedFigmaExportAddonOptions, b as FigmaExportAddonOptions } from './options-Bj3uxPVS.js';
+import { R as ResolvedFigmaExportAddonOptions, b as FigmaExportAddonOptions } from './options-C_8ObI65.js';
 import { V as VisualCommentOptions } from './visualComment-CktpX_T5.js';
 
 type FigmaReviewStatus = "not-started" | "exported" | "imported" | "needs-fix" | "approved";

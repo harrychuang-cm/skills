@@ -2,19 +2,31 @@
 
 Figma development plugin for importing Storybook Code To Design JSON exports. The plugin parses JSON only; it does not evaluate pasted JavaScript.
 
-Version: `1.2.0`
+Version: `1.3.0` (the authoritative version is stamped from `package.json` into the UI badge and `PLUGIN_VERSION`)
 
 ## Fidelity fields (payload v2, all optional)
 
 Payloads produced by the current exporter may carry additional optional fields; older payloads without them import exactly as before:
 
-- `styles.effects` → Figma `DROP_SHADOW` / `INNER_SHADOW` effects on frames, text, and images
+- `styles.effects` → Figma `DROP_SHADOW` / `INNER_SHADOW` effects on frames, text, and images; `styles.blurEffects` → `LAYER_BLUR` / `BACKGROUND_BLUR` (a separate field so importers ≤ 1.2.4 still accept the payload; both lists merge on import, and blur types inside `effects` are tolerated too)
 - `styles.radiusCorners` → per-corner radii (`topLeftRadius` etc.)
 - `styles.layoutWrap` + `styles.counterAxisSpacing` → wrapped auto layout
 - `styles.letterSpacing` (px), `styles.textDecoration` (`UNDERLINE`/`STRIKETHROUGH`), `styles.fontStyle: "italic"` → text styling; font style resolution covers weights 100–900 with italic variants and upright fallback
+- `styles.textAutoResize: "WIDTH_AND_HEIGHT"` hugs single-line text; `styles.textGrowHeight: true` (or a hand-written `textAutoResize: "HEIGHT"`) keeps the browser wrap width fixed and lets Figma size the height, so wrapped paragraphs never unwrap into one line
+- `styles.maxLines` + `styles.textTruncation: "ENDING"` → single-line ellipsis and `-webkit-line-clamp` truncation
 - CSS `font-family` fallback lists are parsed in source order. Figma variables receive one unquoted family, while `rawValue` retains the full CSS list. If the first family is unavailable, the importer tries later concrete families before Inter and skips an incompatible family binding instead of failing during `appendChild`.
-- `imageBase64` + `imageMimeType` + `styles.imageScaleMode` → raster fills via `figma.createImage` (decode failures warn and keep an empty frame)
-- `colorFromCss` also accepts 4/8-digit hex, `hsl()/hsla()`, and `rgb(r g b / a)` syntax; `linear-gradient` supports arbitrary angles
+- `imageBase64` + `imageMimeType` + `styles.imageScaleMode` → raster fills via `figma.createImage` (decode failures warn and keep an empty frame). On `frame` nodes the image renders as a CSS-style background layer: background color at the bottom, then the image, then radial and linear gradients on top.
+- `styles.backgroundRadialGradient` → `GRADIENT_RADIAL` fill (ellipse inscribed in the node bounds)
+- `styles.borderStyle: "dashed" | "dotted"` → stroke `dashPattern` (dotted adds a round cap)
+- `colorFromCss` also accepts 4/8-digit hex, `hsl()/hsla()`, `rgb(r g b / a)` syntax, and common named colors (`white`, `black`, `transparent`, ...); `linear-gradient` supports arbitrary angles
+
+Import behavior notes:
+
+- `overflow: auto | scroll | overlay` (and mixed values like `hidden auto`) clip content like the browser; only `visible` leaves children unclipped.
+- CSS borders take layout space, so the exporter folds border widths into the exported padding; strokes stay `INSIDE` and overlap that padding exactly like a browser border box.
+- `align-items: baseline` maps to Figma `BASELINE` on horizontal auto layout; `justify-content: space-around/space-evenly` import as start-justified with the exporter's measured padding and gap.
+- A color binding whose variable is missing no longer paints a placeholder black fill; the paint is skipped with a warning instead.
+- SVG imports normalize the root `width`/`height` to the rendered size and derive a `viewBox` from the intrinsic size when missing, then rescale as a fallback — a 24px icon file rendered at 16px imports at 16px.
 
 Invalid types on these fields fail `parsePayload` with an error naming the node path and field.
 

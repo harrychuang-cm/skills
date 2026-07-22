@@ -2,8 +2,11 @@ import type {
   FigmaBindingName,
   FigmaComponentReference,
   FigmaExportArtifactKind,
+  FigmaExportBorderStyle,
   FigmaExportEffect,
+  FigmaExportLinearGradient,
   FigmaExportNode,
+  FigmaExportRadialGradient,
   FigmaNodeConstraints,
   FigmaLayoutStrategy,
   FigmaExportPayload,
@@ -79,6 +82,7 @@ const borderSides: BorderSide[] = ["top", "right", "bottom", "left"];
 
 type VisibleBorder = {
   color: string;
+  style?: FigmaExportBorderStyle;
   width: number;
 };
 
@@ -215,15 +219,45 @@ function splitGradientArguments(value: string): string[] {
   return parts;
 }
 
-function parseLinearGradientAngle(value: string | undefined): number | undefined {
+function parseLinearGradientAngle(
+  value: string | undefined,
+  width: number,
+  height: number,
+): number | undefined {
   if (!value) return undefined;
-  const normalized = value.trim().toLowerCase();
-  const degree = normalized.match(/^(-?\d*\.?\d+)deg$/);
-  if (degree) return Number(degree[1]);
+  const normalized = value.trim().toLowerCase().replace(/\s+/g, " ");
+  const degree = normalized.match(/^(-?\d*\.?\d+)(deg|grad|rad|turn)$/);
+  if (degree) {
+    const amount = Number(degree[1]);
+    if (degree[2] === "grad") return amount * 0.9;
+    if (degree[2] === "rad") return (amount * 180) / Math.PI;
+    if (degree[2] === "turn") return amount * 360;
+    return amount;
+  }
   if (normalized === "to right") return 90;
   if (normalized === "to bottom") return 180;
   if (normalized === "to left") return 270;
   if (normalized === "to top") return 0;
+
+  // Corner keywords depend on the box aspect ratio: the gradient line is
+  // perpendicular to the diagonal joining the two neighboring corners, so
+  // "to top right" on a wide box is steeper than 45deg from the horizon.
+  const cornerAngle =
+    width > 0 && height > 0
+      ? (Math.atan2(height, width) * 180) / Math.PI
+      : 45;
+  if (normalized === "to top right" || normalized === "to right top") {
+    return cornerAngle;
+  }
+  if (normalized === "to bottom right" || normalized === "to right bottom") {
+    return 180 - cornerAngle;
+  }
+  if (normalized === "to bottom left" || normalized === "to left bottom") {
+    return 180 + cornerAngle;
+  }
+  if (normalized === "to top left" || normalized === "to left top") {
+    return 360 - cornerAngle;
+  }
   return undefined;
 }
 
@@ -251,21 +285,63 @@ function parseGradientStop(
 }
 
 function parseLinearGradient(
-  backgroundImage: string,
-): { angle: number; stops: { color: string; position: number }[] } | undefined {
-  const match = backgroundImage.trim().match(/^linear-gradient\((.*)\)$/i);
+  layer: string,
+  width: number,
+  height: number,
+): FigmaExportLinearGradient | undefined {
+  const match = layer.trim().match(/^linear-gradient\((.*)\)$/i);
   if (!match) return undefined;
 
   const parts = splitGradientArguments(match[1]);
   if (parts.length < 2) return undefined;
 
-  const angle = parseLinearGradientAngle(parts[0]);
+  const angle = parseLinearGradientAngle(parts[0], width, height);
   const stopParts = angle === undefined ? parts : parts.slice(1);
   const stops = stopParts
     .map((part, index) => parseGradientStop(part, index, stopParts.length))
     .filter((stop): stop is { color: string; position: number } => Boolean(stop));
 
   return stops.length >= 2 ? { angle: angle ?? 180, stops } : undefined;
+}
+
+function parseRadialGradient(layer: string): FigmaExportRadialGradient | undefined {
+  const match = layer.trim().match(/^radial-gradient\((.*)\)$/i);
+  if (!match) return undefined;
+
+  const parts = splitGradientArguments(match[1]);
+  if (parts.length < 2) return undefined;
+
+  // The first argument may be a shape/size/position configuration without a
+  // color; only color stops contribute to the exported gradient.
+  const stopParts =
+    parseGradientStop(parts[0], 0, parts.length) === undefined
+      ? parts.slice(1)
+      : parts;
+  const stops = stopParts
+    .map((part, index) => parseGradientStop(part, index, stopParts.length))
+    .filter((stop): stop is { color: string; position: number } => Boolean(stop));
+
+  return stops.length >= 2 ? { stops } : undefined;
+}
+
+// Computed background-image is a comma-separated list of layers (first layer
+// paints on top). Splitting at the top level keeps gradient arguments intact.
+function getBackgroundImageLayers(backgroundImage: string): string[] {
+  const normalized = backgroundImage.trim();
+  if (!normalized || normalized === "none") return [];
+  return splitGradientArguments(normalized).filter((layer) => layer !== "none");
+}
+
+function getBackgroundImageUrl(layer: string): string | undefined {
+  const match = layer.trim().match(/^url\(\s*(?:"([^"]*)"|'([^']*)'|([^)]*?))\s*\)$/i);
+  if (!match) return undefined;
+  const url = match[1] ?? match[2] ?? match[3];
+  return url && !url.startsWith("data:image/svg") ? url : undefined;
+}
+
+function getBackgroundScaleMode(computed: CSSStyleDeclaration): "FILL" | "FIT" {
+  const size = (computed.backgroundSize || "").trim().toLowerCase();
+  return size === "contain" ? "FIT" : "FILL";
 }
 
 // Computed shadow lists serialize color-first in Chromium and Firefox, e.g.
@@ -315,6 +391,47 @@ function getBoxShadowEffects(computed: CSSStyleDeclaration): FigmaExportEffect[]
 
 function getTextShadowEffects(computed: CSSStyleDeclaration): FigmaExportEffect[] {
   return parseShadowListToEffects(computed.textShadow);
+}
+
+function parseFilterBlurRadius(filterValue: string): number | undefined {
+  const normalized = filterValue.trim();
+  if (!normalized || normalized === "none") return undefined;
+  const match = normalized.match(/(?:^|\s)blur\(\s*(-?\d*\.?\d+)px\s*\)/i);
+  if (!match) return undefined;
+  const radius = Number(match[1]);
+  return Number.isFinite(radius) && radius > 0 ? toFiniteNumber(radius) : undefined;
+}
+
+function getBlurEffects(computed: CSSStyleDeclaration): FigmaExportEffect[] {
+  const effects: FigmaExportEffect[] = [];
+
+  const layerBlur = parseFilterBlurRadius(computed.filter ?? "");
+  if (layerBlur !== undefined) {
+    effects.push({
+      blur: layerBlur,
+      offsetX: 0,
+      offsetY: 0,
+      spread: 0,
+      type: "LAYER_BLUR",
+    });
+  }
+
+  const backdropValue =
+    computed.backdropFilter ||
+    computed.getPropertyValue("-webkit-backdrop-filter") ||
+    "";
+  const backgroundBlur = parseFilterBlurRadius(backdropValue);
+  if (backgroundBlur !== undefined) {
+    effects.push({
+      blur: backgroundBlur,
+      offsetX: 0,
+      offsetY: 0,
+      spread: 0,
+      type: "BACKGROUND_BLUR",
+    });
+  }
+
+  return effects;
 }
 
 function cssRadiusToNumber(
@@ -447,7 +564,15 @@ function getUniformVisibleBorder(
       cssBorderColor(computed, side) === cssBorderColor(computed, "top"),
   );
 
-  return isUniform ? { color, width } : undefined;
+  if (!isUniform) return undefined;
+
+  return {
+    color,
+    width,
+    ...(style === "dashed" || style === "dotted"
+      ? { style: style as FigmaExportBorderStyle }
+      : {}),
+  };
 }
 
 function getElementName(
@@ -591,6 +716,16 @@ function serializeInlineSvg(element: SVGElement, width: number, height: number):
   clone.setAttribute("width", String(width));
   clone.setAttribute("height", String(height));
 
+  // Without a viewBox, rewriting width/height rescales nothing and the
+  // drawing crops; the intrinsic size becomes the coordinate system.
+  if (!clone.hasAttribute("viewBox")) {
+    const intrinsicWidth = Number.parseFloat(element.getAttribute("width") ?? "");
+    const intrinsicHeight = Number.parseFloat(element.getAttribute("height") ?? "");
+    if (intrinsicWidth > 0 && intrinsicHeight > 0) {
+      clone.setAttribute("viewBox", `0 0 ${intrinsicWidth} ${intrinsicHeight}`);
+    }
+  }
+
   clonedNodes.forEach((clonedNode, index) => {
     const originalNode = originalNodes[index];
     if (!(originalNode instanceof Element) || !(clonedNode instanceof Element)) return;
@@ -607,6 +742,9 @@ function serializeInlineSvg(element: SVGElement, width: number, height: number):
     const strokeDashoffset = normalizeSvgStrokeDashValue(
       originalStyle.strokeDashoffset,
     );
+    const fillOpacity = originalStyle.fillOpacity;
+    const strokeOpacity = originalStyle.strokeOpacity;
+    const nodeOpacity = originalStyle.opacity;
 
     if (fill) clonedNode.setAttribute("fill", fill);
     if (originalStyle.fill === "none") clonedNode.setAttribute("fill", "none");
@@ -618,6 +756,16 @@ function serializeInlineSvg(element: SVGElement, width: number, height: number):
     if (strokeLinejoin) clonedNode.setAttribute("stroke-linejoin", strokeLinejoin);
     if (strokeDasharray) clonedNode.setAttribute("stroke-dasharray", strokeDasharray);
     if (strokeDashoffset) clonedNode.setAttribute("stroke-dashoffset", strokeDashoffset);
+    if (fillOpacity && fillOpacity !== "1") {
+      clonedNode.setAttribute("fill-opacity", fillOpacity);
+    }
+    if (strokeOpacity && strokeOpacity !== "1") {
+      clonedNode.setAttribute("stroke-opacity", strokeOpacity);
+    }
+    // Root opacity already exports on the wrapper node's styles.
+    if (clonedNode !== clone && nodeOpacity && nodeOpacity !== "1") {
+      clonedNode.setAttribute("opacity", nodeOpacity);
+    }
   });
 
   return clone.outerHTML;
@@ -914,7 +1062,8 @@ function getRulesForElement(index: CssRuleIndex, element: Element): CSSStyleRule
 
 // Open shadow roots render in place of the host's light children; slots
 // expand to their flattened assigned elements (falling back to the slot's own
-// fallback content) and never produce nodes themselves.
+// fallback content) and never produce nodes themselves. display:contents
+// wrappers generate no box either, so their children rise to this level.
 function getRenderChildren(element: Element): Element[] {
   const shadowRoot = element.shadowRoot;
   const baseChildren = shadowRoot
@@ -926,6 +1075,10 @@ function getRenderChildren(element: Element): Element[] {
     if (child instanceof HTMLSlotElement) {
       const assigned = child.assignedElements({ flatten: true });
       expanded.push(...(assigned.length > 0 ? assigned : Array.from(child.children)));
+      continue;
+    }
+    if (window.getComputedStyle(child).display === "contents") {
+      expanded.push(...getRenderChildren(child));
       continue;
     }
     expanded.push(child);
@@ -1184,17 +1337,42 @@ function isClippedSingleLineText(computed: CSSStyleDeclaration): boolean {
   return clipsInline && textOverflow === "ellipsis" && whiteSpace === "nowrap";
 }
 
-function shouldAutoResizeText(element: Element, computed: CSSStyleDeclaration): boolean {
-  // Clipped single-line text truncates in the browser, so auto-width would
-  // always overflow in Figma — truncation wins over the data attribute.
-  if (isClippedSingleLineText(computed)) return false;
-  if (element.getAttribute("data-figma-text-auto-width") === "true") return true;
+// Truncated text keeps its browser box: 1 for the classic nowrap-ellipsis
+// pattern, N for -webkit-line-clamp multi-line clamping.
+function getLineClampCount(computed: CSSStyleDeclaration): number | undefined {
+  if (isClippedSingleLineText(computed)) return 1;
+
+  const clampValue = computed.getPropertyValue("-webkit-line-clamp").trim();
+  const clamp = Number.parseInt(clampValue, 10);
+  if (!Number.isFinite(clamp) || clamp < 1) return undefined;
+
+  const overflowTokens = `${computed.overflow} ${computed.overflowY}`.toLowerCase();
+  return /(hidden|clip)/.test(overflowTokens) ? clamp : undefined;
+}
+
+// Text that wraps in the browser must keep its wrap width in Figma; treating
+// it as auto-width would unwrap it into one long line and blow up the layout.
+function isRenderedMultilineText(
+  computed: CSSStyleDeclaration,
+  height: number,
+): boolean {
+  if (computed.whiteSpace.toLowerCase().includes("nowrap")) return false;
+  const fontSize = cssLengthToNumber(computed.fontSize) ?? 14;
+  const lineHeight = cssLineHeightToNumber(computed.lineHeight);
+  const lineHeightPx =
+    typeof lineHeight === "number" && lineHeight > 0 ? lineHeight : fontSize * 1.2;
+  return height >= lineHeightPx * 1.8;
+}
+
+function shouldAutoResizeText(
+  element: Element,
+  computed: CSSStyleDeclaration,
+): boolean {
   const textAlign = computed.textAlign.toLowerCase();
   if (textAlign === "center" || textAlign === "right" || textAlign === "end") {
     // Auto layout governs the box position for flex items, so single-line
     // centered/right-aligned text can size itself without x compensation.
-    const isSingleLine = computed.whiteSpace.toLowerCase().includes("nowrap");
-    if (!isFlexItem(element, computed) || !isSingleLine) return false;
+    if (!isFlexItem(element, computed)) return false;
   }
   if (!isFlexItem(element, computed)) return false;
   if (hasFixedFlexBasis(computed)) return false;
@@ -1204,7 +1382,16 @@ function shouldAutoResizeText(element: Element, computed: CSSStyleDeclaration): 
 function getTextAutoResize(
   element: Element,
   computed: CSSStyleDeclaration,
-): "WIDTH_AND_HEIGHT" | undefined {
+  height: number,
+): "HEIGHT" | "WIDTH_AND_HEIGHT" | undefined {
+  // Truncated text keeps a fixed box; truncation wins over the data attribute.
+  if (getLineClampCount(computed) !== undefined) return undefined;
+  if (element.getAttribute("data-figma-text-auto-width") === "true") {
+    return "WIDTH_AND_HEIGHT";
+  }
+  // Wrapped text keeps its width fixed and lets Figma size the height, so
+  // browser/Figma font metric differences never clip the last line.
+  if (isRenderedMultilineText(computed, height)) return "HEIGHT";
   return shouldAutoResizeText(element, computed) ? "WIDTH_AND_HEIGHT" : undefined;
 }
 
@@ -1405,7 +1592,7 @@ function createTextLeafNode({
   name: string;
   outOfFlow?: boolean;
   text: string;
-  textAutoResize?: "WIDTH_AND_HEIGHT";
+  textAutoResize?: "HEIGHT" | "WIDTH_AND_HEIGHT";
   layoutAlign?: "STRETCH";
   layoutGrow?: number;
   textAlignVertical?: "CENTER";
@@ -1420,9 +1607,9 @@ function createTextLeafNode({
   const letterSpacing = cssLengthToNumber(computed.letterSpacing);
   const textDecoration = getTextDecoration(computed);
   const italic = isItalicFontStyle(computed);
-  const isSingleLineTruncatedText = isClippedSingleLineText(computed);
+  const clampedLineCount = getLineClampCount(computed);
   const exportWidth =
-    isSingleLineTruncatedText ||
+    clampedLineCount !== undefined ||
     Boolean(textAutoResize) ||
     layoutGrow === 1 ||
     hasFixedFlexBasis(computed)
@@ -1460,10 +1647,16 @@ function createTextLeafNode({
       opacity: Number(computed.opacity),
       ...(outOfFlow ? { outOfFlow: true } : {}),
       overflow: computed.overflow,
-      ...(isSingleLineTruncatedText ? { maxLines: 1, textTruncation: "ENDING" } : {}),
+      ...(clampedLineCount !== undefined
+        ? { maxLines: clampedLineCount, textTruncation: "ENDING" as const }
+        : {}),
       textAlign: computed.textAlign,
       ...(textAlignVertical ? { textAlignVertical } : {}),
-      ...(textAutoResize ? { textAutoResize } : {}),
+      ...(textAutoResize === "HEIGHT"
+        ? { textGrowHeight: true }
+        : textAutoResize
+          ? { textAutoResize }
+          : {}),
       width: exportWidth,
       x: exportX,
       y,
@@ -1778,6 +1971,60 @@ function getDirectText(element: Element): string {
     .join("")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+type DirectTextRun = {
+  rect: DOMRect;
+  text: string;
+};
+
+// Mixed inline content ("Hello <b>world</b> tail") renders its bare text
+// nodes without a wrapping element, so element traversal alone drops them.
+// Ranges recover each text node's rendered bounds for a text leaf per run.
+function getDirectTextRuns(element: Element): DirectTextRun[] {
+  const runs: DirectTextRun[] = [];
+
+  for (const node of Array.from(element.childNodes)) {
+    if (node.nodeType !== Node.TEXT_NODE) continue;
+    const text = (node.textContent ?? "").replace(/\s+/g, " ").trim();
+    if (!text) continue;
+
+    try {
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      const rect = range.getBoundingClientRect();
+      range.detach();
+      if (rect.width <= 0 || rect.height <= 0) continue;
+      runs.push({ rect, text });
+    } catch {
+      // Detached or non-renderable text nodes contribute nothing.
+    }
+  }
+
+  return runs;
+}
+
+function getAbsoluteStackingKey(element: Element): number {
+  const computed = window.getComputedStyle(element);
+  const zIndex = Number.parseInt(computed.zIndex, 10);
+  if (Number.isFinite(zIndex)) return zIndex;
+  return computed.position !== "static" ? 0.5 : 0;
+}
+
+// CSS paints negative z-index below the parent background's siblings, then
+// static elements in DOM order, then positioned elements, then positive
+// z-index strata. A stable sort keeps DOM order inside each stratum.
+function sortEntriesForAbsoluteStacking(
+  entries: AutoLayoutChildEntry[],
+): AutoLayoutChildEntry[] {
+  return entries
+    .map((entry, index) => ({
+      entry,
+      index,
+      key: getAbsoluteStackingKey(entry.element),
+    }))
+    .sort((a, b) => a.key - b.key || a.index - b.index)
+    .map((item) => item.entry);
 }
 
 // innerText reflects rendered line breaks (<br> elements and preserved
@@ -2133,7 +2380,13 @@ function measureAutoLayoutChildren({
   const isStartJustified =
     justify === "" ||
     ["flex-start", "left", "normal", "start"].includes(justify);
-  if (isStartJustified) {
+  // space-around/space-evenly do not exist in Figma; measured edge offsets
+  // become padding so MIN justification reproduces the same static layout.
+  const isSpaceDistributed = justify === "space-around" || justify === "space-evenly";
+  if (isStartJustified || isSpaceDistributed) {
+    // Measured offsets start at the border box edge, matching Figma frames
+    // whose inside strokes overlap the padding area, so the border width is
+    // already part of the exported padding.
     const leading = Math.min(...measured.map((entry) => entry.mainStart));
     const containerMainSize = isColumn ? containerRect.height : containerRect.width;
     const trailing =
@@ -2222,19 +2475,32 @@ async function createExportNode(
   const directText = getDirectText(element);
   const backgroundColor = cssColorValue(computed.backgroundColor);
   const declarations = getMatchedDeclarations(element, rules);
+  const backgroundLayers = getBackgroundImageLayers(computed.backgroundImage);
   const backgroundLinearGradient = addLinearGradientStopTokens(
-    parseLinearGradient(computed.backgroundImage),
+    backgroundLayers
+      .map((layer) => parseLinearGradient(layer, width, height))
+      .find(Boolean),
     declarations,
     tokenSystem,
   );
+  const backgroundRadialGradient = backgroundLayers
+    .map(parseRadialGradient)
+    .find(Boolean);
+  const backgroundImageUrl = backgroundLayers
+    .map(getBackgroundImageUrl)
+    .find(Boolean);
   const color = cssColorValue(computed.color);
   const border = getUniformVisibleBorder(computed);
   const borderSideMap = getVisibleBorderSides(computed);
   const fontWeight = Number.parseInt(computed.fontWeight, 10);
   const radiusStyles = getRadiusStyles(computed, width, height);
   const boxShadowEffects = getBoxShadowEffects(computed);
+  const blurEffects = getBlurEffects(computed);
   const lineHeight = cssLineHeightToNumber(computed.lineHeight);
-  const gap = cssLengthToNumber(computed.columnGap) ?? cssLengthToNumber(computed.gap);
+  // The main-axis gap is column-gap in a row and row-gap in a column.
+  const gap = computed.flexDirection.startsWith("column")
+    ? cssLengthToNumber(computed.rowGap) ?? cssLengthToNumber(computed.gap)
+    : cssLengthToNumber(computed.columnGap) ?? cssLengthToNumber(computed.gap);
   const layoutAlign = getLayoutAlign(element);
   const layoutGrow = getLayoutGrow(element, computed);
   const textLayoutStrategy =
@@ -2294,20 +2560,33 @@ async function createExportNode(
       const paddingRight = cssLengthToNumber(computed.paddingRight) ?? 0;
       const paddingTop = cssLengthToNumber(computed.paddingTop) ?? 0;
       const paddingBottom = cssLengthToNumber(computed.paddingBottom) ?? 0;
+      // Browser text content sits after the border and padding; the exported
+      // box is the border box, so both inset the inner text node.
+      const borderLeftWidth = cssBorderWidth(computed, "left");
+      const borderRightWidth = cssBorderWidth(computed, "right");
+      const borderTopWidth = cssBorderWidth(computed, "top");
+      const borderBottomWidth = cssBorderWidth(computed, "bottom");
+      const contentHeight = Math.max(
+        1,
+        height - paddingTop - paddingBottom - borderTopWidth - borderBottomWidth,
+      );
       const textNode = createTextLeafNode({
         bindings,
         computed,
-        height: Math.max(1, height - paddingTop - paddingBottom),
+        height: contentHeight,
         layoutStrategy: textLayoutStrategy,
         name: `${getElementName(element, options)}__text`,
         text: leafText,
-        textAutoResize: getTextAutoResize(element, computed),
+        textAutoResize: getTextAutoResize(element, computed, contentHeight),
         layoutAlign,
         layoutGrow,
         textAlignVertical,
-        width: Math.max(1, width - paddingLeft - paddingRight),
-        x: paddingLeft,
-        y: paddingTop,
+        width: Math.max(
+          1,
+          width - paddingLeft - paddingRight - borderLeftWidth - borderRightWidth,
+        ),
+        x: borderLeftWidth + paddingLeft,
+        y: borderTopWidth + paddingTop,
       });
 
       if (textLayoutStrategy === "autoLayout") {
@@ -2322,8 +2601,16 @@ async function createExportNode(
             alignItems: "center",
             ...(backgroundColor ? { backgroundColor } : {}),
             ...(backgroundLinearGradient ? { backgroundLinearGradient } : {}),
+            ...(backgroundRadialGradient ? { backgroundRadialGradient } : {}),
             ...(boxShadowEffects.length > 0 ? { effects: boxShadowEffects } : {}),
-            ...(border ? { borderColor: border.color, borderWidth: border.width } : {}),
+            ...(blurEffects.length > 0 ? { blurEffects } : {}),
+            ...(border
+              ? {
+                  borderColor: border.color,
+                  ...(border.style ? { borderStyle: border.style } : {}),
+                  borderWidth: border.width,
+                }
+              : {}),
             ...(borderSideMap ? { borderSides: borderSideMap } : {}),
             display: "flex",
             flexDirection: "row",
@@ -2332,10 +2619,10 @@ async function createExportNode(
             opacity: Number(computed.opacity),
             ...(elementOutOfFlow ? { outOfFlow: true } : {}),
             overflow: computed.overflow,
-            paddingBottom,
-            paddingLeft,
-            paddingRight,
-            paddingTop,
+            paddingBottom: paddingBottom + borderBottomWidth,
+            paddingLeft: paddingLeft + borderLeftWidth,
+            paddingRight: paddingRight + borderRightWidth,
+            paddingTop: paddingTop + borderTopWidth,
             ...radiusStyles,
             ...(layoutSizingHorizontal ? { layoutSizingHorizontal } : {}),
             ...(layoutSizingHorizontal && !bindings.height
@@ -2358,8 +2645,16 @@ async function createExportNode(
         styles: {
           ...(backgroundColor ? { backgroundColor } : {}),
           ...(backgroundLinearGradient ? { backgroundLinearGradient } : {}),
+          ...(backgroundRadialGradient ? { backgroundRadialGradient } : {}),
           ...(boxShadowEffects.length > 0 ? { effects: boxShadowEffects } : {}),
-          ...(border ? { borderColor: border.color, borderWidth: border.width } : {}),
+          ...(blurEffects.length > 0 ? { blurEffects } : {}),
+          ...(border
+            ? {
+                borderColor: border.color,
+                ...(border.style ? { borderStyle: border.style } : {}),
+                borderWidth: border.width,
+              }
+            : {}),
           ...(borderSideMap ? { borderSides: borderSideMap } : {}),
           display: getExportDisplay(computed, "absolute"),
           height,
@@ -2387,7 +2682,7 @@ async function createExportNode(
       name: getElementName(element, options),
       outOfFlow: elementOutOfFlow,
       text: leafText,
-      textAutoResize: getTextAutoResize(element, computed),
+      textAutoResize: getTextAutoResize(element, computed, height),
       layoutAlign,
       layoutGrow,
       textAlignVertical,
@@ -2408,17 +2703,51 @@ async function createExportNode(
     if (!imageSvgText) imageCapture = await captureRasterImage(element);
   } else if (element instanceof HTMLCanvasElement) {
     imageCapture = drawSourceToRasterCapture(element, element.width, element.height);
+  } else if (backgroundImageUrl) {
+    // CSS background images become an image fill on the frame itself.
+    imageCapture = await fetchRasterCapture(backgroundImageUrl);
   }
   const elementName = getElementName(element, options);
+  const inlineTextRunNodes =
+    kind === "frame" && directText && !element.shadowRoot
+      ? getDirectTextRuns(element).map((run, index) =>
+          createTextLeafNode({
+            bindings,
+            computed,
+            height: toFiniteNumber(run.rect.height),
+            layoutStrategy: "absolute",
+            name: `${elementName}__text-${index + 1}`,
+            text: applyTextTransformToText(run.text, computed),
+            textAutoResize: isRenderedMultilineText(computed, run.rect.height)
+              ? "HEIGHT"
+              : undefined,
+            width: toFiniteNumber(run.rect.width),
+            x: toFiniteNumber(run.rect.left - rect.left),
+            y: toFiniteNumber(run.rect.top - rect.top),
+          }),
+        )
+      : [];
+  // Bare text runs have no layout element, so the frame keeps every child at
+  // its measured position instead of approximating inline flow in auto layout.
   const autoLayoutMeasurement =
     kind === "frame" &&
+    inlineTextRunNodes.length === 0 &&
     frameLayoutStrategy === "autoLayout" &&
     isFlexDisplay(computed.display) &&
     childEntries.length > 0
       ? measureAutoLayoutChildren({ childEntries, computed, containerRect: rect })
       : undefined;
-  const effectiveLayoutStrategy = autoLayoutMeasurement?.strategy ?? frameLayoutStrategy;
-  const orderedChildNodes = autoLayoutMeasurement?.children ?? childNodes;
+  const effectiveLayoutStrategy: FigmaLayoutStrategy =
+    inlineTextRunNodes.length > 0
+      ? "absolute"
+      : autoLayoutMeasurement?.strategy ?? frameLayoutStrategy;
+  const orderedChildNodes =
+    effectiveLayoutStrategy === "absolute"
+      ? [
+          ...inlineTextRunNodes,
+          ...sortEntriesForAbsoluteStacking(childEntries).map((entry) => entry.node),
+        ]
+      : autoLayoutMeasurement?.children ?? childNodes;
   const paddingOverrides =
     effectiveLayoutStrategy === "autoLayout"
       ? autoLayoutMeasurement?.paddingOverrides
@@ -2430,8 +2759,16 @@ async function createExportNode(
     ...(computed.alignItems ? { alignItems: computed.alignItems } : {}),
     ...(backgroundColor ? { backgroundColor } : {}),
     ...(backgroundLinearGradient ? { backgroundLinearGradient } : {}),
+    ...(backgroundRadialGradient ? { backgroundRadialGradient } : {}),
     ...(boxShadowEffects.length > 0 ? { effects: boxShadowEffects } : {}),
-    ...(border ? { borderColor: border.color, borderWidth: border.width } : {}),
+    ...(blurEffects.length > 0 ? { blurEffects } : {}),
+    ...(border
+      ? {
+          borderColor: border.color,
+          ...(border.style ? { borderStyle: border.style } : {}),
+          borderWidth: border.width,
+        }
+      : {}),
     ...(borderSideMap ? { borderSides: borderSideMap } : {}),
     ...(color ? { color } : {}),
     ...(effectiveLayoutStrategy === "autoLayout" &&
@@ -2459,13 +2796,24 @@ async function createExportNode(
     opacity: Number(computed.opacity),
     ...(elementOutOfFlow ? { outOfFlow: true } : {}),
     overflow: computed.overflow,
+    // CSS borders take layout space before the padding; Figma inside strokes
+    // do not, so the border width folds into the exported padding.
     paddingBottom:
-      paddingOverrides?.bottom ?? (cssLengthToNumber(computed.paddingBottom) ?? 0),
+      paddingOverrides?.bottom ??
+      (cssLengthToNumber(computed.paddingBottom) ?? 0) +
+        cssBorderWidth(computed, "bottom"),
     paddingLeft:
-      paddingOverrides?.left ?? (cssLengthToNumber(computed.paddingLeft) ?? 0),
+      paddingOverrides?.left ??
+      (cssLengthToNumber(computed.paddingLeft) ?? 0) +
+        cssBorderWidth(computed, "left"),
     paddingRight:
-      paddingOverrides?.right ?? (cssLengthToNumber(computed.paddingRight) ?? 0),
-    paddingTop: paddingOverrides?.top ?? (cssLengthToNumber(computed.paddingTop) ?? 0),
+      paddingOverrides?.right ??
+      (cssLengthToNumber(computed.paddingRight) ?? 0) +
+        cssBorderWidth(computed, "right"),
+    paddingTop:
+      paddingOverrides?.top ??
+      (cssLengthToNumber(computed.paddingTop) ?? 0) +
+        cssBorderWidth(computed, "top"),
     ...radiusStyles,
     ...(textAlignVertical ? { textAlignVertical } : {}),
     width,
@@ -2482,7 +2830,13 @@ async function createExportNode(
     name: elementName,
     ...(imageSvgText ? { svgText: imageSvgText } : {}),
     styles: imageCapture
-      ? { ...frameStyles, imageScaleMode: getImageScaleMode(computed) }
+      ? {
+          ...frameStyles,
+          imageScaleMode:
+            kind === "image"
+              ? getImageScaleMode(computed)
+              : getBackgroundScaleMode(computed),
+        }
       : frameStyles,
   };
 }

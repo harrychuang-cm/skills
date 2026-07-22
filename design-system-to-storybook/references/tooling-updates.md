@@ -50,12 +50,12 @@ Template workspaces (created from the bundled `storybook-template`) are the exce
 
 ## Compatibility When Updating
 
-The payload contract stays at version 2 with optional fidelity fields, so the two tools never require lockstep updates:
+The payload contract stays at version 2 with optional fidelity fields, so the two tools never require lockstep updates. New capture capabilities always ship as fields older importers ignore (for example addon 0.5.0 emits `textGrowHeight` and `styles.blurEffects` instead of new enum values inside fields that older importers validate strictly):
 
-| Payload from | Old importer (≤1.1.8) | Current importer |
+| Payload from | Old importer (≤1.2.4) | Current importer |
 |---|---|---|
-| Old export addon | imports as before | imports with behavior identical to 1.1.8 |
-| Current export addon | imports; new fidelity fields (shadows, per-corner radii, raster fills, wrap, text styles) are ignored and degrade visually | full fidelity |
+| Old export addon | imports as before | imports with behavior identical to that importer |
+| Current export addon | imports; newer fidelity fields (background image fills on frames, radial gradients, blur effects, dashed/dotted borders, fixed-width height growth) are ignored and degrade visually | full fidelity |
 
 Data needs no migration: the importer keeps reading and writing the same plugin data keys (`storybookCssToken` plus the legacy `cmCssToken`), so variables in existing Figma files keep deduplicating, and previously downloaded `.sbfx.json` files stay importable.
 

@@ -120,6 +120,9 @@ function approx(actual, expected, tolerance, label) {
 }
 
 const NEW_STYLE_KEYS = [
+  "backgroundRadialGradient",
+  "blurEffects",
+  "borderStyle",
   "counterAxisSpacing",
   "effects",
   "fontStyle",
@@ -128,6 +131,7 @@ const NEW_STYLE_KEYS = [
   "letterSpacing",
   "radiusCorners",
   "textDecoration",
+  "textGrowHeight",
 ];
 
 function assertPayload(payload) {
@@ -292,6 +296,133 @@ function assertPayload(payload) {
   }
   assert.ok(!("imageBase64" in plain), "plain node has no imageBase64");
   assert.ok(!("imageMimeType" in plain), "plain node has no imageMimeType");
+
+  // Mixed inline content keeps bare text runs alongside element children
+  const mixedInline = findCase(root, "case-mixed-inline");
+  assert.strictEqual(mixedInline.layoutStrategy, "absolute", "mixed inline forces absolute");
+  const mixedTexts = mixedInline.children
+    .filter((child) => child.kind === "text")
+    .map((child) => child.text);
+  assert.ok(mixedTexts.includes("Hello"), "leading bare text run exported");
+  assert.ok(mixedTexts.includes("tail"), "trailing bare text run exported");
+  assert.ok(mixedTexts.includes("bold"), "inline element text exported");
+  const boldRun = mixedInline.children.find((child) => child.text === "bold");
+  assert.strictEqual(boldRun.styles.fontWeight, 700, "inline strong keeps its weight");
+  const helloRun = mixedInline.children.find((child) => child.text === "Hello");
+  const tailRun = mixedInline.children.find((child) => child.text === "tail");
+  assert.ok(
+    helloRun.styles.x < boldRun.styles.x && boldRun.styles.x < tailRun.styles.x,
+    "text runs keep their measured order on the line",
+  );
+
+  // Wrapped text keeps its width and resizes height only
+  const multilineFlex = findCase(root, "case-multiline-flex");
+  const wrappedParagraph = multilineFlex.children.find((child) => child.kind === "text");
+  assert.ok(wrappedParagraph, "wrapped paragraph exported as text");
+  assert.strictEqual(
+    wrappedParagraph.styles.textGrowHeight,
+    true,
+    "wrapped text keeps fixed width and grows height",
+  );
+  assert.ok(
+    !("textAutoResize" in wrappedParagraph.styles),
+    "wrapped text never uses hug-width auto-resize",
+  );
+  approx(wrappedParagraph.styles.width, 220, 1, "wrapped text keeps its wrap width");
+
+  // space-around converts measured edge offsets into padding
+  const spaceAround = findCase(root, "case-space-around");
+  assert.strictEqual(spaceAround.layoutStrategy, "autoLayout", "space-around stays auto layout");
+  approx(spaceAround.styles.paddingLeft, 30, 1, "space-around leading padding");
+  approx(spaceAround.styles.paddingRight, 30, 1, "space-around trailing padding");
+  approx(spaceAround.styles.gap, 60, 1, "space-around measured gap");
+
+  // CSS border takes layout space, so it folds into the exported padding
+  const borderRow = findCase(root, "case-border-row");
+  assert.strictEqual(borderRow.layoutStrategy, "autoLayout", "border row stays auto layout");
+  approx(borderRow.styles.borderWidth, 3, 0.01, "border row stroke width");
+  approx(borderRow.styles.paddingLeft, 11, 0.5, "measured padding includes the border");
+  approx(borderRow.styles.paddingTop, 11, 0.5, "declared cross-axis padding adds the border");
+
+  // Column direction reads the row-gap as the main-axis gap
+  const columnGap = findCase(root, "case-column-gap");
+  approx(columnGap.styles.gap, 14, 0.5, "column flex uses row-gap");
+
+  // CSS background images become frame image fills
+  const bgImage = findCase(root, "case-bg-image");
+  assert.strictEqual(bgImage.kind, "frame", "background image node stays a frame");
+  assert.ok(bgImage.imageBase64 && bgImage.imageBase64.length > 0, "background image captured");
+  assert.strictEqual(bgImage.imageMimeType, "image/png", "background image mime type");
+  assert.strictEqual(bgImage.styles.imageScaleMode, "FILL", "background-size cover maps to FILL");
+
+  // Multi-layer backgrounds keep both the gradient and the image
+  const bgLayers = findCase(root, "case-bg-layers");
+  assert.ok(bgLayers.styles.backgroundLinearGradient, "layered background keeps gradient");
+  assert.ok(bgLayers.imageBase64, "layered background keeps image");
+
+  // Radial gradients export their stops
+  const radial = findCase(root, "case-radial");
+  assert.strictEqual(
+    radial.styles.backgroundRadialGradient?.stops?.length,
+    2,
+    "radial gradient stops exported",
+  );
+  assert.match(
+    String(radial.styles.backgroundRadialGradient.stops[0].color),
+    /^(#ff0000|rgb\(255, 0, 0\))$/i,
+    "radial first stop color",
+  );
+
+  // Corner keyword angles follow the box aspect ratio (80x40 -> ~26.57deg)
+  const cornerGradient = findCase(root, "case-corner-gradient");
+  assert.ok(cornerGradient.styles.backgroundLinearGradient, "corner gradient parsed");
+  approx(
+    cornerGradient.styles.backgroundLinearGradient.angle,
+    26.57,
+    1,
+    "corner keyword angle uses aspect ratio",
+  );
+
+  // -webkit-line-clamp maps to maxLines + ENDING truncation
+  const lineClamp = findCase(root, "case-line-clamp");
+  assert.strictEqual(lineClamp.styles.maxLines, 2, "line clamp count");
+  assert.strictEqual(lineClamp.styles.textTruncation, "ENDING", "line clamp truncation");
+  assert.ok(!("textAutoResize" in lineClamp.styles), "clamped text keeps a fixed box");
+
+  // filter/backdrop-filter blur travel as blurEffects (kept apart from
+  // shadow effects so older importers still accept the payload)
+  const blur = findCase(root, "case-blur");
+  assert.strictEqual(blur.styles.blurEffects?.[0]?.type, "LAYER_BLUR", "filter blur type");
+  approx(blur.styles.blurEffects[0].blur, 4, 0.01, "filter blur radius");
+  assert.ok(!("effects" in blur.styles), "blur never leaks into shadow effects");
+  const backdrop = findCase(root, "case-backdrop");
+  assert.strictEqual(
+    backdrop.styles.blurEffects?.[0]?.type,
+    "BACKGROUND_BLUR",
+    "backdrop blur type",
+  );
+  approx(backdrop.styles.blurEffects[0].blur, 6, 0.01, "backdrop blur radius");
+
+  // Dashed borders carry their style
+  const dashed = findCase(root, "case-dashed");
+  assert.strictEqual(dashed.styles.borderStyle, "dashed", "dashed border style exported");
+  approx(dashed.styles.borderWidth, 2, 0.01, "dashed border width");
+
+  // display:contents wrappers lift their children
+  const contents = findCase(root, "case-contents");
+  assert.strictEqual(contents.children.length, 2, "contents wrapper children lifted");
+  assert.ok(
+    contents.children.every((child) => child.name === "lifted"),
+    "lifted children keep their own identity",
+  );
+
+  // Absolute stacking follows z-index, not DOM order
+  const zIndex = findCase(root, "case-zindex");
+  assert.deepStrictEqual(
+    zIndex.children.map((child) => child.name),
+    ["z-low", "z-high"],
+    "children sorted bottom-to-top by z-index",
+  );
 }
 
 async function main() {

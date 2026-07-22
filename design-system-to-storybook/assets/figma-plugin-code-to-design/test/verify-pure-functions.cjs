@@ -272,4 +272,149 @@ assert.throws(
   "string effects rejected with node path",
 );
 
+// --- Fidelity fields added in payload schema 2 (plugin 1.3.0) ---------------
+
+// Named colors and transparent fall back sensibly instead of black.
+const white = plugin.colorFromCss("white");
+approx(white.r, 1, 0.001, "named white r");
+approx(white.g, 1, 0.001, "named white g");
+approx(white.b, 1, 0.001, "named white b");
+const transparent = plugin.colorFromCss("transparent");
+approx(transparent.a, 0, 0.001, "transparent alpha");
+
+// overflow auto/scroll clip like the browser; visible does not.
+assert.strictEqual(plugin.shouldClipContent("auto"), true, "overflow auto clips");
+assert.strictEqual(plugin.shouldClipContent("scroll"), true, "overflow scroll clips");
+assert.strictEqual(plugin.shouldClipContent("hidden auto"), true, "mixed overflow clips");
+assert.strictEqual(plugin.shouldClipContent("visible"), false, "overflow visible does not clip");
+assert.strictEqual(plugin.shouldClipContent(undefined), false, "missing overflow does not clip");
+
+// SVG root sizing: intrinsic size becomes the viewBox so resizing scales.
+const resized = plugin.setSvgRootSize(
+  '<svg width="24" height="24" xmlns="http://www.w3.org/2000/svg"><path d="M0 0h24v24H0z"/></svg>',
+  16,
+  16,
+);
+assert.match(resized, /viewBox="0 0 24 24"/, "intrinsic size becomes viewBox");
+assert.match(resized, /width="16"/, "root width rewritten to rendered size");
+assert.match(resized, /height="16"/, "root height rewritten to rendered size");
+const keepsViewBox = plugin.setSvgRootSize(
+  '<svg viewBox="0 0 48 48" width="48"><rect/></svg>',
+  20,
+  20,
+);
+assert.match(keepsViewBox, /viewBox="0 0 48 48"/, "existing viewBox preserved");
+assert.match(keepsViewBox, /width="20"/, "width rewritten alongside viewBox");
+assert.match(keepsViewBox, /height="20"/, "missing height attribute added");
+const percentSvg = plugin.setSvgRootSize('<svg width="100%"><rect/></svg>', 32, 8);
+assert.doesNotMatch(percentSvg, /viewBox/, "percentage size never fabricates a viewBox");
+
+// New payload fields parse: fixed-width height growth, blur effects, border
+// style, radial gradients, frame-level background images. Blur types are
+// also tolerated inside `effects` for hand-written payloads.
+const fidelityPayload = {
+  ...legacyPayload,
+  version: 2,
+  root: {
+    ...legacyPayload.root,
+    imageBase64: "aGVsbG8=",
+    imageMimeType: "image/png",
+    styles: {
+      ...legacyPayload.root.styles,
+      backgroundRadialGradient: {
+        stops: [
+          { color: "#ff0000", position: 0 },
+          { color: "#0000ff", position: 1 },
+        ],
+      },
+      blurEffects: [
+        { blur: 6, offsetX: 0, offsetY: 0, spread: 0, type: "LAYER_BLUR" },
+        { blur: 10, offsetX: 0, offsetY: 0, spread: 0, type: "BACKGROUND_BLUR" },
+      ],
+      borderStyle: "dashed",
+      effects: [
+        { blur: 4, offsetX: 0, offsetY: 0, spread: 0, type: "LAYER_BLUR" },
+      ],
+    },
+    children: [
+      {
+        kind: "text",
+        name: "wrapped-paragraph",
+        text: "wraps across lines",
+        styles: {
+          height: 40,
+          textGrowHeight: true,
+          width: 200,
+          x: 0,
+          y: 0,
+        },
+      },
+      {
+        kind: "text",
+        name: "hand-written-height",
+        text: "explicit HEIGHT mode",
+        styles: {
+          height: 40,
+          textAutoResize: "HEIGHT",
+          width: 200,
+          x: 0,
+          y: 44,
+        },
+      },
+    ],
+  },
+};
+assert.doesNotThrow(
+  () => plugin.parsePayload(JSON.stringify(fidelityPayload)),
+  "payload with 1.3.0 fidelity fields parses",
+);
+
+assert.throws(
+  () =>
+    plugin.parsePayload(
+      JSON.stringify({
+        ...legacyPayload,
+        root: {
+          ...legacyPayload.root,
+          styles: { ...legacyPayload.root.styles, textGrowHeight: "yes" },
+        },
+      }),
+    ),
+  (error) => error.message.includes("textGrowHeight"),
+  "non-boolean textGrowHeight rejected",
+);
+
+assert.throws(
+  () =>
+    plugin.parsePayload(
+      JSON.stringify({
+        ...legacyPayload,
+        root: {
+          ...legacyPayload.root,
+          styles: { ...legacyPayload.root.styles, borderStyle: "double" },
+        },
+      }),
+    ),
+  (error) => error.message.includes("borderStyle"),
+  "unsupported borderStyle rejected",
+);
+
+assert.throws(
+  () =>
+    plugin.parsePayload(
+      JSON.stringify({
+        ...legacyPayload,
+        root: {
+          ...legacyPayload.root,
+          styles: {
+            ...legacyPayload.root.styles,
+            backgroundRadialGradient: { stops: [{ color: "#fff", position: 0 }] },
+          },
+        },
+      }),
+    ),
+  (error) => error.message.includes("backgroundRadialGradient"),
+  "radial gradient with a single stop rejected",
+);
+
 console.log("verify-pure-functions: all assertions passed");

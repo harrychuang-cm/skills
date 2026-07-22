@@ -663,15 +663,34 @@ function splitGradientArguments(value) {
   if (current.trim()) parts.push(current.trim());
   return parts;
 }
-function parseLinearGradientAngle(value) {
+function parseLinearGradientAngle(value, width, height) {
   if (!value) return void 0;
-  const normalized = value.trim().toLowerCase();
-  const degree = normalized.match(/^(-?\d*\.?\d+)deg$/);
-  if (degree) return Number(degree[1]);
+  const normalized = value.trim().toLowerCase().replace(/\s+/g, " ");
+  const degree = normalized.match(/^(-?\d*\.?\d+)(deg|grad|rad|turn)$/);
+  if (degree) {
+    const amount = Number(degree[1]);
+    if (degree[2] === "grad") return amount * 0.9;
+    if (degree[2] === "rad") return amount * 180 / Math.PI;
+    if (degree[2] === "turn") return amount * 360;
+    return amount;
+  }
   if (normalized === "to right") return 90;
   if (normalized === "to bottom") return 180;
   if (normalized === "to left") return 270;
   if (normalized === "to top") return 0;
+  const cornerAngle = width > 0 && height > 0 ? Math.atan2(height, width) * 180 / Math.PI : 45;
+  if (normalized === "to top right" || normalized === "to right top") {
+    return cornerAngle;
+  }
+  if (normalized === "to bottom right" || normalized === "to right bottom") {
+    return 180 - cornerAngle;
+  }
+  if (normalized === "to bottom left" || normalized === "to left bottom") {
+    return 180 + cornerAngle;
+  }
+  if (normalized === "to top left" || normalized === "to left top") {
+    return 360 - cornerAngle;
+  }
   return void 0;
 }
 function parseGradientStop(value, index, total) {
@@ -683,15 +702,39 @@ function parseGradientStop(value, index, total) {
   const position = positionMatch ? clampUnit(Number(positionMatch[1]) / 100) : total > 1 ? index / (total - 1) : 0;
   return { color, position };
 }
-function parseLinearGradient(backgroundImage) {
-  const match = backgroundImage.trim().match(/^linear-gradient\((.*)\)$/i);
+function parseLinearGradient(layer, width, height) {
+  const match = layer.trim().match(/^linear-gradient\((.*)\)$/i);
   if (!match) return void 0;
   const parts = splitGradientArguments(match[1]);
   if (parts.length < 2) return void 0;
-  const angle = parseLinearGradientAngle(parts[0]);
+  const angle = parseLinearGradientAngle(parts[0], width, height);
   const stopParts = angle === void 0 ? parts : parts.slice(1);
   const stops = stopParts.map((part, index) => parseGradientStop(part, index, stopParts.length)).filter((stop) => Boolean(stop));
   return stops.length >= 2 ? { angle: angle ?? 180, stops } : void 0;
+}
+function parseRadialGradient(layer) {
+  const match = layer.trim().match(/^radial-gradient\((.*)\)$/i);
+  if (!match) return void 0;
+  const parts = splitGradientArguments(match[1]);
+  if (parts.length < 2) return void 0;
+  const stopParts = parseGradientStop(parts[0], 0, parts.length) === void 0 ? parts.slice(1) : parts;
+  const stops = stopParts.map((part, index) => parseGradientStop(part, index, stopParts.length)).filter((stop) => Boolean(stop));
+  return stops.length >= 2 ? { stops } : void 0;
+}
+function getBackgroundImageLayers(backgroundImage) {
+  const normalized = backgroundImage.trim();
+  if (!normalized || normalized === "none") return [];
+  return splitGradientArguments(normalized).filter((layer) => layer !== "none");
+}
+function getBackgroundImageUrl(layer) {
+  const match = layer.trim().match(/^url\(\s*(?:"([^"]*)"|'([^']*)'|([^)]*?))\s*\)$/i);
+  if (!match) return void 0;
+  const url = match[1] ?? match[2] ?? match[3];
+  return url && !url.startsWith("data:image/svg") ? url : void 0;
+}
+function getBackgroundScaleMode(computed) {
+  const size = (computed.backgroundSize || "").trim().toLowerCase();
+  return size === "contain" ? "FIT" : "FILL";
 }
 function parseShadowListToEffects(value) {
   const normalized = value.trim();
@@ -728,6 +771,39 @@ function getBoxShadowEffects(computed) {
 }
 function getTextShadowEffects(computed) {
   return parseShadowListToEffects(computed.textShadow);
+}
+function parseFilterBlurRadius(filterValue) {
+  const normalized = filterValue.trim();
+  if (!normalized || normalized === "none") return void 0;
+  const match = normalized.match(/(?:^|\s)blur\(\s*(-?\d*\.?\d+)px\s*\)/i);
+  if (!match) return void 0;
+  const radius = Number(match[1]);
+  return Number.isFinite(radius) && radius > 0 ? toFiniteNumber(radius) : void 0;
+}
+function getBlurEffects(computed) {
+  const effects = [];
+  const layerBlur = parseFilterBlurRadius(computed.filter ?? "");
+  if (layerBlur !== void 0) {
+    effects.push({
+      blur: layerBlur,
+      offsetX: 0,
+      offsetY: 0,
+      spread: 0,
+      type: "LAYER_BLUR"
+    });
+  }
+  const backdropValue = computed.backdropFilter || computed.getPropertyValue("-webkit-backdrop-filter") || "";
+  const backgroundBlur = parseFilterBlurRadius(backdropValue);
+  if (backgroundBlur !== void 0) {
+    effects.push({
+      blur: backgroundBlur,
+      offsetX: 0,
+      offsetY: 0,
+      spread: 0,
+      type: "BACKGROUND_BLUR"
+    });
+  }
+  return effects;
 }
 function cssRadiusToNumber(value, width, height) {
   const length = cssLengthToNumber(value);
@@ -810,7 +886,12 @@ function getUniformVisibleBorder(computed) {
   const isUniform = borderSides.every(
     (side) => cssBorderWidth(computed, side) === width && cssBorderStyle(computed, side) === style && cssBorderColor(computed, side) === cssBorderColor(computed, "top")
   );
-  return isUniform ? { color, width } : void 0;
+  if (!isUniform) return void 0;
+  return {
+    color,
+    width,
+    ...style === "dashed" || style === "dotted" ? { style } : {}
+  };
 }
 function getElementName(element, options) {
   const component = element.getAttribute("data-component");
@@ -897,6 +978,13 @@ function serializeInlineSvg(element, width, height) {
   clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
   clone.setAttribute("width", String(width));
   clone.setAttribute("height", String(height));
+  if (!clone.hasAttribute("viewBox")) {
+    const intrinsicWidth = Number.parseFloat(element.getAttribute("width") ?? "");
+    const intrinsicHeight = Number.parseFloat(element.getAttribute("height") ?? "");
+    if (intrinsicWidth > 0 && intrinsicHeight > 0) {
+      clone.setAttribute("viewBox", `0 0 ${intrinsicWidth} ${intrinsicHeight}`);
+    }
+  }
   clonedNodes.forEach((clonedNode, index) => {
     const originalNode = originalNodes[index];
     if (!(originalNode instanceof Element) || !(clonedNode instanceof Element)) return;
@@ -912,6 +1000,9 @@ function serializeInlineSvg(element, width, height) {
     const strokeDashoffset = normalizeSvgStrokeDashValue(
       originalStyle.strokeDashoffset
     );
+    const fillOpacity = originalStyle.fillOpacity;
+    const strokeOpacity = originalStyle.strokeOpacity;
+    const nodeOpacity = originalStyle.opacity;
     if (fill) clonedNode.setAttribute("fill", fill);
     if (originalStyle.fill === "none") clonedNode.setAttribute("fill", "none");
     if (stroke) clonedNode.setAttribute("stroke", stroke);
@@ -922,6 +1013,15 @@ function serializeInlineSvg(element, width, height) {
     if (strokeLinejoin) clonedNode.setAttribute("stroke-linejoin", strokeLinejoin);
     if (strokeDasharray) clonedNode.setAttribute("stroke-dasharray", strokeDasharray);
     if (strokeDashoffset) clonedNode.setAttribute("stroke-dashoffset", strokeDashoffset);
+    if (fillOpacity && fillOpacity !== "1") {
+      clonedNode.setAttribute("fill-opacity", fillOpacity);
+    }
+    if (strokeOpacity && strokeOpacity !== "1") {
+      clonedNode.setAttribute("stroke-opacity", strokeOpacity);
+    }
+    if (clonedNode !== clone && nodeOpacity && nodeOpacity !== "1") {
+      clonedNode.setAttribute("opacity", nodeOpacity);
+    }
   });
   return clone.outerHTML;
 }
@@ -1134,6 +1234,10 @@ function getRenderChildren(element) {
       expanded.push(...assigned.length > 0 ? assigned : Array.from(child.children));
       continue;
     }
+    if (window.getComputedStyle(child).display === "contents") {
+      expanded.push(...getRenderChildren(child));
+      continue;
+    }
     expanded.push(child);
   }
   return expanded;
@@ -1312,19 +1416,36 @@ function isClippedSingleLineText(computed) {
   const clipsInline = overflowX === "hidden" || overflowX === "clip" || overflow === "hidden" || overflow === "clip";
   return clipsInline && textOverflow === "ellipsis" && whiteSpace === "nowrap";
 }
+function getLineClampCount(computed) {
+  if (isClippedSingleLineText(computed)) return 1;
+  const clampValue = computed.getPropertyValue("-webkit-line-clamp").trim();
+  const clamp = Number.parseInt(clampValue, 10);
+  if (!Number.isFinite(clamp) || clamp < 1) return void 0;
+  const overflowTokens = `${computed.overflow} ${computed.overflowY}`.toLowerCase();
+  return /(hidden|clip)/.test(overflowTokens) ? clamp : void 0;
+}
+function isRenderedMultilineText(computed, height) {
+  if (computed.whiteSpace.toLowerCase().includes("nowrap")) return false;
+  const fontSize = cssLengthToNumber(computed.fontSize) ?? 14;
+  const lineHeight = cssLineHeightToNumber(computed.lineHeight);
+  const lineHeightPx = typeof lineHeight === "number" && lineHeight > 0 ? lineHeight : fontSize * 1.2;
+  return height >= lineHeightPx * 1.8;
+}
 function shouldAutoResizeText(element, computed) {
-  if (isClippedSingleLineText(computed)) return false;
-  if (element.getAttribute("data-figma-text-auto-width") === "true") return true;
   const textAlign = computed.textAlign.toLowerCase();
   if (textAlign === "center" || textAlign === "right" || textAlign === "end") {
-    const isSingleLine = computed.whiteSpace.toLowerCase().includes("nowrap");
-    if (!isFlexItem(element, computed) || !isSingleLine) return false;
+    if (!isFlexItem(element, computed)) return false;
   }
   if (!isFlexItem(element, computed)) return false;
   if (hasFixedFlexBasis(computed)) return false;
   return Number.parseFloat(computed.flexGrow || "0") === 0;
 }
-function getTextAutoResize(element, computed) {
+function getTextAutoResize(element, computed, height) {
+  if (getLineClampCount(computed) !== void 0) return void 0;
+  if (element.getAttribute("data-figma-text-auto-width") === "true") {
+    return "WIDTH_AND_HEIGHT";
+  }
+  if (isRenderedMultilineText(computed, height)) return "HEIGHT";
   return shouldAutoResizeText(element, computed) ? "WIDTH_AND_HEIGHT" : void 0;
 }
 function getLayoutAlign(element) {
@@ -1452,8 +1573,8 @@ function createTextLeafNode({
   const letterSpacing = cssLengthToNumber(computed.letterSpacing);
   const textDecoration = getTextDecoration(computed);
   const italic = isItalicFontStyle(computed);
-  const isSingleLineTruncatedText = isClippedSingleLineText(computed);
-  const exportWidth = isSingleLineTruncatedText || Boolean(textAutoResize) || layoutGrow === 1 || hasFixedFlexBasis(computed) ? width : getTextExportWidth({ computed, text, width });
+  const clampedLineCount = getLineClampCount(computed);
+  const exportWidth = clampedLineCount !== void 0 || Boolean(textAutoResize) || layoutGrow === 1 || hasFixedFlexBasis(computed) ? width : getTextExportWidth({ computed, text, width });
   const exportX = getTextExportX({ computed, exportWidth, width, x });
   return {
     bindings: pickBindings(bindings, [
@@ -1485,10 +1606,10 @@ function createTextLeafNode({
       opacity: Number(computed.opacity),
       ...outOfFlow ? { outOfFlow: true } : {},
       overflow: computed.overflow,
-      ...isSingleLineTruncatedText ? { maxLines: 1, textTruncation: "ENDING" } : {},
+      ...clampedLineCount !== void 0 ? { maxLines: clampedLineCount, textTruncation: "ENDING" } : {},
       textAlign: computed.textAlign,
       ...textAlignVertical ? { textAlignVertical } : {},
-      ...textAutoResize ? { textAutoResize } : {},
+      ...textAutoResize === "HEIGHT" ? { textGrowHeight: true } : textAutoResize ? { textAutoResize } : {},
       width: exportWidth,
       x: exportX,
       y
@@ -1696,6 +1817,37 @@ function collectBindings(element, rules, hasUniformVisibleBorder, tokenSystem) {
 }
 function getDirectText(element) {
   return Array.from(element.childNodes).filter((node) => node.nodeType === Node.TEXT_NODE).map((node) => node.textContent ?? "").join("").replace(/\s+/g, " ").trim();
+}
+function getDirectTextRuns(element) {
+  const runs = [];
+  for (const node of Array.from(element.childNodes)) {
+    if (node.nodeType !== Node.TEXT_NODE) continue;
+    const text = (node.textContent ?? "").replace(/\s+/g, " ").trim();
+    if (!text) continue;
+    try {
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      const rect = range.getBoundingClientRect();
+      range.detach();
+      if (rect.width <= 0 || rect.height <= 0) continue;
+      runs.push({ rect, text });
+    } catch {
+    }
+  }
+  return runs;
+}
+function getAbsoluteStackingKey(element) {
+  const computed = window.getComputedStyle(element);
+  const zIndex = Number.parseInt(computed.zIndex, 10);
+  if (Number.isFinite(zIndex)) return zIndex;
+  return computed.position !== "static" ? 0.5 : 0;
+}
+function sortEntriesForAbsoluteStacking(entries) {
+  return entries.map((entry, index) => ({
+    entry,
+    index,
+    key: getAbsoluteStackingKey(entry.element)
+  })).sort((a, b) => a.key - b.key || a.index - b.index).map((item) => item.entry);
 }
 function getRenderedLeafText(element) {
   if (element instanceof HTMLElement) {
@@ -1937,7 +2089,8 @@ function measureAutoLayoutChildren({
     }
   }
   const isStartJustified = justify === "" || ["flex-start", "left", "normal", "start"].includes(justify);
-  if (isStartJustified) {
+  const isSpaceDistributed = justify === "space-around" || justify === "space-evenly";
+  if (isStartJustified || isSpaceDistributed) {
     const leading = Math.min(...measured.map((entry) => entry.mainStart));
     const containerMainSize = isColumn ? containerRect.height : containerRect.width;
     const trailing = containerMainSize - Math.max(...measured.map((entry) => entry.mainEnd));
@@ -1999,19 +2152,23 @@ async function createExportNode(element, rootRect, parentRect, ruleIndex, tokenS
   const directText = getDirectText(element);
   const backgroundColor = cssColorValue(computed.backgroundColor);
   const declarations = getMatchedDeclarations(element, rules);
+  const backgroundLayers = getBackgroundImageLayers(computed.backgroundImage);
   const backgroundLinearGradient = addLinearGradientStopTokens(
-    parseLinearGradient(computed.backgroundImage),
+    backgroundLayers.map((layer) => parseLinearGradient(layer, width, height)).find(Boolean),
     declarations,
     tokenSystem
   );
+  const backgroundRadialGradient = backgroundLayers.map(parseRadialGradient).find(Boolean);
+  const backgroundImageUrl = backgroundLayers.map(getBackgroundImageUrl).find(Boolean);
   const color = cssColorValue(computed.color);
   const border = getUniformVisibleBorder(computed);
   const borderSideMap = getVisibleBorderSides(computed);
   const fontWeight = Number.parseInt(computed.fontWeight, 10);
   const radiusStyles = getRadiusStyles(computed, width, height);
   const boxShadowEffects = getBoxShadowEffects(computed);
+  const blurEffects = getBlurEffects(computed);
   const lineHeight = cssLineHeightToNumber(computed.lineHeight);
-  const gap = cssLengthToNumber(computed.columnGap) ?? cssLengthToNumber(computed.gap);
+  const gap = computed.flexDirection.startsWith("column") ? cssLengthToNumber(computed.rowGap) ?? cssLengthToNumber(computed.gap) : cssLengthToNumber(computed.columnGap) ?? cssLengthToNumber(computed.gap);
   const layoutAlign = getLayoutAlign(element);
   const layoutGrow = getLayoutGrow(element, computed);
   const textLayoutStrategy = element.getAttribute("data-figma-layout-strategy") === "auto-layout" ? "autoLayout" : getLayoutStrategy(element, computed, nextForceAbsoluteLayout);
@@ -2053,20 +2210,31 @@ async function createExportNode(element, rootRect, parentRect, ruleIndex, tokenS
       const paddingRight = cssLengthToNumber(computed.paddingRight) ?? 0;
       const paddingTop = cssLengthToNumber(computed.paddingTop) ?? 0;
       const paddingBottom = cssLengthToNumber(computed.paddingBottom) ?? 0;
+      const borderLeftWidth = cssBorderWidth(computed, "left");
+      const borderRightWidth = cssBorderWidth(computed, "right");
+      const borderTopWidth = cssBorderWidth(computed, "top");
+      const borderBottomWidth = cssBorderWidth(computed, "bottom");
+      const contentHeight = Math.max(
+        1,
+        height - paddingTop - paddingBottom - borderTopWidth - borderBottomWidth
+      );
       const textNode = createTextLeafNode({
         bindings,
         computed,
-        height: Math.max(1, height - paddingTop - paddingBottom),
+        height: contentHeight,
         layoutStrategy: textLayoutStrategy,
         name: `${getElementName(element, options)}__text`,
         text: leafText,
-        textAutoResize: getTextAutoResize(element, computed),
+        textAutoResize: getTextAutoResize(element, computed, contentHeight),
         layoutAlign,
         layoutGrow,
         textAlignVertical,
-        width: Math.max(1, width - paddingLeft - paddingRight),
-        x: paddingLeft,
-        y: paddingTop
+        width: Math.max(
+          1,
+          width - paddingLeft - paddingRight - borderLeftWidth - borderRightWidth
+        ),
+        x: borderLeftWidth + paddingLeft,
+        y: borderTopWidth + paddingTop
       });
       if (textLayoutStrategy === "autoLayout") {
         return {
@@ -2080,8 +2248,14 @@ async function createExportNode(element, rootRect, parentRect, ruleIndex, tokenS
             alignItems: "center",
             ...backgroundColor ? { backgroundColor } : {},
             ...backgroundLinearGradient ? { backgroundLinearGradient } : {},
+            ...backgroundRadialGradient ? { backgroundRadialGradient } : {},
             ...boxShadowEffects.length > 0 ? { effects: boxShadowEffects } : {},
-            ...border ? { borderColor: border.color, borderWidth: border.width } : {},
+            ...blurEffects.length > 0 ? { blurEffects } : {},
+            ...border ? {
+              borderColor: border.color,
+              ...border.style ? { borderStyle: border.style } : {},
+              borderWidth: border.width
+            } : {},
             ...borderSideMap ? { borderSides: borderSideMap } : {},
             display: "flex",
             flexDirection: "row",
@@ -2090,10 +2264,10 @@ async function createExportNode(element, rootRect, parentRect, ruleIndex, tokenS
             opacity: Number(computed.opacity),
             ...elementOutOfFlow ? { outOfFlow: true } : {},
             overflow: computed.overflow,
-            paddingBottom,
-            paddingLeft,
-            paddingRight,
-            paddingTop,
+            paddingBottom: paddingBottom + borderBottomWidth,
+            paddingLeft: paddingLeft + borderLeftWidth,
+            paddingRight: paddingRight + borderRightWidth,
+            paddingTop: paddingTop + borderTopWidth,
             ...radiusStyles,
             ...layoutSizingHorizontal ? { layoutSizingHorizontal } : {},
             ...layoutSizingHorizontal && !bindings.height ? { layoutSizingVertical: "HUG" } : {},
@@ -2113,8 +2287,14 @@ async function createExportNode(element, rootRect, parentRect, ruleIndex, tokenS
         styles: {
           ...backgroundColor ? { backgroundColor } : {},
           ...backgroundLinearGradient ? { backgroundLinearGradient } : {},
+          ...backgroundRadialGradient ? { backgroundRadialGradient } : {},
           ...boxShadowEffects.length > 0 ? { effects: boxShadowEffects } : {},
-          ...border ? { borderColor: border.color, borderWidth: border.width } : {},
+          ...blurEffects.length > 0 ? { blurEffects } : {},
+          ...border ? {
+            borderColor: border.color,
+            ...border.style ? { borderStyle: border.style } : {},
+            borderWidth: border.width
+          } : {},
           ...borderSideMap ? { borderSides: borderSideMap } : {},
           display: getExportDisplay(computed, "absolute"),
           height,
@@ -2141,7 +2321,7 @@ async function createExportNode(element, rootRect, parentRect, ruleIndex, tokenS
       name: getElementName(element, options),
       outOfFlow: elementOutOfFlow,
       text: leafText,
-      textAutoResize: getTextAutoResize(element, computed),
+      textAutoResize: getTextAutoResize(element, computed, height),
       layoutAlign,
       layoutGrow,
       textAlignVertical,
@@ -2158,11 +2338,30 @@ async function createExportNode(element, rootRect, parentRect, ruleIndex, tokenS
     if (!imageSvgText) imageCapture = await captureRasterImage(element);
   } else if (element instanceof HTMLCanvasElement) {
     imageCapture = drawSourceToRasterCapture(element, element.width, element.height);
+  } else if (backgroundImageUrl) {
+    imageCapture = await fetchRasterCapture(backgroundImageUrl);
   }
   const elementName = getElementName(element, options);
-  const autoLayoutMeasurement = kind === "frame" && frameLayoutStrategy === "autoLayout" && isFlexDisplay(computed.display) && childEntries.length > 0 ? measureAutoLayoutChildren({ childEntries, computed, containerRect: rect }) : void 0;
-  const effectiveLayoutStrategy = autoLayoutMeasurement?.strategy ?? frameLayoutStrategy;
-  const orderedChildNodes = autoLayoutMeasurement?.children ?? childNodes;
+  const inlineTextRunNodes = kind === "frame" && directText && !element.shadowRoot ? getDirectTextRuns(element).map(
+    (run, index) => createTextLeafNode({
+      bindings,
+      computed,
+      height: toFiniteNumber(run.rect.height),
+      layoutStrategy: "absolute",
+      name: `${elementName}__text-${index + 1}`,
+      text: applyTextTransformToText(run.text, computed),
+      textAutoResize: isRenderedMultilineText(computed, run.rect.height) ? "HEIGHT" : void 0,
+      width: toFiniteNumber(run.rect.width),
+      x: toFiniteNumber(run.rect.left - rect.left),
+      y: toFiniteNumber(run.rect.top - rect.top)
+    })
+  ) : [];
+  const autoLayoutMeasurement = kind === "frame" && inlineTextRunNodes.length === 0 && frameLayoutStrategy === "autoLayout" && isFlexDisplay(computed.display) && childEntries.length > 0 ? measureAutoLayoutChildren({ childEntries, computed, containerRect: rect }) : void 0;
+  const effectiveLayoutStrategy = inlineTextRunNodes.length > 0 ? "absolute" : autoLayoutMeasurement?.strategy ?? frameLayoutStrategy;
+  const orderedChildNodes = effectiveLayoutStrategy === "absolute" ? [
+    ...inlineTextRunNodes,
+    ...sortEntriesForAbsoluteStacking(childEntries).map((entry) => entry.node)
+  ] : autoLayoutMeasurement?.children ?? childNodes;
   const paddingOverrides = effectiveLayoutStrategy === "autoLayout" ? autoLayoutMeasurement?.paddingOverrides : void 0;
   const measuredGap = effectiveLayoutStrategy === "autoLayout" ? autoLayoutMeasurement?.gap : void 0;
   const effectiveGap = measuredGap ?? gap;
@@ -2170,8 +2369,14 @@ async function createExportNode(element, rootRect, parentRect, ruleIndex, tokenS
     ...computed.alignItems ? { alignItems: computed.alignItems } : {},
     ...backgroundColor ? { backgroundColor } : {},
     ...backgroundLinearGradient ? { backgroundLinearGradient } : {},
+    ...backgroundRadialGradient ? { backgroundRadialGradient } : {},
     ...boxShadowEffects.length > 0 ? { effects: boxShadowEffects } : {},
-    ...border ? { borderColor: border.color, borderWidth: border.width } : {},
+    ...blurEffects.length > 0 ? { blurEffects } : {},
+    ...border ? {
+      borderColor: border.color,
+      ...border.style ? { borderStyle: border.style } : {},
+      borderWidth: border.width
+    } : {},
     ...borderSideMap ? { borderSides: borderSideMap } : {},
     ...color ? { color } : {},
     ...effectiveLayoutStrategy === "autoLayout" && autoLayoutMeasurement?.counterAxisSpacing !== void 0 ? { counterAxisSpacing: autoLayoutMeasurement.counterAxisSpacing } : {},
@@ -2192,10 +2397,12 @@ async function createExportNode(element, rootRect, parentRect, ruleIndex, tokenS
     opacity: Number(computed.opacity),
     ...elementOutOfFlow ? { outOfFlow: true } : {},
     overflow: computed.overflow,
-    paddingBottom: paddingOverrides?.bottom ?? (cssLengthToNumber(computed.paddingBottom) ?? 0),
-    paddingLeft: paddingOverrides?.left ?? (cssLengthToNumber(computed.paddingLeft) ?? 0),
-    paddingRight: paddingOverrides?.right ?? (cssLengthToNumber(computed.paddingRight) ?? 0),
-    paddingTop: paddingOverrides?.top ?? (cssLengthToNumber(computed.paddingTop) ?? 0),
+    // CSS borders take layout space before the padding; Figma inside strokes
+    // do not, so the border width folds into the exported padding.
+    paddingBottom: paddingOverrides?.bottom ?? (cssLengthToNumber(computed.paddingBottom) ?? 0) + cssBorderWidth(computed, "bottom"),
+    paddingLeft: paddingOverrides?.left ?? (cssLengthToNumber(computed.paddingLeft) ?? 0) + cssBorderWidth(computed, "left"),
+    paddingRight: paddingOverrides?.right ?? (cssLengthToNumber(computed.paddingRight) ?? 0) + cssBorderWidth(computed, "right"),
+    paddingTop: paddingOverrides?.top ?? (cssLengthToNumber(computed.paddingTop) ?? 0) + cssBorderWidth(computed, "top"),
     ...radiusStyles,
     ...textAlignVertical ? { textAlignVertical } : {},
     width,
@@ -2211,7 +2418,10 @@ async function createExportNode(element, rootRect, parentRect, ruleIndex, tokenS
     layoutStrategy: kind === "image" ? "absolute" : effectiveLayoutStrategy,
     name: elementName,
     ...imageSvgText ? { svgText: imageSvgText } : {},
-    styles: imageCapture ? { ...frameStyles, imageScaleMode: getImageScaleMode(computed) } : frameStyles
+    styles: imageCapture ? {
+      ...frameStyles,
+      imageScaleMode: kind === "image" ? getImageScaleMode(computed) : getBackgroundScaleMode(computed)
+    } : frameStyles
   };
 }
 async function createFigmaExportPayload({
@@ -2833,7 +3043,11 @@ void (async function importStorybookStory(payload) {
       const styles = spec.styles || {};
       const bindings = spec.bindings || {};
       safeResize(node, styles.width, styles.height);
-      if ("clipsContent" in node) node.clipsContent = styles.overflow === "hidden";
+      if ("clipsContent" in node) {
+        node.clipsContent = /(hidden|clip|auto|scroll|overlay)/i.test(
+          String(styles.overflow || ""),
+        );
+      }
       if ("opacity" in node) node.opacity = valueOr(styles.opacity, 1);
       setFrameFills(node, styles, bindings);
       setStrokes(node, styles, bindings);
@@ -3517,7 +3731,9 @@ void (async function importStorybookStory(payload) {
     const bindings = spec.bindings || {};
     node.name = spec.name;
     safeResize(node, styles.width, styles.height);
-    node.clipsContent = styles.overflow === "hidden";
+    node.clipsContent = /(hidden|clip|auto|scroll|overlay)/i.test(
+      String(styles.overflow || ""),
+    );
     node.opacity = valueOr(styles.opacity, 1);
     setFrameFills(node, styles, bindings);
     setStrokes(node, styles, bindings);
@@ -3668,7 +3884,7 @@ void (async function importStorybookStory(payload) {
 
 // src/version.ts
 function getAddonVersion() {
-  return true ? "0.4.19" : "dev";
+  return true ? "0.5.0" : "dev";
 }
 
 // src/workspace.ts

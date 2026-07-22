@@ -1,7 +1,7 @@
 type FigmaVariableType = "BOOLEAN" | "COLOR" | "FLOAT" | "STRING";
 type TokenCollection = "comp" | "ref" | "sys";
 type FigmaNodeKind = "frame" | "image" | "svg" | "text";
-type TextAutoResizeMode = "WIDTH_AND_HEIGHT";
+type TextAutoResizeMode = "HEIGHT" | "WIDTH_AND_HEIGHT";
 type TextHorizontalAlign = "CENTER" | "JUSTIFIED" | "LEFT" | "RIGHT";
 type TextVerticalAlign = "CENTER";
 type FigmaExportArtifactKind = "component" | "page";
@@ -42,6 +42,10 @@ type FigmaExportGradientStop = {
 
 type FigmaExportLinearGradient = {
   angle: number;
+  stops: FigmaExportGradientStop[];
+};
+
+type FigmaExportRadialGradient = {
   stops: FigmaExportGradientStop[];
 };
 
@@ -98,8 +102,10 @@ type FigmaExportEffect = {
   offsetX: number;
   offsetY: number;
   spread: number;
-  type: "DROP_SHADOW" | "INNER_SHADOW";
+  type: "BACKGROUND_BLUR" | "DROP_SHADOW" | "INNER_SHADOW" | "LAYER_BLUR";
 };
+
+type FigmaExportBorderStyle = "dashed" | "dotted";
 
 type FigmaRadiusCorners = {
   bottomLeft: number;
@@ -124,8 +130,11 @@ type FigmaExportNode = {
     alignItems?: string;
     backgroundColor?: string;
     backgroundLinearGradient?: FigmaExportLinearGradient;
+    backgroundRadialGradient?: FigmaExportRadialGradient;
+    blurEffects?: FigmaExportEffect[];
     borderColor?: string;
     borderSides?: FigmaExportBorderSides;
+    borderStyle?: FigmaExportBorderStyle;
     borderWidth?: number;
     constraints?: FigmaExportConstraints;
     color?: string;
@@ -163,6 +172,7 @@ type FigmaExportNode = {
     textAlignVertical?: TextVerticalAlign;
     textAutoResize?: TextAutoResizeMode;
     textDecoration?: FigmaTextDecorationSpec;
+    textGrowHeight?: boolean;
     width: number;
     x: number;
     y: number;
@@ -358,7 +368,7 @@ type ComponentSectionTarget = {
 
 // Bump this on every behavior change so the Figma UI badge confirms which
 // build is running (Figma re-reads code.js per run, but the badge removes doubt).
-const PLUGIN_VERSION = "1.2.4 (2026-07-21)";
+const PLUGIN_VERSION = "1.3.0 (2026-07-22)";
 
 const SUPPORTED_PAYLOAD_VERSIONS = [1, 2] as const;
 const DEFAULT_TOKEN_PLUGIN_DATA_KEY = "storybookCssToken";
@@ -997,12 +1007,12 @@ function createImportContext(payload: FigmaExportPayload) {
 
     node.name = spec.name || "frame";
     safeResize(node, styles.width, styles.height, path);
-    node.clipsContent = styles.overflow === "hidden" || styles.overflow === "clip";
+    node.clipsContent = shouldClipContent(styles.overflow);
     node.opacity = clamp(safeNumber(styles.opacity, 1), 0, 1);
-    setFrameFills(node, styles, bindings, path);
+    setFrameFills(node, spec, path);
     setStrokes(node, styles, bindings, path);
     applyRadius(node, styles, bindings, path);
-    applyEffects(node, styles.effects, path);
+    applyEffects(node, collectSpecEffects(styles), path);
     applyAutoLayout(node, styles, bindings, path);
 
     safeBind(node, "width", bindings.width, path);
@@ -1227,12 +1237,12 @@ function createImportContext(payload: FigmaExportPayload) {
     const bindings = spec.bindings ?? {};
 
     safeResize(node, styles.width, styles.height, path);
-    node.clipsContent = styles.overflow === "hidden" || styles.overflow === "clip";
+    node.clipsContent = shouldClipContent(styles.overflow);
     node.opacity = clamp(safeNumber(styles.opacity, 1), 0, 1);
-    setFrameFills(node, styles, bindings, path);
+    setFrameFills(node, spec, path);
     setStrokes(node, styles, bindings, path);
     applyRadius(node, styles, bindings, path);
-    applyEffects(node, styles.effects, path);
+    applyEffects(node, collectSpecEffects(styles), path);
     applyAutoLayout(node, styles, bindings, path);
 
     safeBind(node, "width", bindings.width, path);
@@ -2116,9 +2126,13 @@ function createImportContext(payload: FigmaExportPayload) {
       }
     }
     node.fills = [solidPaint(styles.color, bindings.textColor, `${path}.textColor`)];
-    applyEffects(node, styles.effects, path);
+    applyEffects(node, collectSpecEffects(styles), path);
     safeResize(node, styles.width, styles.height, path);
-    applyTextAutoResize(node, styles.textAutoResize, path);
+    applyTextAutoResize(
+      node,
+      styles.textGrowHeight ? "HEIGHT" : styles.textAutoResize,
+      path,
+    );
     applyTextTruncation(node, styles, path);
     applyTextAlignHorizontal(node, spec, options, path);
 
@@ -2140,21 +2154,27 @@ function createImportContext(payload: FigmaExportPayload) {
 
   function createImageNode(spec: FigmaExportNode, path: string): FrameNode {
     const wrapper = figma.createFrame();
+    const styles = spec.styles;
     const bindings = spec.bindings ?? {};
 
     wrapper.name = spec.name || "image";
     wrapper.fills = [];
-    wrapper.clipsContent = spec.styles.overflow === "hidden" || spec.styles.overflow === "clip";
-    safeResize(wrapper, spec.styles.width, spec.styles.height, path);
+    wrapper.clipsContent = shouldClipContent(styles.overflow);
+    wrapper.opacity = clamp(safeNumber(styles.opacity, 1), 0, 1);
+    safeResize(wrapper, styles.width, styles.height, path);
     safeBind(wrapper, "width", bindings.width, path);
     safeBind(wrapper, "height", bindings.height, path);
     safeBind(wrapper, "opacity", bindings.opacity, path);
 
     if (spec.svgText) {
       try {
-        const svgNode = figma.createNodeFromSvg(spec.svgText);
+        const targetWidth = Math.max(1, safeNumber(styles.width, 1));
+        const targetHeight = Math.max(1, safeNumber(styles.height, 1));
+        const svgNode = figma.createNodeFromSvg(
+          setSvgRootSize(spec.svgText, targetWidth, targetHeight),
+        );
         svgNode.name = `${wrapper.name}/svg`;
-        safeResize(svgNode, spec.styles.width, spec.styles.height, `${path}/svg`);
+        fitSvgNodeToTarget(svgNode, targetWidth, targetHeight, `${path}/svg`);
         svgNode.x = 0;
         svgNode.y = 0;
         wrapper.appendChild(svgNode);
@@ -2163,35 +2183,69 @@ function createImportContext(payload: FigmaExportPayload) {
         warn(`Could not create SVG for ${path}: ${formatError(error)}`);
       }
     } else if (spec.imageBase64) {
-      try {
-        const bytes = figma.base64Decode(spec.imageBase64);
-        const image = figma.createImage(bytes);
-        const scaleMode: "FILL" | "FIT" =
-          spec.styles.imageScaleMode === "FIT" ? "FIT" : "FILL";
-        wrapper.fills = [
-          {
-            imageHash: image.hash,
-            scaleMode,
-            type: "IMAGE",
-          },
-        ];
-      } catch (error) {
-        warn(`Could not create raster image for ${path}: ${formatError(error)}`);
+      const fills: Paint[] = [];
+      // Letterboxed (FIT) images show the element background around the
+      // bitmap, so the background paints below the image fill.
+      if (styles.backgroundColor) {
+        fills.push(
+          solidPaint(styles.backgroundColor, bindings.backgroundColor, `${path}.fill`),
+        );
       }
+      const imagePaint = createImagePaint(
+        spec.imageBase64,
+        styles.imageScaleMode,
+        path,
+      );
+      if (imagePaint) fills.push(imagePaint);
+      wrapper.fills = fills;
     } else {
       warn(`Image ${path} has no SVG or raster payload; created an empty image frame.`);
     }
 
-    applyRadius(wrapper, spec.styles, bindings, path);
-    applyEffects(wrapper, spec.styles.effects, path);
+    setStrokes(wrapper, styles, bindings, path);
+    applyRadius(wrapper, styles, bindings, path);
+    applyEffects(wrapper, collectSpecEffects(styles), path);
 
     return wrapper;
   }
 
+  // Frame resize alone never scales vector children; rescale transforms the
+  // whole subtree so a 24px icon file rendered at 16px imports at 16px.
+  function fitSvgNodeToTarget(
+    node: FrameNode,
+    width: number,
+    height: number,
+    path: string,
+  ): void {
+    const currentWidth = safeNumber(node.width, width);
+    const currentHeight = safeNumber(node.height, height);
+    if (
+      Math.abs(currentWidth - width) < 0.5 &&
+      Math.abs(currentHeight - height) < 0.5
+    ) {
+      return;
+    }
+
+    try {
+      const rescale = (node as FrameNode & { rescale?: (scale: number) => void })
+        .rescale;
+      if (typeof rescale === "function" && currentWidth > 0) {
+        rescale.call(node, width / currentWidth);
+      }
+    } catch (error) {
+      warn(`Could not rescale SVG for ${path}: ${formatError(error)}`);
+    }
+    safeResize(node, width, height, path);
+  }
+
   function createSvgSceneNode(spec: FigmaExportNode, path: string): FrameNode {
-    const svgNode = figma.createNodeFromSvg(spec.svgText || "");
+    const targetWidth = Math.max(1, safeNumber(spec.styles.width, 1));
+    const targetHeight = Math.max(1, safeNumber(spec.styles.height, 1));
+    const svgNode = figma.createNodeFromSvg(
+      setSvgRootSize(spec.svgText || "", targetWidth, targetHeight),
+    );
     svgNode.name = spec.name || "svg";
-    safeResize(svgNode, spec.styles.width, spec.styles.height, path);
+    fitSvgNodeToTarget(svgNode, targetWidth, targetHeight, path);
     svgNode.x = safeNumber(spec.styles.x, 0);
     svgNode.y = safeNumber(spec.styles.y, 0);
     return svgNode;
@@ -2204,25 +2258,67 @@ function createImportContext(payload: FigmaExportPayload) {
     );
   }
 
+  // CSS paints background-color at the bottom, then background-image layers
+  // on top; Figma fills render index 0 at the bottom, so the array is
+  // [solid, image, radial, linear].
   function setFrameFills(
     node: FrameLikeNode,
-    styles: FigmaExportNode["styles"],
-    bindings: Partial<Record<FigmaBindingName, string>>,
+    spec: FigmaExportNode,
     path: string,
   ): void {
+    const styles = spec.styles;
+    const bindings = spec.bindings ?? {};
+    const fills: Paint[] = [];
+
+    // A binding without a computed color only paints when its variable
+    // exists; otherwise a placeholder black rectangle would appear.
+    const hasBindableBackground = Boolean(
+      bindings.backgroundColor &&
+        registry.get(bindings.backgroundColor)?.resolvedType === "COLOR",
+    );
+    if (styles.backgroundColor || hasBindableBackground) {
+      fills.push(
+        solidPaint(styles.backgroundColor, bindings.backgroundColor, `${path}.fill`),
+      );
+    }
+
+    if (spec.kind === "frame" && spec.imageBase64) {
+      const imagePaint = createImagePaint(
+        spec.imageBase64,
+        styles.imageScaleMode,
+        `${path}.backgroundImage`,
+      );
+      if (imagePaint) fills.push(imagePaint);
+    }
+
+    if (styles.backgroundRadialGradient) {
+      fills.push(radialGradientPaint(styles.backgroundRadialGradient, path));
+    }
+
     if (styles.backgroundLinearGradient) {
-      node.fills = [linearGradientPaint(styles.backgroundLinearGradient, path)];
-      return;
+      fills.push(linearGradientPaint(styles.backgroundLinearGradient, path));
     }
 
-    if (!styles.backgroundColor && !bindings.backgroundColor) {
-      node.fills = [];
-      return;
-    }
+    node.fills = fills;
+  }
 
-    node.fills = [
-      solidPaint(styles.backgroundColor, bindings.backgroundColor, `${path}.fill`),
-    ];
+  function createImagePaint(
+    imageBase64: string,
+    scaleMode: FigmaImageScaleMode | undefined,
+    path: string,
+  ): ImagePaint | undefined {
+    try {
+      const bytes = figma.base64Decode(imageBase64);
+      const image = figma.createImage(bytes);
+      return {
+        imageHash: image.hash,
+        scaleMode: scaleMode === "FIT" ? "FIT" : "FILL",
+        type: "IMAGE",
+      };
+    } catch (error) {
+      warn(`Could not create image fill for ${path}: ${formatError(error)}`);
+      return undefined;
+    }
   }
 
   function linearGradientPaint(
@@ -2235,6 +2331,24 @@ function createImportContext(payload: FigmaExportPayload) {
       ),
       gradientTransform: getLinearGradientTransform(safeNumber(gradient.angle, 90)),
       type: "GRADIENT_LINEAR",
+    };
+  }
+
+  // The identity transform maps the radial gradient onto the ellipse
+  // inscribed in the node bounds — close to the CSS farthest-side default.
+  function radialGradientPaint(
+    gradient: FigmaExportRadialGradient,
+    path: string,
+  ): GradientPaint {
+    return {
+      gradientStops: gradient.stops.map((stop, index) =>
+        linearGradientStop(stop, index, gradient.stops.length, path),
+      ),
+      gradientTransform: [
+        [1, 0, 0],
+        [0, 1, 0],
+      ],
+      type: "GRADIENT_RADIAL",
     };
   }
 
@@ -2288,7 +2402,11 @@ function createImportContext(payload: FigmaExportPayload) {
       return;
     }
 
-    if (!styles.borderColor && !bindings.borderColor) return;
+    const hasBindableBorder = Boolean(
+      bindings.borderColor &&
+        registry.get(bindings.borderColor)?.resolvedType === "COLOR",
+    );
+    if (!styles.borderColor && !hasBindableBorder) return;
 
     node.strokes = [
       solidPaint(styles.borderColor, bindings.borderColor, `${path}.stroke`),
@@ -2296,6 +2414,28 @@ function createImportContext(payload: FigmaExportPayload) {
     node.strokeAlign = "INSIDE";
     if (typeof styles.borderWidth === "number") {
       node.strokeWeight = styles.borderWidth;
+    }
+    applyStrokeDashPattern(node, styles, path);
+  }
+
+  function applyStrokeDashPattern(
+    node: FrameLikeNode,
+    styles: FigmaExportNode["styles"],
+    path: string,
+  ): void {
+    if (!styles.borderStyle) return;
+
+    const width = Math.max(1, safeNumber(styles.borderWidth, 1));
+    try {
+      if (styles.borderStyle === "dashed") {
+        node.dashPattern = [width * 2, width * 2];
+      } else {
+        // Zero-length dashes with round caps render as browser-like dots.
+        node.dashPattern = [0.01, width * 2];
+        (node as FrameLikeNode & { strokeCap: StrokeCap }).strokeCap = "ROUND";
+      }
+    } catch (error) {
+      warn(`Could not set ${styles.borderStyle} border for ${path}: ${formatError(error)}`);
     }
   }
 
@@ -2395,6 +2535,14 @@ function createImportContext(payload: FigmaExportPayload) {
     safeBindRadius(node, bindings.cornerRadius, path);
   }
 
+  // Shadow effects and blur effects travel in separate payload fields for
+  // backward compatibility; Figma receives them as one effects list.
+  function collectSpecEffects(
+    styles: FigmaExportNode["styles"],
+  ): FigmaExportEffect[] {
+    return [...(styles.effects ?? []), ...(styles.blurEffects ?? [])];
+  }
+
   function applyEffects(
     node: SceneNode,
     effects: FigmaExportEffect[] | undefined,
@@ -2403,18 +2551,28 @@ function createImportContext(payload: FigmaExportPayload) {
     if (!effects || effects.length === 0) return;
 
     try {
-      const mapped = effects.map((effect) => ({
-        blendMode: "NORMAL" as const,
-        color: cloneColor(colorFromCss(effect.color)),
-        offset: {
-          x: safeNumber(effect.offsetX, 0),
-          y: safeNumber(effect.offsetY, 0),
-        },
-        radius: Math.max(0, safeNumber(effect.blur, 0)),
-        spread: safeNumber(effect.spread, 0),
-        type: effect.type,
-        visible: true,
-      }));
+      const mapped = effects.map((effect) => {
+        if (effect.type === "LAYER_BLUR" || effect.type === "BACKGROUND_BLUR") {
+          return {
+            radius: Math.max(0, safeNumber(effect.blur, 0)),
+            type: effect.type,
+            visible: true,
+          };
+        }
+
+        return {
+          blendMode: "NORMAL" as const,
+          color: cloneColor(colorFromCss(effect.color)),
+          offset: {
+            x: safeNumber(effect.offsetX, 0),
+            y: safeNumber(effect.offsetY, 0),
+          },
+          radius: Math.max(0, safeNumber(effect.blur, 0)),
+          spread: safeNumber(effect.spread, 0),
+          type: effect.type,
+          visible: true,
+        };
+      });
       (node as SceneNode & { effects: readonly Effect[] }).effects =
         mapped as unknown as Effect[];
     } catch (error) {
@@ -2446,7 +2604,7 @@ function createImportContext(payload: FigmaExportPayload) {
     node.counterAxisSizingMode = isHorizontalLayout
       ? verticalSizingMode
       : horizontalSizingMode;
-    node.counterAxisAlignItems = mapCounterAlignment(styles.alignItems);
+    applyCounterAxisAlignment(node, styles.alignItems, isHorizontalLayout, path);
     node.itemSpacing =
       primaryAxisAlignItems === "SPACE_BETWEEN" ? 0 : safeNumber(styles.gap, 0);
     node.paddingLeft = safeNumber(styles.paddingLeft, 0);
@@ -2476,6 +2634,27 @@ function createImportContext(payload: FigmaExportPayload) {
     safeBind(node, "paddingRight", bindings.paddingRight, path);
     safeBind(node, "paddingTop", bindings.paddingTop, path);
     safeBind(node, "paddingBottom", bindings.paddingBottom, path);
+  }
+
+  function applyCounterAxisAlignment(
+    node: FrameLikeNode,
+    alignItems: string | undefined,
+    isHorizontalLayout: boolean,
+    path: string,
+  ): void {
+    const mapped = mapCounterAlignment(alignItems);
+    // Figma only supports baseline alignment on horizontal auto layout.
+    if (mapped === "BASELINE" && !isHorizontalLayout) {
+      node.counterAxisAlignItems = "MIN";
+      return;
+    }
+
+    try {
+      node.counterAxisAlignItems = mapped;
+    } catch (error) {
+      warn(`Could not set counter axis alignment for ${path}: ${formatError(error)}`);
+      node.counterAxisAlignItems = mapped === "BASELINE" ? "MIN" : mapped;
+    }
   }
 
   function applyChildPlacement(
@@ -3045,10 +3224,27 @@ function hslToRgbColor(hue: number, saturation: number, lightness: number): {
   return { b: b + offset, g: g + offset, r: r + offset };
 }
 
+// The exporter normalizes colors to hex/rgb, so named values only appear in
+// hand-written payloads or raw token values; a small map keeps the common
+// ones from importing as black.
+const NAMED_CSS_COLORS: Record<string, RgbaColor> = {
+  black: { a: 1, b: 0, g: 0, r: 0 },
+  blue: { a: 1, b: 1, g: 0, r: 0 },
+  gray: { a: 1, b: 0.502, g: 0.502, r: 0.502 },
+  green: { a: 1, b: 0, g: 0.502, r: 0 },
+  grey: { a: 1, b: 0.502, g: 0.502, r: 0.502 },
+  red: { a: 1, b: 0, g: 0, r: 1 },
+  transparent: { a: 0, b: 0, g: 0, r: 0 },
+  white: { a: 1, b: 1, g: 1, r: 1 },
+};
+
 function colorFromCss(cssValue: string | undefined): RgbaColor {
   if (!cssValue) return { a: 1, b: 0, g: 0, r: 0 };
 
   const value = cssValue.trim();
+  const named = NAMED_CSS_COLORS[value.toLowerCase()];
+  if (named) return { ...named };
+
   const hex = value.match(/^#([0-9a-f]{3,8})$/i);
   if (hex) {
     const digits = hex[1];
@@ -3226,7 +3422,8 @@ function validateNode(node: unknown, path: string): void {
   }
   if (
     node.styles.textAutoResize !== undefined &&
-    node.styles.textAutoResize !== "WIDTH_AND_HEIGHT"
+    node.styles.textAutoResize !== "WIDTH_AND_HEIGHT" &&
+    node.styles.textAutoResize !== "HEIGHT"
   ) {
     throw new Error(`Invalid node ${path}: unsupported textAutoResize value.`);
   }
@@ -3274,6 +3471,25 @@ function validateNode(node: unknown, path: string): void {
   }
   if (node.styles.backgroundLinearGradient !== undefined) {
     validateLinearGradient(node.styles.backgroundLinearGradient, `${path}.backgroundLinearGradient`);
+  }
+  if (node.styles.backgroundRadialGradient !== undefined) {
+    validateRadialGradient(
+      node.styles.backgroundRadialGradient,
+      `${path}.backgroundRadialGradient`,
+    );
+  }
+  if (node.styles.textGrowHeight !== undefined && typeof node.styles.textGrowHeight !== "boolean") {
+    throw new Error(`Invalid node ${path}: textGrowHeight must be a boolean.`);
+  }
+  if (node.styles.blurEffects !== undefined) {
+    validateEffects(node.styles.blurEffects, `${path}.blurEffects`);
+  }
+  if (
+    node.styles.borderStyle !== undefined &&
+    node.styles.borderStyle !== "dashed" &&
+    node.styles.borderStyle !== "dotted"
+  ) {
+    throw new Error(`Invalid node ${path}: unsupported borderStyle value.`);
   }
   if (node.styles.borderSides !== undefined) {
     validateBorderSides(node.styles.borderSides, `${path}.borderSides`);
@@ -3353,7 +3569,12 @@ function validateConstraints(constraints: unknown, path: string): void {
   }
 }
 
-const EFFECT_TYPES = ["DROP_SHADOW", "INNER_SHADOW"];
+const EFFECT_TYPES = [
+  "BACKGROUND_BLUR",
+  "DROP_SHADOW",
+  "INNER_SHADOW",
+  "LAYER_BLUR",
+];
 const EFFECT_NUMBER_FIELDS = ["blur", "offsetX", "offsetY", "spread"];
 const RADIUS_CORNER_FIELDS = ["bottomLeft", "bottomRight", "topLeft", "topRight"];
 
@@ -3436,6 +3657,30 @@ function validateLinearGradient(gradient: unknown, path: string): void {
   });
 }
 
+function validateRadialGradient(gradient: unknown, path: string): void {
+  if (!isRecord(gradient)) {
+    throw new Error(`Invalid node ${path}: expected object.`);
+  }
+  if (!Array.isArray(gradient.stops) || gradient.stops.length < 2) {
+    throw new Error(`Invalid node ${path}: stops must contain at least two colors.`);
+  }
+
+  gradient.stops.forEach((stop, index) => {
+    if (!isRecord(stop)) {
+      throw new Error(`Invalid node ${path}.stops.${index}: expected object.`);
+    }
+    if (typeof stop.color !== "string") {
+      throw new Error(`Invalid node ${path}.stops.${index}: color must be a string.`);
+    }
+    if (typeof stop.position !== "number") {
+      throw new Error(`Invalid node ${path}.stops.${index}: position must be a number.`);
+    }
+    if (stop.token !== undefined && typeof stop.token !== "string") {
+      throw new Error(`Invalid node ${path}.stops.${index}: token must be a string.`);
+    }
+  });
+}
+
 function validateComponentReference(component: unknown, path: string): void {
   if (!isRecord(component)) {
     throw new Error(`Invalid ${path}: expected object.`);
@@ -3468,6 +3713,55 @@ function getInferredChildTextAlignHorizontal(
   return undefined;
 }
 
+// overflow auto/scroll/overlay also clip content in the browser; only
+// visible lets children spill out of the box.
+function shouldClipContent(overflow: string | undefined): boolean {
+  return /(hidden|clip|auto|scroll|overlay)/i.test(String(overflow ?? ""));
+}
+
+// Rewrites the root <svg> tag so createNodeFromSvg yields the rendered size.
+// Without a viewBox, changing width/height crops instead of scaling, so the
+// intrinsic size becomes the viewBox first.
+function setSvgRootSize(svgText: string, width: number, height: number): string {
+  const match = svgText.match(/<svg\b[^>]*>/i);
+  if (!match) return svgText;
+
+  const rootTag = match[0];
+
+  const readAttribute = (name: string): string | undefined => {
+    const attribute = rootTag.match(
+      new RegExp(`\\b${name}\\s*=\\s*("([^"]*)"|'([^']*)')`, "i"),
+    );
+    return attribute ? attribute[2] ?? attribute[3] : undefined;
+  };
+
+  const parseIntrinsicLength = (value: string | undefined): number | undefined => {
+    if (!value) return undefined;
+    const length = value.trim().match(/^(\d*\.?\d+)(px)?$/);
+    return length ? Number(length[1]) : undefined;
+  };
+
+  let nextTag = rootTag;
+  const writeAttribute = (name: string, value: string) => {
+    const pattern = new RegExp(`\\b${name}\\s*=\\s*("[^"]*"|'[^']*')`, "i");
+    nextTag = pattern.test(nextTag)
+      ? nextTag.replace(pattern, `${name}="${value}"`)
+      : nextTag.replace(/<svg\b/i, `<svg ${name}="${value}"`);
+  };
+
+  if (!readAttribute("viewBox")) {
+    const intrinsicWidth = parseIntrinsicLength(readAttribute("width"));
+    const intrinsicHeight = parseIntrinsicLength(readAttribute("height"));
+    if (intrinsicWidth && intrinsicHeight) {
+      writeAttribute("viewBox", `0 0 ${intrinsicWidth} ${intrinsicHeight}`);
+    }
+  }
+  writeAttribute("width", String(Math.max(1, width)));
+  writeAttribute("height", String(Math.max(1, height)));
+
+  return svgText.replace(rootTag, nextTag);
+}
+
 function mapTextAlignHorizontal(value: string | undefined): TextHorizontalAlign | undefined {
   const normalized = String(value ?? "").trim().toLowerCase();
   if (!normalized) return undefined;
@@ -3478,9 +3772,11 @@ function mapTextAlignHorizontal(value: string | undefined): TextHorizontalAlign 
   return undefined;
 }
 
+// space-around/space-evenly intentionally map to MIN: the exporter converts
+// their measured edge offsets into padding, so MIN reproduces the layout.
 function mapAxisAlignment(value: string | undefined): "CENTER" | "MAX" | "MIN" | "SPACE_BETWEEN" {
   if (value === "center") return "CENTER";
-  if (value === "flex-end" || value === "end") return "MAX";
+  if (value === "flex-end" || value === "end" || value === "right") return "MAX";
   if (value === "space-between") return "SPACE_BETWEEN";
   return "MIN";
 }
@@ -3488,6 +3784,7 @@ function mapAxisAlignment(value: string | undefined): "CENTER" | "MAX" | "MIN" |
 function mapCounterAlignment(value: string | undefined): "BASELINE" | "CENTER" | "MAX" | "MIN" {
   if (value === "center") return "CENTER";
   if (value === "flex-end" || value === "end") return "MAX";
+  if (String(value ?? "").includes("baseline")) return "BASELINE";
   return "MIN";
 }
 
@@ -3612,5 +3909,7 @@ if (typeof module !== "undefined" && module) {
     getLinearGradientTransform,
     normalizeVariableValue,
     parsePayload,
+    setSvgRootSize,
+    shouldClipContent,
   };
 }

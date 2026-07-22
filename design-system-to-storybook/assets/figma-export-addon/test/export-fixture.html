@@ -93,6 +93,44 @@
   .case-hsl-token { width: 120px; height: 40px; background-color: var(--fx-sys-color-accent); }
 
   .case-plain { width: 120px; height: 40px; background-color: #eeeeee; }
+
+  .case-mixed-inline { font-size: 14px; width: 360px; }
+  .case-mixed-inline strong { font-weight: 700; }
+
+  .case-multiline-flex { display: flex; flex-direction: column; width: 220px; background-color: #f5f5f5; }
+  .case-multiline-flex p { margin: 0; font-size: 14px; line-height: 20px; }
+
+  .case-space-around { display: flex; justify-content: space-around; width: 300px; background-color: #f5f5f5; }
+  .case-space-around > div { width: 40px; height: 20px; background-color: #999999; }
+
+  .case-border-row { display: flex; gap: 10px; border: 3px solid #333333; padding: 8px; width: 200px; background-color: #ffffff; }
+  .case-border-row > div { width: 40px; height: 20px; background-color: #999999; }
+
+  .case-column-gap { display: flex; flex-direction: column; row-gap: 14px; column-gap: 50px; width: 60px; background-color: #f5f5f5; }
+  .case-column-gap > div { width: 40px; height: 10px; background-color: #999999; }
+
+  .case-bg-image { width: 80px; height: 40px; background-size: cover; }
+  .case-bg-layers { width: 80px; height: 40px; }
+  .case-radial { width: 80px; height: 40px; background-image: radial-gradient(circle at center, #ff0000 0%, #0000ff 100%); }
+  .case-corner-gradient { width: 80px; height: 40px; background-image: linear-gradient(to top right, #ff0000, #0000ff); }
+
+  .case-line-clamp {
+    width: 160px; font-size: 14px; line-height: 20px;
+    display: -webkit-box; -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2; overflow: hidden;
+  }
+
+  .case-blur { width: 80px; height: 40px; background-color: #123456; filter: blur(4px); }
+  .case-backdrop { width: 80px; height: 40px; background-color: rgba(255, 255, 255, 0.4); backdrop-filter: blur(6px); }
+  .case-dashed { width: 120px; height: 40px; border: 2px dashed #cc0000; }
+
+  .contents-wrapper { display: contents; }
+  .case-contents { width: 120px; height: 60px; background-color: #f5f5f5; position: relative; }
+  .case-contents .lifted { width: 40px; height: 20px; background-color: #999999; }
+
+  .case-zindex { position: relative; width: 120px; height: 40px; background-color: #f5f5f5; }
+  .case-zindex .z-high { position: absolute; left: 0; top: 0; width: 60px; height: 40px; z-index: 2; background-color: #cc3333; }
+  .case-zindex .z-low { position: absolute; left: 30px; top: 0; width: 60px; height: 40px; z-index: 1; background-color: #3333cc; }
 </style>
 </head>
 <body>
@@ -127,6 +165,37 @@
     <div data-component="case-hsl-token" class="case-hsl-token"></div>
     <div data-component="case-plain" class="case-plain"></div>
     <shadow-case data-component="case-shadow-dom"></shadow-case>
+    <div data-component="case-mixed-inline" class="case-mixed-inline">Hello <strong>bold</strong> tail</div>
+    <div data-component="case-multiline-flex" class="case-multiline-flex">
+      <p>This paragraph is long enough to wrap onto several lines inside its narrow column container.</p>
+    </div>
+    <div data-component="case-space-around" class="case-space-around">
+      <div></div><div></div><div></div>
+    </div>
+    <div data-component="case-border-row" class="case-border-row">
+      <div></div><div></div>
+    </div>
+    <div data-component="case-column-gap" class="case-column-gap">
+      <div></div>
+    </div>
+    <div data-component="case-bg-image" class="case-bg-image"></div>
+    <div data-component="case-bg-layers" class="case-bg-layers"></div>
+    <div data-component="case-radial" class="case-radial"></div>
+    <div data-component="case-corner-gradient" class="case-corner-gradient"></div>
+    <div data-component="case-line-clamp" class="case-line-clamp">This clamped paragraph keeps only two lines visible even though the source text keeps going on and on.</div>
+    <div data-component="case-blur" class="case-blur"></div>
+    <div data-component="case-backdrop" class="case-backdrop"></div>
+    <div data-component="case-dashed" class="case-dashed"></div>
+    <div data-component="case-contents" class="case-contents">
+      <div class="contents-wrapper">
+        <div class="lifted"></div>
+        <div class="lifted"></div>
+      </div>
+    </div>
+    <div data-component="case-zindex" class="case-zindex">
+      <div class="z-high"></div>
+      <div class="z-low"></div>
+    </div>
   </div>
 </div>
 <pre id="payload-output" style="display: none"></pre>
@@ -172,6 +241,13 @@
     makePngDataUrl(64, 64, "#cc4444");
   document.querySelector('[data-component="case-raster-big"]').src =
     makePngDataUrl(3000, 1500, "#4488cc");
+
+  // CSS background images use the same synchronous data URLs.
+  const fixtureBgUrl = makePngDataUrl(32, 32, "#22aa66");
+  document.querySelector('[data-component="case-bg-image"]').style.backgroundImage =
+    "url(" + fixtureBgUrl + ")";
+  document.querySelector('[data-component="case-bg-layers"]').style.backgroundImage =
+    "linear-gradient(rgba(255, 0, 0, 0.5), rgba(0, 0, 255, 0.5)), url(" + fixtureBgUrl + ")";
 
   async function runFixtureExport() {
     try {

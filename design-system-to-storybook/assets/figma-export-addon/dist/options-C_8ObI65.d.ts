@@ -38,6 +38,9 @@ type FigmaExportLinearGradient = {
     angle: number;
     stops: FigmaExportGradientStop[];
 };
+type FigmaExportRadialGradient = {
+    stops: FigmaExportGradientStop[];
+};
 type FigmaNodeConstraint = "CENTER" | "MAX" | "MIN" | "SCALE" | "STRETCH";
 type FigmaNodeConstraints = {
     horizontal: FigmaNodeConstraint;
@@ -51,12 +54,13 @@ type FigmaExportBorderSide = {
 type FigmaExportBorderSides = Partial<Record<FigmaBorderSideName, FigmaExportBorderSide>>;
 type FigmaExportEffect = {
     blur: number;
-    color: string;
+    color?: string;
     offsetX: number;
     offsetY: number;
     spread: number;
-    type: "DROP_SHADOW" | "INNER_SHADOW";
+    type: "BACKGROUND_BLUR" | "DROP_SHADOW" | "INNER_SHADOW" | "LAYER_BLUR";
 };
+type FigmaExportBorderStyle = "dashed" | "dotted";
 type FigmaRadiusCorners = {
     bottomLeft: number;
     bottomRight: number;
@@ -80,8 +84,11 @@ type FigmaExportNode = {
         alignItems?: string;
         backgroundColor?: string;
         backgroundLinearGradient?: FigmaExportLinearGradient;
+        backgroundRadialGradient?: FigmaExportRadialGradient;
+        blurEffects?: FigmaExportEffect[];
         borderColor?: string;
         borderSides?: FigmaExportBorderSides;
+        borderStyle?: FigmaExportBorderStyle;
         borderWidth?: number;
         color?: string;
         constraints?: FigmaNodeConstraints;
@@ -119,6 +126,7 @@ type FigmaExportNode = {
         textAlignVertical?: "CENTER";
         textAutoResize?: "WIDTH_AND_HEIGHT";
         textDecoration?: FigmaTextDecoration;
+        textGrowHeight?: boolean;
         width: number;
         x: number;
         y: number;

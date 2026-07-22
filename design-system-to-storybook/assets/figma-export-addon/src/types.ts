@@ -68,6 +68,10 @@ export type FigmaExportLinearGradient = {
   stops: FigmaExportGradientStop[];
 };
 
+export type FigmaExportRadialGradient = {
+  stops: FigmaExportGradientStop[];
+};
+
 export type FigmaNodeConstraint = "CENTER" | "MAX" | "MIN" | "SCALE" | "STRETCH";
 
 export type FigmaNodeConstraints = {
@@ -88,12 +92,14 @@ export type FigmaExportBorderSides = Partial<
 
 export type FigmaExportEffect = {
   blur: number;
-  color: string;
+  color?: string;
   offsetX: number;
   offsetY: number;
   spread: number;
-  type: "DROP_SHADOW" | "INNER_SHADOW";
+  type: "BACKGROUND_BLUR" | "DROP_SHADOW" | "INNER_SHADOW" | "LAYER_BLUR";
 };
+
+export type FigmaExportBorderStyle = "dashed" | "dotted";
 
 export type FigmaRadiusCorners = {
   bottomLeft: number;
@@ -121,8 +127,13 @@ export type FigmaExportNode = {
     alignItems?: string;
     backgroundColor?: string;
     backgroundLinearGradient?: FigmaExportLinearGradient;
+    backgroundRadialGradient?: FigmaExportRadialGradient;
+    // Blur effects live apart from shadow effects so importers predating
+    // LAYER_BLUR/BACKGROUND_BLUR keep accepting the payload.
+    blurEffects?: FigmaExportEffect[];
     borderColor?: string;
     borderSides?: FigmaExportBorderSides;
+    borderStyle?: FigmaExportBorderStyle;
     borderWidth?: number;
     color?: string;
     constraints?: FigmaNodeConstraints;
@@ -160,6 +171,9 @@ export type FigmaExportNode = {
     textAlignVertical?: "CENTER";
     textAutoResize?: "WIDTH_AND_HEIGHT";
     textDecoration?: FigmaTextDecoration;
+    // Fixed-width wrapped text; a separate flag (instead of a textAutoResize
+    // value) so importers predating it keep accepting the payload.
+    textGrowHeight?: boolean;
     width: number;
     x: number;
     y: number;

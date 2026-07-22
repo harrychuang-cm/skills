@@ -4,7 +4,16 @@
     "allow": [
       "Bash(md5 assets/figma-export-addon/src/visualComment.ts storybook-template/vendor/figma-export/src/visualComment.ts storybook-template/.storybook/vendor/figma-export-addon/src/visualComment.ts)",
       "Bash(awk '{print $6, $7, $8, $9, $NF}')",
-      "Bash(git --version)"
+      "Bash(git --version)",
+      "Bash(npx tsc *)",
+      "Bash(git -C /Users/a04-0214-0320/Public/works/cm-skills stash list)",
+      "Bash(git -C /Users/a04-0214-0320/Public/works/cm-skills log --oneline -1 -- design-system-to-storybook/assets/figma-plugin-code-to-design)",
+      "Bash(npx eslint *)",
+      "Bash(git -C /Users/a04-0214-0320/Public/works/cm-skills status --short -- design-system-to-storybook/assets/figma-plugin-code-to-design)",
+      "Bash(perl -0pi -e 's/\\\\.\\\\.\\\\.\\\\\\(boxShadowEffects\\\\.length > 0 \\\\? \\\\{ effects: boxShadowEffects \\\\} : \\\\{\\\\}\\\\\\),/...\\(boxShadowEffects.length > 0 ? { effects: boxShadowEffects } : {}\\),\\\\n            ...\\(blurEffects.length > 0 ? { blurEffects } : {}\\),/ if $. == 0' assets/figma-export-addon/src/domExport.ts)",
+      "Bash(perl -pi -e 's/applyEffects\\\\\\(node, styles\\\\.effects, path\\\\\\);/applyEffects\\(node, collectSpecEffects\\(styles\\), path\\);/g; s/applyEffects\\\\\\(wrapper, styles\\\\.effects, path\\\\\\);/applyEffects\\(wrapper, collectSpecEffects\\(styles\\), path\\);/g' assets/figma-plugin-code-to-design/code.ts)",
+      "Bash(git fetch *)",
+      "Bash(git rev-list *)"
     ]
   }
 }
