@@ -8,7 +8,7 @@ Define a portable, vendor-neutral Skill contract for inspecting project evidence
 
 ### Requirement: The skill separates reusable orchestration from project-specific contracts
 
-The repository SHALL provide an `agent-automation-orchestrate` skill whose core workflow covers bootstrap, run, resume, and status modes. The skill MUST keep vendor-neutral runner control, validation, fallback, and durable summaries reusable while requiring project-specific instructions, verification commands, artifacts, and optional companion skills to live in a project contract.
+The repository SHALL provide an `agent-automation-orchestrate` skill whose core workflow covers bootstrap, guide, run, resume, and status modes. The skill MUST keep vendor-neutral runner control, validation, fallback, and durable summaries reusable while requiring project-specific instructions, verification commands, artifacts, and optional companion skills to live in a project contract. The guide mode MUST produce the same project contract schema as bootstrap and MUST NOT alter the behavior of the other four modes.
 
 #### Scenario: Bootstrap a previously unsupported project
 
@@ -23,21 +23,34 @@ The repository SHALL provide an `agent-automation-orchestrate` skill whose core 
 - **THEN** the orchestration prompt instructs the selected runner to load that skill
 - **AND** the generic orchestration scripts do not duplicate the companion skill's domain rules
 
+#### Scenario: A designer request routes to guide mode
+
+- **WHEN** a user describes a desired automation in scenario language without naming a technical mode
+- **THEN** the skill resolves the request to guide mode instead of bootstrap
+- **AND** the produced contract validates with the same validation script bootstrap output uses
+- **AND** an operator request naming bootstrap, run, resume, or status still resolves to that mode unchanged
+
 
 <!-- @trace
-source: add-agent-automation-orchestrate-skill
+source: orchestrate-designer-ux
 updated: 2026-07-22
 code:
-  - agent-automation-orchestrate/scripts/check-agent-automation-skill.mjs
-  - agent-automation-orchestrate/scripts/inspect-project.mjs
-  - agent-automation-orchestrate/SKILL.md
-  - agent-automation-orchestrate/references/runner-contract.md
-  - agent-automation-orchestrate/scripts/validate-project-config.mjs
-  - agent-automation-orchestrate/agents/openai.yaml
-  - agent-automation-orchestrate/scripts/status.mjs
+  - agent-automation-orchestrate/references/designer-guide.md
   - agent-automation-orchestrate/assets/agent-automation.config.example.json
-  - agent-automation-orchestrate/references/project-contract.md
+  - agent-automation-orchestrate/scripts/check-agent-automation-skill.mjs
   - agent-automation-orchestrate/scripts/run-task.mjs
+  - agent-automation-orchestrate/assets/scenario-templates/figma-ready-to-storybook.json
+  - agent-automation-orchestrate/references/runner-contract.md
+  - agent-automation-orchestrate/scripts/inspect-project.mjs
+  - agent-automation-orchestrate/references/project-contract.md
+  - agent-automation-orchestrate/assets/scenario-templates/README.md
+  - agent-automation-orchestrate/agents/openai.yaml
+  - agent-automation-orchestrate/scripts/validate-project-config.mjs
+  - agent-automation-orchestrate/scripts/status.mjs
+  - agent-automation-orchestrate/assets/scenario-templates/screenshot-to-component.json
+  - agent-automation-orchestrate/assets/scenario-templates/visual-parity-audit.json
+  - agent-automation-orchestrate/SKILL.md
+  - agent-automation-orchestrate/assets/scenario-templates/design-system-extraction.json
 -->
 
 ---
