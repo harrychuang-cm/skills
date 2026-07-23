@@ -112,7 +112,7 @@ function applyTextAlignmentFromSpec(node, spec, options, path) {
 }
 // Bump this on every behavior change so the Figma UI badge confirms which
 // build is running (Figma re-reads code.js per run, but the badge removes doubt).
-var PLUGIN_VERSION = "1.6.0 (2026-07-23)";
+var PLUGIN_VERSION = "1.6.1 (2026-07-23)";
 var SUPPORTED_PAYLOAD_VERSIONS = [1, 2];
 var DEFAULT_TOKEN_PLUGIN_DATA_KEY = "storybookCssToken";
 var LEGACY_CM_TOKEN_PLUGIN_DATA_KEY = "cmCssToken";
@@ -587,6 +587,7 @@ function createImportContext(payload) {
     var componentDefinitionRecords = new Map();
     var componentSetRecords = new Map();
     var warnedVariantPropertyNodeIds = new Set();
+    var loadedExistingFontKeys = new Set();
     var componentDefinitionOffsetY = 0;
     var stats = {
         componentDefinitionsPrepared: 0,
@@ -600,6 +601,91 @@ function createImportContext(payload) {
     };
     function warn(message) {
         stats.warnings.push(message);
+    }
+    // Existing nodes (earlier imports, manual edits) can use fonts this run
+    // never loaded, and Figma rejects any relayouting operation — appendChild
+    // into a component set, resize, alignment — on trees with unloaded fonts.
+    // Returns the fonts that could not be loaded so callers can skip the node
+    // instead of failing the whole import.
+    function preloadNodeTreeFonts(node) {
+        return __awaiter(this, void 0, void 0, function () {
+            function visit(current) {
+                return __awaiter(this, void 0, void 0, function () {
+                    var text, fonts, _i, fonts_1, font, key, _a, children, _b, children_1, child;
+                    return __generator(this, function (_c) {
+                        switch (_c.label) {
+                            case 0:
+                                if (!(current.type === "TEXT")) return [3 /*break*/, 6];
+                                text = current;
+                                fonts = [];
+                                if (text.fontName !== figma.mixed)
+                                    fonts.push(text.fontName);
+                                try {
+                                    if (text.characters.length > 0) {
+                                        fonts.push.apply(fonts, text.getRangeAllFontNames(0, text.characters.length));
+                                    }
+                                }
+                                catch (_d) {
+                                    // Range inspection is best-effort; fontName covers the common case.
+                                }
+                                _i = 0, fonts_1 = fonts;
+                                _c.label = 1;
+                            case 1:
+                                if (!(_i < fonts_1.length)) return [3 /*break*/, 6];
+                                font = fonts_1[_i];
+                                key = "".concat(font.family, "\n").concat(font.style);
+                                if (loadedExistingFontKeys.has(key))
+                                    return [3 /*break*/, 5];
+                                _c.label = 2;
+                            case 2:
+                                _c.trys.push([2, 4, , 5]);
+                                return [4 /*yield*/, figma.loadFontAsync(font)];
+                            case 3:
+                                _c.sent();
+                                loadedExistingFontKeys.add(key);
+                                return [3 /*break*/, 5];
+                            case 4:
+                                _a = _c.sent();
+                                failed.push(font);
+                                return [3 /*break*/, 5];
+                            case 5:
+                                _i++;
+                                return [3 /*break*/, 1];
+                            case 6:
+                                children = current.children;
+                                if (!children) return [3 /*break*/, 10];
+                                _b = 0, children_1 = children;
+                                _c.label = 7;
+                            case 7:
+                                if (!(_b < children_1.length)) return [3 /*break*/, 10];
+                                child = children_1[_b];
+                                return [4 /*yield*/, visit(child)];
+                            case 8:
+                                _c.sent();
+                                _c.label = 9;
+                            case 9:
+                                _b++;
+                                return [3 /*break*/, 7];
+                            case 10: return [2 /*return*/];
+                        }
+                    });
+                });
+            }
+            var failed;
+            return __generator(this, function (_a) {
+                switch (_a.label) {
+                    case 0:
+                        failed = [];
+                        return [4 /*yield*/, visit(node)];
+                    case 1:
+                        _a.sent();
+                        return [2 /*return*/, failed];
+                }
+            });
+        });
+    }
+    function describeFont(font) {
+        return font ? "".concat(font.family, " ").concat(font.style) : "unknown font";
     }
     function upsertVariables() {
         return __awaiter(this, void 0, void 0, function () {
@@ -829,48 +915,62 @@ function createImportContext(payload) {
     }
     function ensureComponentDefinition(spec_1, component_1, path_1) {
         return __awaiter(this, arguments, void 0, function (spec, component, path, options) {
-            var existing, componentSet, componentNode, _a, componentSet;
+            var existing, failedFonts, _i, _a, child, componentSet, componentNode, _b, componentSet;
             if (options === void 0) { options = {}; }
-            return __generator(this, function (_b) {
-                switch (_b.label) {
+            return __generator(this, function (_c) {
+                switch (_c.label) {
                     case 0: return [4 /*yield*/, findLocalComponent(component)];
                     case 1:
-                        existing = _b.sent();
-                        if (!existing) return [3 /*break*/, 5];
+                        existing = _c.sent();
+                        if (!existing) return [3 /*break*/, 6];
                         if (componentDefinitionRecords.has(component.key) &&
                             getNodePluginData(existing, COMPONENT_SPEC_HASH_PLUGIN_DATA_KEY) !==
                                 getComponentSpecHash(spec)) {
                             warn("Duplicate variant name \"".concat(getComponentDisplayName(component), "\" with different content at ").concat(path, "; the later design overwrote the earlier one. Give each export item a distinct figmaVariant."));
                         }
+                        return [4 /*yield*/, preloadNodeTreeFonts(existing)];
+                    case 2:
+                        failedFonts = _c.sent();
+                        if (failedFonts.length > 0) {
+                            warn("Existing component \"".concat(existing.name, "\" uses ").concat(failedFonts.length, " font(s) that could not be loaded (e.g. ").concat(describeFont(failedFonts[0]), "); its previous text is replaced from the export."));
+                        }
+                        if (spec.kind === "frame") {
+                            // Children are rebuilt from the spec below; removing them first is
+                            // font-free, so resize and auto-layout never touch stale text.
+                            for (_i = 0, _a = __spreadArray([], existing.children, true); _i < _a.length; _i++) {
+                                child = _a[_i];
+                                child.remove();
+                            }
+                        }
                         syncExistingFrameFromSpec(existing, spec, path);
                         return [4 /*yield*/, syncExistingFrameChildrenFromSpec(existing, spec, path, __assign(__assign({}, options), { isRoot: false, reuseComponents: true }))];
-                    case 2:
-                        _b.sent();
+                    case 3:
+                        _c.sent();
                         applyTextAlignmentFromSpec(existing, spec, options, path);
                         setNodePluginData(existing, COMPONENT_SPEC_HASH_PLUGIN_DATA_KEY, getComponentSpecHash(spec));
                         trackComponentDefinition(existing, component);
-                        if (!(component.variant && options.autoAttachComponentSet !== false)) return [3 /*break*/, 4];
+                        if (!(component.variant && options.autoAttachComponentSet !== false)) return [3 /*break*/, 5];
                         return [4 /*yield*/, attachVariantComponentToSet(existing, component)];
-                    case 3:
-                        componentSet = _b.sent();
+                    case 4:
+                        componentSet = _c.sent();
                         if (componentSet) {
                             trackComponentSet(componentSet, component);
                         }
-                        _b.label = 4;
-                    case 4:
+                        _c.label = 5;
+                    case 5:
                         moveExistingComponentDefinitionToTargetPage(existing);
                         stats.reusedComponents += 1;
                         return [2 /*return*/, existing];
-                    case 5:
-                        if (!((spec.kind === "image" || spec.kind === "svg") && spec.svgText)) return [3 /*break*/, 6];
-                        _a = figma.createComponentFromNode(createSvgSceneNode(spec, path));
-                        return [3 /*break*/, 8];
-                    case 6: return [4 /*yield*/, createFrameNode(spec, path, __assign(__assign({}, options), { autoAttachComponentSet: true, reuseComponents: true }), true)];
-                    case 7:
-                        _a = (_b.sent());
-                        _b.label = 8;
+                    case 6:
+                        if (!((spec.kind === "image" || spec.kind === "svg") && spec.svgText)) return [3 /*break*/, 7];
+                        _b = figma.createComponentFromNode(createSvgSceneNode(spec, path));
+                        return [3 /*break*/, 9];
+                    case 7: return [4 /*yield*/, createFrameNode(spec, path, __assign(__assign({}, options), { autoAttachComponentSet: true, reuseComponents: true }), true)];
                     case 8:
-                        componentNode = _a;
+                        _b = (_c.sent());
+                        _c.label = 9;
+                    case 9:
+                        componentNode = _b;
                         componentNode.name = getComponentDisplayName(component);
                         tagComponentNode(componentNode, component);
                         setNodePluginData(componentNode, COMPONENT_SPEC_HASH_PLUGIN_DATA_KEY, getComponentSpecHash(spec));
@@ -878,16 +978,16 @@ function createImportContext(payload) {
                         trackComponentDefinition(componentNode, component);
                         stats.componentsCreated += 1;
                         stats.nodesCreated += 1;
-                        if (!(component.variant && options.autoAttachComponentSet !== false)) return [3 /*break*/, 10];
+                        if (!(component.variant && options.autoAttachComponentSet !== false)) return [3 /*break*/, 11];
                         return [4 /*yield*/, attachVariantComponentToSet(componentNode, component)];
-                    case 9:
-                        componentSet = _b.sent();
+                    case 10:
+                        componentSet = _c.sent();
                         if (componentSet) {
                             trackComponentSet(componentSet, component);
                             return [2 /*return*/, componentNode];
                         }
-                        _b.label = 10;
-                    case 10:
+                        _c.label = 11;
+                    case 11:
                         parkComponentDefinition(componentNode);
                         return [2 /*return*/, componentNode];
                 }
@@ -914,9 +1014,9 @@ function createImportContext(payload) {
     }
     function createComponentSetFromVariants(root, fallbackName) {
         return __awaiter(this, void 0, void 0, function () {
-            var componentSpecs, variantSpecs, variantGroups, variantGroup, componentSpec, existingSet, _i, variantGroup_1, entry, componentNodes, _a, variantGroup_2, entry, componentNode, componentSet;
-            return __generator(this, function (_b) {
-                switch (_b.label) {
+            var componentSpecs, variantSpecs, variantGroups, variantGroup, componentSpec, existingSet, _i, variantGroup_1, entry, componentNodes, _a, variantGroup_2, entry, componentNode, componentSet, _b, _c, error_2;
+            return __generator(this, function (_d) {
+                switch (_d.label) {
                     case 0:
                         componentSpecs = collectComponentDefinitionSpecs(root, root.name);
                         variantSpecs = componentSpecs.filter(function (entry) {
@@ -936,10 +1036,10 @@ function createImportContext(payload) {
                         }
                         return [4 /*yield*/, findExistingComponentSet(variantGroup.map(function (entry) { return entry.component; }))];
                     case 1:
-                        existingSet = _b.sent();
-                        if (!existingSet) return [3 /*break*/, 6];
+                        existingSet = _d.sent();
+                        if (!existingSet) return [3 /*break*/, 7];
                         _i = 0, variantGroup_1 = variantGroup;
-                        _b.label = 2;
+                        _d.label = 2;
                     case 2:
                         if (!(_i < variantGroup_1.length)) return [3 /*break*/, 5];
                         entry = variantGroup_1[_i];
@@ -948,55 +1048,58 @@ function createImportContext(payload) {
                                 reuseComponents: true,
                             })];
                     case 3:
-                        _b.sent();
-                        _b.label = 4;
+                        _d.sent();
+                        _d.label = 4;
                     case 4:
                         _i++;
                         return [3 /*break*/, 2];
-                    case 5:
-                        attachStandaloneVariantComponentsToSet(existingSet, variantGroup[0].component);
+                    case 5: return [4 /*yield*/, attachStandaloneVariantComponentsToSet(existingSet, variantGroup[0].component)];
+                    case 6:
+                        _d.sent();
                         tagVariantComponentSet(existingSet, variantGroup[0].component);
                         normalizeComponentSetVariantNames(existingSet, variantGroup[0].component);
                         layoutVariantComponentSet(existingSet);
                         trackComponentSet(existingSet, variantGroup[0].component);
                         return [2 /*return*/, existingSet];
-                    case 6:
+                    case 7:
                         componentNodes = [];
                         _a = 0, variantGroup_2 = variantGroup;
-                        _b.label = 7;
-                    case 7:
-                        if (!(_a < variantGroup_2.length)) return [3 /*break*/, 10];
+                        _d.label = 8;
+                    case 8:
+                        if (!(_a < variantGroup_2.length)) return [3 /*break*/, 11];
                         entry = variantGroup_2[_a];
                         return [4 /*yield*/, ensureComponentDefinition(entry.spec, entry.component, entry.path, {
                                 autoAttachComponentSet: false,
                                 reuseComponents: true,
                             })];
-                    case 8:
-                        componentNode = _b.sent();
+                    case 9:
+                        componentNode = _d.sent();
                         prepareVariantNodeForComponentSet(componentNode, entry.component);
                         componentNodes.push(componentNode);
-                        _b.label = 9;
-                    case 9:
-                        _a++;
-                        return [3 /*break*/, 7];
+                        _d.label = 10;
                     case 10:
-                        try {
-                            componentSet = figma.combineAsVariants(getStandaloneVariantNodesForNewSet(componentNodes, variantGroup[0].component), figma.currentPage);
-                            componentSet.name = variantGroup[0].component.name || fallbackName;
-                            tagVariantComponentSet(componentSet, variantGroup[0].component);
-                            normalizeComponentSetVariantNames(componentSet, variantGroup[0].component);
-                            layoutVariantComponentSet(componentSet);
-                            trackComponentSet(componentSet, variantGroup[0].component);
-                            return [2 /*return*/, componentSet];
-                        }
-                        catch (error) {
-                            warn("Could not combine component variants: ".concat(formatError(error)));
-                            return [2 /*return*/, createNode(root, root.name, {
-                                    isRoot: true,
-                                    reuseComponents: true,
-                                })];
-                        }
-                        return [2 /*return*/];
+                        _a++;
+                        return [3 /*break*/, 8];
+                    case 11:
+                        _d.trys.push([11, 13, , 14]);
+                        _c = (_b = figma).combineAsVariants;
+                        return [4 /*yield*/, getStandaloneVariantNodesForNewSet(componentNodes, variantGroup[0].component)];
+                    case 12:
+                        componentSet = _c.apply(_b, [_d.sent(), figma.currentPage]);
+                        componentSet.name = variantGroup[0].component.name || fallbackName;
+                        tagVariantComponentSet(componentSet, variantGroup[0].component);
+                        normalizeComponentSetVariantNames(componentSet, variantGroup[0].component);
+                        layoutVariantComponentSet(componentSet);
+                        trackComponentSet(componentSet, variantGroup[0].component);
+                        return [2 /*return*/, componentSet];
+                    case 13:
+                        error_2 = _d.sent();
+                        warn("Could not combine component variants: ".concat(formatError(error_2)));
+                        return [2 /*return*/, createNode(root, root.name, {
+                                isRoot: true,
+                                reuseComponents: true,
+                            })];
+                    case 14: return [2 /*return*/];
                 }
             });
         });
@@ -1302,13 +1405,20 @@ function createImportContext(payload) {
     }
     function attachVariantComponentToSet(componentNode, component) {
         return __awaiter(this, void 0, void 0, function () {
-            var existingSet, siblingComponents, targetParent, variantNodes, _i, variantNodes_1, node, componentSet;
-            var _a;
-            return __generator(this, function (_b) {
-                switch (_b.label) {
-                    case 0: return [4 /*yield*/, findVariantComponentSet(component)];
+            var attachFailedFonts, existingSet, siblingComponents, usableSiblings, _i, siblingComponents_1, sibling, failedFonts, targetParent, variantNodes, _a, variantNodes_1, node, componentSet;
+            var _b;
+            return __generator(this, function (_c) {
+                switch (_c.label) {
+                    case 0: return [4 /*yield*/, preloadNodeTreeFonts(componentNode)];
                     case 1:
-                        existingSet = _b.sent();
+                        attachFailedFonts = _c.sent();
+                        if (attachFailedFonts.length > 0) {
+                            warn("Left ".concat(componentNode.name, " outside its component set: font ").concat(describeFont(attachFailedFonts[0]), " could not be loaded."));
+                            return [2 /*return*/, undefined];
+                        }
+                        return [4 /*yield*/, findVariantComponentSet(component)];
+                    case 2:
+                        existingSet = _c.sent();
                         if (existingSet) {
                             prepareVariantNodeForComponentSet(componentNode, component);
                             if (componentNode.parent === existingSet) {
@@ -1334,13 +1444,32 @@ function createImportContext(payload) {
                             moveComponentDefinitionNodeToTargetPage(componentNode);
                         }
                         siblingComponents = findStandaloneVariantComponents(component).filter(function (node) { return node !== componentNode; });
-                        if (siblingComponents.length === 0)
+                        usableSiblings = [];
+                        _i = 0, siblingComponents_1 = siblingComponents;
+                        _c.label = 3;
+                    case 3:
+                        if (!(_i < siblingComponents_1.length)) return [3 /*break*/, 6];
+                        sibling = siblingComponents_1[_i];
+                        return [4 /*yield*/, preloadNodeTreeFonts(sibling)];
+                    case 4:
+                        failedFonts = _c.sent();
+                        if (failedFonts.length > 0) {
+                            warn("Left existing standalone variant ".concat(sibling.name, " out of the ").concat(component.name, " component set: font ").concat(describeFont(failedFonts[0]), " could not be loaded."));
+                            return [3 /*break*/, 5];
+                        }
+                        usableSiblings.push(sibling);
+                        _c.label = 5;
+                    case 5:
+                        _i++;
+                        return [3 /*break*/, 3];
+                    case 6:
+                        if (usableSiblings.length === 0)
                             return [2 /*return*/, undefined];
                         try {
-                            targetParent = (_a = getAncestorPage(componentNode)) !== null && _a !== void 0 ? _a : figma.currentPage;
-                            variantNodes = __spreadArray(__spreadArray([], siblingComponents, true), [componentNode], false);
-                            for (_i = 0, variantNodes_1 = variantNodes; _i < variantNodes_1.length; _i++) {
-                                node = variantNodes_1[_i];
+                            targetParent = (_b = getAncestorPage(componentNode)) !== null && _b !== void 0 ? _b : figma.currentPage;
+                            variantNodes = __spreadArray(__spreadArray([], usableSiblings, true), [componentNode], false);
+                            for (_a = 0, variantNodes_1 = variantNodes; _a < variantNodes_1.length; _a++) {
+                                node = variantNodes_1[_a];
                                 prepareVariantNodeForComponentSet(node, getStoredComponentReference(node, component));
                                 if (node.parent !== targetParent) {
                                     targetParent.appendChild(node);
@@ -1391,8 +1520,8 @@ function createImportContext(payload) {
         }
         var children = node.children;
         if (children) {
-            for (var _i = 0, children_1 = children; _i < children_1.length; _i++) {
-                var child = children_1[_i];
+            for (var _i = 0, children_2 = children; _i < children_2.length; _i++) {
+                var child = children_2[_i];
                 components.push.apply(components, collectComponentNodes(child));
             }
         }
@@ -1405,8 +1534,8 @@ function createImportContext(payload) {
         }
         var children = node.children;
         if (children) {
-            for (var _i = 0, children_2 = children; _i < children_2.length; _i++) {
-                var child = children_2[_i];
+            for (var _i = 0, children_3 = children; _i < children_3.length; _i++) {
+                var child = children_3[_i];
                 componentSets.push.apply(componentSets, collectComponentSetNodes(child));
             }
         }
@@ -1468,34 +1597,79 @@ function createImportContext(payload) {
         setNodePluginData(node, "storybookComponentSource", component.sourceName || component.name);
     }
     function attachStandaloneVariantComponentsToSet(componentSet, component) {
-        var existingVariantIdentities = getComponentSetVariantIdentities(componentSet);
-        for (var _i = 0, _a = findStandaloneVariantComponents(component); _i < _a.length; _i++) {
-            var node = _a[_i];
-            var nodeComponent = getStoredComponentReference(node, component);
-            var variantIdentity = getComponentVariantIdentity(nodeComponent);
-            if (variantIdentity && existingVariantIdentities.has(variantIdentity))
-                continue;
-            try {
-                prepareVariantNodeForComponentSet(node, nodeComponent);
-                componentSet.appendChild(node);
-                if (variantIdentity)
-                    existingVariantIdentities.add(variantIdentity);
-            }
-            catch (error) {
-                warn("Could not attach existing standalone variant ".concat(node.name, " to ").concat(componentSet.name, ": ").concat(formatError(error)));
-            }
-        }
+        return __awaiter(this, void 0, void 0, function () {
+            var existingVariantIdentities, _i, _a, node, nodeComponent, variantIdentity, failedFonts;
+            return __generator(this, function (_b) {
+                switch (_b.label) {
+                    case 0:
+                        existingVariantIdentities = getComponentSetVariantIdentities(componentSet);
+                        _i = 0, _a = findStandaloneVariantComponents(component);
+                        _b.label = 1;
+                    case 1:
+                        if (!(_i < _a.length)) return [3 /*break*/, 4];
+                        node = _a[_i];
+                        nodeComponent = getStoredComponentReference(node, component);
+                        variantIdentity = getComponentVariantIdentity(nodeComponent);
+                        if (variantIdentity && existingVariantIdentities.has(variantIdentity))
+                            return [3 /*break*/, 3];
+                        return [4 /*yield*/, preloadNodeTreeFonts(node)];
+                    case 2:
+                        failedFonts = _b.sent();
+                        if (failedFonts.length > 0) {
+                            warn("Left existing standalone variant ".concat(node.name, " outside ").concat(componentSet.name, ": font ").concat(describeFont(failedFonts[0]), " could not be loaded."));
+                            return [3 /*break*/, 3];
+                        }
+                        try {
+                            prepareVariantNodeForComponentSet(node, nodeComponent);
+                            componentSet.appendChild(node);
+                            if (variantIdentity)
+                                existingVariantIdentities.add(variantIdentity);
+                        }
+                        catch (error) {
+                            warn("Could not attach existing standalone variant ".concat(node.name, " to ").concat(componentSet.name, ": ").concat(formatError(error)));
+                        }
+                        _b.label = 3;
+                    case 3:
+                        _i++;
+                        return [3 /*break*/, 1];
+                    case 4: return [2 /*return*/];
+                }
+            });
+        });
     }
     function getStandaloneVariantNodesForNewSet(componentNodes, component) {
-        var nodes = uniqueComponentNodes(__spreadArray(__spreadArray([], findStandaloneVariantComponents(component), true), componentNodes, true));
-        for (var _i = 0, nodes_1 = nodes; _i < nodes_1.length; _i++) {
-            var node = nodes_1[_i];
-            prepareVariantNodeForComponentSet(node, getStoredComponentReference(node, component));
-            if (node.parent !== figma.currentPage) {
-                figma.currentPage.appendChild(node);
-            }
-        }
-        return nodes;
+        return __awaiter(this, void 0, void 0, function () {
+            var nodes, usable, _i, nodes_1, node, failedFonts;
+            return __generator(this, function (_a) {
+                switch (_a.label) {
+                    case 0:
+                        nodes = uniqueComponentNodes(__spreadArray(__spreadArray([], findStandaloneVariantComponents(component), true), componentNodes, true));
+                        usable = [];
+                        _i = 0, nodes_1 = nodes;
+                        _a.label = 1;
+                    case 1:
+                        if (!(_i < nodes_1.length)) return [3 /*break*/, 4];
+                        node = nodes_1[_i];
+                        return [4 /*yield*/, preloadNodeTreeFonts(node)];
+                    case 2:
+                        failedFonts = _a.sent();
+                        if (failedFonts.length > 0 && !componentNodes.includes(node)) {
+                            warn("Left existing standalone variant ".concat(node.name, " out of the new component set: font ").concat(describeFont(failedFonts[0]), " could not be loaded."));
+                            return [3 /*break*/, 3];
+                        }
+                        usable.push(node);
+                        prepareVariantNodeForComponentSet(node, getStoredComponentReference(node, component));
+                        if (node.parent !== figma.currentPage) {
+                            figma.currentPage.appendChild(node);
+                        }
+                        _a.label = 3;
+                    case 3:
+                        _i++;
+                        return [3 /*break*/, 1];
+                    case 4: return [2 /*return*/, usable];
+                }
+            });
+        });
     }
     function uniqueComponentNodes(nodes) {
         var seen = new Set();
@@ -2383,7 +2557,7 @@ function createImportContext(payload) {
     }
     function loadTextFont(styles, path) {
         return __awaiter(this, void 0, void 0, function () {
-            var families, styleCandidates, familyIndex, family, _i, styleCandidates_1, style, candidate, _a, fallback, error_2;
+            var families, styleCandidates, familyIndex, family, _i, styleCandidates_1, style, candidate, _a, fallback, error_3;
             var _b;
             return __generator(this, function (_c) {
                 switch (_c.label) {
@@ -2431,9 +2605,9 @@ function createImportContext(payload) {
                         warn("Loaded fallback font for ".concat(path, "; ").concat(families.join(", ") || "CSS generic family", " (").concat(styleCandidates.join(", "), ") was unavailable."));
                         return [2 /*return*/, fallback];
                     case 11:
-                        error_2 = _c.sent();
-                        warn("Could not load fallback font for ".concat(path, ": ").concat(formatError(error_2)));
-                        throw error_2;
+                        error_3 = _c.sent();
+                        warn("Could not load fallback font for ".concat(path, ": ").concat(formatError(error_3)));
+                        throw error_3;
                     case 12: return [2 /*return*/];
                 }
             });

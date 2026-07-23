@@ -384,7 +384,7 @@ type ComponentSectionTarget = {
 
 // Bump this on every behavior change so the Figma UI badge confirms which
 // build is running (Figma re-reads code.js per run, but the badge removes doubt).
-const PLUGIN_VERSION = "1.6.0 (2026-07-23)";
+const PLUGIN_VERSION = "1.6.1 (2026-07-23)";
 
 const SUPPORTED_PAYLOAD_VERSIONS = [1, 2] as const;
 const DEFAULT_TOKEN_PLUGIN_DATA_KEY = "storybookCssToken";
@@ -926,6 +926,7 @@ function createImportContext(payload: FigmaExportPayload) {
   const componentDefinitionRecords = new Map<string, ComponentDefinitionRecord>();
   const componentSetRecords = new Map<string, ComponentSetRecord>();
   const warnedVariantPropertyNodeIds = new Set<string>();
+  const loadedExistingFontKeys = new Set<string>();
   let componentDefinitionOffsetY = 0;
   const stats: ImportStats = {
     componentDefinitionsPrepared: 0,
@@ -940,6 +941,54 @@ function createImportContext(payload: FigmaExportPayload) {
 
   function warn(message: string): void {
     stats.warnings.push(message);
+  }
+
+  // Existing nodes (earlier imports, manual edits) can use fonts this run
+  // never loaded, and Figma rejects any relayouting operation — appendChild
+  // into a component set, resize, alignment — on trees with unloaded fonts.
+  // Returns the fonts that could not be loaded so callers can skip the node
+  // instead of failing the whole import.
+  async function preloadNodeTreeFonts(node: BaseNode): Promise<FontName[]> {
+    const failed: FontName[] = [];
+
+    async function visit(current: BaseNode): Promise<void> {
+      if (current.type === "TEXT") {
+        const text = current as TextNode;
+        const fonts: FontName[] = [];
+        if (text.fontName !== figma.mixed) fonts.push(text.fontName as FontName);
+        try {
+          if (text.characters.length > 0) {
+            fonts.push(...text.getRangeAllFontNames(0, text.characters.length));
+          }
+        } catch {
+          // Range inspection is best-effort; fontName covers the common case.
+        }
+        for (const font of fonts) {
+          const key = `${font.family}\n${font.style}`;
+          if (loadedExistingFontKeys.has(key)) continue;
+          try {
+            await figma.loadFontAsync(font);
+            loadedExistingFontKeys.add(key);
+          } catch {
+            failed.push(font);
+          }
+        }
+      }
+
+      const children = (current as NodeWithChildren).children;
+      if (children) {
+        for (const child of children) {
+          await visit(child);
+        }
+      }
+    }
+
+    await visit(node);
+    return failed;
+  }
+
+  function describeFont(font: FontName | undefined): string {
+    return font ? `${font.family} ${font.style}` : "unknown font";
   }
 
   async function upsertVariables(): Promise<void> {
@@ -1169,6 +1218,19 @@ function createImportContext(payload: FigmaExportPayload) {
           `Duplicate variant name "${getComponentDisplayName(component)}" with different content at ${path}; the later design overwrote the earlier one. Give each export item a distinct figmaVariant.`,
         );
       }
+      const failedFonts = await preloadNodeTreeFonts(existing);
+      if (failedFonts.length > 0) {
+        warn(
+          `Existing component "${existing.name}" uses ${failedFonts.length} font(s) that could not be loaded (e.g. ${describeFont(failedFonts[0])}); its previous text is replaced from the export.`,
+        );
+      }
+      if (spec.kind === "frame") {
+        // Children are rebuilt from the spec below; removing them first is
+        // font-free, so resize and auto-layout never touch stale text.
+        for (const child of [...existing.children]) {
+          child.remove();
+        }
+      }
       syncExistingFrameFromSpec(existing, spec, path);
       await syncExistingFrameChildrenFromSpec(existing, spec, path, {
         ...options,
@@ -1279,7 +1341,7 @@ function createImportContext(payload: FigmaExportPayload) {
           reuseComponents: true,
         });
       }
-      attachStandaloneVariantComponentsToSet(existingSet, variantGroup[0].component);
+      await attachStandaloneVariantComponentsToSet(existingSet, variantGroup[0].component);
       tagVariantComponentSet(existingSet, variantGroup[0].component);
       normalizeComponentSetVariantNames(existingSet, variantGroup[0].component);
       layoutVariantComponentSet(existingSet);
@@ -1304,7 +1366,7 @@ function createImportContext(payload: FigmaExportPayload) {
 
     try {
       const componentSet = figma.combineAsVariants(
-        getStandaloneVariantNodesForNewSet(componentNodes, variantGroup[0].component),
+        await getStandaloneVariantNodesForNewSet(componentNodes, variantGroup[0].component),
         figma.currentPage,
       );
       componentSet.name = variantGroup[0].component.name || fallbackName;
@@ -1641,6 +1703,13 @@ function createImportContext(payload: FigmaExportPayload) {
     componentNode: ComponentNode,
     component: FigmaComponentReference,
   ): Promise<ComponentSetNode | undefined> {
+    const attachFailedFonts = await preloadNodeTreeFonts(componentNode);
+    if (attachFailedFonts.length > 0) {
+      warn(
+        `Left ${componentNode.name} outside its component set: font ${describeFont(attachFailedFonts[0])} could not be loaded.`,
+      );
+      return undefined;
+    }
     const existingSet = await findVariantComponentSet(component);
     if (existingSet) {
       prepareVariantNodeForComponentSet(componentNode, component);
@@ -1672,11 +1741,22 @@ function createImportContext(payload: FigmaExportPayload) {
     const siblingComponents = findStandaloneVariantComponents(component).filter(
       (node) => node !== componentNode,
     );
-    if (siblingComponents.length === 0) return undefined;
+    const usableSiblings: ComponentNode[] = [];
+    for (const sibling of siblingComponents) {
+      const failedFonts = await preloadNodeTreeFonts(sibling);
+      if (failedFonts.length > 0) {
+        warn(
+          `Left existing standalone variant ${sibling.name} out of the ${component.name} component set: font ${describeFont(failedFonts[0])} could not be loaded.`,
+        );
+        continue;
+      }
+      usableSiblings.push(sibling);
+    }
+    if (usableSiblings.length === 0) return undefined;
 
     try {
       const targetParent = getAncestorPage(componentNode) ?? figma.currentPage;
-      const variantNodes = [...siblingComponents, componentNode];
+      const variantNodes = [...usableSiblings, componentNode];
       for (const node of variantNodes) {
         prepareVariantNodeForComponentSet(
           node,
@@ -1858,16 +1938,24 @@ function createImportContext(payload: FigmaExportPayload) {
     );
   }
 
-  function attachStandaloneVariantComponentsToSet(
+  async function attachStandaloneVariantComponentsToSet(
     componentSet: ComponentSetNode,
     component: FigmaComponentReference,
-  ): void {
+  ): Promise<void> {
     const existingVariantIdentities = getComponentSetVariantIdentities(componentSet);
 
     for (const node of findStandaloneVariantComponents(component)) {
       const nodeComponent = getStoredComponentReference(node, component);
       const variantIdentity = getComponentVariantIdentity(nodeComponent);
       if (variantIdentity && existingVariantIdentities.has(variantIdentity)) continue;
+
+      const failedFonts = await preloadNodeTreeFonts(node);
+      if (failedFonts.length > 0) {
+        warn(
+          `Left existing standalone variant ${node.name} outside ${componentSet.name}: font ${describeFont(failedFonts[0])} could not be loaded.`,
+        );
+        continue;
+      }
 
       try {
         prepareVariantNodeForComponentSet(node, nodeComponent);
@@ -1881,16 +1969,25 @@ function createImportContext(payload: FigmaExportPayload) {
     }
   }
 
-  function getStandaloneVariantNodesForNewSet(
+  async function getStandaloneVariantNodesForNewSet(
     componentNodes: ComponentNode[],
     component: FigmaComponentReference,
-  ): ComponentNode[] {
+  ): Promise<ComponentNode[]> {
     const nodes = uniqueComponentNodes([
       ...findStandaloneVariantComponents(component),
       ...componentNodes,
     ]);
 
+    const usable: ComponentNode[] = [];
     for (const node of nodes) {
+      const failedFonts = await preloadNodeTreeFonts(node);
+      if (failedFonts.length > 0 && !componentNodes.includes(node)) {
+        warn(
+          `Left existing standalone variant ${node.name} out of the new component set: font ${describeFont(failedFonts[0])} could not be loaded.`,
+        );
+        continue;
+      }
+      usable.push(node);
       prepareVariantNodeForComponentSet(
         node,
         getStoredComponentReference(node, component),
@@ -1900,7 +1997,7 @@ function createImportContext(payload: FigmaExportPayload) {
       }
     }
 
-    return nodes;
+    return usable;
   }
 
   function uniqueComponentNodes(nodes: ComponentNode[]): ComponentNode[] {
