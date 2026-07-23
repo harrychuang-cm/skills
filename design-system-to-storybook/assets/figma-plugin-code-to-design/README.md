@@ -2,7 +2,7 @@
 
 Figma development plugin for importing Storybook Code To Design JSON exports. The plugin parses JSON only; it does not evaluate pasted JavaScript.
 
-Version: `1.4.0` (the authoritative version is stamped from `package.json` into the UI badge and `PLUGIN_VERSION`)
+Version: `1.5.0` (the authoritative version is stamped from `package.json` into the UI badge and `PLUGIN_VERSION`)
 
 ## Fidelity fields (payload v2, all optional)
 
@@ -32,17 +32,38 @@ Import behavior notes:
 
 Invalid types on these fields fail `parsePayload` with an error naming the node path and field.
 
+## Plugin UI
+
+The dialog is organized as three import-method tabs with one contextual
+primary action in the footer:
+
+- **Paste JSON** (default) — paste the overlay's Copy JSON output; the hint
+  under the textarea validates the JSON live and names the story it contains.
+  `Cmd/Ctrl+Enter` imports directly from the textarea.
+- **From Storybook** — the local-bridge batch importer (below).
+- **From file** — drop or choose a saved `.sbfx.json` export; the loaded file
+  shows its name, size, and story before importing.
+
+Flow-specific feedback (fetch results, validation, file errors) appears
+inline inside the active tab; the status strip above the footer reports the
+import lifecycle (progress, summary, warnings) for every method.
+
 ## Load from Storybook (local bridge)
 
-The UI's "Load from Storybook" section batch-imports payloads stored by the
+The **From Storybook** tab batch-imports payloads stored by the
 Storybook review-server bridge (exports pushed via the addon's
 `payloadSyncUrl` option):
 
 1. Enter the Storybook URL (default `http://localhost:6006`) and press
    **Fetch** — the plugin reads `GET <url>/__figma-export/payloads`.
-2. Tick the stored payloads to import (or **Select all**).
-3. Press **Import selected** — each payload is fetched and fed through the
-   same pipeline as pasted JSON, sequentially, with a final summary.
+2. Tick the stored payloads to import (or **Select all**) — the footer button
+   shows the selected count.
+3. Press **Import selected (n)** — each payload is fetched and fed through
+   the same pipeline as pasted JSON, sequentially, with a final summary.
+
+A connected-but-empty store shows in-tab setup steps (configure
+`payloadSyncUrl`, press **Copy JSON** on a story until the overlay notes
+`[synced]`, then fetch again), distinguishing it from a connection failure.
 
 `manifest.json` declares `networkAccess.devAllowedDomains` for explicit
 `http://localhost` ports (6006-6008 for Storybook dev, 8080 for a static
@@ -51,7 +72,7 @@ literals, so use `http://localhost:<port>` rather than a numeric loopback or
 LAN address. Every supported port must be listed individually; add another
 explicit localhost port if Storybook runs elsewhere, then re-import the
 manifest in Figma so the permission takes effect. Fetch failures (bridge not
-running, CORS) surface in the status panel — pasting JSON and choosing a file
+running, CORS) surface inline in the tab — pasting JSON and choosing a file
 keep working regardless.
 
 Manual verification checklist (requires Figma Desktop):
@@ -110,9 +131,9 @@ The JSON payload includes:
 ## Import Into Figma
 
 1. Run the development plugin in a Figma design file.
-2. Paste the Storybook JSON into the textarea.
-3. Click `Import`.
-4. Review the status panel for created/reused variable counts and any binding warnings.
+2. In the **Paste JSON** tab, paste the Storybook JSON (the hint confirms the payload is valid and names the story).
+3. Click `Import to Figma` (or press `Cmd/Ctrl+Enter` in the textarea).
+4. Review the status strip for created/reused variable counts and any binding warnings.
 
 ## Variable Reuse Rules
 

@@ -19,7 +19,20 @@
       "Bash(sed -i '' 's/      const decorator = window.FigmaOverlayFixture.createFigmaExportDecorator\\({\\\\n        storyTitlePrefix: false,/&/' /dev/null)",
       "Bash(perl -pi -e 's/\\(createFigmaExportDecorator\\\\\\(\\\\{\\)/$1\\\\n        referenceImage: false,/' test/overlay-fixture.html test/tokenless-fixture.html)",
       "Bash(sed -i '' 's/addon 0.5.0 and importer 1.3.0/addon 0.6.0 and importer 1.4.0/' references/figma-export-review-setup.md)",
-      "Bash(sed -i '' 's/for example addon 0.5.0 emits `textGrowHeight` and `styles.blurEffects`/for example addon 0.5.0+ emits `textGrowHeight`, `styles.blurEffects`, and `styles.transformMatrix`/' references/tooling-updates.md)"
+      "Bash(sed -i '' 's/for example addon 0.5.0 emits `textGrowHeight` and `styles.blurEffects`/for example addon 0.5.0+ emits `textGrowHeight`, `styles.blurEffects`, and `styles.transformMatrix`/' references/tooling-updates.md)",
+      "Bash(sed -i '' 's/\"version\": \"1.4.0\"/\"version\": \"1.5.0\"/' package.json)",
+      "Bash(sed -i '' 's/assert.equal\\(packageJson.version, \"1.4.0\", \"canonical package uses release version 1.4.0\"\\);/assert.equal\\(packageJson.version, \"1.5.0\", \"canonical package uses release version 1.5.0\"\\);/' test/verify-manifest.mjs)",
+      "Bash(git -C /Users/a04-0214-0320/Public/works/cm-skills show HEAD:design-system-to-storybook/assets/figma-plugin-code-to-design/ui.html)",
+      "Bash(sed -n 150/,160p /dev/null; sed -n '150,160p' \"/Users/a04-0214-0320/Public/works/cm-skills/design-system-to-storybook/assets/figma-plugin-code-to-design/code.js\")",
+      "Bash(npm ls *)",
+      "Bash(echo \"exit:$?\")",
+      "Bash(sed -i '' 's/Version: `1.4.0` \\(the authoritative version/Version: `1.5.0` \\(the authoritative version/' README.md)",
+      "Bash(perl -0pi -e 's/## Import Into Figma\\\\n\\\\n1\\\\. Run the development plugin in a Figma design file\\\\.\\\\n2\\\\. Paste the Storybook JSON into the textarea\\\\.\\\\n3\\\\. Click `Import`\\\\.\\\\n4\\\\. Review the status panel for created\\\\/reused variable counts and any binding warnings\\\\./## Import Into Figma\\\\n\\\\n1. Run the development plugin in a Figma design file.\\\\n2. In the **Paste JSON** tab, paste the Storybook JSON \\(the hint confirms the payload is valid and names the story\\).\\\\n3. Click `Import to Figma` \\(or press `Cmd\\\\/Ctrl+Enter` in the textarea\\).\\\\n4. Review the status strip for created\\\\/reused variable counts and any binding warnings./' README.md)",
+      "Bash(grep -n \"Version: \\\\`1.5.0\\\\|status strip for created\" README.md)",
+      "Bash(\"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome\" --headless=new --disable-gpu --dump-dom \"file:///private/tmp/claude-501/-Users-a04-0214-0320-Public-works-cm-skills/9e9906af-c1d0-4c1a-9064-d6188fcc4ca2/scratchpad/hidden-test.html\")"
+    ],
+    "additionalDirectories": [
+      "/dev"
     ]
   }
 }
