@@ -16,11 +16,18 @@ import type {
 } from "./types";
 import { toPng } from "html-to-image";
 import type { ResolvedFigmaExportAddonOptions } from "./options";
-import { isFullyTransparentColor, normalizeCssColorString } from "./color";
+import {
+  isFullyTransparentColor,
+  normalizeCssColorString,
+  parseCssColorToRgba,
+  type ParsedRgbaColor,
+} from "./color";
 import {
   collectTokensForExport,
   detectTokenSystem,
   extractCssVariableNames,
+  getCssFontFamilyCandidates,
+  resolveTokenComparableValue,
   type DetectedTokenSystem,
 } from "./tokenExport";
 
@@ -2460,22 +2467,16 @@ function drawSourceToRasterCapture(
   }
 }
 
-const subtreeRasterTimeoutMs = 8000;
-
 // Renders a live subtree to pixels via html-to-image. This is the universal
 // escape hatch (data-figma-rasterize) for content the node graph cannot
-// represent, and the source of the browser reference snapshot. A capture
-// that stalls (cross-origin fonts, huge trees) must never hang the export.
+// represent, and the source of the browser reference snapshot. No timer
+// races the capture: under headless virtual time a timer fast-forwards past
+// real CPU work, and in real browsers resource fetches settle on their own.
 async function captureSubtreeRaster(
   element: HTMLElement,
 ): Promise<RasterImageCapture | undefined> {
   try {
-    const dataUrl = await Promise.race([
-      toPng(element, { cacheBust: false, pixelRatio: 1 }),
-      new Promise<undefined>((resolve) => {
-        globalThis.setTimeout(() => resolve(undefined), subtreeRasterTimeoutMs);
-      }),
-    ]);
+    const dataUrl = await toPng(element, { cacheBust: false, pixelRatio: 1 });
     return dataUrl ? dataUrlToRasterCapture(dataUrl) : undefined;
   } catch {
     return undefined;
@@ -3264,6 +3265,198 @@ async function createExportNode(
   };
 }
 
+// --- Value-preserving binding guard ----------------------------------------
+// Computed styles are ground truth. A token binding may only survive when the
+// variable's resolved value matches the style value it would replace in
+// Figma; otherwise the binding would repaint the node with the raw token
+// value (a unitless line-height ratio, a padding that excludes the folded
+// border width, a locally overridden custom property, ...).
+
+const bindingNumberTolerance = 0.6;
+
+function bindingNumbersMatch(tokenValue: number, styleValue: number): boolean {
+  if (!Number.isFinite(tokenValue) || !Number.isFinite(styleValue)) return false;
+  if (Math.abs(tokenValue - styleValue) <= bindingNumberTolerance) return true;
+  return (
+    styleValue !== 0 &&
+    Math.abs(tokenValue - styleValue) / Math.abs(styleValue) <= 0.01
+  );
+}
+
+function bindingColorsMatch(
+  tokenColor: ParsedRgbaColor,
+  styleColor: ParsedRgbaColor,
+): boolean {
+  return (
+    Math.abs(tokenColor.r - styleColor.r) <= 0.012 &&
+    Math.abs(tokenColor.g - styleColor.g) <= 0.012 &&
+    Math.abs(tokenColor.b - styleColor.b) <= 0.012 &&
+    Math.abs(tokenColor.a - styleColor.a) <= 0.02
+  );
+}
+
+function firstFontFamilyName(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  return getCssFontFamilyCandidates(value)[0]?.toLowerCase();
+}
+
+type BindingExpectation =
+  | { kind: "color"; value: string }
+  | { kind: "font"; value: string }
+  | { kind: "number"; value: number };
+
+function getBindingExpectation(
+  node: FigmaExportNode,
+  bindingName: FigmaBindingName,
+): BindingExpectation | undefined {
+  const styles = node.styles;
+  switch (bindingName) {
+    case "backgroundColor":
+      return styles.backgroundColor
+        ? { kind: "color", value: styles.backgroundColor }
+        : undefined;
+    case "borderColor": {
+      const color =
+        styles.borderColor ??
+        (styles.borderSides
+          ? Object.values(styles.borderSides).find(Boolean)?.color
+          : undefined);
+      return color ? { kind: "color", value: color } : undefined;
+    }
+    case "textColor":
+      return styles.color ? { kind: "color", value: styles.color } : undefined;
+    case "fontFamily":
+      return styles.fontFamily ? { kind: "font", value: styles.fontFamily } : undefined;
+    case "fontSize":
+      return typeof styles.fontSize === "number"
+        ? { kind: "number", value: styles.fontSize }
+        : undefined;
+    case "fontWeight":
+      return typeof styles.fontWeight === "number"
+        ? { kind: "number", value: styles.fontWeight }
+        : undefined;
+    case "lineHeight":
+      return typeof styles.lineHeight === "number"
+        ? { kind: "number", value: styles.lineHeight }
+        : undefined;
+    case "gap":
+      return typeof styles.gap === "number"
+        ? { kind: "number", value: styles.gap }
+        : undefined;
+    case "height":
+      return { kind: "number", value: styles.height };
+    case "width":
+      return { kind: "number", value: styles.width };
+    case "opacity":
+      return typeof styles.opacity === "number"
+        ? { kind: "number", value: styles.opacity }
+        : undefined;
+    case "borderWidth": {
+      const width =
+        styles.borderWidth ??
+        (styles.borderSides
+          ? Object.values(styles.borderSides).find(Boolean)?.width
+          : undefined);
+      return typeof width === "number" ? { kind: "number", value: width } : undefined;
+    }
+    case "cornerRadius":
+      return { kind: "number", value: styles.radius ?? 0 };
+    case "paddingBottom":
+      return typeof styles.paddingBottom === "number"
+        ? { kind: "number", value: styles.paddingBottom }
+        : undefined;
+    case "paddingLeft":
+      return typeof styles.paddingLeft === "number"
+        ? { kind: "number", value: styles.paddingLeft }
+        : undefined;
+    case "paddingRight":
+      return typeof styles.paddingRight === "number"
+        ? { kind: "number", value: styles.paddingRight }
+        : undefined;
+    case "paddingTop":
+      return typeof styles.paddingTop === "number"
+        ? { kind: "number", value: styles.paddingTop }
+        : undefined;
+    default:
+      return undefined;
+  }
+}
+
+function bindingSurvivesValueCheck(
+  node: FigmaExportNode,
+  bindingName: FigmaBindingName,
+  tokenName: string,
+  tokenSystem: DetectedTokenSystem,
+): boolean {
+  const resolved = resolveTokenComparableValue(tokenName, tokenSystem);
+  // Tokens outside the catalog cannot be verified (or created); keep the
+  // existing behavior for them instead of guessing.
+  if (!resolved) return true;
+
+  const expected = getBindingExpectation(node, bindingName);
+  if (!expected) return false;
+
+  if (expected.kind === "number") {
+    return (
+      resolved.type === "FLOAT" &&
+      typeof resolved.value === "number" &&
+      bindingNumbersMatch(resolved.value, expected.value)
+    );
+  }
+
+  if (expected.kind === "color") {
+    if (resolved.type !== "COLOR" || typeof resolved.value !== "object") return false;
+    const styleColor = parseCssColorToRgba(expected.value);
+    return styleColor
+      ? bindingColorsMatch(resolved.value as ParsedRgbaColor, styleColor)
+      : false;
+  }
+
+  if (resolved.type !== "STRING") return false;
+  // The unmodified raw value keeps its CSS quoting, which the font-family
+  // candidate parser understands.
+  const tokenFamily = firstFontFamilyName(resolved.raw);
+  const styleFamily = firstFontFamilyName(expected.value);
+  return Boolean(tokenFamily && styleFamily && tokenFamily === styleFamily);
+}
+
+function pruneMismatchedBindings(
+  node: FigmaExportNode,
+  tokenSystem: DetectedTokenSystem,
+): void {
+  for (const [bindingName, tokenName] of Object.entries(node.bindings)) {
+    if (!tokenName) continue;
+    if (
+      !bindingSurvivesValueCheck(
+        node,
+        bindingName as FigmaBindingName,
+        tokenName,
+        tokenSystem,
+      )
+    ) {
+      delete node.bindings[bindingName as FigmaBindingName];
+    }
+  }
+
+  const gradient = node.styles.backgroundLinearGradient;
+  if (gradient) {
+    for (const stop of gradient.stops) {
+      if (!stop.token) continue;
+      const resolved = resolveTokenComparableValue(stop.token, tokenSystem);
+      if (!resolved) continue;
+      const stopColor = parseCssColorToRgba(stop.color);
+      const matches =
+        resolved.type === "COLOR" &&
+        typeof resolved.value === "object" &&
+        stopColor !== undefined &&
+        bindingColorsMatch(resolved.value as ParsedRgbaColor, stopColor);
+      if (!matches) delete stop.token;
+    }
+  }
+
+  node.children.forEach((child) => pruneMismatchedBindings(child, tokenSystem));
+}
+
 export async function createFigmaExportPayload({
   componentTitle,
   onProgress,
@@ -3315,6 +3508,9 @@ export async function createFigmaExportPayload({
 
   rootNode.styles.x = 0;
   rootNode.styles.y = 0;
+  if (tokenSystem.prefix) {
+    pruneMismatchedBindings(rootNode, tokenSystem);
+  }
   if (artifactKind === "page") {
     stripComponentReferences(rootNode);
   }

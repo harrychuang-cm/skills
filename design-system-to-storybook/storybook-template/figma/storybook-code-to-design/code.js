@@ -112,7 +112,7 @@ function applyTextAlignmentFromSpec(node, spec, options, path) {
 }
 // Bump this on every behavior change so the Figma UI badge confirms which
 // build is running (Figma re-reads code.js per run, but the badge removes doubt).
-var PLUGIN_VERSION = "1.5.0 (2026-07-23)";
+var PLUGIN_VERSION = "1.6.0 (2026-07-23)";
 var SUPPORTED_PAYLOAD_VERSIONS = [1, 2];
 var DEFAULT_TOKEN_PLUGIN_DATA_KEY = "storybookCssToken";
 var LEGACY_CM_TOKEN_PLUGIN_DATA_KEY = "cmCssToken";
@@ -790,11 +790,11 @@ function createImportContext(payload) {
                         applyRadius(node, styles, bindings, path);
                         applyEffects(node, collectSpecEffects(styles), path);
                         applyAutoLayout(node, styles, bindings, path);
-                        safeBind(node, "width", bindings.width, path);
-                        safeBind(node, "height", bindings.height, path);
-                        safeBind(node, "opacity", bindings.opacity, path);
+                        safeBindNumberMatched(node, "width", bindings.width, styles.width, path);
+                        safeBindNumberMatched(node, "height", bindings.height, styles.height, path);
+                        safeBindNumberMatched(node, "opacity", bindings.opacity, styles.opacity, path);
                         if (!styles.borderSides) {
-                            safeBind(node, "strokeWeight", bindings.borderWidth, path);
+                            safeBindNumberMatched(node, "strokeWeight", bindings.borderWidth, styles.borderWidth, path);
                         }
                         _i = 0, _a = (_c = spec.children) !== null && _c !== void 0 ? _c : [];
                         _d.label = 1;
@@ -1015,11 +1015,11 @@ function createImportContext(payload) {
         applyRadius(node, styles, bindings, path);
         applyEffects(node, collectSpecEffects(styles), path);
         applyAutoLayout(node, styles, bindings, path);
-        safeBind(node, "width", bindings.width, path);
-        safeBind(node, "height", bindings.height, path);
-        safeBind(node, "opacity", bindings.opacity, path);
+        safeBindNumberMatched(node, "width", bindings.width, styles.width, path);
+        safeBindNumberMatched(node, "height", bindings.height, styles.height, path);
+        safeBindNumberMatched(node, "opacity", bindings.opacity, styles.opacity, path);
         if (!styles.borderSides) {
-            safeBind(node, "strokeWeight", bindings.borderWidth, path);
+            safeBindNumberMatched(node, "strokeWeight", bindings.borderWidth, styles.borderWidth, path);
         }
     }
     function syncExistingFrameChildrenFromSpec(node, spec, path, options) {
@@ -1763,14 +1763,19 @@ function createImportContext(payload) {
                         applyTextAutoResize(node, styles.textGrowHeight ? "HEIGHT" : styles.textAutoResize, path);
                         applyTextTruncation(node, styles, path);
                         applyTextAlignHorizontal(node, spec, options, path);
-                        safeBind(node, "width", bindings.width, path);
-                        safeBind(node, "height", bindings.height, path);
-                        return [4 /*yield*/, safeBindFontFamily(node, bindings.fontFamily, (_d = styles.fontWeight) !== null && _d !== void 0 ? _d : 400, styles.fontStyle === "italic", path)];
+                        safeBindNumberMatched(node, "width", bindings.width, styles.width, path);
+                        safeBindNumberMatched(node, "height", bindings.height, styles.height, path);
+                        return [4 /*yield*/, safeBindFontFamily(node, bindings.fontFamily, styles.fontFamily, (_d = styles.fontWeight) !== null && _d !== void 0 ? _d : 400, styles.fontStyle === "italic", path)];
                     case 2:
                         _e.sent();
-                        safeBind(node, "fontSize", bindings.fontSize, path);
-                        safeBind(node, "fontWeight", bindings.fontWeight, path);
-                        safeBind(node, "lineHeight", bindings.lineHeight, path);
+                        safeBindNumberMatched(node, "fontSize", bindings.fontSize, styles.fontSize, path);
+                        safeBindNumberMatched(node, "fontWeight", bindings.fontWeight, styles.fontWeight, path);
+                        if (typeof styles.lineHeight === "number") {
+                            safeBindNumberMatched(node, "lineHeight", bindings.lineHeight, styles.lineHeight, path);
+                        }
+                        else if (bindings.lineHeight) {
+                            warn("Skipped ".concat(path, ".lineHeight binding to ").concat(bindings.lineHeight, ": the rendered line height is auto."));
+                        }
                         return [2 /*return*/, node];
                 }
             });
@@ -1937,6 +1942,10 @@ function createImportContext(payload) {
         };
         if (!stop.token)
             return colorStop;
+        if (!tokenColorMatchesStyle(stop.token, stop.color)) {
+            warn("Skipped ".concat(path, ".fill.gradientStops.").concat(index, " binding to ").concat(stop.token, ": token color does not match the stop color."));
+            return colorStop;
+        }
         var variable = registry.get(stop.token);
         if (!variable) {
             warn("Missing variable for ".concat(path, ".fill.gradientStops.").concat(index, ": ").concat(stop.token));
@@ -2004,15 +2013,18 @@ function createImportContext(payload) {
         node.strokeBottomWeight = safeNumber((_c = sides.bottom) === null || _c === void 0 ? void 0 : _c.width, 0);
         node.strokeLeftWeight = safeNumber((_d = sides.left) === null || _d === void 0 ? void 0 : _d.width, 0);
         if (bindings.borderWidth) {
-            if (sides.top)
-                safeBind(node, "strokeTopWeight", bindings.borderWidth, path);
-            if (sides.right)
-                safeBind(node, "strokeRightWeight", bindings.borderWidth, path);
-            if (sides.bottom) {
-                safeBind(node, "strokeBottomWeight", bindings.borderWidth, path);
+            if (sides.top) {
+                safeBindNumberMatched(node, "strokeTopWeight", bindings.borderWidth, sides.top.width, path);
             }
-            if (sides.left)
-                safeBind(node, "strokeLeftWeight", bindings.borderWidth, path);
+            if (sides.right) {
+                safeBindNumberMatched(node, "strokeRightWeight", bindings.borderWidth, sides.right.width, path);
+            }
+            if (sides.bottom) {
+                safeBindNumberMatched(node, "strokeBottomWeight", bindings.borderWidth, sides.bottom.width, path);
+            }
+            if (sides.left) {
+                safeBindNumberMatched(node, "strokeLeftWeight", bindings.borderWidth, sides.left.width, path);
+            }
         }
     }
     function solidPaint(cssValue, tokenName, path) {
@@ -2028,6 +2040,10 @@ function createImportContext(payload) {
         };
         if (!tokenName)
             return paint;
+        if (!tokenColorMatchesStyle(tokenName, cssValue)) {
+            warn("Skipped ".concat(path, " binding to ").concat(tokenName, ": token color does not match the rendered color."));
+            return paint;
+        }
         var variable = registry.get(tokenName);
         if (!variable) {
             warn("Missing variable for ".concat(path, ": ").concat(tokenName));
@@ -2046,6 +2062,12 @@ function createImportContext(payload) {
         }
     }
     function applyRadius(node, styles, bindings, path) {
+        var _a;
+        if (bindings.cornerRadius &&
+            !tokenNumberMatchesStyle(bindings.cornerRadius, (_a = styles.radius) !== null && _a !== void 0 ? _a : 0)) {
+            warn("Skipped ".concat(path, ".cornerRadius binding to ").concat(bindings.cornerRadius, ": token value does not match the rendered radius."));
+            bindings = __assign(__assign({}, bindings), { cornerRadius: undefined });
+        }
         if (styles.radiusCorners) {
             try {
                 node.topLeftRadius = Math.max(0, safeNumber(styles.radiusCorners.topLeft, 0));
@@ -2138,12 +2160,12 @@ function createImportContext(payload) {
             }
         }
         if (primaryAxisAlignItems !== "SPACE_BETWEEN") {
-            safeBind(node, "itemSpacing", bindings.gap, path);
+            safeBindNumberMatched(node, "itemSpacing", bindings.gap, styles.gap, path);
         }
-        safeBind(node, "paddingLeft", bindings.paddingLeft, path);
-        safeBind(node, "paddingRight", bindings.paddingRight, path);
-        safeBind(node, "paddingTop", bindings.paddingTop, path);
-        safeBind(node, "paddingBottom", bindings.paddingBottom, path);
+        safeBindNumberMatched(node, "paddingLeft", bindings.paddingLeft, styles.paddingLeft, path);
+        safeBindNumberMatched(node, "paddingRight", bindings.paddingRight, styles.paddingRight, path);
+        safeBindNumberMatched(node, "paddingTop", bindings.paddingTop, styles.paddingTop, path);
+        safeBindNumberMatched(node, "paddingBottom", bindings.paddingBottom, styles.paddingBottom, path);
     }
     function applyCounterAxisAlignment(node, alignItems, isHorizontalLayout, path) {
         var mapped = mapCounterAlignment(alignItems);
@@ -2246,14 +2268,24 @@ function createImportContext(payload) {
             return false;
         }
     }
-    function safeBindFontFamily(node, tokenName, fontWeight, italic, path) {
+    function safeBindFontFamily(node, tokenName, styleFontFamily, fontWeight, italic, path) {
         return __awaiter(this, void 0, void 0, function () {
-            var loaded;
+            var tokenFamily, styleFamily, loaded;
             return __generator(this, function (_a) {
                 switch (_a.label) {
                     case 0:
                         if (!tokenName)
                             return [2 /*return*/, false];
+                        tokenFamily = getFontFamilyFromToken(tokenName);
+                        styleFamily = styleFontFamily
+                            ? getFontFamilyCandidates(styleFontFamily)[0]
+                            : undefined;
+                        if (tokenFamily &&
+                            styleFamily &&
+                            tokenFamily.toLowerCase() !== styleFamily.toLowerCase()) {
+                            warn("Skipped ".concat(path, ".fontFamily binding to ").concat(tokenName, ": token family \"").concat(tokenFamily, "\" does not match the rendered family \"").concat(styleFamily, "\"."));
+                            return [2 /*return*/, false];
+                        }
                         return [4 /*yield*/, loadBoundFontFamily(tokenName, fontWeight, italic, path)];
                     case 1:
                         loaded = _a.sent();
@@ -2420,6 +2452,84 @@ function createImportContext(payload) {
         if (token.alias)
             return resolveTokenValue(token.alias, visited);
         return token.rawValue || token.value;
+    }
+    function resolveTokenSpec(tokenName, visited) {
+        var _a;
+        if (visited === void 0) { visited = new Set(); }
+        if (!tokenName || visited.has(tokenName))
+            return undefined;
+        visited.add(tokenName);
+        var token = tokenByCssName.get(tokenName);
+        if (!token)
+            return undefined;
+        if (token.alias)
+            return (_a = resolveTokenSpec(token.alias, visited)) !== null && _a !== void 0 ? _a : token;
+        return token;
+    }
+    // The raw CSS value is the comparison truth (export-side value transforms
+    // like the opacity percent scale must not skew the check).
+    function resolveTokenNumber(tokenName) {
+        var _a;
+        var spec = resolveTokenSpec(tokenName);
+        if (!spec)
+            return undefined;
+        var raw = String((_a = spec.rawValue) !== null && _a !== void 0 ? _a : "").trim();
+        var match = raw.match(/^-?\d*\.?\d+/);
+        if (match)
+            return Number(match[0]);
+        return typeof spec.value === "number" ? spec.value : undefined;
+    }
+    function resolveTokenRgba(tokenName) {
+        var _a;
+        var spec = resolveTokenSpec(tokenName);
+        if (!spec || spec.type !== "COLOR")
+            return undefined;
+        if (isColor(spec.value))
+            return spec.value;
+        return colorFromCssStrict(String((_a = spec.rawValue) !== null && _a !== void 0 ? _a : ""));
+    }
+    // Computed styles are ground truth: a variable may only bind when its
+    // resolved value matches the style value it would replace (a unitless
+    // line-height ratio must never override a pixel line height).
+    function tokenNumberMatchesStyle(tokenName, styleValue) {
+        if (!tokenName)
+            return true;
+        if (typeof styleValue !== "number" || !Number.isFinite(styleValue))
+            return true;
+        var tokenValue = resolveTokenNumber(tokenName);
+        if (tokenValue === undefined)
+            return true;
+        if (Math.abs(tokenValue - styleValue) <= 0.6)
+            return true;
+        return (styleValue !== 0 &&
+            Math.abs(tokenValue - styleValue) / Math.abs(styleValue) <= 0.01);
+    }
+    function safeBindNumberMatched(node, field, tokenName, styleValue, path) {
+        if (!tokenName)
+            return;
+        if (!tokenNumberMatchesStyle(tokenName, styleValue)) {
+            warn("Skipped ".concat(path, ".").concat(field, " binding to ").concat(tokenName, ": token value ") +
+                "".concat(resolveTokenNumber(tokenName), " does not match the rendered value ").concat(styleValue, "."));
+            return;
+        }
+        safeBind(node, field, tokenName, path);
+    }
+    function rgbaRoughlyEqual(a, b) {
+        return (Math.abs(a.r - b.r) <= 0.012 &&
+            Math.abs(a.g - b.g) <= 0.012 &&
+            Math.abs(a.b - b.b) <= 0.012 &&
+            Math.abs(safeNumber(a.a, 1) - safeNumber(b.a, 1)) <= 0.02);
+    }
+    function tokenColorMatchesStyle(tokenName, cssValue) {
+        if (!tokenName || !cssValue)
+            return true;
+        var tokenColor = resolveTokenRgba(tokenName);
+        if (!tokenColor)
+            return true;
+        var styleColor = colorFromCssStrict(cssValue);
+        if (!styleColor)
+            return true;
+        return rgbaRoughlyEqual(tokenColor, styleColor);
     }
     function getFontFamilyFromToken(tokenName) {
         var value = resolveTokenValue(tokenName);
@@ -2729,6 +2839,20 @@ var NAMED_CSS_COLORS = {
     transparent: { a: 0, b: 0, g: 0, r: 0 },
     white: { a: 1, b: 1, g: 1, r: 1 },
 };
+// Returns undefined for formats colorFromCss cannot faithfully parse, so
+// value comparisons never mistake the black fallback for a real color.
+function colorFromCssStrict(cssValue) {
+    var value = cssValue.trim();
+    if (!value)
+        return undefined;
+    if (NAMED_CSS_COLORS[value.toLowerCase()] ||
+        /^#[0-9a-f]{3,8}$/i.test(value) ||
+        /^rgba?\(/i.test(value) ||
+        /^hsla?\(/i.test(value)) {
+        return colorFromCss(value);
+    }
+    return undefined;
+}
 function colorFromCss(cssValue) {
     var _a;
     if (!cssValue)
@@ -3361,6 +3485,7 @@ if (typeof module !== "undefined" && module) {
     module.exports = {
         collectFontFamilyTokenNames: collectFontFamilyTokenNames,
         colorFromCss: colorFromCss,
+        colorFromCssStrict: colorFromCssStrict,
         getFontFamilyCandidates: getFontFamilyCandidates,
         getFontStyleCandidates: getFontStyleCandidates,
         getLinearGradientTransform: getLinearGradientTransform,

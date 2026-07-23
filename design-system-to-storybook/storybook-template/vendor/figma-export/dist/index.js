@@ -451,6 +451,9 @@ function getTokenType(token, tokenByName, tokenSystem, seen = /* @__PURE__ */ ne
   if (aliasToken) return getTokenType(aliasToken, tokenByName, tokenSystem, seen);
   return parseRawValue(token.value).type;
 }
+function nameHasSegment(name, segment) {
+  return name.includes(`-${segment}-`) || name.endsWith(`-${segment}`);
+}
 function getTokenScopes(token, type) {
   if (type === "COLOR") {
     return ["FRAME_FILL", "SHAPE_FILL", "TEXT_FILL", "STROKE_COLOR"];
@@ -460,19 +463,19 @@ function getTokenScopes(token, type) {
     return ["TEXT_CONTENT"];
   }
   if (type !== "FLOAT") return [];
-  if (token.name.includes("-opacity-")) return ["OPACITY"];
-  if (token.name.includes("-radius-") || token.name.includes("-shape-")) {
+  if (nameHasSegment(token.name, "opacity")) return ["OPACITY"];
+  if (nameHasSegment(token.name, "radius") || nameHasSegment(token.name, "shape")) {
     return ["CORNER_RADIUS"];
   }
-  if (token.name.includes("-spacing-")) {
+  if (nameHasSegment(token.name, "spacing") || nameHasSegment(token.name, "gap")) {
     return ["GAP", "WIDTH_HEIGHT"];
   }
-  if (token.name.includes("-weight-")) return ["FONT_WEIGHT"];
+  if (nameHasSegment(token.name, "weight")) return ["FONT_WEIGHT"];
   if (token.name.includes("-line-height")) return ["LINE_HEIGHT"];
-  if (token.name.includes("-typescale-") && token.name.includes("-size")) {
+  if ((token.name.includes("-typescale-") || token.name.includes("-text-")) && nameHasSegment(token.name, "size")) {
     return ["FONT_SIZE"];
   }
-  if (token.name.includes("-size-")) return ["WIDTH_HEIGHT"];
+  if (nameHasSegment(token.name, "size")) return ["WIDTH_HEIGHT"];
   return ["WIDTH_HEIGHT"];
 }
 function extractCssVariableNames(value, tokenSystem) {
@@ -486,6 +489,15 @@ function extractCssVariableNames(value, tokenSystem) {
 }
 function getAliasTokenName(token, tokenSystem) {
   return extractCssVariableNames(token.value, tokenSystem)[0];
+}
+function resolveTokenComparableValue(cssName, tokenSystem, seen = /* @__PURE__ */ new Set()) {
+  if (seen.has(cssName)) return void 0;
+  seen.add(cssName);
+  const token = tokenSystem.catalog.find((candidate) => candidate.name === cssName);
+  if (!token) return void 0;
+  const alias = getAliasTokenName(token, tokenSystem);
+  if (alias) return resolveTokenComparableValue(alias, tokenSystem, seen);
+  return { ...parseRawValue(token.value), raw: token.value };
 }
 function toFigmaVariableName(cssName) {
   return cssName.replace(/^--/, "").replaceAll("-", "/");
@@ -2129,15 +2141,9 @@ function drawSourceToRasterCapture(source, naturalWidth, naturalHeight) {
     return void 0;
   }
 }
-var subtreeRasterTimeoutMs = 8e3;
 async function captureSubtreeRaster(element) {
   try {
-    const dataUrl = await Promise.race([
-      toPng(element, { cacheBust: false, pixelRatio: 1 }),
-      new Promise((resolve) => {
-        globalThis.setTimeout(() => resolve(void 0), subtreeRasterTimeoutMs);
-      })
-    ]);
+    const dataUrl = await toPng(element, { cacheBust: false, pixelRatio: 1 });
     return dataUrl ? dataUrlToRasterCapture(dataUrl) : void 0;
   } catch {
     return void 0;
@@ -2693,6 +2699,107 @@ async function createExportNode(element, rootRect, parentRect, ruleIndex, tokenS
     } : frameStyles
   };
 }
+var bindingNumberTolerance = 0.6;
+function bindingNumbersMatch(tokenValue, styleValue) {
+  if (!Number.isFinite(tokenValue) || !Number.isFinite(styleValue)) return false;
+  if (Math.abs(tokenValue - styleValue) <= bindingNumberTolerance) return true;
+  return styleValue !== 0 && Math.abs(tokenValue - styleValue) / Math.abs(styleValue) <= 0.01;
+}
+function bindingColorsMatch(tokenColor, styleColor) {
+  return Math.abs(tokenColor.r - styleColor.r) <= 0.012 && Math.abs(tokenColor.g - styleColor.g) <= 0.012 && Math.abs(tokenColor.b - styleColor.b) <= 0.012 && Math.abs(tokenColor.a - styleColor.a) <= 0.02;
+}
+function firstFontFamilyName(value) {
+  if (!value) return void 0;
+  return getCssFontFamilyCandidates(value)[0]?.toLowerCase();
+}
+function getBindingExpectation(node, bindingName) {
+  const styles = node.styles;
+  switch (bindingName) {
+    case "backgroundColor":
+      return styles.backgroundColor ? { kind: "color", value: styles.backgroundColor } : void 0;
+    case "borderColor": {
+      const color = styles.borderColor ?? (styles.borderSides ? Object.values(styles.borderSides).find(Boolean)?.color : void 0);
+      return color ? { kind: "color", value: color } : void 0;
+    }
+    case "textColor":
+      return styles.color ? { kind: "color", value: styles.color } : void 0;
+    case "fontFamily":
+      return styles.fontFamily ? { kind: "font", value: styles.fontFamily } : void 0;
+    case "fontSize":
+      return typeof styles.fontSize === "number" ? { kind: "number", value: styles.fontSize } : void 0;
+    case "fontWeight":
+      return typeof styles.fontWeight === "number" ? { kind: "number", value: styles.fontWeight } : void 0;
+    case "lineHeight":
+      return typeof styles.lineHeight === "number" ? { kind: "number", value: styles.lineHeight } : void 0;
+    case "gap":
+      return typeof styles.gap === "number" ? { kind: "number", value: styles.gap } : void 0;
+    case "height":
+      return { kind: "number", value: styles.height };
+    case "width":
+      return { kind: "number", value: styles.width };
+    case "opacity":
+      return typeof styles.opacity === "number" ? { kind: "number", value: styles.opacity } : void 0;
+    case "borderWidth": {
+      const width = styles.borderWidth ?? (styles.borderSides ? Object.values(styles.borderSides).find(Boolean)?.width : void 0);
+      return typeof width === "number" ? { kind: "number", value: width } : void 0;
+    }
+    case "cornerRadius":
+      return { kind: "number", value: styles.radius ?? 0 };
+    case "paddingBottom":
+      return typeof styles.paddingBottom === "number" ? { kind: "number", value: styles.paddingBottom } : void 0;
+    case "paddingLeft":
+      return typeof styles.paddingLeft === "number" ? { kind: "number", value: styles.paddingLeft } : void 0;
+    case "paddingRight":
+      return typeof styles.paddingRight === "number" ? { kind: "number", value: styles.paddingRight } : void 0;
+    case "paddingTop":
+      return typeof styles.paddingTop === "number" ? { kind: "number", value: styles.paddingTop } : void 0;
+    default:
+      return void 0;
+  }
+}
+function bindingSurvivesValueCheck(node, bindingName, tokenName, tokenSystem) {
+  const resolved = resolveTokenComparableValue(tokenName, tokenSystem);
+  if (!resolved) return true;
+  const expected = getBindingExpectation(node, bindingName);
+  if (!expected) return false;
+  if (expected.kind === "number") {
+    return resolved.type === "FLOAT" && typeof resolved.value === "number" && bindingNumbersMatch(resolved.value, expected.value);
+  }
+  if (expected.kind === "color") {
+    if (resolved.type !== "COLOR" || typeof resolved.value !== "object") return false;
+    const styleColor = parseCssColorToRgba(expected.value);
+    return styleColor ? bindingColorsMatch(resolved.value, styleColor) : false;
+  }
+  if (resolved.type !== "STRING") return false;
+  const tokenFamily = firstFontFamilyName(resolved.raw);
+  const styleFamily = firstFontFamilyName(expected.value);
+  return Boolean(tokenFamily && styleFamily && tokenFamily === styleFamily);
+}
+function pruneMismatchedBindings(node, tokenSystem) {
+  for (const [bindingName, tokenName] of Object.entries(node.bindings)) {
+    if (!tokenName) continue;
+    if (!bindingSurvivesValueCheck(
+      node,
+      bindingName,
+      tokenName,
+      tokenSystem
+    )) {
+      delete node.bindings[bindingName];
+    }
+  }
+  const gradient = node.styles.backgroundLinearGradient;
+  if (gradient) {
+    for (const stop of gradient.stops) {
+      if (!stop.token) continue;
+      const resolved = resolveTokenComparableValue(stop.token, tokenSystem);
+      if (!resolved) continue;
+      const stopColor = parseCssColorToRgba(stop.color);
+      const matches = resolved.type === "COLOR" && typeof resolved.value === "object" && stopColor !== void 0 && bindingColorsMatch(resolved.value, stopColor);
+      if (!matches) delete stop.token;
+    }
+  }
+  node.children.forEach((child) => pruneMismatchedBindings(child, tokenSystem));
+}
 async function createFigmaExportPayload({
   componentTitle,
   onProgress,
@@ -2732,6 +2839,9 @@ async function createFigmaExportPayload({
   }
   rootNode.styles.x = 0;
   rootNode.styles.y = 0;
+  if (tokenSystem.prefix) {
+    pruneMismatchedBindings(rootNode, tokenSystem);
+  }
   if (artifactKind === "page") {
     stripComponentReferences(rootNode);
   }
@@ -4168,7 +4278,7 @@ void (async function importStorybookStory(payload) {
 
 // src/version.ts
 function getAddonVersion() {
-  return true ? "0.6.0" : "dev";
+  return true ? "0.7.0" : "dev";
 }
 
 // src/workspace.ts

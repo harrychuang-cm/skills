@@ -431,6 +431,12 @@ function getTokenType(
   return parseRawValue(token.value).type;
 }
 
+// Matches "-segment-" in the middle or "-segment" at the end, so
+// "--md-sys-typescale-label-weight" classifies like "--md-ref-weight-700".
+function nameHasSegment(name: string, segment: string): boolean {
+  return name.includes(`-${segment}-`) || name.endsWith(`-${segment}`);
+}
+
 function getTokenScopes(token: TokenDefinition, type: FigmaVariableType): string[] {
   if (type === "COLOR") {
     return ["FRAME_FILL", "SHAPE_FILL", "TEXT_FILL", "STROKE_COLOR"];
@@ -443,19 +449,22 @@ function getTokenScopes(token: TokenDefinition, type: FigmaVariableType): string
 
   if (type !== "FLOAT") return [];
 
-  if (token.name.includes("-opacity-")) return ["OPACITY"];
-  if (token.name.includes("-radius-") || token.name.includes("-shape-")) {
+  if (nameHasSegment(token.name, "opacity")) return ["OPACITY"];
+  if (nameHasSegment(token.name, "radius") || nameHasSegment(token.name, "shape")) {
     return ["CORNER_RADIUS"];
   }
-  if (token.name.includes("-spacing-")) {
+  if (nameHasSegment(token.name, "spacing") || nameHasSegment(token.name, "gap")) {
     return ["GAP", "WIDTH_HEIGHT"];
   }
-  if (token.name.includes("-weight-")) return ["FONT_WEIGHT"];
+  if (nameHasSegment(token.name, "weight")) return ["FONT_WEIGHT"];
   if (token.name.includes("-line-height")) return ["LINE_HEIGHT"];
-  if (token.name.includes("-typescale-") && token.name.includes("-size")) {
+  if (
+    (token.name.includes("-typescale-") || token.name.includes("-text-")) &&
+    nameHasSegment(token.name, "size")
+  ) {
     return ["FONT_SIZE"];
   }
-  if (token.name.includes("-size-")) return ["WIDTH_HEIGHT"];
+  if (nameHasSegment(token.name, "size")) return ["WIDTH_HEIGHT"];
 
   return ["WIDTH_HEIGHT"];
 }
@@ -482,6 +491,26 @@ function getAliasTokenName(
   tokenSystem: DetectedTokenSystem,
 ): string | undefined {
   return extractCssVariableNames(token.value, tokenSystem)[0];
+}
+
+// Follows the alias chain to the final concrete token and parses its raw
+// value. Used to verify that a candidate binding's variable value actually
+// matches the computed style it would replace (for example a unitless
+// line-height token of 1.3 must never bind to a 15.6px Figma line height).
+export function resolveTokenComparableValue(
+  cssName: string,
+  tokenSystem: DetectedTokenSystem,
+  seen = new Set<string>(),
+): { raw: string; type: FigmaVariableType; value: FigmaVariableValue } | undefined {
+  if (seen.has(cssName)) return undefined;
+  seen.add(cssName);
+
+  const token = tokenSystem.catalog.find((candidate) => candidate.name === cssName);
+  if (!token) return undefined;
+
+  const alias = getAliasTokenName(token, tokenSystem);
+  if (alias) return resolveTokenComparableValue(alias, tokenSystem, seen);
+  return { ...parseRawValue(token.value), raw: token.value };
 }
 
 function toFigmaVariableName(cssName: string): string {

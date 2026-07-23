@@ -39,7 +39,7 @@ Default output is `<product-repo-root>/.storybook/figma-export.config.ts`. Keep 
 The generated config covers:
 
 - `componentClassPrefixes` and `tokenPrefix`, inferred from token CSS variables such as `--cm-ref-*`, `--cm-sys-*`, and `--cm-comp-*`
-- CSS font-family fallback lists are portable: the exporter preserves the complete list in token `rawValue`, while addon 0.6.0 and importer 1.4.0 normalize Figma variable values to one loaded family and try later concrete fallbacks before Inter.
+- CSS font-family fallback lists are portable: the exporter preserves the complete list in token `rawValue`, while addon 0.7.0 and importer 1.6.0 normalize Figma variable values to one loaded family and try later concrete fallbacks before Inter.
 - `storyTitlePrefix`, inferred from existing story titles when possible; the generator emits top-level namespaces only (`Components/`, `Foundations/`, `Pages/`) — never deeper paths like `Components/Examples/`, because prefixes are `startsWith` matches and a deep prefix silently excludes sibling subcategories — and falls back to `false` (include all stories) when no titled story is found. Re-running the generator preserves an existing `storyTitlePrefix` in the config; fix or remove a stale value in `.storybook/figma-export.config.ts` before regenerating
 - `absoluteFidelityComponents`, inferred from page/screen/composite/product-pattern entries and graphic or typographic lockups that need tighter visual parity
 - review API path, plugin name, and status JSON path

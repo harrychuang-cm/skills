@@ -282,6 +282,21 @@ approx(white.b, 1, 0.001, "named white b");
 const transparent = plugin.colorFromCss("transparent");
 approx(transparent.a, 0, 0.001, "transparent alpha");
 
+// Strict color parsing returns undefined for formats it cannot represent,
+// so binding guards never compare against the black fallback.
+const strictWhite = plugin.colorFromCssStrict("white");
+approx(strictWhite.r, 1, 0.001, "strict named white r");
+assert.strictEqual(
+  plugin.colorFromCssStrict("oklch(0.7 0.15 200)"),
+  undefined,
+  "strict parser refuses formats it cannot faithfully parse",
+);
+assert.strictEqual(
+  plugin.colorFromCssStrict("url(#gradient)"),
+  undefined,
+  "strict parser refuses non-color paints",
+);
+
 // overflow auto/scroll clip like the browser; visible does not.
 assert.strictEqual(plugin.shouldClipContent("auto"), true, "overflow auto clips");
 assert.strictEqual(plugin.shouldClipContent("scroll"), true, "overflow scroll clips");

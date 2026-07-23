@@ -81,11 +81,11 @@ function runChrome(chromeBinary, url) {
         "--hide-scrollbars",
         "--force-device-scale-factor=1",
         "--window-size=1200,900",
-        "--virtual-time-budget=60000",
+        "--virtual-time-budget=600000",
         "--dump-dom",
         url,
       ],
-      { maxBuffer: 64 * 1024 * 1024, timeout: 60_000 },
+      { maxBuffer: 64 * 1024 * 1024, timeout: 180_000 },
       (error, stdout) => {
         if (error && !stdout) reject(error);
         else resolve(stdout);
@@ -506,14 +506,41 @@ function assertPayload(payload) {
     "rasterized pixels captured",
   );
 
-  // The payload carries a browser-render reference snapshot
-  assert.ok(payload.reference, "reference snapshot attached");
+  // Value-preserving bindings: a token may only bind when its resolved value
+  // matches the computed style it would replace in Figma.
+  const ratioLineHeight = findCase(root, "case-ratio-line-height");
   assert.strictEqual(
-    payload.reference.imageMimeType,
+    ratioLineHeight.bindings.lineHeight,
+    undefined,
+    "unitless line-height ratio token binding pruned",
+  );
+  approx(ratioLineHeight.styles.lineHeight, 18.2, 0.5, "computed pixel line height kept");
+  const pxLineHeight = findCase(root, "case-px-line-height");
+  assert.strictEqual(
+    pxLineHeight.bindings.lineHeight,
+    "--fx-sys-typescale-caption-line-height",
+    "pixel line-height token binding kept",
+  );
+  const paddingToken = findCase(root, "case-padding-token-border");
+  assert.strictEqual(
+    paddingToken.bindings.paddingLeft,
+    undefined,
+    "padding token binding pruned when the border folds into padding",
+  );
+  approx(paddingToken.styles.paddingLeft, 10, 0.5, "border-folded padding preserved");
+
+}
+
+function assertReferencePayload(referenceResult) {
+  const reference = referenceResult?.reference;
+  assert.ok(reference, "reference snapshot attached");
+  assert.strictEqual(
+    reference.imageMimeType,
     "image/png",
     "reference snapshot is a png",
   );
-  approx(payload.reference.width, root.styles.width, 2, "reference matches root width");
+  approx(reference.width, 120, 2, "reference matches its scope width");
+  assert.ok(reference.imageBase64.length > 0, "reference snapshot has pixels");
 }
 
 async function main() {
@@ -525,6 +552,7 @@ async function main() {
   try {
     const url = `http://127.0.0.1:${port}/export-fixture.html`;
     let payloadText;
+    let referenceText;
     const attempts = 3;
     for (let attempt = 1; attempt <= attempts; attempt += 1) {
       const dom = await runChrome(chromeBinary, url);
@@ -532,7 +560,10 @@ async function main() {
       if (errorText) throw new Error(`fixture export failed:\n${errorText}`);
 
       payloadText = extractBase64(dom, "payload-output");
-      if (payloadText) break;
+      referenceText = extractBase64(dom, "reference-output");
+      const referenceReady =
+        referenceText && JSON.parse(referenceText).reference !== null;
+      if (payloadText && referenceReady) break;
       if (attempt < attempts) {
         console.warn(`attempt ${attempt}: export did not finish, retrying...`);
       }
@@ -543,6 +574,7 @@ async function main() {
 
     const payload = JSON.parse(payloadText);
     assertPayload(payload);
+    assertReferencePayload(referenceText ? JSON.parse(referenceText) : undefined);
     writeFileSync(payloadPath, JSON.stringify(payload, null, 2));
     console.log(`run-export-fixture: all assertions passed (payload: ${payloadPath})`);
   } finally {

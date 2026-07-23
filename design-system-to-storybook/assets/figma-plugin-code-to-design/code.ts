@@ -384,7 +384,7 @@ type ComponentSectionTarget = {
 
 // Bump this on every behavior change so the Figma UI badge confirms which
 // build is running (Figma re-reads code.js per run, but the badge removes doubt).
-const PLUGIN_VERSION = "1.5.0 (2026-07-23)";
+const PLUGIN_VERSION = "1.6.0 (2026-07-23)";
 
 const SUPPORTED_PAYLOAD_VERSIONS = [1, 2] as const;
 const DEFAULT_TOKEN_PLUGIN_DATA_KEY = "storybookCssToken";
@@ -1110,11 +1110,11 @@ function createImportContext(payload: FigmaExportPayload) {
     applyEffects(node, collectSpecEffects(styles), path);
     applyAutoLayout(node, styles, bindings, path);
 
-    safeBind(node, "width", bindings.width, path);
-    safeBind(node, "height", bindings.height, path);
-    safeBind(node, "opacity", bindings.opacity, path);
+    safeBindNumberMatched(node, "width", bindings.width, styles.width, path);
+    safeBindNumberMatched(node, "height", bindings.height, styles.height, path);
+    safeBindNumberMatched(node, "opacity", bindings.opacity, styles.opacity, path);
     if (!styles.borderSides) {
-      safeBind(node, "strokeWeight", bindings.borderWidth, path);
+      safeBindNumberMatched(node, "strokeWeight", bindings.borderWidth, styles.borderWidth, path);
     }
 
     for (const childSpec of spec.children ?? []) {
@@ -1341,11 +1341,11 @@ function createImportContext(payload: FigmaExportPayload) {
     applyEffects(node, collectSpecEffects(styles), path);
     applyAutoLayout(node, styles, bindings, path);
 
-    safeBind(node, "width", bindings.width, path);
-    safeBind(node, "height", bindings.height, path);
-    safeBind(node, "opacity", bindings.opacity, path);
+    safeBindNumberMatched(node, "width", bindings.width, styles.width, path);
+    safeBindNumberMatched(node, "height", bindings.height, styles.height, path);
+    safeBindNumberMatched(node, "opacity", bindings.opacity, styles.opacity, path);
     if (!styles.borderSides) {
-      safeBind(node, "strokeWeight", bindings.borderWidth, path);
+      safeBindNumberMatched(node, "strokeWeight", bindings.borderWidth, styles.borderWidth, path);
     }
   }
 
@@ -2233,18 +2233,25 @@ function createImportContext(payload: FigmaExportPayload) {
     applyTextTruncation(node, styles, path);
     applyTextAlignHorizontal(node, spec, options, path);
 
-    safeBind(node, "width", bindings.width, path);
-    safeBind(node, "height", bindings.height, path);
+    safeBindNumberMatched(node, "width", bindings.width, styles.width, path);
+    safeBindNumberMatched(node, "height", bindings.height, styles.height, path);
     await safeBindFontFamily(
       node,
       bindings.fontFamily,
+      styles.fontFamily,
       styles.fontWeight ?? 400,
       styles.fontStyle === "italic",
       path,
     );
-    safeBind(node, "fontSize", bindings.fontSize, path);
-    safeBind(node, "fontWeight", bindings.fontWeight, path);
-    safeBind(node, "lineHeight", bindings.lineHeight, path);
+    safeBindNumberMatched(node, "fontSize", bindings.fontSize, styles.fontSize, path);
+    safeBindNumberMatched(node, "fontWeight", bindings.fontWeight, styles.fontWeight, path);
+    if (typeof styles.lineHeight === "number") {
+      safeBindNumberMatched(node, "lineHeight", bindings.lineHeight, styles.lineHeight, path);
+    } else if (bindings.lineHeight) {
+      warn(
+        `Skipped ${path}.lineHeight binding to ${bindings.lineHeight}: the rendered line height is auto.`,
+      );
+    }
 
     return node;
   }
@@ -2467,6 +2474,13 @@ function createImportContext(payload: FigmaExportPayload) {
 
     if (!stop.token) return colorStop;
 
+    if (!tokenColorMatchesStyle(stop.token, stop.color)) {
+      warn(
+        `Skipped ${path}.fill.gradientStops.${index} binding to ${stop.token}: token color does not match the stop color.`,
+      );
+      return colorStop;
+    }
+
     const variable = registry.get(stop.token);
     if (!variable) {
       warn(`Missing variable for ${path}.fill.gradientStops.${index}: ${stop.token}`);
@@ -2558,12 +2572,18 @@ function createImportContext(payload: FigmaExportPayload) {
     node.strokeLeftWeight = safeNumber(sides.left?.width, 0);
 
     if (bindings.borderWidth) {
-      if (sides.top) safeBind(node, "strokeTopWeight", bindings.borderWidth, path);
-      if (sides.right) safeBind(node, "strokeRightWeight", bindings.borderWidth, path);
-      if (sides.bottom) {
-        safeBind(node, "strokeBottomWeight", bindings.borderWidth, path);
+      if (sides.top) {
+        safeBindNumberMatched(node, "strokeTopWeight", bindings.borderWidth, sides.top.width, path);
       }
-      if (sides.left) safeBind(node, "strokeLeftWeight", bindings.borderWidth, path);
+      if (sides.right) {
+        safeBindNumberMatched(node, "strokeRightWeight", bindings.borderWidth, sides.right.width, path);
+      }
+      if (sides.bottom) {
+        safeBindNumberMatched(node, "strokeBottomWeight", bindings.borderWidth, sides.bottom.width, path);
+      }
+      if (sides.left) {
+        safeBindNumberMatched(node, "strokeLeftWeight", bindings.borderWidth, sides.left.width, path);
+      }
     }
   }
 
@@ -2584,6 +2604,13 @@ function createImportContext(payload: FigmaExportPayload) {
     };
 
     if (!tokenName) return paint;
+
+    if (!tokenColorMatchesStyle(tokenName, cssValue)) {
+      warn(
+        `Skipped ${path} binding to ${tokenName}: token color does not match the rendered color.`,
+      );
+      return paint;
+    }
 
     const variable = registry.get(tokenName);
     if (!variable) {
@@ -2610,6 +2637,15 @@ function createImportContext(payload: FigmaExportPayload) {
     bindings: Partial<Record<FigmaBindingName, string>>,
     path: string,
   ): void {
+    if (
+      bindings.cornerRadius &&
+      !tokenNumberMatchesStyle(bindings.cornerRadius, styles.radius ?? 0)
+    ) {
+      warn(
+        `Skipped ${path}.cornerRadius binding to ${bindings.cornerRadius}: token value does not match the rendered radius.`,
+      );
+      bindings = { ...bindings, cornerRadius: undefined };
+    }
     if (styles.radiusCorners) {
       try {
         node.topLeftRadius = Math.max(0, safeNumber(styles.radiusCorners.topLeft, 0));
@@ -2725,12 +2761,12 @@ function createImportContext(payload: FigmaExportPayload) {
     }
 
     if (primaryAxisAlignItems !== "SPACE_BETWEEN") {
-      safeBind(node, "itemSpacing", bindings.gap, path);
+      safeBindNumberMatched(node, "itemSpacing", bindings.gap, styles.gap, path);
     }
-    safeBind(node, "paddingLeft", bindings.paddingLeft, path);
-    safeBind(node, "paddingRight", bindings.paddingRight, path);
-    safeBind(node, "paddingTop", bindings.paddingTop, path);
-    safeBind(node, "paddingBottom", bindings.paddingBottom, path);
+    safeBindNumberMatched(node, "paddingLeft", bindings.paddingLeft, styles.paddingLeft, path);
+    safeBindNumberMatched(node, "paddingRight", bindings.paddingRight, styles.paddingRight, path);
+    safeBindNumberMatched(node, "paddingTop", bindings.paddingTop, styles.paddingTop, path);
+    safeBindNumberMatched(node, "paddingBottom", bindings.paddingBottom, styles.paddingBottom, path);
   }
 
   function applyCounterAxisAlignment(
@@ -2868,11 +2904,26 @@ function createImportContext(payload: FigmaExportPayload) {
   async function safeBindFontFamily(
     node: SceneNode,
     tokenName: string | undefined,
+    styleFontFamily: string | undefined,
     fontWeight: number,
     italic: boolean,
     path: string,
   ): Promise<boolean> {
     if (!tokenName) return false;
+    const tokenFamily = getFontFamilyFromToken(tokenName);
+    const styleFamily = styleFontFamily
+      ? getFontFamilyCandidates(styleFontFamily)[0]
+      : undefined;
+    if (
+      tokenFamily &&
+      styleFamily &&
+      tokenFamily.toLowerCase() !== styleFamily.toLowerCase()
+    ) {
+      warn(
+        `Skipped ${path}.fontFamily binding to ${tokenName}: token family "${tokenFamily}" does not match the rendered family "${styleFamily}".`,
+      );
+      return false;
+    }
     const loaded = await loadBoundFontFamily(tokenName, fontWeight, italic, path);
     if (!loaded) return false;
     return safeBind(node, "fontFamily", tokenName, path);
@@ -3047,6 +3098,93 @@ function createImportContext(payload: FigmaExportPayload) {
     if (!token) return undefined;
     if (token.alias) return resolveTokenValue(token.alias, visited);
     return token.rawValue || token.value;
+  }
+
+  function resolveTokenSpec(
+    tokenName: string | undefined,
+    visited = new Set<string>(),
+  ): FigmaExportToken | undefined {
+    if (!tokenName || visited.has(tokenName)) return undefined;
+    visited.add(tokenName);
+    const token = tokenByCssName.get(tokenName);
+    if (!token) return undefined;
+    if (token.alias) return resolveTokenSpec(token.alias, visited) ?? token;
+    return token;
+  }
+
+  // The raw CSS value is the comparison truth (export-side value transforms
+  // like the opacity percent scale must not skew the check).
+  function resolveTokenNumber(tokenName: string): number | undefined {
+    const spec = resolveTokenSpec(tokenName);
+    if (!spec) return undefined;
+    const raw = String(spec.rawValue ?? "").trim();
+    const match = raw.match(/^-?\d*\.?\d+/);
+    if (match) return Number(match[0]);
+    return typeof spec.value === "number" ? spec.value : undefined;
+  }
+
+  function resolveTokenRgba(tokenName: string): RgbaColor | undefined {
+    const spec = resolveTokenSpec(tokenName);
+    if (!spec || spec.type !== "COLOR") return undefined;
+    if (isColor(spec.value)) return spec.value;
+    return colorFromCssStrict(String(spec.rawValue ?? ""));
+  }
+
+  // Computed styles are ground truth: a variable may only bind when its
+  // resolved value matches the style value it would replace (a unitless
+  // line-height ratio must never override a pixel line height).
+  function tokenNumberMatchesStyle(
+    tokenName: string | undefined,
+    styleValue: number | undefined,
+  ): boolean {
+    if (!tokenName) return true;
+    if (typeof styleValue !== "number" || !Number.isFinite(styleValue)) return true;
+    const tokenValue = resolveTokenNumber(tokenName);
+    if (tokenValue === undefined) return true;
+    if (Math.abs(tokenValue - styleValue) <= 0.6) return true;
+    return (
+      styleValue !== 0 &&
+      Math.abs(tokenValue - styleValue) / Math.abs(styleValue) <= 0.01
+    );
+  }
+
+  function safeBindNumberMatched(
+    node: SceneNode,
+    field: string,
+    tokenName: string | undefined,
+    styleValue: number | undefined,
+    path: string,
+  ): void {
+    if (!tokenName) return;
+    if (!tokenNumberMatchesStyle(tokenName, styleValue)) {
+      warn(
+        `Skipped ${path}.${field} binding to ${tokenName}: token value ` +
+          `${resolveTokenNumber(tokenName)} does not match the rendered value ${styleValue}.`,
+      );
+      return;
+    }
+    safeBind(node, field, tokenName, path);
+  }
+
+  function rgbaRoughlyEqual(a: RgbaColor, b: RgbaColor): boolean {
+    return (
+      Math.abs(a.r - b.r) <= 0.012 &&
+      Math.abs(a.g - b.g) <= 0.012 &&
+      Math.abs(a.b - b.b) <= 0.012 &&
+      Math.abs(safeNumber(a.a, 1) - safeNumber(b.a, 1)) <= 0.02
+    );
+  }
+
+  function tokenColorMatchesStyle(
+    tokenName: string | undefined,
+    cssValue: string | undefined,
+  ): boolean {
+    if (!tokenName || !cssValue) return true;
+    const tokenColor = resolveTokenRgba(tokenName);
+    if (!tokenColor) return true;
+    const styleColor = colorFromCssStrict(cssValue);
+    if (!styleColor) return true;
+    return rgbaRoughlyEqual(tokenColor, styleColor);
   }
 
   function getFontFamilyFromToken(tokenName: string | undefined): string | undefined {
@@ -3353,6 +3491,22 @@ const NAMED_CSS_COLORS: Record<string, RgbaColor> = {
   transparent: { a: 0, b: 0, g: 0, r: 0 },
   white: { a: 1, b: 1, g: 1, r: 1 },
 };
+
+// Returns undefined for formats colorFromCss cannot faithfully parse, so
+// value comparisons never mistake the black fallback for a real color.
+function colorFromCssStrict(cssValue: string): RgbaColor | undefined {
+  const value = cssValue.trim();
+  if (!value) return undefined;
+  if (
+    NAMED_CSS_COLORS[value.toLowerCase()] ||
+    /^#[0-9a-f]{3,8}$/i.test(value) ||
+    /^rgba?\(/i.test(value) ||
+    /^hsla?\(/i.test(value)
+  ) {
+    return colorFromCss(value);
+  }
+  return undefined;
+}
 
 function colorFromCss(cssValue: string | undefined): RgbaColor {
   if (!cssValue) return { a: 1, b: 0, g: 0, r: 0 };
@@ -4061,6 +4215,7 @@ if (typeof module !== "undefined" && module) {
   module.exports = {
     collectFontFamilyTokenNames,
     colorFromCss,
+    colorFromCssStrict,
     getFontFamilyCandidates,
     getFontStyleCandidates,
     getLinearGradientTransform,

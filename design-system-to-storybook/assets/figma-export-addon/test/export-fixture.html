@@ -15,6 +15,12 @@
     --fx-sys-typescale-label-family: var(--fx-ref-typeface-grotesque);
     --fx-comp-card-color-bg: var(--fx-sys-color-primary);
     --fx-comp-caption-font-family: var(--fx-sys-typescale-label-family);
+    --fx-ref-line-height-130: 1.3;
+    --fx-sys-typescale-body-line-height: var(--fx-ref-line-height-130);
+    --fx-ref-line-height-20: 20px;
+    --fx-sys-typescale-caption-line-height: var(--fx-ref-line-height-20);
+    --fx-ref-spacing-2: 8px;
+    --fx-sys-spacing-inset: var(--fx-ref-spacing-2);
   }
 
   body { font-family: Arial, sans-serif; margin: 16px; }
@@ -158,6 +164,15 @@
     transform: scale(1.5); transform-origin: top left; background-color: #3344cc;
   }
   .case-rasterize { width: 80px; height: 40px; background: conic-gradient(#ff0000, #0000ff); }
+
+  .case-ratio-line-height { width: 220px; font-size: 14px; line-height: var(--fx-sys-typescale-body-line-height); }
+  .case-px-line-height { width: 220px; font-size: 14px; line-height: var(--fx-sys-typescale-caption-line-height); }
+  .case-padding-token-border {
+    display: flex; gap: 6px; width: 200px;
+    border: 2px solid #444444; padding: var(--fx-sys-spacing-inset);
+    background-color: #ffffff;
+  }
+  .case-padding-token-border > div { width: 40px; height: 16px; background-color: #999999; }
 </style>
 </head>
 <body>
@@ -241,9 +256,18 @@
       <div class="scaled"></div>
     </div>
     <div data-component="case-rasterize" class="case-rasterize" data-figma-rasterize="true"></div>
+    <span data-component="case-ratio-line-height" class="case-ratio-line-height">Ratio line height</span>
+    <span data-component="case-px-line-height" class="case-px-line-height">Pixel line height</span>
+    <div data-component="case-padding-token-border" class="case-padding-token-border">
+      <div></div><div></div>
+    </div>
   </div>
 </div>
+<div id="ref-scope">
+  <div data-component="ref-root" style="width: 120px; height: 60px; background-color: #3366ff"></div>
+</div>
 <pre id="payload-output" style="display: none"></pre>
+<pre id="reference-output" style="display: none"></pre>
 <pre id="payload-error" style="display: none"></pre>
 <script src="./.export-fixture.bundle.js"></script>
 <script>
@@ -297,9 +321,14 @@
   async function runFixtureExport() {
     try {
       const exportApi = window.FigmaExportFixture;
+      // The browser-reference capture is verified on a small dedicated scope:
+      // rasterizing the full fixture page starves headless virtual time.
       const payload = await exportApi.createFigmaExportPayload({
         componentTitle: "Fixture",
-        options: exportApi.resolveFigmaExportAddonOptions({ storyTitlePrefix: false }),
+        options: exportApi.resolveFigmaExportAddonOptions({
+          referenceImage: false,
+          storyTitlePrefix: false,
+        }),
         scope: document.getElementById("scope"),
         storyId: "fixture--all",
         storyName: "All",
@@ -308,6 +337,24 @@
 
       document.getElementById("payload-output").textContent = toBase64Utf8(
         JSON.stringify(payload),
+      );
+
+      // html-to-image is occasionally flaky under headless virtual time, so
+      // the reference capture retries in-page before reporting.
+      let referencePayload;
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        referencePayload = await exportApi.createFigmaExportPayload({
+          componentTitle: "Reference",
+          options: exportApi.resolveFigmaExportAddonOptions({ storyTitlePrefix: false }),
+          scope: document.getElementById("ref-scope"),
+          storyId: "fixture--reference",
+          storyName: "Reference",
+          storyTitle: "Fixture/Reference",
+        });
+        if (referencePayload.reference) break;
+      }
+      document.getElementById("reference-output").textContent = toBase64Utf8(
+        JSON.stringify({ reference: referencePayload.reference ?? null }),
       );
       document.title = "EXPORT_DONE";
     } catch (error) {

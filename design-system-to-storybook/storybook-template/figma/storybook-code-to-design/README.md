@@ -2,7 +2,7 @@
 
 Figma development plugin for importing Storybook Code To Design JSON exports. The plugin parses JSON only; it does not evaluate pasted JavaScript.
 
-Version: `1.5.0` (the authoritative version is stamped from `package.json` into the UI badge and `PLUGIN_VERSION`)
+Version: `1.6.0` (the authoritative version is stamped from `package.json` into the UI badge and `PLUGIN_VERSION`)
 
 ## Fidelity fields (payload v2, all optional)
 
@@ -28,6 +28,7 @@ Import behavior notes:
 - CSS borders take layout space, so the exporter folds border widths into the exported padding; strokes stay `INSIDE` and overlap that padding exactly like a browser border box.
 - `align-items: baseline` maps to Figma `BASELINE` on horizontal auto layout; `justify-content: space-around/space-evenly` import as start-justified with the exporter's measured padding and gap.
 - A color binding whose variable is missing no longer paints a placeholder black fill; the paint is skipped with a warning instead.
+- Value-preserving bindings: before binding, the importer resolves the token's raw CSS value and skips the binding (with a warning) when it does not match the rendered value — a unitless `line-height: 1.3` token never overrides a 15.6px line height, a padding token never undoes the exporter's folded border inset, and a mismatched color token never repaints a fill.
 - SVG imports normalize the root `width`/`height` to the rendered size and derive a `viewBox` from the intrinsic size when missing, then rescale as a fallback — a 24px icon file rendered at 16px imports at 16px.
 
 Invalid types on these fields fail `parsePayload` with an error naming the node path and field.
