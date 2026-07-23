@@ -112,7 +112,7 @@ function applyTextAlignmentFromSpec(node, spec, options, path) {
 }
 // Bump this on every behavior change so the Figma UI badge confirms which
 // build is running (Figma re-reads code.js per run, but the badge removes doubt).
-var PLUGIN_VERSION = "1.3.0 (2026-07-22)";
+var PLUGIN_VERSION = "1.4.0 (2026-07-23)";
 var SUPPORTED_PAYLOAD_VERSIONS = [1, 2];
 var DEFAULT_TOKEN_PLUGIN_DATA_KEY = "storybookCssToken";
 var LEGACY_CM_TOKEN_PLUGIN_DATA_KEY = "cmCssToken";
@@ -130,6 +130,8 @@ var COMPONENT_SECTION_MIN_HEIGHT = 160;
 var COMPONENT_SECTION_MIN_WIDTH = 240;
 var COMPONENT_SECTION_PADDING = 64;
 var COMPONENT_SECTION_PLUGIN_DATA_KEY = "storybookComponentSectionKey";
+var REFERENCE_IMAGE_PLUGIN_DATA_KEY = "storybookReferenceImage";
+var REFERENCE_IMAGE_GAP = 64;
 var COMPONENT_SPEC_HASH_PLUGIN_DATA_KEY = "storybookComponentSpecHash";
 var COMPONENT_SECTION_ROLE_PLUGIN_DATA_KEY = "storybookComponentSectionRole";
 var STORYBOOK_STORY_PLUGIN_DATA_KEY = "storybookStoryId";
@@ -284,6 +286,7 @@ function importStorybookDesign(payload) {
                     if (viewportNode.parent === figma.currentPage) {
                         figma.currentPage.selection = [viewportNode];
                     }
+                    placeBrowserReferenceImage(payload, shouldImportAsComponent ? componentViewportNode : rootNode, viewportNode, targetPage, context.stats);
                     cleanupEmptyManagedSections(componentDefinitionsPage);
                     figma.viewport.scrollAndZoomIntoView([viewportNode]);
                     context.stats.artifactKind = artifactKind;
@@ -488,6 +491,51 @@ function cleanupEmptyManagedSections(targetPage) {
             node.remove();
         }
     }
+}
+// Places the exporter's browser-render snapshot as a locked layer next to
+// the import, so node-graph gaps are immediately visible inside Figma.
+function placeBrowserReferenceImage(payload, anchorNode, viewportNode, targetPage, stats) {
+    var reference = payload.reference;
+    if (!reference)
+        return;
+    var frame;
+    try {
+        var bytes = figma.base64Decode(reference.imageBase64);
+        var image = figma.createImage(bytes);
+        frame = figma.createFrame();
+        frame.name = "Browser Reference";
+        frame.resize(Math.max(1, safeNumber(reference.width, 1)), Math.max(1, safeNumber(reference.height, 1)));
+        frame.fills = [{ imageHash: image.hash, scaleMode: "FILL", type: "IMAGE" }];
+    }
+    catch (error) {
+        stats.warnings.push("Could not create the browser reference image: ".concat(formatError(error)));
+        return;
+    }
+    setNodePluginData(frame, REFERENCE_IMAGE_PLUGIN_DATA_KEY, payload.storyId);
+    var container = viewportNode.type === "SECTION" ? viewportNode : targetPage;
+    for (var _i = 0, _a = __spreadArray([], container.children, true); _i < _a.length; _i++) {
+        var child = _a[_i];
+        if (child.id !== frame.id &&
+            getNodePluginData(child, REFERENCE_IMAGE_PLUGIN_DATA_KEY) === payload.storyId) {
+            child.remove();
+        }
+    }
+    container.appendChild(frame);
+    var anchorWidth = getSceneNodeWidth(anchorNode);
+    if (container.type === "SECTION") {
+        frame.x = COMPONENT_SECTION_PADDING + anchorWidth + REFERENCE_IMAGE_GAP;
+        frame.y = COMPONENT_SECTION_PADDING;
+        container.resizeWithoutConstraints(Math.max(safeNumber(container.width, 0), frame.x + safeNumber(frame.width, 0) + COMPONENT_SECTION_PADDING), Math.max(safeNumber(container.height, 0), frame.y + safeNumber(frame.height, 0) + COMPONENT_SECTION_PADDING));
+    }
+    else {
+        frame.x =
+            safeNumber(anchorNode.x, 0) +
+                anchorWidth +
+                REFERENCE_IMAGE_GAP;
+        frame.y = safeNumber(anchorNode.y, 0);
+    }
+    frame.locked = true;
+    stats.referencePlaced = true;
 }
 function collectSceneNodeIds(node, ids) {
     if (ids === void 0) { ids = new Set(); }
@@ -768,6 +816,7 @@ function createImportContext(payload) {
                         if (node.layoutMode === "NONE") {
                             child.x = safeNumber(childSpec.styles.x, 0);
                             child.y = safeNumber(childSpec.styles.y, 0);
+                            applyChildTransformMatrix(child, childSpec, "".concat(path, "/").concat(childSpec.name));
                         }
                         _d.label = 3;
                     case 3:
@@ -1007,6 +1056,7 @@ function createImportContext(payload) {
                         if (node.layoutMode === "NONE") {
                             child.x = safeNumber(childSpec.styles.x, 0);
                             child.y = safeNumber(childSpec.styles.y, 0);
+                            applyChildTransformMatrix(child, childSpec, childPath);
                         }
                         _e.label = 3;
                     case 3:
@@ -2117,12 +2167,27 @@ function createImportContext(payload) {
                     "ABSOLUTE";
                 child.x = safeNumber(spec.styles.x, 0);
                 child.y = safeNumber(spec.styles.y, 0);
+                applyChildTransformMatrix(child, spec, path);
             }
             catch (error) {
                 warn("Could not absolutely position ".concat(path, ": ").concat(formatError(error)));
             }
         }
         applyConstraints(child, spec.styles.constraints, path);
+    }
+    // Applies the exporter's rotation matrix. Must run after x/y assignment —
+    // the x/y setters would otherwise overwrite the matrix translation.
+    function applyChildTransformMatrix(child, spec, path) {
+        var matrix = spec.styles.transformMatrix;
+        if (!matrix)
+            return;
+        try {
+            child.relativeTransform =
+                matrix;
+        }
+        catch (error) {
+            warn("Could not apply transform for ".concat(path, ": ").concat(formatError(error)));
+        }
     }
     function applyConstraints(child, constraints, path) {
         if (!constraints)
@@ -2764,6 +2829,9 @@ function parsePayload(json) {
     if (parsed.component !== undefined) {
         validateComponentReference(parsed.component, "component");
     }
+    if (parsed.reference !== undefined) {
+        validateReferenceImage(parsed.reference);
+    }
     for (var _i = 0, _a = parsed.tokens; _i < _a.length; _i++) {
         var token = _a[_i];
         validateToken(token);
@@ -2865,6 +2933,9 @@ function validateNode(node, path) {
     }
     if (node.styles.blurEffects !== undefined) {
         validateEffects(node.styles.blurEffects, "".concat(path, ".blurEffects"));
+    }
+    if (node.styles.transformMatrix !== undefined) {
+        validateTransformMatrix(node.styles.transformMatrix, "".concat(path, ".transformMatrix"));
     }
     if (node.styles.borderStyle !== undefined &&
         node.styles.borderStyle !== "dashed" &&
@@ -3018,6 +3089,35 @@ function validateLinearGradient(gradient, path) {
             throw new Error("Invalid node ".concat(path, ".stops.").concat(index, ": token must be a string."));
         }
     });
+}
+function validateTransformMatrix(matrix, path) {
+    var isValid = Array.isArray(matrix) &&
+        matrix.length === 2 &&
+        matrix.every(function (row) {
+            return Array.isArray(row) &&
+                row.length === 3 &&
+                row.every(function (value) { return typeof value === "number" && Number.isFinite(value); });
+        });
+    if (!isValid) {
+        throw new Error("Invalid node ".concat(path, ": expected a 2x3 number matrix."));
+    }
+}
+function validateReferenceImage(reference) {
+    if (!isRecord(reference)) {
+        throw new Error("Invalid reference: expected object.");
+    }
+    if (typeof reference.imageBase64 !== "string" || reference.imageBase64.length === 0) {
+        throw new Error("Invalid reference: imageBase64 must be a non-empty string.");
+    }
+    if (typeof reference.imageMimeType !== "string") {
+        throw new Error("Invalid reference: imageMimeType must be a string.");
+    }
+    if (typeof reference.width !== "number" ||
+        typeof reference.height !== "number" ||
+        reference.width <= 0 ||
+        reference.height <= 0) {
+        throw new Error("Invalid reference: width and height must be positive numbers.");
+    }
 }
 function validateRadialGradient(gradient, path) {
     if (!isRecord(gradient)) {

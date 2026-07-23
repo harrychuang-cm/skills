@@ -315,12 +315,22 @@ assert.doesNotMatch(percentSvg, /viewBox/, "percentage size never fabricates a v
 const fidelityPayload = {
   ...legacyPayload,
   version: 2,
+  reference: {
+    height: 120,
+    imageBase64: "aGVsbG8=",
+    imageMimeType: "image/png",
+    width: 240,
+  },
   root: {
     ...legacyPayload.root,
     imageBase64: "aGVsbG8=",
     imageMimeType: "image/png",
     styles: {
       ...legacyPayload.root.styles,
+      transformMatrix: [
+        [0.707107, -0.707107, 40],
+        [0.707107, 0.707107, 11.72],
+      ],
       backgroundRadialGradient: {
         stops: [
           { color: "#ff0000", position: 0 },
@@ -382,6 +392,36 @@ assert.throws(
     ),
   (error) => error.message.includes("textGrowHeight"),
   "non-boolean textGrowHeight rejected",
+);
+
+assert.throws(
+  () =>
+    plugin.parsePayload(
+      JSON.stringify({
+        ...legacyPayload,
+        root: {
+          ...legacyPayload.root,
+          styles: {
+            ...legacyPayload.root.styles,
+            transformMatrix: [[1, 0], [0, 1]],
+          },
+        },
+      }),
+    ),
+  (error) => error.message.includes("transformMatrix"),
+  "malformed transform matrix rejected",
+);
+
+assert.throws(
+  () =>
+    plugin.parsePayload(
+      JSON.stringify({
+        ...legacyPayload,
+        reference: { imageBase64: "", imageMimeType: "image/png", height: 1, width: 1 },
+      }),
+    ),
+  (error) => error.message.includes("reference"),
+  "empty reference image rejected",
 );
 
 assert.throws(

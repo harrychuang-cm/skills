@@ -7,11 +7,14 @@ import type {
   FigmaExportLinearGradient,
   FigmaExportNode,
   FigmaExportRadialGradient,
+  FigmaExportReferenceImage,
   FigmaNodeConstraints,
   FigmaLayoutStrategy,
   FigmaExportPayload,
   FigmaRadiusCorners,
+  FigmaTransformMatrix,
 } from "./types";
+import { toPng } from "html-to-image";
 import type { ResolvedFigmaExportAddonOptions } from "./options";
 import { isFullyTransparentColor, normalizeCssColorString } from "./color";
 import {
@@ -177,6 +180,231 @@ function cssMatrixTranslationToNumber(
 function cssLineHeightToNumber(value: string): number | "normal" | undefined {
   if (value === "normal") return "normal";
   return cssLengthToNumber(value);
+}
+
+// Affine transform mapping local (x, y) to (a*x + c*y + tx, b*x + d*y + ty) —
+// the same layout as CSS matrix(a, b, c, d, tx, ty).
+type AffineTransform = {
+  a: number;
+  b: number;
+  c: number;
+  d: number;
+  tx: number;
+  ty: number;
+};
+
+const identityAffine: AffineTransform = { a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0 };
+const linearIdentityTolerance = 0.001;
+// ~0.5deg — below this the rotation is subpixel noise, not a real rotation.
+const rotationEmitThresholdRadians = 0.008;
+
+function parseCssTransformAffine(transform: string): AffineTransform | undefined {
+  const normalized = transform.trim();
+  if (!normalized || normalized === "none") return undefined;
+
+  const matrix3d = normalized.match(/^matrix3d\((.+)\)$/);
+  if (matrix3d) {
+    const values = matrix3d[1].split(",").map((value) => Number(value.trim()));
+    if (values.length !== 16 || !values.every(Number.isFinite)) return undefined;
+    return {
+      a: values[0],
+      b: values[1],
+      c: values[4],
+      d: values[5],
+      tx: values[12],
+      ty: values[13],
+    };
+  }
+
+  const matrix = normalized.match(/^matrix\((.+)\)$/);
+  if (!matrix) return undefined;
+  const values = matrix[1].split(",").map((value) => Number(value.trim()));
+  if (values.length !== 6 || !values.every(Number.isFinite)) return undefined;
+  return { a: values[0], b: values[1], c: values[2], d: values[3], tx: values[4], ty: values[5] };
+}
+
+function hasNonIdentityLinearPart(matrix: AffineTransform | undefined): boolean {
+  if (!matrix) return false;
+  return (
+    Math.abs(matrix.a - 1) > linearIdentityTolerance ||
+    Math.abs(matrix.b) > linearIdentityTolerance ||
+    Math.abs(matrix.c) > linearIdentityTolerance ||
+    Math.abs(matrix.d - 1) > linearIdentityTolerance
+  );
+}
+
+function parseTransformOriginPoint(computed: CSSStyleDeclaration): {
+  x: number;
+  y: number;
+} {
+  const parts = computed.transformOrigin.split(/\s+/).map((part) => Number.parseFloat(part));
+  return {
+    x: Number.isFinite(parts[0]) ? parts[0] : 0,
+    y: Number.isFinite(parts[1]) ? parts[1] : 0,
+  };
+}
+
+// CSS applies the matrix about transform-origin: p -> M*(p - O) + O + Mt.
+function affineAboutOrigin(
+  matrix: AffineTransform,
+  origin: { x: number; y: number },
+): AffineTransform {
+  return {
+    a: matrix.a,
+    b: matrix.b,
+    c: matrix.c,
+    d: matrix.d,
+    tx: origin.x - (matrix.a * origin.x + matrix.c * origin.y) + matrix.tx,
+    ty: origin.y - (matrix.b * origin.x + matrix.d * origin.y) + matrix.ty,
+  };
+}
+
+function composeAffine(outer: AffineTransform, inner: AffineTransform): AffineTransform {
+  return {
+    a: outer.a * inner.a + outer.c * inner.b,
+    b: outer.b * inner.a + outer.d * inner.b,
+    c: outer.a * inner.c + outer.c * inner.d,
+    d: outer.b * inner.c + outer.d * inner.d,
+    tx: outer.a * inner.tx + outer.c * inner.ty + outer.tx,
+    ty: outer.b * inner.tx + outer.d * inner.ty + outer.ty,
+  };
+}
+
+// The untransformed border-box size: layout metrics ignore CSS transforms,
+// unlike getBoundingClientRect which returns the transformed AABB.
+function getUntransformedBoxSize(
+  element: Element,
+  rect: DOMRect,
+): { height: number; width: number } {
+  if (element instanceof HTMLElement && element.offsetWidth > 0 && element.offsetHeight > 0) {
+    return { height: element.offsetHeight, width: element.offsetWidth };
+  }
+  if (element.clientWidth > 0 && element.clientHeight > 0) {
+    return { height: element.clientHeight, width: element.clientWidth };
+  }
+  return { height: rect.height, width: rect.width };
+}
+
+type ElementTransformGeometry = {
+  // Full local -> client affine for this element; children resolve against it.
+  clientTransform: AffineTransform;
+  fontScale: number;
+  height: number;
+  scaleX: number;
+  scaleY: number;
+  transformMatrix?: FigmaTransformMatrix;
+  width: number;
+  x: number;
+  y: number;
+};
+
+// Resolves exact geometry for elements affected by CSS transforms (their own
+// or an ancestor's): the untransformed box, the cumulative scale folded into
+// width/height, and a rotation-only matrix relative to the parent node.
+// Returns undefined outside transformed subtrees (callers keep the plain
+// bounding-rect fast path) and for degenerate/mirrored transforms.
+function resolveElementTransformGeometry(
+  element: Element,
+  computed: CSSStyleDeclaration,
+  rect: DOMRect,
+  parentRect: DOMRect,
+  parentClientTransform: AffineTransform | undefined,
+): ElementTransformGeometry | undefined {
+  const ownMatrix = parseCssTransformAffine(computed.transform);
+  const ownLinearActive = hasNonIdentityLinearPart(ownMatrix);
+  if (!parentClientTransform && !ownLinearActive) return undefined;
+
+  const box = getUntransformedBoxSize(element, rect);
+  if (box.width <= 0 || box.height <= 0) return undefined;
+
+  const ownAffine =
+    ownLinearActive && ownMatrix
+      ? affineAboutOrigin(ownMatrix, parseTransformOriginPoint(computed))
+      : identityAffine;
+  const parentTransform =
+    parentClientTransform ?? {
+      ...identityAffine,
+      tx: parentRect.left,
+      ty: parentRect.top,
+    };
+
+  // The linear part composes; the translation falls out of the client AABB:
+  // rect.topLeft = min over transformed box corners + translation.
+  const linear = composeAffine(parentTransform, ownAffine);
+  let minX = Number.POSITIVE_INFINITY;
+  let minY = Number.POSITIVE_INFINITY;
+  for (const [cornerX, cornerY] of [
+    [0, 0],
+    [box.width, 0],
+    [box.width, box.height],
+    [0, box.height],
+  ]) {
+    minX = Math.min(minX, linear.a * cornerX + linear.c * cornerY);
+    minY = Math.min(minY, linear.b * cornerX + linear.d * cornerY);
+  }
+  const clientTransform: AffineTransform = {
+    a: linear.a,
+    b: linear.b,
+    c: linear.c,
+    d: linear.d,
+    tx: rect.left - minX,
+    ty: rect.top - minY,
+  };
+
+  const cumulativeScaleX = Math.hypot(clientTransform.a, clientTransform.b);
+  const cumulativeDet =
+    clientTransform.a * clientTransform.d - clientTransform.b * clientTransform.c;
+  if (cumulativeScaleX < 1e-6 || cumulativeDet <= 0) return undefined;
+  const cumulativeScaleY = cumulativeDet / cumulativeScaleX;
+
+  const parentScaleX = Math.hypot(parentTransform.a, parentTransform.b);
+  const parentDet =
+    parentTransform.a * parentTransform.d - parentTransform.b * parentTransform.c;
+  if (parentScaleX < 1e-6 || parentDet <= 0) return undefined;
+
+  const rotation = Math.atan2(clientTransform.b, clientTransform.a);
+  const parentRotation = Math.atan2(parentTransform.b, parentTransform.a);
+  const relativeRotation = rotation - parentRotation;
+
+  // Node geometry lives in client-scale units with rotation-only matrices,
+  // so sizes always match what the browser painted.
+  const width = toFiniteNumber(box.width * cumulativeScaleX);
+  const height = toFiniteNumber(box.height * cumulativeScaleY);
+
+  // Relative translation in the parent's normalized (rotation-only) space.
+  const deltaX = clientTransform.tx - parentTransform.tx;
+  const deltaY = clientTransform.ty - parentTransform.ty;
+  const parentCos = Math.cos(parentRotation);
+  const parentSin = Math.sin(parentRotation);
+  const x = toFiniteNumber(parentCos * deltaX + parentSin * deltaY);
+  const y = toFiniteNumber(-parentSin * deltaX + parentCos * deltaY);
+
+  // Matrix components keep six decimals; coarser rounding would bend the
+  // rotation angle and de-normalize the matrix columns.
+  const matrixComponent = (value: number) =>
+    Number.isFinite(value) ? Math.round(value * 1e6) / 1e6 : 0;
+  const cos = Math.cos(relativeRotation);
+  const sin = Math.sin(relativeRotation);
+  const hasRotation = Math.abs(relativeRotation) > rotationEmitThresholdRadians;
+
+  return {
+    clientTransform,
+    fontScale: cumulativeScaleY,
+    height,
+    scaleX: cumulativeScaleX,
+    scaleY: cumulativeScaleY,
+    ...(hasRotation
+      ? {
+          transformMatrix: [
+            [matrixComponent(cos), matrixComponent(-sin), x],
+            [matrixComponent(sin), matrixComponent(cos), y],
+          ] as FigmaTransformMatrix,
+        }
+      : {}),
+    width,
+    x,
+    y,
+  };
 }
 
 function cssColorValue(value: string): string | undefined {
@@ -943,9 +1171,10 @@ function createInlineSvgNode(
   rect: DOMRect,
   parentRect: DOMRect,
   options: ResolvedFigmaExportAddonOptions,
+  geometry?: ElementTransformGeometry,
 ): FigmaExportNode {
-  const width = toFiniteNumber(rect.width);
-  const height = toFiniteNumber(rect.height);
+  const width = toFiniteNumber(geometry?.width ?? rect.width);
+  const height = toFiniteNumber(geometry?.height ?? rect.height);
   const component = getComponentReference(element);
 
   return {
@@ -961,9 +1190,12 @@ function createInlineSvgNode(
       height,
       opacity: Number(computed.opacity),
       overflow: computed.overflow,
+      ...(geometry?.transformMatrix
+        ? { transformMatrix: geometry.transformMatrix }
+        : {}),
       width,
-      x: toFiniteNumber(rect.left - parentRect.left),
-      y: toFiniteNumber(rect.top - parentRect.top),
+      x: geometry ? geometry.x : toFiniteNumber(rect.left - parentRect.left),
+      y: geometry ? geometry.y : toFiniteNumber(rect.top - parentRect.top),
     },
   };
 }
@@ -1571,7 +1803,9 @@ function getTextAlignVertical(element: Element): "CENTER" | undefined {
 
 function createTextLeafNode({
   bindings,
+  colorOverride,
   computed,
+  fontScale = 1,
   height,
   layoutStrategy,
   name,
@@ -1581,12 +1815,15 @@ function createTextLeafNode({
   layoutAlign,
   layoutGrow,
   textAlignVertical,
+  transformMatrix,
   width,
   x,
   y,
 }: {
   bindings: Partial<Record<FigmaBindingName, string>>;
+  colorOverride?: string;
   computed: CSSStyleDeclaration;
+  fontScale?: number;
   height: number;
   layoutStrategy?: FigmaLayoutStrategy;
   name: string;
@@ -1596,15 +1833,24 @@ function createTextLeafNode({
   layoutAlign?: "STRETCH";
   layoutGrow?: number;
   textAlignVertical?: "CENTER";
+  transformMatrix?: FigmaTransformMatrix;
   width: number;
   x: number;
   y: number;
 }): FigmaExportNode {
-  const color = cssColorValue(computed.color);
+  const color = colorOverride ?? cssColorValue(computed.color);
   const fontWeight = Number.parseInt(computed.fontWeight, 10);
-  const lineHeight = cssLineHeightToNumber(computed.lineHeight);
+  const rawLineHeight = cssLineHeightToNumber(computed.lineHeight);
+  const lineHeight =
+    typeof rawLineHeight === "number"
+      ? toFiniteNumber(rawLineHeight * fontScale)
+      : rawLineHeight;
   const textShadowEffects = getTextShadowEffects(computed);
-  const letterSpacing = cssLengthToNumber(computed.letterSpacing);
+  const rawLetterSpacing = cssLengthToNumber(computed.letterSpacing);
+  const letterSpacing =
+    rawLetterSpacing !== undefined
+      ? toFiniteNumber(rawLetterSpacing * fontScale)
+      : undefined;
   const textDecoration = getTextDecoration(computed);
   const italic = isItalicFontStyle(computed);
   const clampedLineCount = getLineClampCount(computed);
@@ -1635,7 +1881,7 @@ function createTextLeafNode({
       display: computed.display,
       ...(textShadowEffects.length > 0 ? { effects: textShadowEffects } : {}),
       fontFamily: computed.fontFamily,
-      fontSize: cssLengthToNumber(computed.fontSize) ?? 14,
+      fontSize: toFiniteNumber((cssLengthToNumber(computed.fontSize) ?? 14) * fontScale),
       ...(italic ? { fontStyle: "italic" as const } : {}),
       ...(Number.isFinite(fontWeight) ? { fontWeight } : {}),
       height,
@@ -1657,6 +1903,7 @@ function createTextLeafNode({
         : textAutoResize
           ? { textAutoResize }
           : {}),
+      ...(transformMatrix ? { transformMatrix } : {}),
       width: exportWidth,
       x: exportX,
       y,
@@ -1973,6 +2220,64 @@ function getDirectText(element: Element): string {
     .trim();
 }
 
+type FormControlTextContent = {
+  isPlaceholder: boolean;
+  text: string;
+};
+
+const textlessInputTypes = new Set([
+  "checkbox",
+  "color",
+  "file",
+  "hidden",
+  "image",
+  "radio",
+  "range",
+]);
+
+// Form control text lives in the value/placeholder properties, never in DOM
+// text nodes, so element traversal alone would export empty boxes.
+function getFormControlTextContent(
+  element: Element,
+): FormControlTextContent | undefined {
+  if (element instanceof HTMLInputElement) {
+    const type = (element.getAttribute("type") || "text").trim().toLowerCase();
+    if (textlessInputTypes.has(type)) return undefined;
+    if (type === "button" || type === "submit" || type === "reset") {
+      const label =
+        element.value || (type === "submit" ? "Submit" : type === "reset" ? "Reset" : "");
+      return label ? { isPlaceholder: false, text: label } : undefined;
+    }
+    if (type === "password" && element.value) {
+      return { isPlaceholder: false, text: "•".repeat(element.value.length) };
+    }
+    if (element.value) return { isPlaceholder: false, text: element.value };
+    if (element.placeholder) return { isPlaceholder: true, text: element.placeholder };
+    return undefined;
+  }
+
+  if (element instanceof HTMLTextAreaElement) {
+    if (element.value) return { isPlaceholder: false, text: element.value };
+    if (element.placeholder) return { isPlaceholder: true, text: element.placeholder };
+    return undefined;
+  }
+
+  if (element instanceof HTMLSelectElement) {
+    const label = element.selectedOptions[0]?.textContent?.replace(/\s+/g, " ").trim();
+    return label ? { isPlaceholder: false, text: label } : undefined;
+  }
+
+  return undefined;
+}
+
+function getPlaceholderTextColor(element: Element): string | undefined {
+  try {
+    return cssColorValue(window.getComputedStyle(element, "::placeholder").color);
+  } catch {
+    return undefined;
+  }
+}
+
 type DirectTextRun = {
   rect: DOMRect;
   text: string;
@@ -2150,6 +2455,28 @@ function drawSourceToRasterCapture(
     if (!context) return undefined;
     context.drawImage(source, 0, 0, width, height);
     return dataUrlToRasterCapture(canvas.toDataURL("image/png"));
+  } catch {
+    return undefined;
+  }
+}
+
+const subtreeRasterTimeoutMs = 8000;
+
+// Renders a live subtree to pixels via html-to-image. This is the universal
+// escape hatch (data-figma-rasterize) for content the node graph cannot
+// represent, and the source of the browser reference snapshot. A capture
+// that stalls (cross-origin fonts, huge trees) must never hang the export.
+async function captureSubtreeRaster(
+  element: HTMLElement,
+): Promise<RasterImageCapture | undefined> {
+  try {
+    const dataUrl = await Promise.race([
+      toPng(element, { cacheBust: false, pixelRatio: 1 }),
+      new Promise<undefined>((resolve) => {
+        globalThis.setTimeout(() => resolve(undefined), subtreeRasterTimeoutMs);
+      }),
+    ]);
+    return dataUrl ? dataUrlToRasterCapture(dataUrl) : undefined;
   } catch {
     return undefined;
   }
@@ -2410,6 +2737,7 @@ async function createExportNode(
   options: ResolvedFigmaExportAddonOptions,
   traversalState: FigmaExportTraversalState,
   forceAbsoluteLayout = false,
+  parentClientTransform?: AffineTransform,
 ): Promise<FigmaExportNode | undefined> {
   await markExportNodeVisited(traversalState);
 
@@ -2423,9 +2751,57 @@ async function createExportNode(
   }
 
   const rect = element.getBoundingClientRect();
-  const width = toFiniteNumber(rect.width);
-  const height = toFiniteNumber(rect.height);
+  if (rect.width <= 0 || rect.height <= 0) return undefined;
+
+  // Universal escape hatch: a subtree marked data-figma-rasterize="true"
+  // exports as one bitmap exactly as painted (canvas/WebGL, exotic CSS, ...).
+  if (
+    element instanceof HTMLElement &&
+    element.getAttribute("data-figma-rasterize") === "true"
+  ) {
+    const rasterized = await captureSubtreeRaster(element);
+    if (rasterized) {
+      return {
+        bindings: {},
+        children: [],
+        ...rasterized,
+        kind: "image",
+        layoutStrategy: "absolute",
+        name: getElementName(element, options),
+        styles: {
+          display: computed.display,
+          height: toFiniteNumber(rect.height),
+          imageScaleMode: "FILL",
+          opacity: 1,
+          overflow: computed.overflow,
+          width: toFiniteNumber(rect.width),
+          x: toFiniteNumber(rect.left - parentRect.left),
+          y: toFiniteNumber(rect.top - parentRect.top),
+        },
+      };
+    }
+  }
+
+  const transformGeometry = resolveElementTransformGeometry(
+    element,
+    computed,
+    rect,
+    parentRect,
+    parentClientTransform,
+  );
+  const width = toFiniteNumber(transformGeometry?.width ?? rect.width);
+  const height = toFiniteNumber(transformGeometry?.height ?? rect.height);
   if (width <= 0 || height <= 0) return undefined;
+  const localX = transformGeometry
+    ? transformGeometry.x
+    : toFiniteNumber(rect.left - parentRect.left);
+  const localY = transformGeometry
+    ? transformGeometry.y
+    : toFiniteNumber(rect.top - parentRect.top);
+  const transformMatrix = transformGeometry?.transformMatrix;
+  const fontScale = transformGeometry?.fontScale ?? 1;
+  const insetScaleX = transformGeometry?.scaleX ?? 1;
+  const insetScaleY = transformGeometry?.scaleY ?? 1;
 
   const rules = getRulesForElement(ruleIndex, element);
   const forceAutoLayout =
@@ -2435,7 +2811,14 @@ async function createExportNode(
   const component = getComponentReference(element);
 
   if (element instanceof SVGElement) {
-    return createInlineSvgNode(element, computed, rect, parentRect, options);
+    return createInlineSvgNode(
+      element,
+      computed,
+      rect,
+      parentRect,
+      options,
+      transformGeometry,
+    );
   }
 
   const clipPathNode = createClipPathSvgNode(
@@ -2462,6 +2845,7 @@ async function createExportNode(
         options,
         traversalState,
         nextForceAbsoluteLayout && !child.hasAttribute("data-component"),
+        transformGeometry?.clientTransform,
       ),
     ),
   );
@@ -2553,34 +2937,59 @@ async function createExportNode(
 
   const elementOutOfFlow = isOutOfFlowPositioned(computed);
 
-  if (directText && !hasElementChildren(element) && !element.shadowRoot) {
-    const leafText = applyTextTransformToText(getRenderedLeafText(element), computed);
+  const formControlText = getFormControlTextContent(element);
+  if (
+    formControlText !== undefined ||
+    (directText && !hasElementChildren(element) && !element.shadowRoot)
+  ) {
+    const leafText = applyTextTransformToText(
+      formControlText !== undefined
+        ? formControlText.text
+        : getRenderedLeafText(element),
+      computed,
+    );
+    const leafColorOverride = formControlText?.isPlaceholder
+      ? getPlaceholderTextColor(element)
+      : undefined;
+    // Single-line controls center their text vertically; textareas stay top.
+    const leafTextAlignVertical =
+      textAlignVertical ??
+      (formControlText !== undefined && !(element instanceof HTMLTextAreaElement)
+        ? ("CENTER" as const)
+        : undefined);
     if (hasBoxedTextStyle(computed, border)) {
-      const paddingLeft = cssLengthToNumber(computed.paddingLeft) ?? 0;
-      const paddingRight = cssLengthToNumber(computed.paddingRight) ?? 0;
-      const paddingTop = cssLengthToNumber(computed.paddingTop) ?? 0;
-      const paddingBottom = cssLengthToNumber(computed.paddingBottom) ?? 0;
+      const paddingLeft = (cssLengthToNumber(computed.paddingLeft) ?? 0) * insetScaleX;
+      const paddingRight = (cssLengthToNumber(computed.paddingRight) ?? 0) * insetScaleX;
+      const paddingTop = (cssLengthToNumber(computed.paddingTop) ?? 0) * insetScaleY;
+      const paddingBottom =
+        (cssLengthToNumber(computed.paddingBottom) ?? 0) * insetScaleY;
       // Browser text content sits after the border and padding; the exported
       // box is the border box, so both inset the inner text node.
-      const borderLeftWidth = cssBorderWidth(computed, "left");
-      const borderRightWidth = cssBorderWidth(computed, "right");
-      const borderTopWidth = cssBorderWidth(computed, "top");
-      const borderBottomWidth = cssBorderWidth(computed, "bottom");
+      const borderLeftWidth = cssBorderWidth(computed, "left") * insetScaleX;
+      const borderRightWidth = cssBorderWidth(computed, "right") * insetScaleX;
+      const borderTopWidth = cssBorderWidth(computed, "top") * insetScaleY;
+      const borderBottomWidth = cssBorderWidth(computed, "bottom") * insetScaleY;
       const contentHeight = Math.max(
         1,
         height - paddingTop - paddingBottom - borderTopWidth - borderBottomWidth,
       );
       const textNode = createTextLeafNode({
         bindings,
+        colorOverride: leafColorOverride,
         computed,
+        fontScale,
         height: contentHeight,
         layoutStrategy: textLayoutStrategy,
         name: `${getElementName(element, options)}__text`,
         text: leafText,
-        textAutoResize: getTextAutoResize(element, computed, contentHeight),
+        textAutoResize: getTextAutoResize(
+          element,
+          computed,
+          contentHeight / insetScaleY,
+        ),
         layoutAlign,
         layoutGrow,
-        textAlignVertical,
+        textAlignVertical: leafTextAlignVertical,
         width: Math.max(
           1,
           width - paddingLeft - paddingRight - borderLeftWidth - borderRightWidth,
@@ -2628,9 +3037,10 @@ async function createExportNode(
             ...(layoutSizingHorizontal && !bindings.height
               ? { layoutSizingVertical: "HUG" as const }
               : {}),
+            ...(transformMatrix ? { transformMatrix } : {}),
             width,
-            x: toFiniteNumber(rect.left - parentRect.left),
-            y: toFiniteNumber(rect.top - parentRect.top),
+            x: localX,
+            y: localY,
           },
         };
       }
@@ -2667,28 +3077,32 @@ async function createExportNode(
           paddingTop,
           ...radiusStyles,
           ...(layoutSizingHorizontal ? { layoutSizingHorizontal } : {}),
+          ...(transformMatrix ? { transformMatrix } : {}),
           width,
-          x: toFiniteNumber(rect.left - parentRect.left),
-          y: toFiniteNumber(rect.top - parentRect.top),
+          x: localX,
+          y: localY,
         },
       };
     }
 
     return createTextLeafNode({
       bindings,
+      colorOverride: leafColorOverride,
       computed,
+      fontScale,
       height,
       layoutStrategy: textLayoutStrategy,
       name: getElementName(element, options),
       outOfFlow: elementOutOfFlow,
       text: leafText,
-      textAutoResize: getTextAutoResize(element, computed, height),
+      textAutoResize: getTextAutoResize(element, computed, height / insetScaleY),
       layoutAlign,
       layoutGrow,
-      textAlignVertical,
+      textAlignVertical: leafTextAlignVertical,
+      transformMatrix,
       width,
-      x: toFiniteNumber(rect.left - parentRect.left),
-      y: toFiniteNumber(rect.top - parentRect.top),
+      x: localX,
+      y: localY,
     });
   }
 
@@ -2727,18 +3141,26 @@ async function createExportNode(
           }),
         )
       : [];
-  // Bare text runs have no layout element, so the frame keeps every child at
-  // its measured position instead of approximating inline flow in auto layout.
+  // Bare text runs have no layout element and transformed nodes carry exact
+  // matrix positions, so both keep the frame at measured absolute positions
+  // instead of approximating them in auto layout.
+  const hasTransformedChildNodes = childNodes.some(
+    (node) => node.styles.transformMatrix,
+  );
+  const forceAbsoluteChildren =
+    inlineTextRunNodes.length > 0 ||
+    Boolean(transformGeometry) ||
+    hasTransformedChildNodes;
   const autoLayoutMeasurement =
     kind === "frame" &&
-    inlineTextRunNodes.length === 0 &&
+    !forceAbsoluteChildren &&
     frameLayoutStrategy === "autoLayout" &&
     isFlexDisplay(computed.display) &&
     childEntries.length > 0
       ? measureAutoLayoutChildren({ childEntries, computed, containerRect: rect })
       : undefined;
   const effectiveLayoutStrategy: FigmaLayoutStrategy =
-    inlineTextRunNodes.length > 0
+    forceAbsoluteChildren
       ? "absolute"
       : autoLayoutMeasurement?.strategy ?? frameLayoutStrategy;
   const orderedChildNodes =
@@ -2816,9 +3238,10 @@ async function createExportNode(
         cssBorderWidth(computed, "top"),
     ...radiusStyles,
     ...(textAlignVertical ? { textAlignVertical } : {}),
+    ...(transformMatrix ? { transformMatrix } : {}),
     width,
-    x: toFiniteNumber(rect.left - parentRect.left),
-    y: toFiniteNumber(rect.top - parentRect.top),
+    x: localX,
+    y: localY,
   };
   return {
     bindings,
@@ -2904,6 +3327,27 @@ export async function createFigmaExportPayload({
           : undefined)
       : undefined;
 
+  // Browser-render snapshot: the importer places it as a locked reference
+  // layer so any node-graph gap is immediately visible next to the import.
+  let reference: FigmaExportReferenceImage | undefined;
+  const rootPixels = rootRect.width * rootRect.height;
+  if (
+    options.referenceImage &&
+    root instanceof HTMLElement &&
+    rootPixels > 0 &&
+    rootPixels <= 8_000_000
+  ) {
+    const capture = await captureSubtreeRaster(root);
+    if (capture) {
+      reference = {
+        height: toFiniteNumber(rootRect.height),
+        imageBase64: capture.imageBase64,
+        imageMimeType: capture.imageMimeType,
+        width: toFiniteNumber(rootRect.width),
+      };
+    }
+  }
+
   const tokenNames = new Set<string>();
   onProgress?.({ nodeCount: traversalState.nodeCount, phase: "tokens" });
   await waitForExportFrame();
@@ -2924,6 +3368,7 @@ export async function createFigmaExportPayload({
     ...(component ? { component } : {}),
     componentTitle,
     generatedAt: new Date().toISOString(),
+    ...(reference ? { reference } : {}),
     root: rootNode,
     storyId,
     storyName,

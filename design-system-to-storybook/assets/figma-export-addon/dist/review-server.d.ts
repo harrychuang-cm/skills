@@ -2,7 +2,7 @@ import { IncomingMessage, ServerResponse } from 'node:http';
 import { FigmaReviewEntry } from './review.js';
 import { createVisualCommentStore } from './visual-comment-store.js';
 import 'react';
-import './options-C_8ObI65.js';
+import './options-D5CIIUn-.js';
 import './visualComment-CktpX_T5.js';
 
 declare const defaultFigmaReviewStatusApiPath = "/__figma_export_review_status";

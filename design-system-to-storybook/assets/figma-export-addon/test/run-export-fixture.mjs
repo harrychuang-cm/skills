@@ -81,7 +81,7 @@ function runChrome(chromeBinary, url) {
         "--hide-scrollbars",
         "--force-device-scale-factor=1",
         "--window-size=1200,900",
-        "--virtual-time-budget=20000",
+        "--virtual-time-budget=60000",
         "--dump-dom",
         url,
       ],
@@ -132,6 +132,7 @@ const NEW_STYLE_KEYS = [
   "radiusCorners",
   "textDecoration",
   "textGrowHeight",
+  "transformMatrix",
 ];
 
 function assertPayload(payload) {
@@ -423,6 +424,96 @@ function assertPayload(payload) {
     ["z-low", "z-high"],
     "children sorted bottom-to-top by z-index",
   );
+
+  // Form control values export as inner text nodes
+  const findLeafText = (node) => {
+    if (node.kind === "text") return node;
+    for (const child of node.children ?? []) {
+      const found = findLeafText(child);
+      if (found) return found;
+    }
+    return undefined;
+  };
+  const inputValue = findCase(root, "case-input-value");
+  const inputValueText = findLeafText(inputValue);
+  assert.strictEqual(inputValueText?.text, "Hello value", "input value exported");
+  assert.strictEqual(
+    inputValueText.styles.textAlignVertical,
+    "CENTER",
+    "input text centers vertically",
+  );
+  const inputPlaceholder = findLeafText(findCase(root, "case-input-placeholder"));
+  assert.strictEqual(inputPlaceholder?.text, "Type here", "placeholder exported");
+  assert.ok(inputPlaceholder.styles.color, "placeholder has a color");
+  assert.notStrictEqual(
+    inputPlaceholder.styles.color,
+    "#222222",
+    "placeholder uses the ::placeholder color, not the input color",
+  );
+  const password = findLeafText(findCase(root, "case-input-password"));
+  assert.strictEqual(password?.text, "••••••", "password masks its characters");
+  const select = findLeafText(findCase(root, "case-select"));
+  assert.strictEqual(select?.text, "Chosen option", "selected option text exported");
+  const textarea = findLeafText(findCase(root, "case-textarea"));
+  assert.strictEqual(
+    textarea?.text,
+    "Multi line textarea content",
+    "textarea value exported",
+  );
+  assert.ok(
+    textarea.styles.textAlignVertical !== "CENTER",
+    "textarea text stays top-aligned",
+  );
+
+  // CSS rotation exports the untransformed box plus a rotation matrix
+  const rotate = findCase(root, "case-rotate");
+  const diamond = rotate.children.find((child) => child.name === "diamond");
+  assert.ok(diamond, "rotated diamond exported");
+  approx(diamond.styles.width, 40, 1, "diamond keeps its untransformed width");
+  approx(diamond.styles.height, 40, 1, "diamond keeps its untransformed height");
+  const matrix = diamond.styles.transformMatrix;
+  assert.ok(matrix, "diamond carries a transform matrix");
+  approx(matrix[0][0], Math.SQRT1_2, 0.01, "matrix cos(45deg)");
+  approx(matrix[1][0], Math.SQRT1_2, 0.01, "matrix sin(45deg)");
+  approx(matrix[0][2], 40, 0.75, "matrix x translation");
+  approx(matrix[1][2], 11.72, 0.75, "matrix y translation");
+  assert.strictEqual(rotate.layoutStrategy, "absolute", "rotated child forces absolute parent");
+
+  // Counter-rotated inner content carries the inverse rotation relative to
+  // its rotated parent, so it renders upright inside the rotated frame.
+  const rotateNested = findCase(root, "case-rotate-nested");
+  const nestedDiamond = rotateNested.children.find((child) => child.name === "diamond");
+  assert.ok(nestedDiamond?.styles.transformMatrix, "nested diamond keeps its matrix");
+  const nestedInner = findLeafText(nestedDiamond);
+  assert.strictEqual(nestedInner?.text, "7", "counter-rotated badge text preserved");
+  const innerMatrix = nestedInner.styles.transformMatrix;
+  assert.ok(innerMatrix, "counter-rotated inner carries the inverse rotation");
+  approx(innerMatrix[0][0], Math.SQRT1_2, 0.01, "inner matrix cos(-45deg)");
+  approx(innerMatrix[1][0], -Math.SQRT1_2, 0.01, "inner matrix sin(-45deg)");
+
+  // CSS scale folds into the exported size
+  const scale = findCase(root, "case-scale");
+  const scaled = scale.children.find((child) => child.name === "scaled");
+  approx(scaled.styles.width, 60, 1, "scaled width folded into size");
+  approx(scaled.styles.height, 30, 1, "scaled height folded into size");
+  assert.ok(!scaled.styles.transformMatrix, "pure scale emits no rotation matrix");
+
+  // data-figma-rasterize exports the painted pixels of the subtree
+  const rasterize = findCase(root, "case-rasterize");
+  assert.strictEqual(rasterize.kind, "image", "rasterized subtree is an image node");
+  assert.ok(
+    rasterize.imageBase64 && rasterize.imageBase64.length > 0,
+    "rasterized pixels captured",
+  );
+
+  // The payload carries a browser-render reference snapshot
+  assert.ok(payload.reference, "reference snapshot attached");
+  assert.strictEqual(
+    payload.reference.imageMimeType,
+    "image/png",
+    "reference snapshot is a png",
+  );
+  approx(payload.reference.width, root.styles.width, 2, "reference matches root width");
 }
 
 async function main() {

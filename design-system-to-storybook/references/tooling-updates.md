@@ -50,7 +50,7 @@ Template workspaces (created from the bundled `storybook-template`) are the exce
 
 ## Compatibility When Updating
 
-The payload contract stays at version 2 with optional fidelity fields, so the two tools never require lockstep updates. New capture capabilities always ship as fields older importers ignore (for example addon 0.5.0 emits `textGrowHeight` and `styles.blurEffects` instead of new enum values inside fields that older importers validate strictly):
+The payload contract stays at version 2 with optional fidelity fields, so the two tools never require lockstep updates. New capture capabilities always ship as fields older importers ignore (for example addon 0.5.0+ emits `textGrowHeight`, `styles.blurEffects`, and `styles.transformMatrix` instead of new enum values inside fields that older importers validate strictly):
 
 | Payload from | Old importer (≤1.2.4) | Current importer |
 |---|---|---|

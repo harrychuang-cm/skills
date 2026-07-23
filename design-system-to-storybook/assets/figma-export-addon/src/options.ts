@@ -9,6 +9,8 @@ export type FigmaExportAddonOptions = {
   globalName?: string;
   payloadSyncUrl?: string;
   pluginDataKey?: string;
+  /** Attach a browser-render snapshot to the payload (default true). */
+  referenceImage?: boolean;
   storyTitlePrefix?: false | string | string[];
   tokenLayers?: Partial<Record<TokenLayer, string>>;
   tokenPrefix?: string;
@@ -23,6 +25,7 @@ export type ResolvedFigmaExportAddonOptions = {
   globalName: string;
   payloadSyncUrl?: string;
   pluginDataKey: string;
+  referenceImage: boolean;
   storyTitlePrefix: false | string[];
   tokenLayers: Record<TokenLayer, string>;
   tokenPrefix?: string;
@@ -65,6 +68,7 @@ export function resolveFigmaExportAddonOptions(
     globalName: options?.globalName ?? defaultFigmaExportGlobalName,
     ...(options?.payloadSyncUrl ? { payloadSyncUrl: options.payloadSyncUrl } : {}),
     pluginDataKey: options?.pluginDataKey ?? "storybookCssToken",
+    referenceImage: options?.referenceImage ?? true,
     storyTitlePrefix: normalizeStoryTitlePrefix(options?.storyTitlePrefix),
     tokenLayers: {
       ...defaultTokenLayers,

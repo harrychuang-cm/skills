@@ -104,7 +104,7 @@ function runChrome(chromeBinary, url, width = 1200, height = 900) {
         "--hide-scrollbars",
         "--force-device-scale-factor=1",
         `--window-size=${width},${height}`,
-        "--virtual-time-budget=20000",
+        "--virtual-time-budget=60000",
         "--dump-dom",
         url,
       ],

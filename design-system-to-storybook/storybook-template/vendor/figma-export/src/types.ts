@@ -110,6 +110,20 @@ export type FigmaRadiusCorners = {
 
 export type FigmaImageScaleMode = "FILL" | "FIT";
 
+// Row-major 2x3 affine matrix in Figma Transform layout: node-local (x, y)
+// maps to parent space as (m00*x + m01*y + m02, m10*x + m11*y + m12).
+export type FigmaTransformMatrix = [
+  [number, number, number],
+  [number, number, number],
+];
+
+export type FigmaExportReferenceImage = {
+  height: number;
+  imageBase64: string;
+  imageMimeType: string;
+  width: number;
+};
+
 export type FigmaTextDecoration = "STRIKETHROUGH" | "UNDERLINE";
 
 export type FigmaExportNode = {
@@ -174,6 +188,9 @@ export type FigmaExportNode = {
     // Fixed-width wrapped text; a separate flag (instead of a textAutoResize
     // value) so importers predating it keep accepting the payload.
     textGrowHeight?: boolean;
+    // CSS transform (rotation, mirrored/nested rotations) relative to the
+    // parent node; width/height/x/y describe the untransformed local box.
+    transformMatrix?: FigmaTransformMatrix;
     width: number;
     x: number;
     y: number;
@@ -185,6 +202,9 @@ export type FigmaExportPayload = {
   component?: FigmaComponentReference;
   componentTitle: string;
   generatedAt: string;
+  // Pixel snapshot of the rendered story for side-by-side fidelity checks in
+  // Figma; older importers ignore the extra field.
+  reference?: FigmaExportReferenceImage;
   root: FigmaExportNode;
   storyId: string;
   storyName: string;

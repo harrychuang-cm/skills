@@ -13,7 +13,13 @@
       "Bash(perl -0pi -e 's/\\\\.\\\\.\\\\.\\\\\\(boxShadowEffects\\\\.length > 0 \\\\? \\\\{ effects: boxShadowEffects \\\\} : \\\\{\\\\}\\\\\\),/...\\(boxShadowEffects.length > 0 ? { effects: boxShadowEffects } : {}\\),\\\\n            ...\\(blurEffects.length > 0 ? { blurEffects } : {}\\),/ if $. == 0' assets/figma-export-addon/src/domExport.ts)",
       "Bash(perl -pi -e 's/applyEffects\\\\\\(node, styles\\\\.effects, path\\\\\\);/applyEffects\\(node, collectSpecEffects\\(styles\\), path\\);/g; s/applyEffects\\\\\\(wrapper, styles\\\\.effects, path\\\\\\);/applyEffects\\(wrapper, collectSpecEffects\\(styles\\), path\\);/g' assets/figma-plugin-code-to-design/code.ts)",
       "Bash(git fetch *)",
-      "Bash(git rev-list *)"
+      "Bash(git rev-list *)",
+      "Bash(sed -i '' 's/\"version\": \"1.3.0\"/\"version\": \"1.4.0\"/' package.json)",
+      "Bash(sed -i '' 's/assert.equal\\(packageJson.version, \"1.3.0\", \"canonical package uses release version 1.3.0\"\\);/assert.equal\\(packageJson.version, \"1.4.0\", \"canonical package uses release version 1.4.0\"\\);/' test/verify-manifest.mjs)",
+      "Bash(sed -i '' 's/      const decorator = window.FigmaOverlayFixture.createFigmaExportDecorator\\({\\\\n        storyTitlePrefix: false,/&/' /dev/null)",
+      "Bash(perl -pi -e 's/\\(createFigmaExportDecorator\\\\\\(\\\\{\\)/$1\\\\n        referenceImage: false,/' test/overlay-fixture.html test/tokenless-fixture.html)",
+      "Bash(sed -i '' 's/addon 0.5.0 and importer 1.3.0/addon 0.6.0 and importer 1.4.0/' references/figma-export-review-setup.md)",
+      "Bash(sed -i '' 's/for example addon 0.5.0 emits `textGrowHeight` and `styles.blurEffects`/for example addon 0.5.0+ emits `textGrowHeight`, `styles.blurEffects`, and `styles.transformMatrix`/' references/tooling-updates.md)"
     ]
   }
 }

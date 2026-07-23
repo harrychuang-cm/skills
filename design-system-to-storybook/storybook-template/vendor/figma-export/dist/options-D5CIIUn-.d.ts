@@ -68,6 +68,24 @@ type FigmaRadiusCorners = {
     topRight: number;
 };
 type FigmaImageScaleMode = "FILL" | "FIT";
+type FigmaTransformMatrix = [
+    [
+        number,
+        number,
+        number
+    ],
+    [
+        number,
+        number,
+        number
+    ]
+];
+type FigmaExportReferenceImage = {
+    height: number;
+    imageBase64: string;
+    imageMimeType: string;
+    width: number;
+};
 type FigmaTextDecoration = "STRIKETHROUGH" | "UNDERLINE";
 type FigmaExportNode = {
     bindings: Partial<Record<FigmaBindingName, string>>;
@@ -127,6 +145,7 @@ type FigmaExportNode = {
         textAutoResize?: "WIDTH_AND_HEIGHT";
         textDecoration?: FigmaTextDecoration;
         textGrowHeight?: boolean;
+        transformMatrix?: FigmaTransformMatrix;
         width: number;
         x: number;
         y: number;
@@ -137,6 +156,7 @@ type FigmaExportPayload = {
     component?: FigmaComponentReference;
     componentTitle: string;
     generatedAt: string;
+    reference?: FigmaExportReferenceImage;
     root: FigmaExportNode;
     storyId: string;
     storyName: string;
@@ -159,6 +179,8 @@ type FigmaExportAddonOptions = {
     globalName?: string;
     payloadSyncUrl?: string;
     pluginDataKey?: string;
+    /** Attach a browser-render snapshot to the payload (default true). */
+    referenceImage?: boolean;
     storyTitlePrefix?: false | string | string[];
     tokenLayers?: Partial<Record<TokenLayer, string>>;
     tokenPrefix?: string;
@@ -172,6 +194,7 @@ type ResolvedFigmaExportAddonOptions = {
     globalName: string;
     payloadSyncUrl?: string;
     pluginDataKey: string;
+    referenceImage: boolean;
     storyTitlePrefix: false | string[];
     tokenLayers: Record<TokenLayer, string>;
     tokenPrefix?: string;

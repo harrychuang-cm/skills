@@ -2,7 +2,7 @@
 
 Figma development plugin for importing Storybook Code To Design JSON exports. The plugin parses JSON only; it does not evaluate pasted JavaScript.
 
-Version: `1.3.0` (the authoritative version is stamped from `package.json` into the UI badge and `PLUGIN_VERSION`)
+Version: `1.4.0` (the authoritative version is stamped from `package.json` into the UI badge and `PLUGIN_VERSION`)
 
 ## Fidelity fields (payload v2, all optional)
 
@@ -18,6 +18,8 @@ Payloads produced by the current exporter may carry additional optional fields; 
 - `imageBase64` + `imageMimeType` + `styles.imageScaleMode` → raster fills via `figma.createImage` (decode failures warn and keep an empty frame). On `frame` nodes the image renders as a CSS-style background layer: background color at the bottom, then the image, then radial and linear gradients on top.
 - `styles.backgroundRadialGradient` → `GRADIENT_RADIAL` fill (ellipse inscribed in the node bounds)
 - `styles.borderStyle: "dashed" | "dotted"` → stroke `dashPattern` (dotted adds a round cap)
+- `styles.transformMatrix` (2x3 rotation matrix) → applied as `relativeTransform` after placement, reproducing CSS `rotate()` including nested counter-rotations; width/height/x/y always describe the untransformed local box
+- `payload.reference` (browser-render PNG) → placed as a locked "Browser Reference" layer beside the import (inside the component section, or next to the page root) and replaced on re-import, so fidelity gaps are visible at a glance
 - `colorFromCss` also accepts 4/8-digit hex, `hsl()/hsla()`, `rgb(r g b / a)` syntax, and common named colors (`white`, `black`, `transparent`, ...); `linear-gradient` supports arbitrary angles
 
 Import behavior notes:

@@ -1,4 +1,4 @@
-import { b as FigmaExportAddonOptions } from './options-C_8ObI65.js';
+import { b as FigmaExportAddonOptions } from './options-D5CIIUn-.js';
 import './visualComment-CktpX_T5.js';
 
 type FigmaExportPreviewContext = {

@@ -116,6 +116,19 @@ type FigmaRadiusCorners = {
 
 type FigmaImageScaleMode = "FILL" | "FIT";
 
+// Row-major 2x3 affine matrix in Figma Transform layout.
+type FigmaTransformMatrix = [
+  [number, number, number],
+  [number, number, number],
+];
+
+type FigmaExportReferenceImage = {
+  height: number;
+  imageBase64: string;
+  imageMimeType: string;
+  width: number;
+};
+
 type FigmaTextDecorationSpec = "STRIKETHROUGH" | "UNDERLINE";
 
 type FigmaExportNode = {
@@ -173,6 +186,7 @@ type FigmaExportNode = {
     textAutoResize?: TextAutoResizeMode;
     textDecoration?: FigmaTextDecorationSpec;
     textGrowHeight?: boolean;
+    transformMatrix?: FigmaTransformMatrix;
     width: number;
     x: number;
     y: number;
@@ -187,6 +201,7 @@ type FigmaExportPayload = {
   componentSystem?: FigmaComponentSystem;
   componentTitle: string;
   generatedAt: string;
+  reference?: FigmaExportReferenceImage;
   root: FigmaExportNode;
   storyId: string;
   storyName: string;
@@ -211,6 +226,7 @@ type ImportStats = {
   componentsCreated: number;
   importedAsComponent?: boolean;
   nodesCreated: number;
+  referencePlaced?: boolean;
   reusedComponents: number;
   reusedVariables: number;
   rootName?: string;
@@ -368,7 +384,7 @@ type ComponentSectionTarget = {
 
 // Bump this on every behavior change so the Figma UI badge confirms which
 // build is running (Figma re-reads code.js per run, but the badge removes doubt).
-const PLUGIN_VERSION = "1.3.0 (2026-07-22)";
+const PLUGIN_VERSION = "1.4.0 (2026-07-23)";
 
 const SUPPORTED_PAYLOAD_VERSIONS = [1, 2] as const;
 const DEFAULT_TOKEN_PLUGIN_DATA_KEY = "storybookCssToken";
@@ -387,6 +403,8 @@ const COMPONENT_SECTION_MIN_HEIGHT = 160;
 const COMPONENT_SECTION_MIN_WIDTH = 240;
 const COMPONENT_SECTION_PADDING = 64;
 const COMPONENT_SECTION_PLUGIN_DATA_KEY = "storybookComponentSectionKey";
+const REFERENCE_IMAGE_PLUGIN_DATA_KEY = "storybookReferenceImage";
+const REFERENCE_IMAGE_GAP = 64;
 const COMPONENT_SPEC_HASH_PLUGIN_DATA_KEY = "storybookComponentSpecHash";
 const COMPONENT_SECTION_ROLE_PLUGIN_DATA_KEY = "storybookComponentSectionRole";
 const STORYBOOK_STORY_PLUGIN_DATA_KEY = "storybookStoryId";
@@ -513,6 +531,13 @@ async function importStorybookDesign(payload: FigmaExportPayload): Promise<Impor
   if (viewportNode.parent === figma.currentPage) {
     figma.currentPage.selection = [viewportNode];
   }
+  placeBrowserReferenceImage(
+    payload,
+    shouldImportAsComponent ? componentViewportNode : rootNode,
+    viewportNode,
+    targetPage,
+    context.stats,
+  );
   cleanupEmptyManagedSections(componentDefinitionsPage);
   figma.viewport.scrollAndZoomIntoView([viewportNode]);
 
@@ -755,6 +780,76 @@ function cleanupEmptyManagedSections(targetPage: PageNode): void {
       node.remove();
     }
   }
+}
+
+// Places the exporter's browser-render snapshot as a locked layer next to
+// the import, so node-graph gaps are immediately visible inside Figma.
+function placeBrowserReferenceImage(
+  payload: FigmaExportPayload,
+  anchorNode: SceneNode,
+  viewportNode: SceneNode,
+  targetPage: PageNode,
+  stats: ImportStats,
+): void {
+  const reference = payload.reference;
+  if (!reference) return;
+
+  let frame: FrameNode;
+  try {
+    const bytes = figma.base64Decode(reference.imageBase64);
+    const image = figma.createImage(bytes);
+    frame = figma.createFrame();
+    frame.name = "Browser Reference";
+    frame.resize(
+      Math.max(1, safeNumber(reference.width, 1)),
+      Math.max(1, safeNumber(reference.height, 1)),
+    );
+    frame.fills = [{ imageHash: image.hash, scaleMode: "FILL", type: "IMAGE" }];
+  } catch (error) {
+    stats.warnings.push(
+      `Could not create the browser reference image: ${formatError(error)}`,
+    );
+    return;
+  }
+
+  setNodePluginData(frame, REFERENCE_IMAGE_PLUGIN_DATA_KEY, payload.storyId);
+
+  const container: PageNode | SectionNode =
+    viewportNode.type === "SECTION" ? viewportNode : targetPage;
+  for (const child of [...container.children]) {
+    if (
+      child.id !== frame.id &&
+      getNodePluginData(child, REFERENCE_IMAGE_PLUGIN_DATA_KEY) === payload.storyId
+    ) {
+      child.remove();
+    }
+  }
+  container.appendChild(frame);
+
+  const anchorWidth = getSceneNodeWidth(anchorNode);
+  if (container.type === "SECTION") {
+    frame.x = COMPONENT_SECTION_PADDING + anchorWidth + REFERENCE_IMAGE_GAP;
+    frame.y = COMPONENT_SECTION_PADDING;
+    container.resizeWithoutConstraints(
+      Math.max(
+        safeNumber(container.width, 0),
+        frame.x + safeNumber(frame.width, 0) + COMPONENT_SECTION_PADDING,
+      ),
+      Math.max(
+        safeNumber(container.height, 0),
+        frame.y + safeNumber(frame.height, 0) + COMPONENT_SECTION_PADDING,
+      ),
+    );
+  } else {
+    frame.x =
+      safeNumber((anchorNode as SceneNode & { x?: number }).x, 0) +
+      anchorWidth +
+      REFERENCE_IMAGE_GAP;
+    frame.y = safeNumber((anchorNode as SceneNode & { y?: number }).y, 0);
+  }
+
+  frame.locked = true;
+  stats.referencePlaced = true;
 }
 
 function collectSceneNodeIds(node: SceneNode, ids = new Set<string>()): Set<string> {
@@ -1050,6 +1145,7 @@ function createImportContext(payload: FigmaExportPayload) {
       if (node.layoutMode === "NONE") {
         child.x = safeNumber(childSpec.styles.x, 0);
         child.y = safeNumber(childSpec.styles.y, 0);
+        applyChildTransformMatrix(child, childSpec, `${path}/${childSpec.name}`);
       }
     }
 
@@ -1286,6 +1382,7 @@ function createImportContext(payload: FigmaExportPayload) {
       if (node.layoutMode === "NONE") {
         child.x = safeNumber(childSpec.styles.x, 0);
         child.y = safeNumber(childSpec.styles.y, 0);
+        applyChildTransformMatrix(child, childSpec, childPath);
       }
     }
   }
@@ -2669,12 +2766,31 @@ function createImportContext(payload: FigmaExportPayload) {
           "ABSOLUTE";
         child.x = safeNumber(spec.styles.x, 0);
         child.y = safeNumber(spec.styles.y, 0);
+        applyChildTransformMatrix(child, spec, path);
       } catch (error) {
         warn(`Could not absolutely position ${path}: ${formatError(error)}`);
       }
     }
 
     applyConstraints(child, spec.styles.constraints, path);
+  }
+
+  // Applies the exporter's rotation matrix. Must run after x/y assignment —
+  // the x/y setters would otherwise overwrite the matrix translation.
+  function applyChildTransformMatrix(
+    child: SceneNode,
+    spec: FigmaExportNode,
+    path: string,
+  ): void {
+    const matrix = spec.styles.transformMatrix;
+    if (!matrix) return;
+
+    try {
+      (child as SceneNode & { relativeTransform: Transform }).relativeTransform =
+        matrix as Transform;
+    } catch (error) {
+      warn(`Could not apply transform for ${path}: ${formatError(error)}`);
+    }
   }
 
   function applyConstraints(
@@ -3355,6 +3471,9 @@ function parsePayload(json: string): FigmaExportPayload {
   if (parsed.component !== undefined) {
     validateComponentReference(parsed.component, "component");
   }
+  if (parsed.reference !== undefined) {
+    validateReferenceImage(parsed.reference);
+  }
 
   for (const token of parsed.tokens) {
     validateToken(token);
@@ -3483,6 +3602,9 @@ function validateNode(node: unknown, path: string): void {
   }
   if (node.styles.blurEffects !== undefined) {
     validateEffects(node.styles.blurEffects, `${path}.blurEffects`);
+  }
+  if (node.styles.transformMatrix !== undefined) {
+    validateTransformMatrix(node.styles.transformMatrix, `${path}.transformMatrix`);
   }
   if (
     node.styles.borderStyle !== undefined &&
@@ -3655,6 +3777,41 @@ function validateLinearGradient(gradient: unknown, path: string): void {
       throw new Error(`Invalid node ${path}.stops.${index}: token must be a string.`);
     }
   });
+}
+
+function validateTransformMatrix(matrix: unknown, path: string): void {
+  const isValid =
+    Array.isArray(matrix) &&
+    matrix.length === 2 &&
+    matrix.every(
+      (row) =>
+        Array.isArray(row) &&
+        row.length === 3 &&
+        row.every((value) => typeof value === "number" && Number.isFinite(value)),
+    );
+  if (!isValid) {
+    throw new Error(`Invalid node ${path}: expected a 2x3 number matrix.`);
+  }
+}
+
+function validateReferenceImage(reference: unknown): void {
+  if (!isRecord(reference)) {
+    throw new Error("Invalid reference: expected object.");
+  }
+  if (typeof reference.imageBase64 !== "string" || reference.imageBase64.length === 0) {
+    throw new Error("Invalid reference: imageBase64 must be a non-empty string.");
+  }
+  if (typeof reference.imageMimeType !== "string") {
+    throw new Error("Invalid reference: imageMimeType must be a string.");
+  }
+  if (
+    typeof reference.width !== "number" ||
+    typeof reference.height !== "number" ||
+    reference.width <= 0 ||
+    reference.height <= 0
+  ) {
+    throw new Error("Invalid reference: width and height must be positive numbers.");
+  }
 }
 
 function validateRadialGradient(gradient: unknown, path: string): void {

@@ -66,6 +66,7 @@ function resolveFigmaExportAddonOptions(options) {
     globalName: options?.globalName ?? defaultFigmaExportGlobalName,
     ...options?.payloadSyncUrl ? { payloadSyncUrl: options.payloadSyncUrl } : {},
     pluginDataKey: options?.pluginDataKey ?? "storybookCssToken",
+    referenceImage: options?.referenceImage ?? true,
     storyTitlePrefix: normalizeStoryTitlePrefix(options?.storyTitlePrefix),
     tokenLayers: {
       ...defaultTokenLayers,
@@ -85,6 +86,9 @@ function isStoryIncludedForFigmaExport(title, options) {
   if (options.storyTitlePrefix === false) return true;
   return options.storyTitlePrefix.some((prefix) => title.startsWith(prefix));
 }
+
+// src/domExport.ts
+import { toPng } from "html-to-image";
 
 // src/color.ts
 var colorContext;
@@ -704,6 +708,142 @@ function cssLineHeightToNumber(value) {
   if (value === "normal") return "normal";
   return cssLengthToNumber(value);
 }
+var identityAffine = { a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0 };
+var linearIdentityTolerance = 1e-3;
+var rotationEmitThresholdRadians = 8e-3;
+function parseCssTransformAffine(transform) {
+  const normalized = transform.trim();
+  if (!normalized || normalized === "none") return void 0;
+  const matrix3d = normalized.match(/^matrix3d\((.+)\)$/);
+  if (matrix3d) {
+    const values2 = matrix3d[1].split(",").map((value) => Number(value.trim()));
+    if (values2.length !== 16 || !values2.every(Number.isFinite)) return void 0;
+    return {
+      a: values2[0],
+      b: values2[1],
+      c: values2[4],
+      d: values2[5],
+      tx: values2[12],
+      ty: values2[13]
+    };
+  }
+  const matrix = normalized.match(/^matrix\((.+)\)$/);
+  if (!matrix) return void 0;
+  const values = matrix[1].split(",").map((value) => Number(value.trim()));
+  if (values.length !== 6 || !values.every(Number.isFinite)) return void 0;
+  return { a: values[0], b: values[1], c: values[2], d: values[3], tx: values[4], ty: values[5] };
+}
+function hasNonIdentityLinearPart(matrix) {
+  if (!matrix) return false;
+  return Math.abs(matrix.a - 1) > linearIdentityTolerance || Math.abs(matrix.b) > linearIdentityTolerance || Math.abs(matrix.c) > linearIdentityTolerance || Math.abs(matrix.d - 1) > linearIdentityTolerance;
+}
+function parseTransformOriginPoint(computed) {
+  const parts = computed.transformOrigin.split(/\s+/).map((part) => Number.parseFloat(part));
+  return {
+    x: Number.isFinite(parts[0]) ? parts[0] : 0,
+    y: Number.isFinite(parts[1]) ? parts[1] : 0
+  };
+}
+function affineAboutOrigin(matrix, origin) {
+  return {
+    a: matrix.a,
+    b: matrix.b,
+    c: matrix.c,
+    d: matrix.d,
+    tx: origin.x - (matrix.a * origin.x + matrix.c * origin.y) + matrix.tx,
+    ty: origin.y - (matrix.b * origin.x + matrix.d * origin.y) + matrix.ty
+  };
+}
+function composeAffine(outer, inner) {
+  return {
+    a: outer.a * inner.a + outer.c * inner.b,
+    b: outer.b * inner.a + outer.d * inner.b,
+    c: outer.a * inner.c + outer.c * inner.d,
+    d: outer.b * inner.c + outer.d * inner.d,
+    tx: outer.a * inner.tx + outer.c * inner.ty + outer.tx,
+    ty: outer.b * inner.tx + outer.d * inner.ty + outer.ty
+  };
+}
+function getUntransformedBoxSize(element, rect) {
+  if (element instanceof HTMLElement && element.offsetWidth > 0 && element.offsetHeight > 0) {
+    return { height: element.offsetHeight, width: element.offsetWidth };
+  }
+  if (element.clientWidth > 0 && element.clientHeight > 0) {
+    return { height: element.clientHeight, width: element.clientWidth };
+  }
+  return { height: rect.height, width: rect.width };
+}
+function resolveElementTransformGeometry(element, computed, rect, parentRect, parentClientTransform) {
+  const ownMatrix = parseCssTransformAffine(computed.transform);
+  const ownLinearActive = hasNonIdentityLinearPart(ownMatrix);
+  if (!parentClientTransform && !ownLinearActive) return void 0;
+  const box = getUntransformedBoxSize(element, rect);
+  if (box.width <= 0 || box.height <= 0) return void 0;
+  const ownAffine = ownLinearActive && ownMatrix ? affineAboutOrigin(ownMatrix, parseTransformOriginPoint(computed)) : identityAffine;
+  const parentTransform = parentClientTransform ?? {
+    ...identityAffine,
+    tx: parentRect.left,
+    ty: parentRect.top
+  };
+  const linear = composeAffine(parentTransform, ownAffine);
+  let minX = Number.POSITIVE_INFINITY;
+  let minY = Number.POSITIVE_INFINITY;
+  for (const [cornerX, cornerY] of [
+    [0, 0],
+    [box.width, 0],
+    [box.width, box.height],
+    [0, box.height]
+  ]) {
+    minX = Math.min(minX, linear.a * cornerX + linear.c * cornerY);
+    minY = Math.min(minY, linear.b * cornerX + linear.d * cornerY);
+  }
+  const clientTransform = {
+    a: linear.a,
+    b: linear.b,
+    c: linear.c,
+    d: linear.d,
+    tx: rect.left - minX,
+    ty: rect.top - minY
+  };
+  const cumulativeScaleX = Math.hypot(clientTransform.a, clientTransform.b);
+  const cumulativeDet = clientTransform.a * clientTransform.d - clientTransform.b * clientTransform.c;
+  if (cumulativeScaleX < 1e-6 || cumulativeDet <= 0) return void 0;
+  const cumulativeScaleY = cumulativeDet / cumulativeScaleX;
+  const parentScaleX = Math.hypot(parentTransform.a, parentTransform.b);
+  const parentDet = parentTransform.a * parentTransform.d - parentTransform.b * parentTransform.c;
+  if (parentScaleX < 1e-6 || parentDet <= 0) return void 0;
+  const rotation = Math.atan2(clientTransform.b, clientTransform.a);
+  const parentRotation = Math.atan2(parentTransform.b, parentTransform.a);
+  const relativeRotation = rotation - parentRotation;
+  const width = toFiniteNumber(box.width * cumulativeScaleX);
+  const height = toFiniteNumber(box.height * cumulativeScaleY);
+  const deltaX = clientTransform.tx - parentTransform.tx;
+  const deltaY = clientTransform.ty - parentTransform.ty;
+  const parentCos = Math.cos(parentRotation);
+  const parentSin = Math.sin(parentRotation);
+  const x = toFiniteNumber(parentCos * deltaX + parentSin * deltaY);
+  const y = toFiniteNumber(-parentSin * deltaX + parentCos * deltaY);
+  const matrixComponent = (value) => Number.isFinite(value) ? Math.round(value * 1e6) / 1e6 : 0;
+  const cos = Math.cos(relativeRotation);
+  const sin = Math.sin(relativeRotation);
+  const hasRotation = Math.abs(relativeRotation) > rotationEmitThresholdRadians;
+  return {
+    clientTransform,
+    fontScale: cumulativeScaleY,
+    height,
+    scaleX: cumulativeScaleX,
+    scaleY: cumulativeScaleY,
+    ...hasRotation ? {
+      transformMatrix: [
+        [matrixComponent(cos), matrixComponent(-sin), x],
+        [matrixComponent(sin), matrixComponent(cos), y]
+      ]
+    } : {},
+    width,
+    x,
+    y
+  };
+}
 function cssColorValue(value) {
   const normalized = value.trim();
   if (!normalized || transparentValues.has(normalized)) return void 0;
@@ -1203,9 +1343,9 @@ function createClipPathSvgNode(element, computed, rect, parentRect, rules, token
     }
   };
 }
-function createInlineSvgNode(element, computed, rect, parentRect, options) {
-  const width = toFiniteNumber(rect.width);
-  const height = toFiniteNumber(rect.height);
+function createInlineSvgNode(element, computed, rect, parentRect, options, geometry) {
+  const width = toFiniteNumber(geometry?.width ?? rect.width);
+  const height = toFiniteNumber(geometry?.height ?? rect.height);
   const component = getComponentReference(element);
   return {
     bindings: {},
@@ -1220,9 +1360,10 @@ function createInlineSvgNode(element, computed, rect, parentRect, options) {
       height,
       opacity: Number(computed.opacity),
       overflow: computed.overflow,
+      ...geometry?.transformMatrix ? { transformMatrix: geometry.transformMatrix } : {},
       width,
-      x: toFiniteNumber(rect.left - parentRect.left),
-      y: toFiniteNumber(rect.top - parentRect.top)
+      x: geometry ? geometry.x : toFiniteNumber(rect.left - parentRect.left),
+      y: geometry ? geometry.y : toFiniteNumber(rect.top - parentRect.top)
     }
   };
 }
@@ -1622,7 +1763,9 @@ function getTextAlignVertical(element) {
 }
 function createTextLeafNode({
   bindings,
+  colorOverride,
   computed,
+  fontScale = 1,
   height,
   layoutStrategy,
   name,
@@ -1632,15 +1775,18 @@ function createTextLeafNode({
   layoutAlign,
   layoutGrow,
   textAlignVertical,
+  transformMatrix,
   width,
   x,
   y
 }) {
-  const color = cssColorValue(computed.color);
+  const color = colorOverride ?? cssColorValue(computed.color);
   const fontWeight = Number.parseInt(computed.fontWeight, 10);
-  const lineHeight = cssLineHeightToNumber(computed.lineHeight);
+  const rawLineHeight = cssLineHeightToNumber(computed.lineHeight);
+  const lineHeight = typeof rawLineHeight === "number" ? toFiniteNumber(rawLineHeight * fontScale) : rawLineHeight;
   const textShadowEffects = getTextShadowEffects(computed);
-  const letterSpacing = cssLengthToNumber(computed.letterSpacing);
+  const rawLetterSpacing = cssLengthToNumber(computed.letterSpacing);
+  const letterSpacing = rawLetterSpacing !== void 0 ? toFiniteNumber(rawLetterSpacing * fontScale) : void 0;
   const textDecoration = getTextDecoration(computed);
   const italic = isItalicFontStyle(computed);
   const clampedLineCount = getLineClampCount(computed);
@@ -1664,7 +1810,7 @@ function createTextLeafNode({
       display: computed.display,
       ...textShadowEffects.length > 0 ? { effects: textShadowEffects } : {},
       fontFamily: computed.fontFamily,
-      fontSize: cssLengthToNumber(computed.fontSize) ?? 14,
+      fontSize: toFiniteNumber((cssLengthToNumber(computed.fontSize) ?? 14) * fontScale),
       ...italic ? { fontStyle: "italic" } : {},
       ...Number.isFinite(fontWeight) ? { fontWeight } : {},
       height,
@@ -1680,6 +1826,7 @@ function createTextLeafNode({
       textAlign: computed.textAlign,
       ...textAlignVertical ? { textAlignVertical } : {},
       ...textAutoResize === "HEIGHT" ? { textGrowHeight: true } : textAutoResize ? { textAutoResize } : {},
+      ...transformMatrix ? { transformMatrix } : {},
       width: exportWidth,
       x: exportX,
       y
@@ -1888,6 +2035,48 @@ function collectBindings(element, rules, hasUniformVisibleBorder, tokenSystem) {
 function getDirectText(element) {
   return Array.from(element.childNodes).filter((node) => node.nodeType === Node.TEXT_NODE).map((node) => node.textContent ?? "").join("").replace(/\s+/g, " ").trim();
 }
+var textlessInputTypes = /* @__PURE__ */ new Set([
+  "checkbox",
+  "color",
+  "file",
+  "hidden",
+  "image",
+  "radio",
+  "range"
+]);
+function getFormControlTextContent(element) {
+  if (element instanceof HTMLInputElement) {
+    const type = (element.getAttribute("type") || "text").trim().toLowerCase();
+    if (textlessInputTypes.has(type)) return void 0;
+    if (type === "button" || type === "submit" || type === "reset") {
+      const label = element.value || (type === "submit" ? "Submit" : type === "reset" ? "Reset" : "");
+      return label ? { isPlaceholder: false, text: label } : void 0;
+    }
+    if (type === "password" && element.value) {
+      return { isPlaceholder: false, text: "\u2022".repeat(element.value.length) };
+    }
+    if (element.value) return { isPlaceholder: false, text: element.value };
+    if (element.placeholder) return { isPlaceholder: true, text: element.placeholder };
+    return void 0;
+  }
+  if (element instanceof HTMLTextAreaElement) {
+    if (element.value) return { isPlaceholder: false, text: element.value };
+    if (element.placeholder) return { isPlaceholder: true, text: element.placeholder };
+    return void 0;
+  }
+  if (element instanceof HTMLSelectElement) {
+    const label = element.selectedOptions[0]?.textContent?.replace(/\s+/g, " ").trim();
+    return label ? { isPlaceholder: false, text: label } : void 0;
+  }
+  return void 0;
+}
+function getPlaceholderTextColor(element) {
+  try {
+    return cssColorValue(window.getComputedStyle(element, "::placeholder").color);
+  } catch {
+    return void 0;
+  }
+}
 function getDirectTextRuns(element) {
   const runs = [];
   for (const node of Array.from(element.childNodes)) {
@@ -2007,6 +2196,20 @@ function drawSourceToRasterCapture(source, naturalWidth, naturalHeight) {
     if (!context) return void 0;
     context.drawImage(source, 0, 0, width, height);
     return dataUrlToRasterCapture(canvas.toDataURL("image/png"));
+  } catch {
+    return void 0;
+  }
+}
+var subtreeRasterTimeoutMs = 8e3;
+async function captureSubtreeRaster(element) {
+  try {
+    const dataUrl = await Promise.race([
+      toPng(element, { cacheBust: false, pixelRatio: 1 }),
+      new Promise((resolve) => {
+        globalThis.setTimeout(() => resolve(void 0), subtreeRasterTimeoutMs);
+      })
+    ]);
+    return dataUrl ? dataUrlToRasterCapture(dataUrl) : void 0;
   } catch {
     return void 0;
   }
@@ -2170,22 +2373,66 @@ function measureAutoLayoutChildren({
   }
   return measurement;
 }
-async function createExportNode(element, rootRect, parentRect, ruleIndex, tokenSystem, options, traversalState, forceAbsoluteLayout = false) {
+async function createExportNode(element, rootRect, parentRect, ruleIndex, tokenSystem, options, traversalState, forceAbsoluteLayout = false, parentClientTransform) {
   await markExportNodeVisited(traversalState);
   const computed = window.getComputedStyle(element);
   if (computed.display === "none" || computed.visibility === "hidden" || Number(computed.opacity) === 0) {
     return void 0;
   }
   const rect = element.getBoundingClientRect();
-  const width = toFiniteNumber(rect.width);
-  const height = toFiniteNumber(rect.height);
+  if (rect.width <= 0 || rect.height <= 0) return void 0;
+  if (element instanceof HTMLElement && element.getAttribute("data-figma-rasterize") === "true") {
+    const rasterized = await captureSubtreeRaster(element);
+    if (rasterized) {
+      return {
+        bindings: {},
+        children: [],
+        ...rasterized,
+        kind: "image",
+        layoutStrategy: "absolute",
+        name: getElementName(element, options),
+        styles: {
+          display: computed.display,
+          height: toFiniteNumber(rect.height),
+          imageScaleMode: "FILL",
+          opacity: 1,
+          overflow: computed.overflow,
+          width: toFiniteNumber(rect.width),
+          x: toFiniteNumber(rect.left - parentRect.left),
+          y: toFiniteNumber(rect.top - parentRect.top)
+        }
+      };
+    }
+  }
+  const transformGeometry = resolveElementTransformGeometry(
+    element,
+    computed,
+    rect,
+    parentRect,
+    parentClientTransform
+  );
+  const width = toFiniteNumber(transformGeometry?.width ?? rect.width);
+  const height = toFiniteNumber(transformGeometry?.height ?? rect.height);
   if (width <= 0 || height <= 0) return void 0;
+  const localX = transformGeometry ? transformGeometry.x : toFiniteNumber(rect.left - parentRect.left);
+  const localY = transformGeometry ? transformGeometry.y : toFiniteNumber(rect.top - parentRect.top);
+  const transformMatrix = transformGeometry?.transformMatrix;
+  const fontScale = transformGeometry?.fontScale ?? 1;
+  const insetScaleX = transformGeometry?.scaleX ?? 1;
+  const insetScaleY = transformGeometry?.scaleY ?? 1;
   const rules = getRulesForElement(ruleIndex, element);
   const forceAutoLayout = element.getAttribute("data-figma-layout-strategy") === "auto-layout";
   const nextForceAbsoluteLayout = !forceAutoLayout && (forceAbsoluteLayout || isAbsoluteFidelityRoot(element, options));
   const component = getComponentReference(element);
   if (element instanceof SVGElement) {
-    return createInlineSvgNode(element, computed, rect, parentRect, options);
+    return createInlineSvgNode(
+      element,
+      computed,
+      rect,
+      parentRect,
+      options,
+      transformGeometry
+    );
   }
   const clipPathNode = createClipPathSvgNode(
     element,
@@ -2209,7 +2456,8 @@ async function createExportNode(element, rootRect, parentRect, ruleIndex, tokenS
         tokenSystem,
         options,
         traversalState,
-        nextForceAbsoluteLayout && !child.hasAttribute("data-component")
+        nextForceAbsoluteLayout && !child.hasAttribute("data-component"),
+        transformGeometry?.clientTransform
       )
     )
   );
@@ -2273,32 +2521,44 @@ async function createExportNode(element, rootRect, parentRect, ruleIndex, tokenS
   const shouldPreserveComputedAutoLayout = layoutStrategy === "autoLayout" && isFlexDisplay(computed.display) && !hasPositionedChildren;
   const frameLayoutStrategy = element.getAttribute("data-figma-layout-strategy") === "auto-layout" ? layoutStrategy : shouldPreserveComputedAutoLayout ? layoutStrategy : pseudoNodes.length > 0 || hasPositionedChildren ? "absolute" : layoutStrategy;
   const elementOutOfFlow = isOutOfFlowPositioned(computed);
-  if (directText && !hasElementChildren(element) && !element.shadowRoot) {
-    const leafText = applyTextTransformToText(getRenderedLeafText(element), computed);
+  const formControlText = getFormControlTextContent(element);
+  if (formControlText !== void 0 || directText && !hasElementChildren(element) && !element.shadowRoot) {
+    const leafText = applyTextTransformToText(
+      formControlText !== void 0 ? formControlText.text : getRenderedLeafText(element),
+      computed
+    );
+    const leafColorOverride = formControlText?.isPlaceholder ? getPlaceholderTextColor(element) : void 0;
+    const leafTextAlignVertical = textAlignVertical ?? (formControlText !== void 0 && !(element instanceof HTMLTextAreaElement) ? "CENTER" : void 0);
     if (hasBoxedTextStyle(computed, border)) {
-      const paddingLeft = cssLengthToNumber(computed.paddingLeft) ?? 0;
-      const paddingRight = cssLengthToNumber(computed.paddingRight) ?? 0;
-      const paddingTop = cssLengthToNumber(computed.paddingTop) ?? 0;
-      const paddingBottom = cssLengthToNumber(computed.paddingBottom) ?? 0;
-      const borderLeftWidth = cssBorderWidth(computed, "left");
-      const borderRightWidth = cssBorderWidth(computed, "right");
-      const borderTopWidth = cssBorderWidth(computed, "top");
-      const borderBottomWidth = cssBorderWidth(computed, "bottom");
+      const paddingLeft = (cssLengthToNumber(computed.paddingLeft) ?? 0) * insetScaleX;
+      const paddingRight = (cssLengthToNumber(computed.paddingRight) ?? 0) * insetScaleX;
+      const paddingTop = (cssLengthToNumber(computed.paddingTop) ?? 0) * insetScaleY;
+      const paddingBottom = (cssLengthToNumber(computed.paddingBottom) ?? 0) * insetScaleY;
+      const borderLeftWidth = cssBorderWidth(computed, "left") * insetScaleX;
+      const borderRightWidth = cssBorderWidth(computed, "right") * insetScaleX;
+      const borderTopWidth = cssBorderWidth(computed, "top") * insetScaleY;
+      const borderBottomWidth = cssBorderWidth(computed, "bottom") * insetScaleY;
       const contentHeight = Math.max(
         1,
         height - paddingTop - paddingBottom - borderTopWidth - borderBottomWidth
       );
       const textNode = createTextLeafNode({
         bindings,
+        colorOverride: leafColorOverride,
         computed,
+        fontScale,
         height: contentHeight,
         layoutStrategy: textLayoutStrategy,
         name: `${getElementName(element, options)}__text`,
         text: leafText,
-        textAutoResize: getTextAutoResize(element, computed, contentHeight),
+        textAutoResize: getTextAutoResize(
+          element,
+          computed,
+          contentHeight / insetScaleY
+        ),
         layoutAlign,
         layoutGrow,
-        textAlignVertical,
+        textAlignVertical: leafTextAlignVertical,
         width: Math.max(
           1,
           width - paddingLeft - paddingRight - borderLeftWidth - borderRightWidth
@@ -2341,9 +2601,10 @@ async function createExportNode(element, rootRect, parentRect, ruleIndex, tokenS
             ...radiusStyles,
             ...layoutSizingHorizontal ? { layoutSizingHorizontal } : {},
             ...layoutSizingHorizontal && !bindings.height ? { layoutSizingVertical: "HUG" } : {},
+            ...transformMatrix ? { transformMatrix } : {},
             width,
-            x: toFiniteNumber(rect.left - parentRect.left),
-            y: toFiniteNumber(rect.top - parentRect.top)
+            x: localX,
+            y: localY
           }
         };
       }
@@ -2377,27 +2638,31 @@ async function createExportNode(element, rootRect, parentRect, ruleIndex, tokenS
           paddingTop,
           ...radiusStyles,
           ...layoutSizingHorizontal ? { layoutSizingHorizontal } : {},
+          ...transformMatrix ? { transformMatrix } : {},
           width,
-          x: toFiniteNumber(rect.left - parentRect.left),
-          y: toFiniteNumber(rect.top - parentRect.top)
+          x: localX,
+          y: localY
         }
       };
     }
     return createTextLeafNode({
       bindings,
+      colorOverride: leafColorOverride,
       computed,
+      fontScale,
       height,
       layoutStrategy: textLayoutStrategy,
       name: getElementName(element, options),
       outOfFlow: elementOutOfFlow,
       text: leafText,
-      textAutoResize: getTextAutoResize(element, computed, height),
+      textAutoResize: getTextAutoResize(element, computed, height / insetScaleY),
       layoutAlign,
       layoutGrow,
-      textAlignVertical,
+      textAlignVertical: leafTextAlignVertical,
+      transformMatrix,
       width,
-      x: toFiniteNumber(rect.left - parentRect.left),
-      y: toFiniteNumber(rect.top - parentRect.top)
+      x: localX,
+      y: localY
     });
   }
   const kind = element instanceof HTMLImageElement || element instanceof HTMLCanvasElement ? "image" : "frame";
@@ -2426,8 +2691,12 @@ async function createExportNode(element, rootRect, parentRect, ruleIndex, tokenS
       y: toFiniteNumber(run.rect.top - rect.top)
     })
   ) : [];
-  const autoLayoutMeasurement = kind === "frame" && inlineTextRunNodes.length === 0 && frameLayoutStrategy === "autoLayout" && isFlexDisplay(computed.display) && childEntries.length > 0 ? measureAutoLayoutChildren({ childEntries, computed, containerRect: rect }) : void 0;
-  const effectiveLayoutStrategy = inlineTextRunNodes.length > 0 ? "absolute" : autoLayoutMeasurement?.strategy ?? frameLayoutStrategy;
+  const hasTransformedChildNodes = childNodes.some(
+    (node) => node.styles.transformMatrix
+  );
+  const forceAbsoluteChildren = inlineTextRunNodes.length > 0 || Boolean(transformGeometry) || hasTransformedChildNodes;
+  const autoLayoutMeasurement = kind === "frame" && !forceAbsoluteChildren && frameLayoutStrategy === "autoLayout" && isFlexDisplay(computed.display) && childEntries.length > 0 ? measureAutoLayoutChildren({ childEntries, computed, containerRect: rect }) : void 0;
+  const effectiveLayoutStrategy = forceAbsoluteChildren ? "absolute" : autoLayoutMeasurement?.strategy ?? frameLayoutStrategy;
   const orderedChildNodes = effectiveLayoutStrategy === "absolute" ? [
     ...inlineTextRunNodes,
     ...sortEntriesForAbsoluteStacking(childEntries).map((entry) => entry.node)
@@ -2475,9 +2744,10 @@ async function createExportNode(element, rootRect, parentRect, ruleIndex, tokenS
     paddingTop: paddingOverrides?.top ?? (cssLengthToNumber(computed.paddingTop) ?? 0) + cssBorderWidth(computed, "top"),
     ...radiusStyles,
     ...textAlignVertical ? { textAlignVertical } : {},
+    ...transformMatrix ? { transformMatrix } : {},
     width,
-    x: toFiniteNumber(rect.left - parentRect.left),
-    y: toFiniteNumber(rect.top - parentRect.top)
+    x: localX,
+    y: localY
   };
   return {
     bindings,
@@ -2537,6 +2807,19 @@ async function createFigmaExportPayload({
     stripComponentReferences(rootNode);
   }
   const component = artifactKind === "component" ? rootNode.component ?? (!hasComponentReference(rootNode) ? getComponentReference(root, componentTitle) : void 0) : void 0;
+  let reference;
+  const rootPixels = rootRect.width * rootRect.height;
+  if (options.referenceImage && root instanceof HTMLElement && rootPixels > 0 && rootPixels <= 8e6) {
+    const capture = await captureSubtreeRaster(root);
+    if (capture) {
+      reference = {
+        height: toFiniteNumber(rootRect.height),
+        imageBase64: capture.imageBase64,
+        imageMimeType: capture.imageMimeType,
+        width: toFiniteNumber(rootRect.width)
+      };
+    }
+  }
   const tokenNames = /* @__PURE__ */ new Set();
   onProgress?.({ nodeCount: traversalState.nodeCount, phase: "tokens" });
   await waitForExportFrame();
@@ -2555,6 +2838,7 @@ async function createFigmaExportPayload({
     ...component ? { component } : {},
     componentTitle,
     generatedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    ...reference ? { reference } : {},
     root: rootNode,
     storyId,
     storyName,
@@ -3896,7 +4180,7 @@ void (async function importStorybookStory(payload) {
 
 // src/version.ts
 function getAddonVersion() {
-  return true ? "0.5.0" : "dev";
+  return true ? "0.6.0" : "dev";
 }
 
 // src/workspace.ts

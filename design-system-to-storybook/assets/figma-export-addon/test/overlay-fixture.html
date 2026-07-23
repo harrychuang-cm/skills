@@ -77,6 +77,7 @@
 
       const syncUrl = new URLSearchParams(location.search).get("sync") || undefined;
       const decorator = window.FigmaOverlayFixture.createFigmaExportDecorator({
+        referenceImage: false,
         storyTitlePrefix: false,
         ...(syncUrl ? { payloadSyncUrl: syncUrl } : {}),
       });
@@ -266,6 +267,7 @@
 
       // Excluded story: overlay stays unmounted, notice names storyTitlePrefix.
       const prefixedDecorator = window.FigmaOverlayFixture.createFigmaExportDecorator({
+        referenceImage: false,
         storyTitlePrefix: ["Components/"],
       });
       const excludedContext = {

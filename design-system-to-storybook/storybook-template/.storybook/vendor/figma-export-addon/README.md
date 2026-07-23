@@ -19,9 +19,13 @@ Beyond layout, tokens, and SVG, the exporter captures:
 - **Blur filters** — `filter: blur()` exports as a `LAYER_BLUR` and `backdrop-filter: blur()` as a `BACKGROUND_BLUR` entry in `styles.blurEffects` (kept apart from shadow `effects` so older importers still accept the payload).
 - **Border styles** — uniform `dashed`/`dotted` borders export `styles.borderStyle` for the importer's dash patterns; text boxes inset their inner text by border width in addition to padding.
 - **Structure** — `display: contents` wrappers expand to their rendered children, and absolutely positioned siblings are ordered bottom-to-top by `z-index` (positioned-over-static included) before export.
+- **CSS transforms** — rotated elements export their untransformed box plus a rotation-only `transformMatrix` (importer ≥ 1.4.0 applies it as `relativeTransform`), with full nested-transform tracking: counter-rotated inner content (`rotate(45deg)` badge with a `rotate(-45deg)` label) carries the correct inverse rotation, and `scale()` folds into exported sizes and font sizes. Containers holding transformed children switch to pixel-true absolute layout. Skews and mirror flips fall back to the axis-aligned bounding box.
+- **Form controls** — `<input>` values (passwords masked as bullets), placeholders (with the real `::placeholder` color), `<textarea>` content, and the selected `<option>` label export as text nodes; single-line controls center their text vertically. Native checkbox/radio/select glyphs are browser chrome and not captured — use custom-styled (`appearance: none`) controls or `data-figma-rasterize`.
+- **Rasterize escape hatch** — `data-figma-rasterize="true"` exports that subtree as one bitmap exactly as painted (canvas/WebGL, conic gradients, masks, any CSS the node graph cannot represent).
+- **Browser reference snapshot** — every export attaches a PNG render of the story (`payload.reference`, disable with `referenceImage: false`); the importer places it as a locked "Browser Reference" layer beside the import so any remaining gap is visible at a glance.
 - **Binding correctness** — token bindings skip rules inside non-matching media queries and rank matching declarations by CSS specificity (inline styles highest).
 
-Known limitations (by design): browser/Figma font metrics may wrap text differently; `transform: rotate/scale`, masks, and non-blur filters are not captured; wide-gamut colors clamp to sRGB; raster embeds cap at 2048px; icon-font glyphs render only when the same font exists in Figma.
+Known limitations (by design): browser/Figma font metrics may wrap text differently; skew/mirror transforms, masks, and non-blur filters are not captured structurally (use `data-figma-rasterize`); wide-gamut colors clamp to sRGB; raster embeds cap at 2048px and reference snapshots skip stories larger than 8 megapixels; icon-font glyphs render only when the same font exists in Figma.
 
 ## Shadow DOM and token-less projects
 

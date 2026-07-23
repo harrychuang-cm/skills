@@ -131,6 +131,33 @@
   .case-zindex { position: relative; width: 120px; height: 40px; background-color: #f5f5f5; }
   .case-zindex .z-high { position: absolute; left: 0; top: 0; width: 60px; height: 40px; z-index: 2; background-color: #cc3333; }
   .case-zindex .z-low { position: absolute; left: 30px; top: 0; width: 60px; height: 40px; z-index: 1; background-color: #3333cc; }
+
+  .fixture-input {
+    box-sizing: border-box; width: 200px; height: 40px; padding: 8px 12px;
+    border: 1px solid #888888; border-radius: 6px; background-color: #ffffff;
+    color: #222222; font-size: 14px; font-family: Arial, sans-serif;
+  }
+  .case-textarea {
+    box-sizing: border-box; width: 200px; height: 64px; padding: 8px 12px;
+    border: 1px solid #888888; background-color: #ffffff; color: #222222;
+    font-size: 14px;
+  }
+
+  .case-rotate { position: relative; width: 80px; height: 80px; background-color: #f5f5f5; }
+  .case-rotate .diamond {
+    position: absolute; left: 20px; top: 20px; width: 40px; height: 40px;
+    background-color: #cc3344; transform: rotate(45deg);
+  }
+  .case-rotate .diamond-inner {
+    display: inline-block; transform: rotate(-45deg);
+    font-size: 14px; color: #ffffff; margin: 10px 0 0 14px;
+  }
+  .case-scale { position: relative; width: 80px; height: 40px; background-color: #f5f5f5; }
+  .case-scale .scaled {
+    position: absolute; left: 0; top: 0; width: 40px; height: 20px;
+    transform: scale(1.5); transform-origin: top left; background-color: #3344cc;
+  }
+  .case-rasterize { width: 80px; height: 40px; background: conic-gradient(#ff0000, #0000ff); }
 </style>
 </head>
 <body>
@@ -196,6 +223,24 @@
       <div class="z-high"></div>
       <div class="z-low"></div>
     </div>
+    <input data-component="case-input-value" class="fixture-input" value="Hello value" readonly />
+    <input data-component="case-input-placeholder" class="fixture-input" placeholder="Type here" />
+    <input data-component="case-input-password" class="fixture-input" type="password" value="secret" />
+    <select data-component="case-select" class="fixture-input">
+      <option>First option</option>
+      <option selected>Chosen option</option>
+    </select>
+    <textarea data-component="case-textarea" class="case-textarea" readonly>Multi line textarea content</textarea>
+    <div data-component="case-rotate" class="case-rotate">
+      <div class="diamond"></div>
+    </div>
+    <div data-component="case-rotate-nested" class="case-rotate">
+      <div class="diamond"><span class="diamond-inner">7</span></div>
+    </div>
+    <div data-component="case-scale" class="case-scale">
+      <div class="scaled"></div>
+    </div>
+    <div data-component="case-rasterize" class="case-rasterize" data-figma-rasterize="true"></div>
   </div>
 </div>
 <pre id="payload-output" style="display: none"></pre>
