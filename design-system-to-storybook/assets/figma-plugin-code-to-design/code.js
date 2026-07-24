@@ -163,10 +163,10 @@ figma.ui.onmessage = function (msg) {
         return;
     }
     if (msg.type === "import-json") {
-        void importFromJson(msg.json);
+        void importFromJson(msg.json, msg.includeReference === true);
     }
 };
-function importFromJson(json) {
+function importFromJson(json, includeReference) {
     return __awaiter(this, void 0, void 0, function () {
         var payload, stats, error_1, message;
         var _a;
@@ -178,7 +178,7 @@ function importFromJson(json) {
                 case 1:
                     _b.trys.push([1, 3, , 4]);
                     payload = parsePayload(json);
-                    return [4 /*yield*/, importStorybookDesign(payload)];
+                    return [4 /*yield*/, importStorybookDesign(payload, includeReference)];
                 case 2:
                     stats = _b.sent();
                     figma.ui.postMessage({
@@ -201,9 +201,10 @@ function importFromJson(json) {
         });
     });
 }
-function importStorybookDesign(payload) {
-    return __awaiter(this, void 0, void 0, function () {
+function importStorybookDesign(payload_1) {
+    return __awaiter(this, arguments, void 0, function (payload, includeReference) {
         var artifactKind, shouldImportAsComponent, targetPage, _a, context, rootComponent, rootNode, _b, _c, componentViewportNode, viewportNode, componentDefinitionsPage, dependencySections;
+        if (includeReference === void 0) { includeReference = false; }
         return __generator(this, function (_d) {
             switch (_d.label) {
                 case 0: return [4 /*yield*/, figma.loadAllPagesAsync()];
@@ -286,7 +287,9 @@ function importStorybookDesign(payload) {
                     if (viewportNode.parent === figma.currentPage) {
                         figma.currentPage.selection = [viewportNode];
                     }
-                    placeBrowserReferenceImage(payload, shouldImportAsComponent ? componentViewportNode : rootNode, viewportNode, targetPage, context.stats);
+                    if (includeReference) {
+                        placeBrowserReferenceImage(payload, shouldImportAsComponent ? componentViewportNode : rootNode, viewportNode, targetPage, context.stats);
+                    }
                     cleanupEmptyManagedSections(componentDefinitionsPage);
                     figma.viewport.scrollAndZoomIntoView([viewportNode]);
                     context.stats.artifactKind = artifactKind;

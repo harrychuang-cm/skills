@@ -213,6 +213,7 @@ type FigmaExportPayload = {
 
 type ImportMessage =
   | {
+      includeReference?: boolean;
       json: string;
       type: "import-json";
     }
@@ -439,16 +440,16 @@ figma.ui.onmessage = (msg: ImportMessage) => {
   }
 
   if (msg.type === "import-json") {
-    void importFromJson(msg.json);
+    void importFromJson(msg.json, msg.includeReference === true);
   }
 };
 
-async function importFromJson(json: string): Promise<void> {
+async function importFromJson(json: string, includeReference: boolean): Promise<void> {
   figma.ui.postMessage({ status: "importing", type: "import-status" });
 
   try {
     const payload = parsePayload(json);
-    const stats = await importStorybookDesign(payload);
+    const stats = await importStorybookDesign(payload, includeReference);
 
     figma.ui.postMessage({
       stats,
@@ -467,7 +468,10 @@ async function importFromJson(json: string): Promise<void> {
   }
 }
 
-async function importStorybookDesign(payload: FigmaExportPayload): Promise<ImportStats> {
+async function importStorybookDesign(
+  payload: FigmaExportPayload,
+  includeReference = false,
+): Promise<ImportStats> {
   await figma.loadAllPagesAsync();
   const artifactKind = getPayloadArtifactKind(payload);
   const shouldImportAsComponent = artifactKind === "component";
@@ -531,13 +535,15 @@ async function importStorybookDesign(payload: FigmaExportPayload): Promise<Impor
   if (viewportNode.parent === figma.currentPage) {
     figma.currentPage.selection = [viewportNode];
   }
-  placeBrowserReferenceImage(
-    payload,
-    shouldImportAsComponent ? componentViewportNode : rootNode,
-    viewportNode,
-    targetPage,
-    context.stats,
-  );
+  if (includeReference) {
+    placeBrowserReferenceImage(
+      payload,
+      shouldImportAsComponent ? componentViewportNode : rootNode,
+      viewportNode,
+      targetPage,
+      context.stats,
+    );
+  }
   cleanupEmptyManagedSections(componentDefinitionsPage);
   figma.viewport.scrollAndZoomIntoView([viewportNode]);
 

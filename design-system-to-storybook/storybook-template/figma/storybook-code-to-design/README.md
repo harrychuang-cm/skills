@@ -19,7 +19,7 @@ Payloads produced by the current exporter may carry additional optional fields; 
 - `styles.backgroundRadialGradient` → `GRADIENT_RADIAL` fill (ellipse inscribed in the node bounds)
 - `styles.borderStyle: "dashed" | "dotted"` → stroke `dashPattern` (dotted adds a round cap)
 - `styles.transformMatrix` (2x3 rotation matrix) → applied as `relativeTransform` after placement, reproducing CSS `rotate()` including nested counter-rotations; width/height/x/y always describe the untransformed local box
-- `payload.reference` (browser-render PNG) → placed as a locked "Browser Reference" layer beside the import (inside the component section, or next to the page root) and replaced on re-import, so fidelity gaps are visible at a glance
+- `payload.reference` (browser-render PNG) → opt-in via the "Place Browser Reference image beside the import" checkbox in the plugin UI (off by default). When enabled, it is placed as a locked "Browser Reference" layer beside the import (inside the component section, or next to the page root) and replaced on re-import, so fidelity gaps are visible at a glance
 - `colorFromCss` also accepts 4/8-digit hex, `hsl()/hsla()`, `rgb(r g b / a)` syntax, and common named colors (`white`, `black`, `transparent`, ...); `linear-gradient` supports arbitrary angles
 
 Import behavior notes:

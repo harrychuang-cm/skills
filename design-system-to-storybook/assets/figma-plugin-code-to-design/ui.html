@@ -112,6 +112,14 @@
     </p>
   </section>
 
+  <label
+    class="import-option"
+    title="Place the exporter's browser screenshot as a locked Browser Reference layer beside the import"
+  >
+    <input id="include-reference" type="checkbox" />
+    Place Browser Reference image beside the import
+  </label>
+
   <section aria-live="polite" class="status" id="status">
     <span aria-hidden="true" class="status-dot"></span>
     <span class="status-copy">
@@ -679,6 +687,17 @@
     border-color: var(--sctd-primary);
   }
 
+  .import-option {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 6px;
+    color: var(--figma-color-text-secondary, var(--sctd-muted));
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
   .status {
     display: grid;
     grid-template-columns: auto 1fr;
@@ -776,6 +795,7 @@
   const fileLoadedMeta = document.getElementById("file-loaded-meta");
   const fileClearButton = document.getElementById("file-clear");
   const fileHint = document.getElementById("file-hint");
+  const includeReferenceCheckbox = document.getElementById("include-reference");
   const primaryButton = document.getElementById("primary-action");
   const cancelButton = document.getElementById("cancel");
   const statusBox = document.getElementById("status");
@@ -875,6 +895,7 @@
 
   function setImporting(nextImporting) {
     importing = nextImporting;
+    includeReferenceCheckbox.disabled = nextImporting;
     fileInput.disabled = nextImporting;
     fileDropZone.dataset.disabled = nextImporting ? "true" : "false";
     fileDropZone.setAttribute("aria-disabled", nextImporting ? "true" : "false");
@@ -886,7 +907,16 @@
   function startImport(json) {
     setImporting(true);
     setStatus("importing", "Importing", "Parsing JSON and creating Figma layers.");
-    parent.postMessage({ pluginMessage: { type: "import-json", json } }, "*");
+    parent.postMessage(
+      {
+        pluginMessage: {
+          type: "import-json",
+          json,
+          includeReference: includeReferenceCheckbox.checked,
+        },
+      },
+      "*",
+    );
   }
 
   // --- Paste tab ------------------------------------------------------------
@@ -1235,7 +1265,13 @@
       })
       .then((json) => {
         parent.postMessage(
-          { pluginMessage: { type: "import-json", json: json.trim() } },
+          {
+            pluginMessage: {
+              type: "import-json",
+              json: json.trim(),
+              includeReference: includeReferenceCheckbox.checked,
+            },
+          },
           "*",
         );
       })
