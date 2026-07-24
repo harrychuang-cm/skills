@@ -115,6 +115,72 @@ assert.ok(
 );
 assert.strictEqual(plugin.getFontStyleCandidates(100)[0], "Thin", "100 -> Thin");
 
+// --- Font style name weight parsing ----------------------------------------
+
+// Spec scenario: Japanese W-number styles resolve without family fallback.
+assert.deepStrictEqual(
+  plugin.parseFontStyleWeight("W6"),
+  { italic: false, weight: 600 },
+  "W6 -> 600 upright",
+);
+assert.deepStrictEqual(
+  plugin.parseFontStyleWeight("W3"),
+  { italic: false, weight: 300 },
+  "W3 -> 300 upright",
+);
+assert.deepStrictEqual(
+  plugin.parseFontStyleWeight("Bold Italic"),
+  { italic: true, weight: 700 },
+  "Bold Italic -> 700 italic",
+);
+assert.deepStrictEqual(
+  plugin.parseFontStyleWeight("300"),
+  { italic: false, weight: 300 },
+  "numeric style name -> 300",
+);
+assert.deepStrictEqual(
+  plugin.parseFontStyleWeight("Italic"),
+  { italic: true, weight: 400 },
+  "bare Italic -> 400 italic",
+);
+assert.strictEqual(
+  plugin.parseFontStyleWeight("53 Extension"),
+  undefined,
+  "unparseable style -> undefined",
+);
+
+// Spec example: nearest-weight resolution from available styles.
+assert.strictEqual(
+  plugin.selectNearestFontStyle(["W3", "W6"], 700, false),
+  "W6",
+  "700 from W3/W6 -> W6",
+);
+assert.strictEqual(
+  plugin.selectNearestFontStyle(["W3", "W6"], 400, false),
+  "W3",
+  "400 from W3/W6 -> W3",
+);
+assert.strictEqual(
+  plugin.selectNearestFontStyle(["W3", "W6"], 500, false),
+  "W6",
+  "500 tie prefers the heavier W6",
+);
+assert.strictEqual(
+  plugin.selectNearestFontStyle(["100", "300", "500"], 300, false),
+  "300",
+  "exact numeric match wins",
+);
+assert.strictEqual(
+  plugin.selectNearestFontStyle(["W3", "W6"], 700, true),
+  "W6",
+  "italic request falls back to upright when no italic exists",
+);
+assert.strictEqual(
+  plugin.selectNearestFontStyle(["53 Extension"], 400, false),
+  undefined,
+  "no parseable styles -> undefined",
+);
+
 // --- CSS font-family fallback normalization -------------------------------
 
 const cssFontStack = '"Helvetica Neue", Helvetica, "Arial Narrow", Arial, sans-serif';

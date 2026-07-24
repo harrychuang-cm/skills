@@ -1524,30 +1524,6 @@ function pickBindings(bindings, names) {
   });
   return picked;
 }
-function getTextExportWidth({
-  computed,
-  text,
-  width
-}) {
-  if (!text.trim()) return width;
-  const fontSize = cssLengthToNumber(computed.fontSize) ?? 14;
-  const safetyWidth = Math.max(12, fontSize);
-  return toFiniteNumber(width + safetyWidth);
-}
-function getTextExportX({
-  computed,
-  exportWidth,
-  width,
-  x
-}) {
-  const extraWidth = Math.max(0, exportWidth - width);
-  const textAlign = computed.textAlign.toLowerCase();
-  if (textAlign === "right" || textAlign === "end") {
-    return toFiniteNumber(x - extraWidth);
-  }
-  if (textAlign === "center") return toFiniteNumber(x - extraWidth / 2);
-  return x;
-}
 function justifyContentFromTextAlign(textAlign) {
   const normalized = textAlign.trim().toLowerCase();
   if (normalized === "center") return "center";
@@ -1584,13 +1560,11 @@ function isRenderedMultilineText(computed, height) {
   return height >= lineHeightPx * 1.8;
 }
 function shouldAutoResizeText(element, computed) {
-  const textAlign = computed.textAlign.toLowerCase();
-  if (textAlign === "center" || textAlign === "right" || textAlign === "end") {
-    if (!isFlexItem(element, computed)) return false;
+  if (isFlexItem(element, computed)) {
+    if (hasFixedFlexBasis(computed)) return false;
+    return Number.parseFloat(computed.flexGrow || "0") === 0;
   }
-  if (!isFlexItem(element, computed)) return false;
-  if (hasFixedFlexBasis(computed)) return false;
-  return Number.parseFloat(computed.flexGrow || "0") === 0;
+  return true;
 }
 function getTextAutoResize(element, computed, height) {
   if (getLineClampCount(computed) !== void 0) return void 0;
@@ -1708,7 +1682,9 @@ function createTextLeafNode({
   computed,
   fontScale = 1,
   height,
+  inlineLineBox,
   layoutStrategy,
+  lineCount,
   name,
   outOfFlow,
   text,
@@ -1723,6 +1699,9 @@ function createTextLeafNode({
 }) {
   const color = colorOverride ?? cssColorValue(computed.color);
   const fontWeight = Number.parseInt(computed.fontWeight, 10);
+  const fontSize = toFiniteNumber(
+    (cssLengthToNumber(computed.fontSize) ?? 14) * fontScale
+  );
   const rawLineHeight = cssLineHeightToNumber(computed.lineHeight);
   const lineHeight = typeof rawLineHeight === "number" ? toFiniteNumber(rawLineHeight * fontScale) : rawLineHeight;
   const textShadowEffects = getTextShadowEffects(computed);
@@ -1731,8 +1710,17 @@ function createTextLeafNode({
   const textDecoration = getTextDecoration(computed);
   const italic = isItalicFontStyle(computed);
   const clampedLineCount = getLineClampCount(computed);
-  const exportWidth = clampedLineCount !== void 0 || Boolean(textAutoResize) || layoutGrow === 1 || hasFixedFlexBasis(computed) ? width : getTextExportWidth({ computed, text, width });
-  const exportX = getTextExportX({ computed, exportWidth, width, x });
+  let exportHeight = height;
+  let exportY = y;
+  if ((inlineLineBox || computed.display === "inline") && !text.includes("\n") && typeof lineHeight === "number" && lineHeight > 0) {
+    const lines = lineCount ?? Math.max(1, Math.ceil(height / lineHeight - 0.05));
+    const contentHeight = height - (lines - 1) * lineHeight;
+    if (contentHeight >= fontSize * 0.7 && contentHeight < lineHeight - 0.1) {
+      const leading = lineHeight - contentHeight;
+      exportHeight = toFiniteNumber(height + leading);
+      exportY = toFiniteNumber(y - leading / 2);
+    }
+  }
   return {
     bindings: pickBindings(bindings, [
       "fontFamily",
@@ -1751,10 +1739,10 @@ function createTextLeafNode({
       display: computed.display,
       ...textShadowEffects.length > 0 ? { effects: textShadowEffects } : {},
       fontFamily: computed.fontFamily,
-      fontSize: toFiniteNumber((cssLengthToNumber(computed.fontSize) ?? 14) * fontScale),
+      fontSize,
       ...italic ? { fontStyle: "italic" } : {},
       ...Number.isFinite(fontWeight) ? { fontWeight } : {},
-      height,
+      height: exportHeight,
       ...letterSpacing !== void 0 && letterSpacing !== 0 ? { letterSpacing } : {},
       ...textDecoration ? { textDecoration } : {},
       ...layoutAlign ? { layoutAlign } : {},
@@ -1768,9 +1756,9 @@ function createTextLeafNode({
       ...textAlignVertical ? { textAlignVertical } : {},
       ...textAutoResize === "HEIGHT" ? { textGrowHeight: true } : textAutoResize ? { textAutoResize } : {},
       ...transformMatrix ? { transformMatrix } : {},
-      width: exportWidth,
-      x: exportX,
-      y
+      width,
+      x,
+      y: exportY
     }
   };
 }
@@ -2028,9 +2016,12 @@ function getDirectTextRuns(element) {
       const range = document.createRange();
       range.selectNodeContents(node);
       const rect = range.getBoundingClientRect();
+      const lineCount = Array.from(range.getClientRects()).filter(
+        (lineRect) => lineRect.width > 0 && lineRect.height > 0
+      ).length;
       range.detach();
       if (rect.width <= 0 || rect.height <= 0) continue;
-      runs.push({ rect, text });
+      runs.push({ lineCount: Math.max(1, lineCount), rect, text });
     } catch {
     }
   }
@@ -2088,24 +2079,7 @@ function hasOutOfFlowPositionedChildren(elements) {
     return position === "absolute" || position === "fixed";
   });
 }
-function getCommonAncestor(elements, boundary) {
-  if (elements.length === 0) return boundary;
-  let ancestor = elements[0];
-  while (ancestor && ancestor !== boundary) {
-    if (elements.every((element) => ancestor?.contains(element))) {
-      return ancestor;
-    }
-    ancestor = ancestor.parentElement;
-  }
-  return boundary;
-}
 function findExportRoot(scope) {
-  const components = Array.from(scope.querySelectorAll("[data-component]"));
-  if (components.length === 1) return components[0];
-  if (components.length > 1) {
-    const ancestor = getCommonAncestor(components, scope);
-    if (ancestor !== scope) return ancestor;
-  }
   return scope.firstElementChild ?? void 0;
 }
 var rasterImageMaxDimension = 2048;
@@ -2580,7 +2554,7 @@ async function createExportNode(element, rootRect, parentRect, ruleIndex, tokenS
         }
       };
     }
-    return createTextLeafNode({
+    const textLeafNode = createTextLeafNode({
       bindings,
       colorOverride: leafColorOverride,
       computed,
@@ -2599,6 +2573,7 @@ async function createExportNode(element, rootRect, parentRect, ruleIndex, tokenS
       x: localX,
       y: localY
     });
+    return component ? { ...textLeafNode, component } : textLeafNode;
   }
   const kind = element instanceof HTMLImageElement || element instanceof HTMLCanvasElement ? "image" : "frame";
   let imageSvgText;
@@ -2617,10 +2592,14 @@ async function createExportNode(element, rootRect, parentRect, ruleIndex, tokenS
       bindings,
       computed,
       height: toFiniteNumber(run.rect.height),
+      // Range rects measure the font content area like inline boxes do,
+      // so single-line runs get the same line-box compensation.
+      inlineLineBox: true,
       layoutStrategy: "absolute",
+      lineCount: run.lineCount,
       name: `${elementName}__text-${index + 1}`,
       text: applyTextTransformToText(run.text, computed),
-      textAutoResize: isRenderedMultilineText(computed, run.rect.height) ? "HEIGHT" : void 0,
+      textAutoResize: run.lineCount > 1 ? "HEIGHT" : "WIDTH_AND_HEIGHT",
       width: toFiniteNumber(run.rect.width),
       x: toFiniteNumber(run.rect.left - rect.left),
       y: toFiniteNumber(run.rect.top - rect.top)
@@ -4278,7 +4257,7 @@ void (async function importStorybookStory(payload) {
 
 // src/version.ts
 function getAddonVersion() {
-  return true ? "0.7.0" : "dev";
+  return true ? "0.8.0" : "dev";
 }
 
 // src/workspace.ts

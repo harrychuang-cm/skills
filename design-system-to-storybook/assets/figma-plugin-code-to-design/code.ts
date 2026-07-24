@@ -384,7 +384,7 @@ type ComponentSectionTarget = {
 
 // Bump this on every behavior change so the Figma UI badge confirms which
 // build is running (Figma re-reads code.js per run, but the badge removes doubt).
-const PLUGIN_VERSION = "1.6.1 (2026-07-23)";
+const PLUGIN_VERSION = "1.7.0 (2026-07-24)";
 
 const SUPPORTED_PAYLOAD_VERSIONS = [1, 2] as const;
 const DEFAULT_TOKEN_PLUGIN_DATA_KEY = "storybookCssToken";
@@ -3142,15 +3142,53 @@ function createImportContext(payload: FigmaExportPayload) {
     }
   }
 
+  let availableFontStylesByFamily: Map<string, string[]> | undefined;
+
+  async function getAvailableFontStyles(family: string): Promise<string[]> {
+    if (!availableFontStylesByFamily) {
+      availableFontStylesByFamily = new Map();
+      try {
+        const fonts = await figma.listAvailableFontsAsync();
+        for (const font of fonts) {
+          const list = availableFontStylesByFamily.get(font.fontName.family);
+          if (list) list.push(font.fontName.style);
+          else availableFontStylesByFamily.set(font.fontName.family, [font.fontName.style]);
+        }
+      } catch (error) {
+        warn(`Could not list available fonts: ${formatError(error)}`);
+      }
+    }
+    return availableFontStylesByFamily.get(family) ?? [];
+  }
+
+  // Candidate style names cover Latin conventions only; families like
+  // Hiragino (W3/W6) resolve through the family's actual style list by
+  // nearest weight, so the first CSS family wins over a later fallback.
+  async function loadNearestAvailableFont(
+    family: string,
+    weight: number,
+    italic: boolean,
+  ): Promise<FontName | undefined> {
+    const styleNames = await getAvailableFontStyles(family);
+    const style = selectNearestFontStyle(styleNames, weight, italic);
+    if (!style) return undefined;
+    const candidate = { family, style };
+    try {
+      await figma.loadFontAsync(candidate);
+      return candidate;
+    } catch {
+      return undefined;
+    }
+  }
+
   async function loadTextFont(
     styles: FigmaExportNode["styles"],
     path: string,
   ): Promise<FontName> {
+    const fontWeight = styles.fontWeight ?? 400;
+    const fontItalic = styles.fontStyle === "italic";
     const families = getFontFamilyCandidates(styles.fontFamily);
-    const styleCandidates = getFontStyleCandidates(
-      styles.fontWeight ?? 400,
-      styles.fontStyle === "italic",
-    );
+    const styleCandidates = getFontStyleCandidates(fontWeight, fontItalic);
 
     for (let familyIndex = 0; familyIndex < families.length; familyIndex += 1) {
       const family = families[familyIndex];
@@ -3165,8 +3203,18 @@ function createImportContext(payload: FigmaExportPayload) {
           }
           return candidate;
         } catch {
-          // Try the next style, then the next concrete CSS family.
+          // Try the next style, then the family's actual style list.
         }
+      }
+
+      const nearest = await loadNearestAvailableFont(family, fontWeight, fontItalic);
+      if (nearest) {
+        if (familyIndex > 0) {
+          warn(
+            `Loaded fallback font for ${path}; ${families[0]} was unavailable, using ${nearest.family} ${nearest.style}.`,
+          );
+        }
+        return nearest;
       }
     }
 
@@ -3310,6 +3358,8 @@ function createImportContext(payload: FigmaExportPayload) {
         // Try the next style for the same family before skipping the binding.
       }
     }
+
+    if (await loadNearestAvailableFont(family, fontWeight, italic)) return true;
 
     warn(
       `Skipped fontFamily binding for ${path}; ${family} (${styleCandidates.join(", ")}) could not be loaded.`,
@@ -4219,6 +4269,74 @@ function getFontStyleCandidates(weight: number, italic = false): string[] {
   return italicCandidates.concat(upright);
 }
 
+const FONT_STYLE_WEIGHT_NAMES: Record<string, number> = {
+  hairline: 100,
+  thin: 100,
+  extralight: 200,
+  ultralight: 200,
+  light: 300,
+  book: 400,
+  normal: 400,
+  regular: 400,
+  roman: 400,
+  medium: 500,
+  demi: 600,
+  demibold: 600,
+  semibold: 600,
+  bold: 700,
+  extrabold: 800,
+  ultrabold: 800,
+  black: 900,
+  heavy: 900,
+};
+
+type ParsedFontStyle = { italic: boolean; weight: number };
+
+// Parses a font style name into weight/italic semantics. W-number names
+// (Hiragino "W6" -> 600) and purely numeric names win over the Latin table;
+// unparseable names return undefined so callers can skip them.
+function parseFontStyleWeight(styleName: string): ParsedFontStyle | undefined {
+  const italic = /\b(italic|oblique)\b/i.test(styleName);
+  const base = styleName
+    .replace(/\b(italic|oblique)\b/gi, " ")
+    .replace(/[\s_-]+/g, " ")
+    .trim();
+  const wNumber = /^w ?(\d{1,2})$/i.exec(base);
+  if (wNumber) return { italic, weight: Number(wNumber[1]) * 100 };
+  if (/^\d{2,4}$/.test(base)) return { italic, weight: Number(base) };
+  if (!base && italic) return { italic, weight: 400 };
+  const named = FONT_STYLE_WEIGHT_NAMES[base.toLowerCase().replace(/ /g, "")];
+  return named === undefined ? undefined : { italic, weight: named };
+}
+
+// Picks the closest-weight style from a family's actual style names,
+// preferring the requested slant, and the heavier style on weight ties
+// (matching browser bolder-resolution behavior).
+function selectNearestFontStyle(
+  styles: string[],
+  weight: number,
+  italic: boolean,
+): string | undefined {
+  for (const requireSlantMatch of [true, false]) {
+    let best: { distance: number; style: string; weight: number } | undefined;
+    for (const style of styles) {
+      const parsed = parseFontStyleWeight(style);
+      if (!parsed) continue;
+      if (requireSlantMatch ? parsed.italic !== italic : parsed.italic) continue;
+      const distance = Math.abs(parsed.weight - weight);
+      if (
+        !best ||
+        distance < best.distance ||
+        (distance === best.distance && parsed.weight > best.weight)
+      ) {
+        best = { distance, style, weight: parsed.weight };
+      }
+    }
+    if (best) return best.style;
+  }
+  return undefined;
+}
+
 const CSS_GENERIC_FONT_FAMILIES = new Set([
   "cursive",
   "emoji",
@@ -4317,7 +4435,9 @@ if (typeof module !== "undefined" && module) {
     getFontStyleCandidates,
     getLinearGradientTransform,
     normalizeVariableValue,
+    parseFontStyleWeight,
     parsePayload,
+    selectNearestFontStyle,
     setSvgRootSize,
     shouldClipContent,
   };

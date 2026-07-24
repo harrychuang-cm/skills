@@ -112,7 +112,7 @@ function applyTextAlignmentFromSpec(node, spec, options, path) {
 }
 // Bump this on every behavior change so the Figma UI badge confirms which
 // build is running (Figma re-reads code.js per run, but the badge removes doubt).
-var PLUGIN_VERSION = "1.6.1 (2026-07-23)";
+var PLUGIN_VERSION = "1.7.0 (2026-07-24)";
 var SUPPORTED_PAYLOAD_VERSIONS = [1, 2];
 var DEFAULT_TOKEN_PLUGIN_DATA_KEY = "storybookCssToken";
 var LEGACY_CM_TOKEN_PLUGIN_DATA_KEY = "cmCssToken";
@@ -2555,19 +2555,85 @@ function createImportContext(payload) {
             warn("Could not set text truncation for ".concat(path, ": ").concat(formatError(error)));
         }
     }
+    var availableFontStylesByFamily;
+    function getAvailableFontStyles(family) {
+        return __awaiter(this, void 0, void 0, function () {
+            var fonts, _i, fonts_2, font, list, error_3;
+            var _a;
+            return __generator(this, function (_b) {
+                switch (_b.label) {
+                    case 0:
+                        if (!!availableFontStylesByFamily) return [3 /*break*/, 4];
+                        availableFontStylesByFamily = new Map();
+                        _b.label = 1;
+                    case 1:
+                        _b.trys.push([1, 3, , 4]);
+                        return [4 /*yield*/, figma.listAvailableFontsAsync()];
+                    case 2:
+                        fonts = _b.sent();
+                        for (_i = 0, fonts_2 = fonts; _i < fonts_2.length; _i++) {
+                            font = fonts_2[_i];
+                            list = availableFontStylesByFamily.get(font.fontName.family);
+                            if (list)
+                                list.push(font.fontName.style);
+                            else
+                                availableFontStylesByFamily.set(font.fontName.family, [font.fontName.style]);
+                        }
+                        return [3 /*break*/, 4];
+                    case 3:
+                        error_3 = _b.sent();
+                        warn("Could not list available fonts: ".concat(formatError(error_3)));
+                        return [3 /*break*/, 4];
+                    case 4: return [2 /*return*/, (_a = availableFontStylesByFamily.get(family)) !== null && _a !== void 0 ? _a : []];
+                }
+            });
+        });
+    }
+    // Candidate style names cover Latin conventions only; families like
+    // Hiragino (W3/W6) resolve through the family's actual style list by
+    // nearest weight, so the first CSS family wins over a later fallback.
+    function loadNearestAvailableFont(family, weight, italic) {
+        return __awaiter(this, void 0, void 0, function () {
+            var styleNames, style, candidate, _a;
+            return __generator(this, function (_b) {
+                switch (_b.label) {
+                    case 0: return [4 /*yield*/, getAvailableFontStyles(family)];
+                    case 1:
+                        styleNames = _b.sent();
+                        style = selectNearestFontStyle(styleNames, weight, italic);
+                        if (!style)
+                            return [2 /*return*/, undefined];
+                        candidate = { family: family, style: style };
+                        _b.label = 2;
+                    case 2:
+                        _b.trys.push([2, 4, , 5]);
+                        return [4 /*yield*/, figma.loadFontAsync(candidate)];
+                    case 3:
+                        _b.sent();
+                        return [2 /*return*/, candidate];
+                    case 4:
+                        _a = _b.sent();
+                        return [2 /*return*/, undefined];
+                    case 5: return [2 /*return*/];
+                }
+            });
+        });
+    }
     function loadTextFont(styles, path) {
         return __awaiter(this, void 0, void 0, function () {
-            var families, styleCandidates, familyIndex, family, _i, styleCandidates_1, style, candidate, _a, fallback, error_3;
+            var fontWeight, fontItalic, families, styleCandidates, familyIndex, family, _i, styleCandidates_1, style, candidate, _a, nearest, fallback, error_4;
             var _b;
             return __generator(this, function (_c) {
                 switch (_c.label) {
                     case 0:
+                        fontWeight = (_b = styles.fontWeight) !== null && _b !== void 0 ? _b : 400;
+                        fontItalic = styles.fontStyle === "italic";
                         families = getFontFamilyCandidates(styles.fontFamily);
-                        styleCandidates = getFontStyleCandidates((_b = styles.fontWeight) !== null && _b !== void 0 ? _b : 400, styles.fontStyle === "italic");
+                        styleCandidates = getFontStyleCandidates(fontWeight, fontItalic);
                         familyIndex = 0;
                         _c.label = 1;
                     case 1:
-                        if (!(familyIndex < families.length)) return [3 /*break*/, 8];
+                        if (!(familyIndex < families.length)) return [3 /*break*/, 10];
                         family = families[familyIndex];
                         _i = 0, styleCandidates_1 = styleCandidates;
                         _c.label = 2;
@@ -2591,24 +2657,34 @@ function createImportContext(payload) {
                     case 6:
                         _i++;
                         return [3 /*break*/, 2];
-                    case 7:
-                        familyIndex += 1;
-                        return [3 /*break*/, 1];
+                    case 7: return [4 /*yield*/, loadNearestAvailableFont(family, fontWeight, fontItalic)];
                     case 8:
-                        fallback = { family: "Inter", style: "Regular" };
+                        nearest = _c.sent();
+                        if (nearest) {
+                            if (familyIndex > 0) {
+                                warn("Loaded fallback font for ".concat(path, "; ").concat(families[0], " was unavailable, using ").concat(nearest.family, " ").concat(nearest.style, "."));
+                            }
+                            return [2 /*return*/, nearest];
+                        }
                         _c.label = 9;
                     case 9:
-                        _c.trys.push([9, 11, , 12]);
-                        return [4 /*yield*/, figma.loadFontAsync(fallback)];
+                        familyIndex += 1;
+                        return [3 /*break*/, 1];
                     case 10:
+                        fallback = { family: "Inter", style: "Regular" };
+                        _c.label = 11;
+                    case 11:
+                        _c.trys.push([11, 13, , 14]);
+                        return [4 /*yield*/, figma.loadFontAsync(fallback)];
+                    case 12:
                         _c.sent();
                         warn("Loaded fallback font for ".concat(path, "; ").concat(families.join(", ") || "CSS generic family", " (").concat(styleCandidates.join(", "), ") was unavailable."));
                         return [2 /*return*/, fallback];
-                    case 11:
-                        error_3 = _c.sent();
-                        warn("Could not load fallback font for ".concat(path, ": ").concat(formatError(error_3)));
-                        throw error_3;
-                    case 12: return [2 /*return*/];
+                    case 13:
+                        error_4 = _c.sent();
+                        warn("Could not load fallback font for ".concat(path, ": ").concat(formatError(error_4)));
+                        throw error_4;
+                    case 14: return [2 /*return*/];
                 }
             });
         });
@@ -2739,7 +2815,10 @@ function createImportContext(payload) {
                     case 5:
                         _i++;
                         return [3 /*break*/, 1];
-                    case 6:
+                    case 6: return [4 /*yield*/, loadNearestAvailableFont(family, fontWeight, italic)];
+                    case 7:
+                        if (_b.sent())
+                            return [2 /*return*/, true];
                         warn("Skipped fontFamily binding for ".concat(path, "; ").concat(family, " (").concat(styleCandidates.join(", "), ") could not be loaded."));
                         return [2 /*return*/, false];
                 }
@@ -3573,6 +3652,71 @@ function getFontStyleCandidates(weight, italic) {
     });
     return italicCandidates.concat(upright);
 }
+var FONT_STYLE_WEIGHT_NAMES = {
+    hairline: 100,
+    thin: 100,
+    extralight: 200,
+    ultralight: 200,
+    light: 300,
+    book: 400,
+    normal: 400,
+    regular: 400,
+    roman: 400,
+    medium: 500,
+    demi: 600,
+    demibold: 600,
+    semibold: 600,
+    bold: 700,
+    extrabold: 800,
+    ultrabold: 800,
+    black: 900,
+    heavy: 900,
+};
+// Parses a font style name into weight/italic semantics. W-number names
+// (Hiragino "W6" -> 600) and purely numeric names win over the Latin table;
+// unparseable names return undefined so callers can skip them.
+function parseFontStyleWeight(styleName) {
+    var italic = /\b(italic|oblique)\b/i.test(styleName);
+    var base = styleName
+        .replace(/\b(italic|oblique)\b/gi, " ")
+        .replace(/[\s_-]+/g, " ")
+        .trim();
+    var wNumber = /^w ?(\d{1,2})$/i.exec(base);
+    if (wNumber)
+        return { italic: italic, weight: Number(wNumber[1]) * 100 };
+    if (/^\d{2,4}$/.test(base))
+        return { italic: italic, weight: Number(base) };
+    if (!base && italic)
+        return { italic: italic, weight: 400 };
+    var named = FONT_STYLE_WEIGHT_NAMES[base.toLowerCase().replace(/ /g, "")];
+    return named === undefined ? undefined : { italic: italic, weight: named };
+}
+// Picks the closest-weight style from a family's actual style names,
+// preferring the requested slant, and the heavier style on weight ties
+// (matching browser bolder-resolution behavior).
+function selectNearestFontStyle(styles, weight, italic) {
+    for (var _i = 0, _a = [true, false]; _i < _a.length; _i++) {
+        var requireSlantMatch = _a[_i];
+        var best = void 0;
+        for (var _b = 0, styles_1 = styles; _b < styles_1.length; _b++) {
+            var style = styles_1[_b];
+            var parsed = parseFontStyleWeight(style);
+            if (!parsed)
+                continue;
+            if (requireSlantMatch ? parsed.italic !== italic : parsed.italic)
+                continue;
+            var distance = Math.abs(parsed.weight - weight);
+            if (!best ||
+                distance < best.distance ||
+                (distance === best.distance && parsed.weight > best.weight)) {
+                best = { distance: distance, style: style, weight: parsed.weight };
+            }
+        }
+        if (best)
+            return best.style;
+    }
+    return undefined;
+}
 var CSS_GENERIC_FONT_FAMILIES = new Set([
     "cursive",
     "emoji",
@@ -3664,7 +3808,9 @@ if (typeof module !== "undefined" && module) {
         getFontStyleCandidates: getFontStyleCandidates,
         getLinearGradientTransform: getLinearGradientTransform,
         normalizeVariableValue: normalizeVariableValue,
+        parseFontStyleWeight: parseFontStyleWeight,
         parsePayload: parsePayload,
+        selectNearestFontStyle: selectNearestFontStyle,
         setSvgRootSize: setSvgRootSize,
         shouldClipContent: shouldClipContent,
     };

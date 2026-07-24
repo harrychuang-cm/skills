@@ -1517,42 +1517,6 @@ function pickBindings(
   return picked;
 }
 
-function getTextExportWidth({
-  computed,
-  text,
-  width,
-}: {
-  computed: CSSStyleDeclaration;
-  text: string;
-  width: number;
-}): number {
-  if (!text.trim()) return width;
-
-  const fontSize = cssLengthToNumber(computed.fontSize) ?? 14;
-  const safetyWidth = Math.max(12, fontSize);
-  return toFiniteNumber(width + safetyWidth);
-}
-
-function getTextExportX({
-  computed,
-  exportWidth,
-  width,
-  x,
-}: {
-  computed: CSSStyleDeclaration;
-  exportWidth: number;
-  width: number;
-  x: number;
-}): number {
-  const extraWidth = Math.max(0, exportWidth - width);
-  const textAlign = computed.textAlign.toLowerCase();
-  if (textAlign === "right" || textAlign === "end") {
-    return toFiniteNumber(x - extraWidth);
-  }
-  if (textAlign === "center") return toFiniteNumber(x - extraWidth / 2);
-  return x;
-}
-
 function justifyContentFromTextAlign(textAlign: string): string {
   const normalized = textAlign.trim().toLowerCase();
   if (normalized === "center") return "center";
@@ -1607,15 +1571,13 @@ function shouldAutoResizeText(
   element: Element,
   computed: CSSStyleDeclaration,
 ): boolean {
-  const textAlign = computed.textAlign.toLowerCase();
-  if (textAlign === "center" || textAlign === "right" || textAlign === "end") {
-    // Auto layout governs the box position for flex items, so single-line
-    // centered/right-aligned text can size itself without x compensation.
-    if (!isFlexItem(element, computed)) return false;
+  if (isFlexItem(element, computed)) {
+    if (hasFixedFlexBasis(computed)) return false;
+    return Number.parseFloat(computed.flexGrow || "0") === 0;
   }
-  if (!isFlexItem(element, computed)) return false;
-  if (hasFixedFlexBasis(computed)) return false;
-  return Number.parseFloat(computed.flexGrow || "0") === 0;
+  // Widths are exported exactly (no safety margin), so single-line text hugs
+  // its content and Figma's own font metrics can never wrap or clip it.
+  return true;
 }
 
 function getTextAutoResize(
@@ -1814,7 +1776,9 @@ function createTextLeafNode({
   computed,
   fontScale = 1,
   height,
+  inlineLineBox,
   layoutStrategy,
+  lineCount,
   name,
   outOfFlow,
   text,
@@ -1832,7 +1796,9 @@ function createTextLeafNode({
   computed: CSSStyleDeclaration;
   fontScale?: number;
   height: number;
+  inlineLineBox?: boolean;
   layoutStrategy?: FigmaLayoutStrategy;
+  lineCount?: number;
   name: string;
   outOfFlow?: boolean;
   text: string;
@@ -1847,6 +1813,9 @@ function createTextLeafNode({
 }): FigmaExportNode {
   const color = colorOverride ?? cssColorValue(computed.color);
   const fontWeight = Number.parseInt(computed.fontWeight, 10);
+  const fontSize = toFiniteNumber(
+    (cssLengthToNumber(computed.fontSize) ?? 14) * fontScale,
+  );
   const rawLineHeight = cssLineHeightToNumber(computed.lineHeight);
   const lineHeight =
     typeof rawLineHeight === "number"
@@ -1861,14 +1830,28 @@ function createTextLeafNode({
   const textDecoration = getTextDecoration(computed);
   const italic = isItalicFontStyle(computed);
   const clampedLineCount = getLineClampCount(computed);
-  const exportWidth =
-    clampedLineCount !== undefined ||
-    Boolean(textAutoResize) ||
-    layoutGrow === 1 ||
-    hasFixedFlexBasis(computed)
-      ? width
-      : getTextExportWidth({ computed, text, width });
-  const exportX = getTextExportX({ computed, exportWidth, width, x });
+  // Inline boxes and text-run ranges measure the font content area, not the
+  // visual line box: an n-line measurement is (n - 1) line boxes plus one
+  // content box. Export full line boxes (height plus the missing leading, y
+  // shifted up by the half-leading) so the Figma baselines land where the
+  // browser drew them.
+  let exportHeight = height;
+  let exportY = y;
+  if (
+    (inlineLineBox || computed.display === "inline") &&
+    !text.includes("\n") &&
+    typeof lineHeight === "number" &&
+    lineHeight > 0
+  ) {
+    const lines =
+      lineCount ?? Math.max(1, Math.ceil(height / lineHeight - 0.05));
+    const contentHeight = height - (lines - 1) * lineHeight;
+    if (contentHeight >= fontSize * 0.7 && contentHeight < lineHeight - 0.1) {
+      const leading = lineHeight - contentHeight;
+      exportHeight = toFiniteNumber(height + leading);
+      exportY = toFiniteNumber(y - leading / 2);
+    }
+  }
 
   return {
     bindings: pickBindings(bindings, [
@@ -1888,10 +1871,10 @@ function createTextLeafNode({
       display: computed.display,
       ...(textShadowEffects.length > 0 ? { effects: textShadowEffects } : {}),
       fontFamily: computed.fontFamily,
-      fontSize: toFiniteNumber((cssLengthToNumber(computed.fontSize) ?? 14) * fontScale),
+      fontSize,
       ...(italic ? { fontStyle: "italic" as const } : {}),
       ...(Number.isFinite(fontWeight) ? { fontWeight } : {}),
-      height,
+      height: exportHeight,
       ...(letterSpacing !== undefined && letterSpacing !== 0 ? { letterSpacing } : {}),
       ...(textDecoration ? { textDecoration } : {}),
       ...(layoutAlign ? { layoutAlign } : {}),
@@ -1911,9 +1894,9 @@ function createTextLeafNode({
           ? { textAutoResize }
           : {}),
       ...(transformMatrix ? { transformMatrix } : {}),
-      width: exportWidth,
-      x: exportX,
-      y,
+      width,
+      x,
+      y: exportY,
     },
   };
 }
@@ -2286,6 +2269,7 @@ function getPlaceholderTextColor(element: Element): string | undefined {
 }
 
 type DirectTextRun = {
+  lineCount: number;
   rect: DOMRect;
   text: string;
 };
@@ -2305,9 +2289,12 @@ function getDirectTextRuns(element: Element): DirectTextRun[] {
       const range = document.createRange();
       range.selectNodeContents(node);
       const rect = range.getBoundingClientRect();
+      const lineCount = Array.from(range.getClientRects()).filter(
+        (lineRect) => lineRect.width > 0 && lineRect.height > 0,
+      ).length;
       range.detach();
       if (rect.width <= 0 || rect.height <= 0) continue;
-      runs.push({ rect, text });
+      runs.push({ lineCount: Math.max(1, lineCount), rect, text });
     } catch {
       // Detached or non-renderable text nodes contribute nothing.
     }
@@ -2392,28 +2379,10 @@ function hasOutOfFlowPositionedChildren(elements: Element[]): boolean {
   });
 }
 
-function getCommonAncestor(elements: Element[], boundary: Element): Element {
-  if (elements.length === 0) return boundary;
-  let ancestor: Element | null = elements[0];
-
-  while (ancestor && ancestor !== boundary) {
-    if (elements.every((element) => ancestor?.contains(element))) {
-      return ancestor;
-    }
-    ancestor = ancestor.parentElement;
-  }
-
-  return boundary;
-}
-
+// The story's rendered root is exported as-is: demo markup around component
+// elements is part of the story and must survive the round-trip. Component
+// references still attach to the data-component nodes at any depth.
 function findExportRoot(scope: HTMLElement): Element | undefined {
-  const components = Array.from(scope.querySelectorAll("[data-component]"));
-  if (components.length === 1) return components[0];
-  if (components.length > 1) {
-    const ancestor = getCommonAncestor(components, scope);
-    if (ancestor !== scope) return ancestor;
-  }
-
   return scope.firstElementChild ?? undefined;
 }
 
@@ -3086,7 +3055,7 @@ async function createExportNode(
       };
     }
 
-    return createTextLeafNode({
+    const textLeafNode = createTextLeafNode({
       bindings,
       colorOverride: leafColorOverride,
       computed,
@@ -3105,6 +3074,9 @@ async function createExportNode(
       x: localX,
       y: localY,
     });
+    // Component elements that render as bare text (e.g. an inline text link)
+    // must keep their reference for importer-side component extraction.
+    return component ? { ...textLeafNode, component } : textLeafNode;
   }
 
   const kind =
@@ -3130,12 +3102,14 @@ async function createExportNode(
             bindings,
             computed,
             height: toFiniteNumber(run.rect.height),
+            // Range rects measure the font content area like inline boxes do,
+            // so single-line runs get the same line-box compensation.
+            inlineLineBox: true,
             layoutStrategy: "absolute",
+            lineCount: run.lineCount,
             name: `${elementName}__text-${index + 1}`,
             text: applyTextTransformToText(run.text, computed),
-            textAutoResize: isRenderedMultilineText(computed, run.rect.height)
-              ? "HEIGHT"
-              : undefined,
+            textAutoResize: run.lineCount > 1 ? "HEIGHT" : "WIDTH_AND_HEIGHT",
             width: toFiniteNumber(run.rect.width),
             x: toFiniteNumber(run.rect.left - rect.left),
             y: toFiniteNumber(run.rect.top - rect.top),
