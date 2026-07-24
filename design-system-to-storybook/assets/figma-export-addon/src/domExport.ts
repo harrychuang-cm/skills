@@ -2274,6 +2274,47 @@ type DirectTextRun = {
   text: string;
 };
 
+function countLineRects(range: Range): number {
+  return Array.from(range.getClientRects()).filter(
+    (lineRect) => lineRect.width > 0 && lineRect.height > 0,
+  ).length;
+}
+
+// A wrapped inline run can begin mid-line, so a single rectangle cannot
+// represent it. Binary-search the character offset where each rendered line
+// ends and emit one run per line with that line's exact text and rect.
+function splitTextNodeIntoLineRuns(node: Text): DirectTextRun[] {
+  const content = node.textContent ?? "";
+  const runs: DirectTextRun[] = [];
+  const probe = document.createRange();
+  let start = 0;
+
+  for (let guard = 0; guard < 200 && start < content.length; guard += 1) {
+    // Largest end offset whose range still renders on a single line.
+    let low = start + 1;
+    let high = content.length;
+    while (low < high) {
+      const middle = Math.floor((low + high + 1) / 2);
+      probe.setStart(node, start);
+      probe.setEnd(node, middle);
+      if (countLineRects(probe) <= 1) low = middle;
+      else high = middle - 1;
+    }
+
+    probe.setStart(node, start);
+    probe.setEnd(node, low);
+    const rect = probe.getBoundingClientRect();
+    const text = content.slice(start, low).replace(/\s+/g, " ").trim();
+    if (text && rect.width > 0 && rect.height > 0) {
+      runs.push({ lineCount: 1, rect, text });
+    }
+    start = low;
+  }
+
+  probe.detach();
+  return runs;
+}
+
 // Mixed inline content ("Hello <b>world</b> tail") renders its bare text
 // nodes without a wrapping element, so element traversal alone drops them.
 // Ranges recover each text node's rendered bounds for a text leaf per run.
@@ -2289,11 +2330,17 @@ function getDirectTextRuns(element: Element): DirectTextRun[] {
       const range = document.createRange();
       range.selectNodeContents(node);
       const rect = range.getBoundingClientRect();
-      const lineCount = Array.from(range.getClientRects()).filter(
-        (lineRect) => lineRect.width > 0 && lineRect.height > 0,
-      ).length;
+      const lineCount = countLineRects(range);
       range.detach();
       if (rect.width <= 0 || rect.height <= 0) continue;
+
+      if (lineCount > 1) {
+        const lineRuns = splitTextNodeIntoLineRuns(node as Text);
+        if (lineRuns.length > 1) {
+          runs.push(...lineRuns);
+          continue;
+        }
+      }
       runs.push({ lineCount: Math.max(1, lineCount), rect, text });
     } catch {
       // Detached or non-renderable text nodes contribute nothing.
@@ -2908,9 +2955,19 @@ async function createExportNode(
   const elementOutOfFlow = isOutOfFlowPositioned(computed);
 
   const formControlText = getFormControlTextContent(element);
+  // A wrapped inline element (multi-line link) exports as a frame with
+  // per-line runs below instead of a single unrepresentable text rectangle.
+  const isWrappedInlineText =
+    computed.display === "inline" &&
+    Array.from(element.getClientRects()).filter(
+      (lineRect) => lineRect.width > 0 && lineRect.height > 0,
+    ).length > 1;
   if (
     formControlText !== undefined ||
-    (directText && !hasElementChildren(element) && !element.shadowRoot)
+    (directText &&
+      !hasElementChildren(element) &&
+      !element.shadowRoot &&
+      !isWrappedInlineText)
   ) {
     const leafText = applyTextTransformToText(
       formControlText !== undefined

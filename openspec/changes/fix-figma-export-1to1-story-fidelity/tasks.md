@@ -30,3 +30,8 @@
 
 - [x] 6.1 重打包 addon tgz（npm pack）替換 80sJP-Grok/.storybook/vendor/harrychuang-storybook-addon-figma-export-*.tgz 並重新安裝，重啟 Storybook dev server（同時解除現存 vite optimize-dep 504）。完成條件：Storybook 啟動後 figmaExport overlay 徽章顯示 0.8.0。驗證：瀏覽器檢視 overlay。
 - [ ] 6.2 於 Figma 重跑匯入（外掛徽章 1.7.0）匯入 Inline story 新 payload。完成條件：Figma 內為完整段落（詳細は…をご確認ください…）、こちら 為 Hiragino Kaku Gothic ProN W6 紅色粗體、與 Storybook 截圖視覺一致。驗證：Figma 畫面與 story-truth 截圖比對。
+
+## 7. 跨行 run 拆行（驗收發現的缺陷）
+
+- [x] 7.1 （spec: Text style capture）exporter 將跨行 bare text run 依 Range 逐行拆成單行 text 節點（二分搜尋字元 offset 找換行點），行中起點的 x 保留；inline 純文字元素跨行時改走 frame+runs 路徑。完成條件：Inline fixture 的尾段 run 拆成兩個單行節點（第一個 x≈96、第二個 x≈0 y≈26.2），全部 run 文字串接等於段落全文。驗證：run-story-fidelity-fixture 新斷言綠燈。
+- [x] 7.2 addon 0.8.0→0.8.1：重建、同步三份原始樹與 dist、重打包 tgz 並重裝 80sJP-Grok、重啟 Storybook。完成條件：既有測試全綠、md5 同步一致、dev server 供應 0.8.1。驗證：測試輸出與 curl 檢查。

@@ -2077,6 +2077,38 @@ function getPlaceholderTextColor(element) {
     return void 0;
   }
 }
+function countLineRects(range) {
+  return Array.from(range.getClientRects()).filter(
+    (lineRect) => lineRect.width > 0 && lineRect.height > 0
+  ).length;
+}
+function splitTextNodeIntoLineRuns(node) {
+  const content = node.textContent ?? "";
+  const runs = [];
+  const probe = document.createRange();
+  let start = 0;
+  for (let guard = 0; guard < 200 && start < content.length; guard += 1) {
+    let low = start + 1;
+    let high = content.length;
+    while (low < high) {
+      const middle = Math.floor((low + high + 1) / 2);
+      probe.setStart(node, start);
+      probe.setEnd(node, middle);
+      if (countLineRects(probe) <= 1) low = middle;
+      else high = middle - 1;
+    }
+    probe.setStart(node, start);
+    probe.setEnd(node, low);
+    const rect = probe.getBoundingClientRect();
+    const text = content.slice(start, low).replace(/\s+/g, " ").trim();
+    if (text && rect.width > 0 && rect.height > 0) {
+      runs.push({ lineCount: 1, rect, text });
+    }
+    start = low;
+  }
+  probe.detach();
+  return runs;
+}
 function getDirectTextRuns(element) {
   const runs = [];
   for (const node of Array.from(element.childNodes)) {
@@ -2087,11 +2119,16 @@ function getDirectTextRuns(element) {
       const range = document.createRange();
       range.selectNodeContents(node);
       const rect = range.getBoundingClientRect();
-      const lineCount = Array.from(range.getClientRects()).filter(
-        (lineRect) => lineRect.width > 0 && lineRect.height > 0
-      ).length;
+      const lineCount = countLineRects(range);
       range.detach();
       if (rect.width <= 0 || rect.height <= 0) continue;
+      if (lineCount > 1) {
+        const lineRuns = splitTextNodeIntoLineRuns(node);
+        if (lineRuns.length > 1) {
+          runs.push(...lineRuns);
+          continue;
+        }
+      }
       runs.push({ lineCount: Math.max(1, lineCount), rect, text });
     } catch {
     }
@@ -2502,7 +2539,10 @@ async function createExportNode(element, rootRect, parentRect, ruleIndex, tokenS
   const frameLayoutStrategy = element.getAttribute("data-figma-layout-strategy") === "auto-layout" ? layoutStrategy : shouldPreserveComputedAutoLayout ? layoutStrategy : pseudoNodes.length > 0 || hasPositionedChildren ? "absolute" : layoutStrategy;
   const elementOutOfFlow = isOutOfFlowPositioned(computed);
   const formControlText = getFormControlTextContent(element);
-  if (formControlText !== void 0 || directText && !hasElementChildren(element) && !element.shadowRoot) {
+  const isWrappedInlineText = computed.display === "inline" && Array.from(element.getClientRects()).filter(
+    (lineRect) => lineRect.width > 0 && lineRect.height > 0
+  ).length > 1;
+  if (formControlText !== void 0 || directText && !hasElementChildren(element) && !element.shadowRoot && !isWrappedInlineText) {
     const leafText = applyTextTransformToText(
       formControlText !== void 0 ? formControlText.text : getRenderedLeafText(element),
       computed
@@ -4269,7 +4309,7 @@ void (async function importStorybookStory(payload) {
 
 // src/version.ts
 function getAddonVersion() {
-  return true ? "0.8.0" : "dev";
+  return true ? "0.8.1" : "dev";
 }
 
 // src/workspace.ts

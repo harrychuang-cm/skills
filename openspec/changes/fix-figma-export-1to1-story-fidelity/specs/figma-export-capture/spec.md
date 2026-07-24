@@ -20,7 +20,9 @@ The exporter SHALL use the story scope's first element child as the export root,
 
 The exporter SHALL capture per-text-node fidelity fields: computed text-transform applied directly to the exported text string (uppercase, lowercase, capitalize); rendered line breaks preserved (via innerText for flow content, and whitespace-preserving extraction when computed white-space is pre, pre-wrap, pre-line, or break-spaces); letter-spacing emitted in pixels when non-normal; text-decoration underline or line-through emitted as textDecoration UNDERLINE or STRIKETHROUGH; and computed font-style italic emitted as fontStyle "italic".
 
-Text node geometry SHALL be exported at one-to-one fidelity: the exported width SHALL equal the measured bounding-rect width without any safety margin; single-line text nodes (exported string contains no newline and the node is not constrained by maxLines or a fixed flex basis) SHALL be marked textAutoResize WIDTH_AND_HEIGHT; and bare text runs SHALL detect multi-line rendering from the range's actual line rect count, marking multi-line runs textAutoResize HEIGHT.
+Text node geometry SHALL be exported at one-to-one fidelity: the exported width SHALL equal the measured bounding-rect width without any safety margin, and single-line text nodes (exported string contains no newline and the node is not constrained by maxLines or a fixed flex basis) SHALL be marked textAutoResize WIDTH_AND_HEIGHT.
+
+Bare text runs SHALL detect multi-line rendering from the range's actual line rect count. A run that renders across multiple lines SHALL be split into one text node per rendered line, each carrying that line's exact text and bounding rect, because a wrapped inline run can begin mid-line and a single rectangle cannot represent it. Inline text-only elements that render across multiple lines SHALL likewise export as a frame containing per-line runs instead of a single text leaf.
 
 For text on elements whose computed display is inline and for bare text runs, the measured box is (n - 1) line boxes plus one font content box, not n full line boxes. When the derived content-box height is smaller than the pixel line-height, the exporter SHALL add the missing leading to the exported height and shift the exported y up by half the leading (half-leading line-box compensation), so that a single-line inline box exports at line-height tall and an n-line run exports at n times line-height tall, both anchored on the browser's line-box top.
 
@@ -48,6 +50,11 @@ For text on elements whose computed display is inline and for bare text runs, th
 
 - **WHEN** an inline element renders one line with bounding-rect height 16 and computed line-height 26.4px at y 100
 - **THEN** the payload node height is 26.4 and its y is 94.8
+
+#### Scenario: wrapped run splits per rendered line
+
+- **WHEN** a paragraph renders "AB<link>CD</link>EFGH..." where the trailing bare run starts mid-line after the link and wraps onto a second line
+- **THEN** the trailing run exports as two text nodes: the first positioned at the x where it starts on the first line, the second at the paragraph's left edge on the second line, and the concatenation of all exported run texts equals the paragraph text
 
 ##### Example: inline compensation values
 

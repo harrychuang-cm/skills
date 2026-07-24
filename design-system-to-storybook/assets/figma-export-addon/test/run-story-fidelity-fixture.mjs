@@ -191,16 +191,36 @@ function assertPayload(payload) {
     "body copy keeps the mincho stack",
   );
 
-  const tailRun = texts.find((node) => node.text?.includes("をご確認ください"));
-  assert.ok(tailRun, "trailing bare run exported");
-  assert.strictEqual(
-    tailRun.styles.textGrowHeight,
-    true,
-    "wrapped run keeps fixed width and grows height",
-  );
+  // The trailing run starts mid-line after the link and wraps onto a second
+  // line; it must split into one single-line node per rendered line so the
+  // mid-line start position survives (a single rectangle cannot express it).
+  const tailFirst = texts.find((node) => node.text?.startsWith("をご確認"));
+  assert.ok(tailFirst, "first line of the wrapped run exported");
+  assertClose(tailFirst.styles.x, 96, 2, "wrapped run first line starts after the link");
   assert.ok(
-    tailRun.styles.height > 26.4,
-    `wrapped run spans more than one line box: got ${tailRun.styles.height}`,
+    tailFirst.styles.y >= -1 && tailFirst.styles.y <= 0.75,
+    `wrapped run first line sits on line box 1: got ${tailFirst.styles.y}`,
+  );
+  assertClose(tailFirst.styles.height, 26.4, 0.15, "wrapped run first line is one line box");
+  assert.strictEqual(
+    tailFirst.styles.textAutoResize,
+    "WIDTH_AND_HEIGHT",
+    "split line runs hug their content",
+  );
+
+  const paragraphTail = "をご確認ください。本文は明朝、リンクはゴシックのまま強調します。";
+  const tailSecond = texts.find(
+    (node) => node !== tailFirst && node.text && paragraphTail.endsWith(node.text),
+  );
+  assert.ok(tailSecond, "second line of the wrapped run exported");
+  assertClose(tailSecond.styles.x, 0, 2, "wrapped run second line returns to the left edge");
+  assertClose(tailSecond.styles.y, 26.2, 1.2, "wrapped run second line sits on line box 2");
+
+  const characterMultiset = (value) => [...value].sort().join("");
+  assert.strictEqual(
+    characterMultiset(texts.map((node) => node.text).join("")),
+    characterMultiset(`詳細はこちら${paragraphTail}`),
+    "run texts cover the paragraph exactly, no loss or duplication",
   );
 
   // Alignment sanity: the link starts right after the leading run.
