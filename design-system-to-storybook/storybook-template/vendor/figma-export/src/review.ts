@@ -1,20 +1,20 @@
 import {
-  CollapseIcon,
-  EditIcon,
-  EyeIcon,
-  LinkIcon,
-  TrashIcon,
-} from "@storybook/icons";
-import type {
-  KeyboardEvent as ReactKeyboardEvent,
-  PointerEvent as ReactPointerEvent,
-  ReactNode,
-} from "react";
-import { Fragment, createElement as h, useEffect, useId, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+  Fragment,
+  createElement as h,
+  createPortal,
+  mountDom,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type DomChild,
+} from "./domRuntime";
 
 import "./review.css";
-import { unfoldMoreDisclosurePath } from "./disclosureIcon";
+import {
+  collapseDisclosurePath,
+  unfoldMoreDisclosurePath,
+} from "./disclosureIcon";
 import {
   readCollapsePreference,
   reviewCollapseStorageKey,
@@ -36,11 +36,9 @@ import {
 
 import {
   VISUAL_COMMENT_LIMITS,
-  beginVisualCommentCapture,
   clampRatio,
   getVisualCommentPin,
   normalizeAuthorName,
-  resolveVisualCommentTarget,
   type CreateVisualCommentRequest,
   type VisualCommentCaptureController,
   type VisualCommentCaptureResult,
@@ -48,38 +46,107 @@ import {
   type VisualCommentPin,
   type VisualCommentPointSelection,
 } from "./visualComment";
+import {
+  createReviewStatusController,
+  createVisualCommentsController,
+  type FigmaReviewEntry,
+  type FigmaReviewStatus,
+  type VisualCommentOverview,
+} from "./reviewController";
 
-function UnfoldMoreDisclosureIcon(): ReactNode {
+export type { FigmaReviewEntry, FigmaReviewStatus } from "./reviewController";
+
+type DomKeyboardEvent<T extends HTMLElement> = KeyboardEvent & {
+  currentTarget: T;
+};
+type DomInputEvent<T extends HTMLElement> = Event & {
+  currentTarget: T;
+};
+type DomMouseEvent<T extends HTMLElement> = MouseEvent & {
+  currentTarget: T;
+};
+type DomPointerEvent<T extends HTMLElement> = PointerEvent & {
+  currentTarget: T;
+};
+
+function SvgIcon({
+  children,
+  size = 14,
+}: {
+  children?: DomChild;
+  size?: number;
+}) {
   return h(
     "svg",
     {
       "aria-hidden": "true",
       fill: "none",
-      height: 14,
+      height: size,
       viewBox: "0 0 14 14",
-      width: 14,
+      width: size,
     },
-    h("path", { d: unfoldMoreDisclosurePath, fill: "currentColor" }),
+    children,
   );
 }
 
-export type FigmaReviewStatus =
-  | "not-started"
-  | "exported"
-  | "imported"
-  | "needs-fix"
-  | "approved";
+function PathIcon({ d, size }: { d: string; size?: number }) {
+  return h(SvgIcon, { size }, h("path", {
+    d,
+    fill: "none",
+    stroke: "currentColor",
+    "stroke-linecap": "round",
+    "stroke-linejoin": "round",
+    "stroke-width": "1.25",
+  }));
+}
 
-export type FigmaReviewEntry = {
-  componentTitle?: string;
-  figmaNodeUrl?: string;
-  figmaReviewStatus: FigmaReviewStatus;
-  name?: string;
-  notes?: string;
-  notesOpen?: boolean;
-  storyTitle?: string;
-  updatedAt?: string;
-};
+function CollapseIcon({ size }: { size?: number }) {
+  return h(SvgIcon, { size }, h("path", {
+    d: collapseDisclosurePath,
+    fill: "currentColor",
+  }));
+}
+
+function EditIcon({ size }: { size?: number }) {
+  return h(SvgIcon, { size }, h("path", {
+    d: "M13.854 2.146l-2-2a.5.5 0 00-.708 0l-1.5 1.5-8.995 8.995a.499.499 0 00-.143.268L.012 13.39a.495.495 0 00.135.463.5.5 0 00.462.134l2.482-.496a.495.495 0 00.267-.143l8.995-8.995 1.5-1.5a.5.5 0 000-.708zM12 3.293l.793-.793L11.5 1.207 10.707 2 12 3.293zm-2-.586L1.707 11 3 12.293 11.293 4 10 2.707zM1.137 12.863l.17-.849.679.679-.849.17z",
+    fill: "currentColor",
+  }));
+}
+
+function EyeIcon({ size }: { size?: number }) {
+  return h(SvgIcon, { size }, [
+    h("path", {
+      d: "M7 9.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5z",
+      fill: "currentColor",
+    }),
+    h("path", {
+      d: "M14 7l-.21.293C13.669 7.465 10.739 11.5 7 11.5S.332 7.465.21 7.293L0 7l.21-.293C.331 6.536 3.261 2.5 7 2.5s6.668 4.036 6.79 4.207L14 7zM2.896 5.302A12.725 12.725 0 001.245 7c.296.37.874 1.04 1.65 1.698C4.043 9.67 5.482 10.5 7 10.5c1.518 0 2.958-.83 4.104-1.802A12.72 12.72 0 0012.755 7c-.297-.37-.875-1.04-1.65-1.698C9.957 4.33 8.517 3.5 7 3.5c-1.519 0-2.958.83-4.104 1.802z",
+      fill: "currentColor",
+    }),
+  ]);
+}
+
+function LinkIcon({ size }: { size?: number }) {
+  return h(PathIcon, {
+    d: "M5.6 8.4l2.8-2.8M4.55 9.45l-1 .95a2.1 2.1 0 01-2.95-2.95l1.85-1.9a2.1 2.1 0 012.95 0M9.45 4.55l1-.95a2.1 2.1 0 012.95 2.95l-1.85 1.9a2.1 2.1 0 01-2.95 0",
+    size,
+  });
+}
+
+function TrashIcon({ size }: { size?: number }) {
+  return h(PathIcon, {
+    d: "M2.5 4h9M5 4V2.5h4V4m1.5 0l-.55 8H4.05L3.5 4M5.75 6v4M8.25 6v4",
+    size,
+  });
+}
+
+function UnfoldMoreDisclosureIcon(): DomChild {
+  return h(SvgIcon, null, h("path", {
+    d: unfoldMoreDisclosurePath,
+    fill: "currentColor",
+  }));
+}
 
 export type FigmaReviewLabels = Partial<{
   approved: string;
@@ -140,7 +207,7 @@ export type FigmaExportReviewOptions = {
 export type FigmaExportReviewProps = {
   apiPath?: string;
   autoMarkExported?: boolean;
-  children?: ReactNode;
+  children?: DomChild;
   componentTitle: string;
   enabled: boolean;
   figmaSourceUrl?: string;
@@ -163,7 +230,7 @@ export type StorybookContext = {
   viewMode?: string;
 };
 
-type StorybookStory = () => ReactNode;
+type StorybookStory = () => unknown;
 type SaveState = "error" | "idle" | "loading" | "saved" | "saving";
 
 export const defaultFigmaReviewStatusApiPath = "/__figma_export_review_status";
@@ -298,41 +365,6 @@ function getReviewStatusOptions(labels: Required<FigmaReviewLabels>) {
   ] satisfies Array<{ label: string; value: FigmaReviewStatus }>;
 }
 
-type VisualCommentOverview = {
-  activeSession: {
-    id: string;
-    title: string;
-    startedAt: string;
-    closedAt: string | null;
-    captureCount: number;
-    commentCount: number;
-  } | null;
-  activeReportUrl: string | null;
-  comments: Array<{
-    id: string;
-    authorName: string;
-    body: string;
-    createdAt: string;
-    ordinal: number;
-    preview: {
-      imageUrl: string;
-      width: number;
-      height: number;
-      pin: VisualCommentPin;
-    } | null;
-    resolvedAt?: string | null;
-  }>;
-  recentSessions: Array<{
-    id: string;
-    title: string;
-    startedAt: string;
-    closedAt: string | null;
-    captureCount: number;
-    commentCount: number;
-  }>;
-  reportUrl: string;
-};
-
 function defaultMeetingTitle(): string {
   return `Design review ${new Date().toLocaleString()}`;
 }
@@ -397,6 +429,7 @@ function VisualCommentsSection({
   const deleteDialogTitleId = useId();
   const deleteDialogDescriptionId = useId();
   const apiPath = options?.apiPath ?? "/__figma_export_review_comments";
+  const commentsController = createVisualCommentsController({ apiPath });
   const authorStorageKey = options?.authorStorageKey ?? "sbfx:review-author";
   const [overview, setOverview] = useState<VisualCommentOverview | null>(null);
   const [meetingTitle, setMeetingTitle] = useState(defaultMeetingTitle);
@@ -478,13 +511,7 @@ function VisualCommentsSection({
     editingCommentDraft.trim().length <= VISUAL_COMMENT_LIMITS.maxBodyLength;
 
   async function refresh() {
-    const response = await fetch(`${apiPath}?storyId=${encodeURIComponent(storyId)}`);
-    if (!response.ok) {
-      throw new Error(
-        `Visual comments GET ${apiPath} returned HTTP ${response.status}. Check the visual-comments server configuration.`,
-      );
-    }
-    setOverview((await response.json()) as VisualCommentOverview);
+    setOverview(await commentsController.getOverview(storyId));
     setCommentsCapability("available");
     setCommentsCapabilityError("");
   }
@@ -494,13 +521,7 @@ function VisualCommentsSection({
     let active = true;
     const load = async () => {
       try {
-        const response = await fetch(`${apiPath}?storyId=${encodeURIComponent(storyId)}`);
-        if (!response.ok) {
-          throw new Error(
-            `Visual comments GET ${apiPath} returned HTTP ${response.status}. Check the visual-comments server configuration.`,
-          );
-        }
-        const next = (await response.json()) as VisualCommentOverview;
+        const next = await commentsController.getOverview(storyId);
         if (active) {
           setOverview(next);
           setCommentsCapability("available");
@@ -550,7 +571,7 @@ function VisualCommentsSection({
     }
     let animationFrame = 0;
     const syncPosition = () => {
-      const target = resolveVisualCommentTarget(options?.captureSelector);
+      const target = commentsController.resolveTarget(options?.captureSelector);
       if (!target) {
         setLivePinPosition(null);
         return;
@@ -588,7 +609,7 @@ function VisualCommentsSection({
 
   useEffect(() => {
     if (!pendingDeleteCommentId) return;
-    const focusFrame = window.requestAnimationFrame(() => deleteCancelRef.current?.focus());
+    deleteCancelRef.current?.focus();
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       event.preventDefault();
@@ -596,16 +617,13 @@ function VisualCommentsSection({
     };
     document.addEventListener("keydown", handleEscape);
     return () => {
-      window.cancelAnimationFrame(focusFrame);
       document.removeEventListener("keydown", handleEscape);
     };
   }, [pendingDeleteCommentId]);
 
   useEffect(() => {
     if (!editingCommentId) return;
-    const focusFrame = window.requestAnimationFrame(() => {
-      (commentEditPinRef.current ?? commentEditTextareaRef.current)?.focus();
-    });
+    (commentEditPinRef.current ?? commentEditTextareaRef.current)?.focus();
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       event.preventDefault();
@@ -613,7 +631,6 @@ function VisualCommentsSection({
     };
     document.addEventListener("keydown", handleEscape);
     return () => {
-      window.cancelAnimationFrame(focusFrame);
       document.removeEventListener("keydown", handleEscape);
     };
   }, [editingCommentId]);
@@ -633,20 +650,7 @@ function VisualCommentsSection({
     setIsBusy(true);
     setVisualError("");
     try {
-      const response = await fetch(`${apiPath}${path}`, {
-        body: body === undefined ? undefined : JSON.stringify(body),
-        headers: body === undefined ? undefined : { "Content-Type": "application/json" },
-        method: "POST",
-      });
-      const payload = (await response.json().catch(() => ({}))) as {
-        error?: string;
-        reportStale?: boolean;
-      };
-      if (!response.ok) {
-        throw new Error(
-          `Visual comments POST ${apiPath}${path} returned HTTP ${response.status}${payload.error ? `: ${payload.error}` : "."}`,
-        );
-      }
+      const payload = await commentsController.post(path, body);
       setReportPending(Boolean(payload.reportStale));
       await refresh();
       return payload;
@@ -667,7 +671,7 @@ function VisualCommentsSection({
     setPendingCapture(null);
     setPendingPoint(null);
     setIsCapturing(true);
-    captureControllerRef.current = beginVisualCommentCapture({
+    captureControllerRef.current = commentsController.beginCapture({
       onCancel: () => {
         setIsCapturing(false);
         setPendingPoint(null);
@@ -705,7 +709,7 @@ function VisualCommentsSection({
     );
   }
 
-  function updatePendingPinFromPointer(event: ReactPointerEvent<HTMLDivElement>) {
+  function updatePendingPinFromPointer(event: DomPointerEvent<HTMLDivElement>) {
     updatePendingPin(
       getVisualCommentPin(
         event.currentTarget.getBoundingClientRect(),
@@ -715,7 +719,7 @@ function VisualCommentsSection({
     );
   }
 
-  function handlePreviewPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+  function handlePreviewPointerDown(event: DomPointerEvent<HTMLDivElement>) {
     if (event.button !== 0) return;
     event.preventDefault();
     if (event.target instanceof HTMLButtonElement) event.target.focus();
@@ -728,12 +732,12 @@ function VisualCommentsSection({
     updatePendingPinFromPointer(event);
   }
 
-  function handlePreviewPointerMove(event: ReactPointerEvent<HTMLDivElement>) {
+  function handlePreviewPointerMove(event: DomPointerEvent<HTMLDivElement>) {
     if (previewDragPointerRef.current !== event.pointerId) return;
     updatePendingPinFromPointer(event);
   }
 
-  function handlePreviewPointerEnd(event: ReactPointerEvent<HTMLDivElement>) {
+  function handlePreviewPointerEnd(event: DomPointerEvent<HTMLDivElement>) {
     if (previewDragPointerRef.current !== event.pointerId) return;
     previewDragPointerRef.current = null;
     try {
@@ -745,7 +749,7 @@ function VisualCommentsSection({
     }
   }
 
-  function handlePendingPinKeyDown(event: ReactKeyboardEvent<HTMLButtonElement>) {
+  function handlePendingPinKeyDown(event: DomKeyboardEvent<HTMLButtonElement>) {
     const step = event.shiftKey ? 0.05 : 0.01;
     let xDelta = 0;
     let yDelta = 0;
@@ -897,24 +901,20 @@ function VisualCommentsSection({
       const path = `/sessions/${encodeURIComponent(overview.activeSession.id)}/comments/${encodeURIComponent(commentId)}`;
       const comment = overview.comments.find((entry) => entry.id === commentId);
       const pin = commentPinDrafts[commentId];
-      const includePin = Boolean(
-        comment?.preview && !commentPreviewErrors[commentId] && pin,
+      const evidenceImage = document.querySelector<HTMLImageElement>(
+        `[data-comment-edit-modal] img[alt="Screenshot evidence for comment ${comment?.ordinal ?? ""}"]`,
       );
-      const response = await fetch(`${apiPath}${path}`, {
-        body: JSON.stringify({ body, ...(includePin ? { pin } : {}) }),
-        headers: { "Content-Type": "application/json" },
-        method: "PATCH",
-      });
-      const payload = (await response.json().catch(() => ({}))) as {
-        error?: string;
-        reportStale?: boolean;
-      };
-      if (!response.ok) {
-        throw new Error(
-          payload.error ??
-            `Visual comments PATCH ${apiPath}${path} returned HTTP ${response.status}.`,
-        );
-      }
+      const includePin = Boolean(
+        comment?.preview &&
+          !commentPreviewErrors[commentId] &&
+          evidenceImage?.complete &&
+          evidenceImage.naturalWidth > 0 &&
+          pin,
+      );
+      const payload = await commentsController.patch(
+        path,
+        { body, ...(includePin ? { pin } : {}) },
+      );
       setReportPending(Boolean(payload.reportStale));
       await refresh();
       cancelCommentEdit(commentId);
@@ -942,7 +942,7 @@ function VisualCommentsSection({
 
   function updateCommentPinFromPointer(
     commentId: string,
-    event: ReactPointerEvent<HTMLElement>,
+    event: DomPointerEvent<HTMLElement>,
   ) {
     updateCommentPin(
       commentId,
@@ -956,7 +956,7 @@ function VisualCommentsSection({
 
   function handleCommentPreviewPointerDown(
     commentId: string,
-    event: ReactPointerEvent<HTMLElement>,
+    event: DomPointerEvent<HTMLElement>,
   ) {
     if (event.button !== 0) return;
     event.preventDefault();
@@ -972,7 +972,7 @@ function VisualCommentsSection({
 
   function handleCommentPreviewPointerMove(
     commentId: string,
-    event: ReactPointerEvent<HTMLElement>,
+    event: DomPointerEvent<HTMLElement>,
   ) {
     const drag = commentPreviewDragRef.current;
     if (drag?.commentId !== commentId || drag.pointerId !== event.pointerId) return;
@@ -981,7 +981,7 @@ function VisualCommentsSection({
 
   function handleCommentPreviewPointerEnd(
     commentId: string,
-    event: ReactPointerEvent<HTMLElement>,
+    event: DomPointerEvent<HTMLElement>,
   ) {
     const drag = commentPreviewDragRef.current;
     if (drag?.commentId !== commentId || drag.pointerId !== event.pointerId) return;
@@ -997,7 +997,7 @@ function VisualCommentsSection({
 
   function handleCommentPinKeyDown(
     commentId: string,
-    event: ReactKeyboardEvent<HTMLElement>,
+    event: DomKeyboardEvent<HTMLElement>,
   ) {
     const step = event.shiftKey ? 0.05 : 0.01;
     let xDelta = 0;
@@ -1046,17 +1046,7 @@ function VisualCommentsSection({
     try {
       preserveOpenPanelDuringMutation();
       const path = `/sessions/${encodeURIComponent(overview.activeSession.id)}/comments/${encodeURIComponent(commentId)}`;
-      const response = await fetch(`${apiPath}${path}`, { method: "DELETE" });
-      const payload = (await response.json().catch(() => ({}))) as {
-        error?: string;
-        reportStale?: boolean;
-      };
-      if (!response.ok) {
-        throw new Error(
-          payload.error ??
-            `Visual comments DELETE ${apiPath}${path} returned HTTP ${response.status}.`,
-        );
-      }
+      const payload = await commentsController.delete(path);
       setReportPending(Boolean(payload.reportStale));
       closeDeleteDialog(false);
       cancelCommentEdit(commentId);
@@ -1213,7 +1203,7 @@ function VisualCommentsSection({
                     h("span", null, labels.authorName),
                     h("input", {
                       maxLength: VISUAL_COMMENT_LIMITS.maxAuthorLength,
-                      onChange: (event) =>
+                      onChange: (event: DomInputEvent<HTMLInputElement>) =>
                         setAuthorName((event.currentTarget as HTMLInputElement).value),
                       value: authorName,
                     }),
@@ -1224,7 +1214,7 @@ function VisualCommentsSection({
                     h("span", null, labels.commentBody),
                     h("textarea", {
                       maxLength: VISUAL_COMMENT_LIMITS.maxBodyLength,
-                      onChange: (event) =>
+                      onChange: (event: DomInputEvent<HTMLTextAreaElement>) =>
                         setCommentBody((event.currentTarget as HTMLTextAreaElement).value),
                       rows: 2,
                       value: commentBody,
@@ -1344,7 +1334,7 @@ function VisualCommentsSection({
                             className:
                               "sbfx-review__icon-button sbfx-comments-panel__comment-action",
                             disabled: isCommentBusy,
-                            onClick: (event) =>
+                            onClick: (event: DomMouseEvent<HTMLButtonElement>) =>
                               beginCommentEdit(
                                 comment.id,
                                 comment.body,
@@ -1363,7 +1353,7 @@ function VisualCommentsSection({
                             className:
                               "sbfx-review__icon-button sbfx-comments-panel__comment-action sbfx-comments-panel__comment-action--delete",
                             disabled: isCommentBusy,
-                            onClick: (event) =>
+                            onClick: (event: DomMouseEvent<HTMLButtonElement>) =>
                               openDeleteDialog(
                                 comment.id,
                                 event.currentTarget as HTMLButtonElement,
@@ -1386,7 +1376,7 @@ function VisualCommentsSection({
           h("input", {
             "aria-label": "Meeting title",
             maxLength: VISUAL_COMMENT_LIMITS.maxTitleLength,
-            onChange: (event) =>
+            onChange: (event: DomInputEvent<HTMLInputElement>) =>
               setMeetingTitle((event.currentTarget as HTMLInputElement).value),
             value: meetingTitle,
           }),
@@ -1412,6 +1402,43 @@ function VisualCommentsSection({
             labels.startMeeting,
           ),
         ),
+    overview?.recentSessions.length
+      ? h(
+          "section",
+          {
+            "aria-label": "Recent meetings",
+            className: "sbfx-comments-panel__recent-meetings",
+          },
+          h("h3", { className: "sbfx-review__label" }, "Recent meetings"),
+          ...overview.recentSessions.slice(0, 5).map((session) =>
+            h(
+              "article",
+              {
+                className: "sbfx-comments-panel__meeting-history",
+                "data-meeting-id": session.id,
+                key: session.id,
+              },
+              h("strong", null, session.title),
+              h(
+                "span",
+                { className: "sbfx-review__meta" },
+                `${session.commentCount} comment${session.commentCount === 1 ? "" : "s"}`,
+              ),
+              h(
+                "a",
+                {
+                  className:
+                    "sbfx-review__button sbfx-review__button--secondary",
+                  href: `${apiPath}/reports/sessions/${encodeURIComponent(session.id)}/index.html`,
+                  rel: "noreferrer",
+                  target: "_blank",
+                },
+                "Open report",
+              ),
+            ),
+          ),
+        )
+      : null,
     reportPending
       ? h("p", { className: "sbfx-review__error" }, "Comment saved; report rebuild pending.")
       : null,
@@ -1427,7 +1454,7 @@ function VisualCommentsSection({
             className: "sbfx-comments-panel__edit-backdrop",
             "data-comment-edit-modal": "true",
             "data-sbfx-capture-ignore": "true",
-            onClick: (event) => {
+            onClick: (event: DomMouseEvent<HTMLDivElement>) => {
               if (event.target === event.currentTarget) {
                 cancelCommentEdit(editingComment.id);
               }
@@ -1457,13 +1484,13 @@ function VisualCommentsSection({
                       "sbfx-review__snapshot-preview sbfx-comments-panel__edit-preview",
                     "data-comment-evidence-preview": "true",
                     "data-comment-edit-preview": "true",
-                    onPointerCancel: (event) =>
+                    onPointerCancel: (event: DomPointerEvent<HTMLElement>) =>
                       handleCommentPreviewPointerEnd(editingComment.id, event),
-                    onPointerDown: (event) =>
+                    onPointerDown: (event: DomPointerEvent<HTMLElement>) =>
                       handleCommentPreviewPointerDown(editingComment.id, event),
-                    onPointerMove: (event) =>
+                    onPointerMove: (event: DomPointerEvent<HTMLElement>) =>
                       handleCommentPreviewPointerMove(editingComment.id, event),
-                    onPointerUp: (event) =>
+                    onPointerUp: (event: DomPointerEvent<HTMLElement>) =>
                       handleCommentPreviewPointerEnd(editingComment.id, event),
                     style: {
                       aspectRatio: `${editingComment.preview.width}/${editingComment.preview.height}`,
@@ -1494,7 +1521,7 @@ function VisualCommentsSection({
                       "aria-label": `${labels.adjustCommentPoint} ${editingComment.ordinal}`,
                       className: "sbfx-review__pin sbfx-review__pin--editable",
                       "data-comment-edit-pin": "true",
-                      onKeyDown: (event) =>
+                      onKeyDown: (event: DomKeyboardEvent<HTMLElement>) =>
                         handleCommentPinKeyDown(editingComment.id, event),
                       ref: commentEditPinRef,
                       style: {
@@ -1530,7 +1557,7 @@ function VisualCommentsSection({
               h("span", null, labels.commentBody),
               h("textarea", {
                 maxLength: VISUAL_COMMENT_LIMITS.maxBodyLength,
-                onChange: (event) => {
+                onChange: (event: DomInputEvent<HTMLTextAreaElement>) => {
                   const value = (event.currentTarget as HTMLTextAreaElement).value;
                   setCommentDrafts((current) => ({
                     ...current,
@@ -1595,7 +1622,7 @@ function VisualCommentsSection({
             "aria-labelledby": deleteDialogTitleId,
             "aria-modal": "true",
             className: "sbfx-comments-panel__dialog-backdrop",
-            onClick: (event) => {
+            onClick: (event: DomMouseEvent<HTMLDivElement>) => {
               if (event.target === event.currentTarget) closeDeleteDialog();
             },
             role: "dialog",
@@ -1662,7 +1689,6 @@ function VisualCommentsSection({
 export function FigmaExportReview({
   apiPath = defaultFigmaReviewStatusApiPath,
   autoMarkExported = true,
-  children,
   componentTitle,
   enabled,
   figmaSourceUrl,
@@ -1676,6 +1702,7 @@ export function FigmaExportReview({
   visualComments,
 }: FigmaExportReviewProps) {
   const labels = { ...defaultLabels, ...labelsOverride };
+  const reviewStatusController = createReviewStatusController({ apiPath });
   const initialFigmaSourceUrl = normalizeFigmaSourceUrl(figmaSourceUrl ?? "");
   const [entry, setEntry] = useState<FigmaReviewEntry>(() => normalizeEntry(null));
   const [draftDetails, setDraftDetails] = useState(() => ({
@@ -1721,23 +1748,15 @@ export function FigmaExportReview({
 
     async function loadReviewStatus() {
       try {
-        const response = await fetch(
-          `${apiPath}?storyId=${encodeURIComponent(storyId)}`,
-          { signal: controller.signal },
+        const savedEntryPayload = await reviewStatusController.load(
+          storyId,
+          controller.signal,
         );
-        if (!response.ok) {
-          throw new Error(
-            `Review status GET ${apiPath} returned HTTP ${response.status}. Check the review-status server configuration.`,
-          );
-        }
-        const payload = (await response.json()) as {
-          entry?: Partial<FigmaReviewEntry> | null;
-        };
         const savedFigmaNodeUrl = normalizeFigmaSourceUrl(
-          payload.entry?.figmaNodeUrl ?? "",
+          savedEntryPayload?.figmaNodeUrl ?? "",
         );
         const nextEntry = normalizeEntry({
-          ...(payload.entry ?? {}),
+          ...(savedEntryPayload ?? {}),
           figmaNodeUrl: savedFigmaNodeUrl || initialFigmaSourceUrl,
         });
         entryRef.current = nextEntry;
@@ -1780,24 +1799,7 @@ export function FigmaExportReview({
       .catch(() => undefined)
       .then(async () => {
         const entryToSave = entryRef.current;
-        const response = await fetch(apiPath, {
-          body: JSON.stringify({
-            entry: entryToSave,
-            storyId,
-          }),
-          headers: {
-            "Content-Type": "application/json",
-          },
-          method: "PUT",
-        });
-        if (!response.ok) {
-          throw new Error(
-            `Review status PUT ${apiPath} returned HTTP ${response.status}. Check the review-status server configuration.`,
-          );
-        }
-        const payload = (await response.json()) as {
-          entry?: Partial<FigmaReviewEntry>;
-        };
+        const payload = await reviewStatusController.save(storyId, entryToSave);
         const savedEntry = normalizeEntry(payload.entry ?? entryToSave);
         entryRef.current = savedEntry;
         setEntry(savedEntry);
@@ -1872,7 +1874,6 @@ export function FigmaExportReview({
   return h(
     Fragment,
     null,
-    children,
     shouldShowPanel && workspaceSlot
       ? createPortal(h(
           "aside",
@@ -1941,7 +1942,7 @@ export function FigmaExportReview({
               h(
                 "select",
                 {
-                  onChange: (event) => {
+                  onChange: (event: DomInputEvent<HTMLSelectElement>) => {
                     void saveReviewStatus({
                       figmaReviewStatus: (event.currentTarget as HTMLSelectElement)
                         .value as FigmaReviewStatus,
@@ -1962,14 +1963,14 @@ export function FigmaExportReview({
                 h("span", null, labels.figmaSource),
                 h("input", {
                   onBlur: saveFigmaSourceUrl,
-                  onChange: (event) => {
+                  onChange: (event: DomInputEvent<HTMLInputElement>) => {
                     const figmaNodeUrl = (event.currentTarget as HTMLInputElement).value;
                     setDraftDetails((current) => ({
                       ...current,
                       figmaNodeUrl,
                     }));
                   },
-                  onKeyDown: (event) => {
+                  onKeyDown: (event: DomKeyboardEvent<HTMLInputElement>) => {
                     if (event.key === "Enter") {
                       (event.currentTarget as HTMLInputElement).blur();
                     }
@@ -2038,7 +2039,7 @@ export function FigmaExportReview({
                         onBlur: () => {
                           void saveReviewStatus({ notes: draftDetails.notes });
                         },
-                        onChange: (event) => {
+                        onChange: (event: DomInputEvent<HTMLTextAreaElement>) => {
                           const notes = (event.currentTarget as HTMLTextAreaElement).value;
                           setDraftDetails((current) => ({
                             ...current,
@@ -2092,6 +2093,7 @@ export function createFigmaExportReviewDecorator(
   const resolvedOptions = resolveFigmaExportAddonOptions(figmaExportOptions);
 
   return (Story: StorybookStory, context: StorybookContext) => {
+    const storyResult = figmaExportDecorator(Story, context);
     const includedStory = isStoryIncludedForFigmaExport(
       context.title,
       resolvedOptions,
@@ -2107,24 +2109,62 @@ export function createFigmaExportReviewDecorator(
       includedStory &&
       context.globals?.[resolvedOptions.globalName] === "on";
 
-    return h(
-      FigmaExportReview,
-      {
-        apiPath: reviewOptions?.apiPath,
-        autoMarkExported: reviewOptions?.autoMarkExported,
-        componentTitle,
-        enabled,
-        figmaSourceUrl,
-        labels: reviewOptions?.labels,
-        showNotes: reviewOptions?.showNotes,
-        storyId: context.id ?? "unknown-story",
-        storyName: context.name ?? "Story",
-        storyTitle: context.title ?? "",
-        storyUrl: typeof window === "undefined" ? undefined : window.location.href,
-        viewMode: context.viewMode,
-        visualComments: reviewOptions?.visualComments ?? resolvedOptions.visualComments,
-      },
-      figmaExportDecorator(Story, context),
-    );
+    syncFigmaReviewWorkspace({
+      apiPath: reviewOptions?.apiPath,
+      autoMarkExported: reviewOptions?.autoMarkExported,
+      componentTitle,
+      enabled,
+      figmaSourceUrl,
+      labels: reviewOptions?.labels,
+      showNotes: reviewOptions?.showNotes,
+      storyId: context.id ?? "unknown-story",
+      storyName: context.name ?? "Story",
+      storyTitle: context.title ?? "",
+      storyUrl: typeof window === "undefined" ? undefined : window.location.href,
+      viewMode: context.viewMode,
+      visualComments: reviewOptions?.visualComments ?? resolvedOptions.visualComments,
+    });
+    return storyResult;
   };
+}
+
+let reviewDomRoot: ReturnType<typeof mountDom> | undefined;
+let reviewDomHost: HTMLElement | undefined;
+
+function syncFigmaReviewWorkspace(props: FigmaExportReviewProps): void {
+  if (typeof document === "undefined") return;
+  if (!props.enabled) {
+    destroyFigmaReviewWorkspace();
+    return;
+  }
+  if (!reviewDomHost?.isConnected) {
+    reviewDomHost = document.createElement("div");
+    reviewDomHost.dataset.sbfxReviewHost = "true";
+    reviewDomHost.dataset.sbfxCaptureIgnore = "true";
+    document.body.append(reviewDomHost);
+    reviewDomRoot = mountDom(
+      FigmaExportReview as unknown as (
+        props: Record<string, unknown>,
+      ) => DomChild,
+      props as unknown as Record<string, unknown>,
+      reviewDomHost,
+    );
+    return;
+  }
+  reviewDomRoot?.update(props as unknown as Record<string, unknown>);
+}
+
+export function destroyFigmaReviewWorkspace(): void {
+  reviewDomRoot?.destroy();
+  reviewDomRoot = undefined;
+  reviewDomHost = undefined;
+}
+
+const hotModule = (
+  import.meta as ImportMeta & {
+    hot?: { dispose(callback: () => void): void };
+  }
+).hot;
+if (hotModule) {
+  hotModule.dispose(destroyFigmaReviewWorkspace);
 }

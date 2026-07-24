@@ -41,6 +41,18 @@ type CreateVisualCommentRequest = {
     viewport: VisualCommentViewport;
     capture: VisualCommentCapture;
 };
+type VisualCommentCaptureResult = {
+    capture: VisualCommentCapture;
+    pin: VisualCommentPin;
+    viewport: VisualCommentViewport;
+};
+type VisualCommentPointSelection = {
+    pin: VisualCommentPin;
+    viewport: VisualCommentViewport;
+};
+type VisualCommentCaptureController = {
+    cancel(): void;
+};
 declare const VISUAL_COMMENT_LIMITS: {
     readonly maxRequestBytes: number;
     readonly maxImageBytes: number;
@@ -51,5 +63,18 @@ declare const VISUAL_COMMENT_LIMITS: {
     readonly maxAuthorLength: 80;
     readonly maxBodyLength: 2000;
 };
+/**
+ * Arms the next pointer sequence before prototype handlers run. The returned
+ * controller is also used by the panel Cancel action and unmount cleanup.
+ */
+declare function beginVisualCommentCapture({ capture, documentRef, onCancel, onCaptured, onError, onPointSelected, selector, }: {
+    capture?: (target: HTMLElement) => Promise<VisualCommentCapture>;
+    documentRef?: Document;
+    onCancel?: () => void;
+    onCaptured(result: VisualCommentCaptureResult): void;
+    onError(error: Error): void;
+    onPointSelected?: (selection: VisualCommentPointSelection) => void;
+    selector?: string;
+}): VisualCommentCaptureController;
 
-export { type CreateVisualCommentRequest as C, type VisualCommentOptions as V, VISUAL_COMMENT_LIMITS as a };
+export { type CreateVisualCommentRequest as C, type VisualCommentPin as V, type VisualCommentCaptureController as a, beginVisualCommentCapture as b, VISUAL_COMMENT_LIMITS as c, type VisualCommentOptions as d };

@@ -18,6 +18,7 @@ export default defineConfig({
     preset: "src/preset.ts",
     manager: "src/manager-entry.ts",
     review: "src/review.ts",
+    "review-controller": "src/reviewController.ts",
     "review-server": "src/review-server.ts",
     source: "src/source.ts",
     "visual-comment-store": "src/visualCommentStore.ts",

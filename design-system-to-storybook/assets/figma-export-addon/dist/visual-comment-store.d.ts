@@ -1,4 +1,4 @@
-import { C as CreateVisualCommentRequest, a as VISUAL_COMMENT_LIMITS } from './visualComment-CktpX_T5.js';
+import { C as CreateVisualCommentRequest, c as VISUAL_COMMENT_LIMITS } from './visualComment-DawOAq7P.js';
 
 type VisualCommentLimits = {
     [Key in keyof typeof VISUAL_COMMENT_LIMITS]: number;

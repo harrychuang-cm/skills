@@ -33,7 +33,7 @@ Run these in order when helping a developer catch up to the latest tools:
    node <skill-root>/scripts/install_figma_export_addon.mjs <product-repo-root>
    ```
 
-   `--check` exit codes: 0 up to date, 2 not installed, 3 update available or legacy copied-directory layout. The plain run upgrades in place: it packs the new versioned tarball, updates the `file:` spec, prunes superseded tarballs, and migrates the legacy directory layout to `figma-export-addon-legacy-backup`. Then commit the tarball, `package.json`, and the lockfile — teammates and CI pick the upgrade up through `git pull` plus their normal package-manager install, with no skill required.
+   `--check` exit codes: 0 up to date, 2 not installed, 3 update available or legacy copied-directory layout. The plain run detects renderer/builder/major, upgrades the versioned tarball and `file:` spec, prunes old tarballs, migrates the legacy directory, and generates full React/Vue Vite or core-only renderer-neutral wiring according to the capability report. Then commit the tarball, `package.json`, lockfile, generated wiring, and changed Storybook config files — teammates and CI pick the upgrade up through `git pull` plus their normal package-manager install, with no skill required.
 
 3. **Importer, per channel.**
    - **Team repos:** refresh the committed repo copy and commit it —
@@ -64,7 +64,7 @@ API watchlist when upgrading a product repo from a pre-0.2.0 addon (standard REA
 - The `FigmaCodeExporter` React component no longer exists; the overlay is internal plain DOM driven by the standard decorator.
 - `registerFigmaExportTool` is importable only from the `/manager` subpath, no longer re-exported from the package root.
 - The `.sbfx-story-scope` wrapper element is gone; exports scope to the `storybook-root` preview element, so preview-only chrome belongs outside it.
-- The preview entry imports no react, so non-React Storybooks (Vue, Svelte, Angular, Web Components) can now install the addon; the optional review panel remains React-only.
+- The preview and review entries import no React, React DOM, or Storybook icons. Vue 3 + Vite + Storybook 10 has the same verified Review, Visual Comments, persistence, report, and source-action workflow as React + Vite; other supported Storybook 10 renderers receive core export unless separately validated.
 
 If the overlay badge still shows the old version after an upgrade, clear the Storybook prebundle cache and restart: `rm -rf node_modules/.cache/storybook`.
 
@@ -93,8 +93,8 @@ When shipping a new tool version through this skill:
 1. Edit the tool under `assets/` (`figma-export-addon/src/` or `figma-plugin-code-to-design/`).
 2. Bump that tool's `package.json` version — installers and stamps key off it; never ship changed `dist/` or runtime output without a bump.
 3. Rebuild: `npm run build` in the tool directory (the addon injects its version via tsup; the importer's `prebuild` stamps `code.ts` and `ui.html`).
-4. Run the tool's tests (`test/run-*.mjs` for the addon, `test/verify-*.cjs` for the importer).
-5. Sync the template copies: the addon into `storybook-template/vendor/figma-export/` and `storybook-template/.storybook/vendor/figma-export-addon/`; the importer into `storybook-template/figma/storybook-code-to-design/` (`manifest.json`, the built `code.js`, `ui.html`, `README.md`).
+4. Run the addon's package, renderer-neutral, React/Vue fixture/parity, plugin-code, and visual-comment tests (`test/run-*.mjs`), or the importer's `test/verify-*.cjs` checks.
+5. Sync the addon into `storybook-template/vendor/figma-export/` and `storybook-template/.storybook/vendor/figma-export-addon/`, then run `node design-system-to-storybook/scripts/check_figma_export_addon_mirrors.mjs`; sync the importer into `storybook-template/figma/storybook-code-to-design/` (`manifest.json`, built `code.js`, `ui.html`, `README.md`).
 6. Commit and push the skills repo, then follow the update journey above on each machine.
 
 If the company later gains Figma Organization private publishing, the importer's distribution can move there: publish the plugin to the organization, replace the central-manifest instructions with the organization install page, and keep everything else (version stamping, gates, addon flow) unchanged.

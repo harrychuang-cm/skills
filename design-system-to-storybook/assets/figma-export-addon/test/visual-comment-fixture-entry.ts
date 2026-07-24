@@ -1,7 +1,11 @@
-import { createElement as h } from "react";
+import { createElement as h, useEffect, useLayoutEffect } from "react";
 import { createRoot } from "react-dom/client";
 
-import { FigmaExportReview } from "../src/review";
+import {
+  createFigmaExportReviewDecorator,
+  destroyFigmaReviewWorkspace,
+  type FigmaExportReviewProps,
+} from "../src/review";
 import { syncFigmaExportOverlay } from "../src/overlay";
 import {
   beginVisualCommentCapture,
@@ -20,6 +24,37 @@ const canonicalUnfoldMorePath =
   "M6.646.146a.5.5 0 01.708 0l4 4a.5.5 0 01-.708.708L7 1.207 3.354 4.854a.5.5 0 01-.708-.708l4-4zM3.354 9.146a.5.5 0 10-.708.708l4 4a.5.5 0 00.708 0l4-4a.5.5 0 00-.708-.708L7 12.793 3.354 9.146z";
 const canonicalEditPath =
   "M13.854 2.146l-2-2a.5.5 0 00-.708 0l-1.5 1.5-8.995 8.995a.499.499 0 00-.143.268L.012 13.39a.495.495 0 00.135.463.5.5 0 00.462.134l2.482-.496a.495.495 0 00.267-.143l8.995-8.995 1.5-1.5a.5.5 0 000-.708zM12 3.293l.793-.793L11.5 1.207 10.707 2 12 3.293zm-2-.586L1.707 11 3 12.293 11.293 4 10 2.707zM1.137 12.863l.17-.849.679.679-.849.17z";
+
+function FigmaExportReview(props: FigmaExportReviewProps) {
+  useLayoutEffect(() => {
+    createFigmaExportReviewDecorator(
+      {
+        storyTitlePrefix: false,
+        visualComments: props.visualComments,
+      },
+      {
+        apiPath: props.apiPath,
+        autoMarkExported: props.autoMarkExported,
+        enabled: props.enabled,
+        getComponentTitle: () => props.componentTitle,
+        labels: props.labels,
+        showNotes: props.showNotes,
+        visualComments: props.visualComments,
+      },
+    )(
+      () => null,
+      {
+        globals: { figmaExport: "on" },
+        id: props.storyId,
+        name: props.storyName,
+        title: props.storyTitle,
+        viewMode: props.viewMode,
+      },
+    );
+  });
+  useEffect(() => destroyFigmaReviewWorkspace, []);
+  return null;
+}
 
 function check(name: string, condition: unknown, detail?: string) {
   results.push({ name, passed: Boolean(condition), ...(detail ? { detail } : {}) });
@@ -1058,6 +1093,14 @@ async function run() {
       savedEvidencePreview.querySelector("[data-comment-edit-pin]")?.getAttribute("aria-label") ===
         "Adjust comment point 5" &&
       document.activeElement === savedEvidencePreview.querySelector("[data-comment-edit-pin]"),
+    JSON.stringify({
+      activeElement: document.activeElement?.outerHTML,
+      aspectRatio: savedEvidencePreview.style.aspectRatio,
+      pinLabel: savedEvidencePreview
+        .querySelector("[data-comment-edit-pin]")
+        ?.getAttribute("aria-label"),
+      pinText: savedEvidencePreview.querySelector("[data-comment-edit-pin]")?.textContent,
+    }),
   );
   const savedEditPin = () =>
     commentEditModal().querySelector<HTMLButtonElement>("[data-comment-edit-pin]")!;
@@ -1262,6 +1305,11 @@ async function run() {
     ) === JSON.stringify({ body: "Updated recent comment" }) &&
       commentsPanel.dataset.expanded === "true" &&
       !commentsDetail.hidden,
+    JSON.stringify({
+      expanded: commentsPanel.dataset.expanded,
+      hidden: commentsDetail.hidden,
+      payload: requests.filter((request) => request.method === "PATCH").at(-1)?.body,
+    }),
   );
 
   const deletableCard = () =>
@@ -1602,6 +1650,67 @@ async function run() {
     !document.querySelector("[data-sbfx-live-comment-pin]") &&
       createCommentRequestCount() === createRequestsBeforeUnmount,
   );
+
+  const identityDecorator = createFigmaExportReviewDecorator(
+    { storyTitlePrefix: false },
+    { enabled: true, visualComments: { enabled: false } },
+  );
+  const baseContext = {
+    id: "identity--default",
+    name: "Default",
+    parameters: {},
+    title: "Identity",
+    viewMode: "story",
+  };
+  const reactLikeResult = Object.freeze({ type: "react-like", props: {} });
+  const vueLikeResult = Object.freeze({ type: "vue-like", children: [] });
+  let storyCallCount = 0;
+  const returnedReactLike = identityDecorator(
+    () => {
+      storyCallCount += 1;
+      return reactLikeResult;
+    },
+    { ...baseContext, globals: { figmaExport: "on" } },
+  );
+  const firstReviewHost = document.querySelector("[data-sbfx-review-host]");
+  const returnedVueLike = identityDecorator(
+    () => {
+      storyCallCount += 1;
+      return vueLikeResult;
+    },
+    { ...baseContext, id: "identity--vue", globals: { figmaExport: "on" } },
+  );
+  check(
+    "review decorator preserves strict story-result identity for React-like and Vue-like values",
+    returnedReactLike === reactLikeResult &&
+      returnedVueLike === vueLikeResult &&
+      storyCallCount === 2,
+  );
+  check(
+    "re-render updates one stable review host without duplication",
+    document.querySelector("[data-sbfx-review-host]") === firstReviewHost &&
+      document.querySelectorAll("[data-sbfx-review-host]").length === 1,
+  );
+  const disabledResult = Object.freeze({ type: "disabled" });
+  const returnedDisabled = identityDecorator(
+    () => disabledResult,
+    { ...baseContext, globals: { figmaExport: "off" } },
+  );
+  check(
+    "global off returns the story unchanged and unmounts the review host",
+    returnedDisabled === disabledResult &&
+      document.querySelectorAll("[data-sbfx-review-host]").length === 0,
+  );
+  identityDecorator(
+    () => vueLikeResult,
+    { ...baseContext, id: "identity--remount", globals: { figmaExport: "on" } },
+  );
+  check(
+    "global on remounts exactly one fresh review host",
+    document.querySelectorAll("[data-sbfx-review-host]").length === 1 &&
+      document.querySelector("[data-sbfx-review-host]") !== firstReviewHost,
+  );
+  destroyFigmaReviewWorkspace();
 }
 
 type VisualCommentOverview = {

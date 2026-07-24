@@ -1,6 +1,6 @@
 # @harrychuang/storybook-addon-figma-export
 
-Storybook 10 addon: export a rendered story into a Figma import payload (payload version 2). Works with any Storybook renderer — React, Vue, Svelte, Angular, or Web Components — because the preview decorator is a pass-through (it returns the story result unchanged) and the export overlay is plain DOM mounted on document.body; the preview bundle imports no react. Exports are scoped to the `storybook-root` preview element (falling back to document.body with a warning). The optional review panel (`/review` entry) remains React-only. When both tools are enabled, Figma export and Export review share one responsive bottom-right workspace dock that reserves Story canvas space instead of covering the rendered UI. Collapsing Figma export reduces that workspace to an intrinsic-width disclosure showing only the Figma mark and addon version; the complete compact surface remains the accessible Expand control. Expanding restores the full 320px desktop workspace, Figma export header/actions, and Export review in its prior internal collapse state. The visible addon version appears only beside Figma export. Prefers a three-layer CSS token model (`ref`, `sys`, `comp`); projects without layered tokens still export with an empty variable set.
+Storybook 10 addon: export a rendered story into a Figma import payload (payload version 2). Core export works with React, Vue, Svelte, Angular, and Web Components because every preview decorator returns the renderer story result unchanged and the addon UI is plain DOM mounted outside the story root. React + Vite and Vue 3 + Vite have the full verified Export review, Visual Comments, meeting, evidence, persistence, report, and source-action workflow; other renderer/builder combinations retain core export unless the installer capability report says otherwise. The preview and review bundles import no React, React DOM, or Storybook icons. Exports are scoped to `#storybook-root` by default (falling back to `document.body` with a warning). When both tools are enabled, Figma export and Export review share one responsive workspace dock that reserves Story canvas space instead of covering the rendered UI. Prefers a three-layer CSS token model (`ref`, `sys`, `comp`); projects without layered tokens still export with an empty variable set.
 
 ## Visual fidelity capture
 
@@ -54,6 +54,9 @@ node test/run-export-fixture.mjs      # capture features incl. shadow DOM case
 node test/run-overlay-fixture.mjs     # renderer-agnostic overlay + token-less + auto-sync
 node test/run-payload-store-test.mjs  # bridge store endpoints (CORS, sanitize, round trip)
 npm run test:visual-comments          # store, HTTP, safe report, CDP browser/UI fixture
+npm run test:renderer-fixtures        # real React and Vue 3 Storybook builds
+npm run test:renderer-parity          # shared React/Vue browser behavior contract
+npm run test:renderer-neutral         # strict identity, lifecycle, forbidden imports
 ```
 
 The browser runners bundle the sources, render the fixtures in headless Chromium, and assert the spec scenarios; payloads land in `test/.last-fixture-payload.json`.
@@ -68,11 +71,17 @@ skill root instead:
 node scripts/install_figma_export_addon.mjs <product-repo-root>
 ```
 
-The installer copies this package into
-`.storybook/vendor/figma-export-addon/` in the target project and installs it
-as `file:.storybook/vendor/figma-export-addon`.
+The installer detects the Storybook renderer, builder, and major version before
+any mutation. It packs this package into a versioned tarball under
+`.storybook/vendor/`, installs that immutable local file dependency, and safely
+wraps ESM `.storybook/main.*` and `.storybook/preview.*` with generated
+renderer-neutral wiring. Use `--renderer` only to resolve conflicting static
+signals, `--json` for the capability report, or `--skip-configure` when the
+project already owns equivalent wiring.
 
-Requires `storybook@^10`, `react`, and `@storybook/icons` in the host project.
+Requires `storybook@^10`. React and React DOM are optional peers used by the
+Storybook manager/React projects; Vue product code does not need to declare
+either dependency.
 
 ## Setup
 
@@ -227,7 +236,7 @@ Figma-mark-plus-version surface as the accessible Expand control.
 
 ### Local visual review meetings
 
-The React review helper can also run append-only visual review meetings from a
+The renderer-neutral review helper can also run append-only visual review meetings from a
 separate top-right comments panel. It defaults to a 36px Edit icon launcher whose
 button and 14px icon remain centered in the collapsed surface; open it,
 then the expanded header places the **Visual comments** subheading above a

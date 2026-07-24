@@ -1,6 +1,6 @@
 {
   "name": "@harrychuang/storybook-addon-figma-export",
-  "version": "0.8.1",
+  "version": "0.9.0",
   "description": "Export Storybook stories to Figma import payloads with configurable CSS token layers",
   "type": "module",
   "license": "MIT",
@@ -67,6 +67,12 @@
   "scripts": {
     "build": "tsup",
     "prepublishOnly": "npm run build",
+    "test:renderer-fixtures": "node test/run-renderer-fixture-builds.mjs",
+    "test:renderer-parity": "node test/run-renderer-parity.mjs",
+    "test:renderer-parity:probe": "node test/run-renderer-parity.mjs --probe-vue-gap",
+    "test:renderer-neutral": "npm run build && node test/run-renderer-neutral-build-test.mjs && node test/run-visual-comment-fixture.mjs",
+    "test:package": "npm run build && node test/run-package-contract-test.mjs",
+    "test:review-controller": "npm run build && node test/run-review-controller-test.mjs",
     "test:plugin-code": "npm run build && node test/run-plugin-code-test.mjs",
     "test:visual-comments": "npm run build && node test/run-visual-comment-store-test.mjs && node test/run-visual-comment-http-test.mjs && node test/run-visual-comment-report-test.mjs && node test/run-visual-comment-fixture.mjs"
   },
@@ -77,12 +83,17 @@
     "storybook": "^10.0.0"
   },
   "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    },
     "react-dom": {
       "optional": true
     }
   },
   "devDependencies": {
     "@storybook/icons": "^1.4.0",
+    "@storybook/react-vite": "^10.0.0",
+    "@storybook/vue3-vite": "^10.0.0",
     "@types/node": "^22.15.29",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.2.3",
@@ -90,7 +101,9 @@
     "react-dom": "^19.1.0",
     "storybook": "^10.0.0",
     "tsup": "^8.5.0",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "vite": "^7.0.0",
+    "vue": "^3.5.0"
   },
   "storybook": {
     "displayName": "Figma Export",

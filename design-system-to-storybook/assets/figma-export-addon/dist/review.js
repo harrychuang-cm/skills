@@ -1,13 +1,447 @@
-// src/review.ts
-import {
-  CollapseIcon,
-  EditIcon,
-  EyeIcon,
-  LinkIcon,
-  TrashIcon
-} from "@storybook/icons";
-import { Fragment, createElement as h, useEffect, useId, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+// src/domRuntime.ts
+var Fragment = /* @__PURE__ */ Symbol("sbfx-dom-fragment");
+var portalType = /* @__PURE__ */ Symbol("sbfx-dom-portal");
+var svgNamespace = "http://www.w3.org/2000/svg";
+var eventHandlersKey = /* @__PURE__ */ Symbol("sbfx-event-handlers");
+var eventDispatchersKey = /* @__PURE__ */ Symbol("sbfx-event-dispatchers");
+var refKey = /* @__PURE__ */ Symbol("sbfx-ref");
+var booleanPropertyNames = /* @__PURE__ */ new Set([
+  "checked",
+  "disabled",
+  "hidden",
+  "multiple",
+  "open",
+  "required",
+  "selected"
+]);
+var currentInstance = null;
+var generatedId = 0;
+var eventDispatchDepth = 0;
+var pendingEventRoots = /* @__PURE__ */ new Set();
+function createElement(type, props, ...children) {
+  return {
+    type,
+    props: {
+      ...props ?? {},
+      ...children.length === 0 ? {} : { children: children.length === 1 ? children[0] : children }
+    }
+  };
+}
+function createPortal(child, target) {
+  return { type: portalType, child, target };
+}
+function useEffect(effect, dependencies) {
+  const instance = requireInstance("useEffect");
+  const index = instance.hookIndex++;
+  const previous = instance.hooks[index];
+  const pending = !previous || dependencies === void 0 || previous.dependencies === void 0 || !sameDependencies(previous.dependencies, dependencies);
+  instance.hooks[index] = {
+    cleanup: previous?.cleanup,
+    dependencies,
+    effect,
+    pending
+  };
+}
+function useId() {
+  const instance = requireInstance("useId");
+  const index = instance.hookIndex++;
+  if (!instance.hooks[index]) {
+    generatedId += 1;
+    instance.hooks[index] = `sbfx-dom-${generatedId}`;
+  }
+  return instance.hooks[index];
+}
+function useRef(initialValue) {
+  const instance = requireInstance("useRef");
+  const index = instance.hookIndex++;
+  if (!instance.hooks[index]) {
+    instance.hooks[index] = { current: initialValue };
+  }
+  return instance.hooks[index];
+}
+function useState(initialValue) {
+  const instance = requireInstance("useState");
+  const index = instance.hookIndex++;
+  if (!(index in instance.hooks)) {
+    instance.hooks[index] = typeof initialValue === "function" ? initialValue() : initialValue;
+  }
+  const setValue = (value) => {
+    const current = instance.hooks[index];
+    const next = typeof value === "function" ? value(current) : value;
+    if (Object.is(current, next)) return;
+    instance.hooks[index] = next;
+    instance.root.scheduleRender();
+  };
+  return [instance.hooks[index], setValue];
+}
+function mountDom(component, props, container) {
+  const root = new DomRoot(component, props, container);
+  root.render();
+  return {
+    destroy: () => root.destroy(),
+    update: (nextProps) => root.update(nextProps)
+  };
+}
+var DomRoot = class {
+  component;
+  props;
+  container;
+  instances = /* @__PURE__ */ new Map();
+  usedInstances = /* @__PURE__ */ new Set();
+  portalMounts = /* @__PURE__ */ new Map();
+  usedPortalPaths = /* @__PURE__ */ new Set();
+  renderScheduled = false;
+  destroyed = false;
+  constructor(component, props, container) {
+    this.component = component;
+    this.props = props;
+    this.container = container;
+  }
+  update(props) {
+    this.props = props;
+    this.render();
+  }
+  scheduleRender() {
+    if (this.destroyed) return;
+    if (eventDispatchDepth > 0) {
+      pendingEventRoots.add(this);
+      return;
+    }
+    if (this.renderScheduled) return;
+    this.renderScheduled = true;
+    queueMicrotask(() => {
+      this.renderScheduled = false;
+      if (!this.destroyed) this.render();
+    });
+  }
+  render() {
+    if (this.destroyed) return;
+    const focus = captureFocus();
+    this.usedInstances.clear();
+    this.usedPortalPaths.clear();
+    const output = this.renderNode(
+      createElement(this.component, this.props),
+      "root",
+      void 0
+    );
+    morphChildren(this.container, output);
+    this.cleanupUnusedInstances();
+    this.cleanupUnusedPortals();
+    this.flushEffects();
+    restoreFocus(focus);
+  }
+  renderNode(child, path, namespace) {
+    if (child === null || child === void 0 || child === false || child === true) {
+      return document.createTextNode("");
+    }
+    if (typeof child === "string" || typeof child === "number") {
+      return document.createTextNode(String(child));
+    }
+    if (Array.isArray(child)) {
+      const fragment = document.createDocumentFragment();
+      child.forEach((entry, index) => {
+        fragment.append(this.renderNode(entry, `${path}.${index}`, namespace));
+      });
+      return fragment;
+    }
+    if (child.type === portalType) {
+      const portalNode = this.renderNode(child.child, `${path}.portal`, void 0);
+      let mount = this.portalMounts.get(path);
+      if (!mount) {
+        mount = document.createElement("div");
+        mount.dataset.sbfxDomPortal = path;
+        mount.style.display = "contents";
+        this.portalMounts.set(path, mount);
+      }
+      if (mount.parentElement !== child.target) child.target.append(mount);
+      morphChildren(mount, portalNode);
+      this.usedPortalPaths.add(path);
+      return document.createTextNode("");
+    }
+    if (child.type === Fragment) {
+      return this.renderNode(child.props.children, `${path}.fragment`, namespace);
+    }
+    if (typeof child.type === "function") {
+      const componentPath = `${path}:${child.props.key ?? child.type.name ?? "component"}`;
+      const instance = this.instances.get(componentPath) ?? { hooks: [], hookIndex: 0, root: this };
+      instance.hookIndex = 0;
+      this.instances.set(componentPath, instance);
+      this.usedInstances.add(componentPath);
+      const previousInstance = currentInstance;
+      currentInstance = instance;
+      try {
+        return this.renderNode(
+          child.type(child.props),
+          `${componentPath}.output`,
+          namespace
+        );
+      } finally {
+        currentInstance = previousInstance;
+      }
+    }
+    const nextNamespace = namespace === svgNamespace || child.type === "svg" ? svgNamespace : void 0;
+    const element = nextNamespace ? document.createElementNS(nextNamespace, child.type) : document.createElement(child.type);
+    applyProps(element, child.props, path);
+    const children = normalizeChildren(child.props.children);
+    children.forEach((entry, index) => {
+      const key = typeof entry === "object" && entry !== null && !Array.isArray(entry) && "props" in entry ? entry.props.key : void 0;
+      element.append(
+        this.renderNode(
+          entry,
+          `${path}.${key === void 0 ? index : `key-${String(key)}`}`,
+          nextNamespace
+        )
+      );
+    });
+    return element;
+  }
+  flushEffects() {
+    for (const instance of this.instances.values()) {
+      for (const hook of instance.hooks) {
+        if (!isHookEffect(hook) || !hook.pending) continue;
+        hook.cleanup?.();
+        const cleanup = hook.effect();
+        hook.cleanup = typeof cleanup === "function" ? cleanup : void 0;
+        hook.pending = false;
+      }
+    }
+  }
+  cleanupUnusedInstances() {
+    for (const [path, instance] of this.instances) {
+      if (this.usedInstances.has(path)) continue;
+      cleanupInstance(instance);
+      this.instances.delete(path);
+    }
+  }
+  cleanupUnusedPortals() {
+    for (const [path, mount] of this.portalMounts) {
+      if (this.usedPortalPaths.has(path)) continue;
+      mount.remove();
+      this.portalMounts.delete(path);
+    }
+  }
+  destroy() {
+    if (this.destroyed) return;
+    this.destroyed = true;
+    for (const mount of this.portalMounts.values()) mount.remove();
+    this.portalMounts.clear();
+    for (const instance of this.instances.values()) cleanupInstance(instance);
+    this.instances.clear();
+    this.container.remove();
+  }
+};
+function applyProps(element, props, path) {
+  for (const [name, value] of Object.entries(props)) {
+    if (name === "children" || name === "key" || value === void 0 || value === null) {
+      continue;
+    }
+    if (name === "ref" && isRef(value)) {
+      value.current = element;
+      element[refKey] = value;
+      continue;
+    }
+    if (name === "style" && isRecord(value) && element instanceof HTMLElement) {
+      for (const [property, styleValue] of Object.entries(value)) {
+        element.style.setProperty(toKebabCase(property), String(styleValue));
+      }
+      continue;
+    }
+    if (name.startsWith("on") && typeof value === "function") {
+      const eventName = eventNameForProp(element, name);
+      setEventHandler(element, eventName, value);
+      continue;
+    }
+    const attributeName = name === "className" ? "class" : name === "htmlFor" ? "for" : name;
+    if (typeof value === "boolean") {
+      if (attributeName.startsWith("aria-") || attributeName.startsWith("data-")) {
+        element.setAttribute(attributeName, String(value));
+        continue;
+      }
+      if (booleanPropertyNames.has(attributeName) && attributeName in element) {
+        try {
+          element[attributeName] = value;
+        } catch {
+        }
+      }
+      if (value) element.setAttribute(attributeName, "");
+      continue;
+    }
+    if ((attributeName === "value" || attributeName === "checked") && attributeName in element) {
+      element[attributeName] = value;
+      continue;
+    }
+    element.setAttribute(attributeName, String(value));
+  }
+  if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement || element instanceof HTMLSelectElement || element instanceof HTMLButtonElement || element instanceof HTMLAnchorElement) {
+    element.dataset.sbfxDomPath = path;
+  }
+  element.setAttribute("data-sbfx-dom-node", path);
+}
+function setEventHandler(element, eventName, handler) {
+  const runtimeElement = element;
+  runtimeElement[eventHandlersKey] ??= /* @__PURE__ */ new Map();
+  runtimeElement[eventDispatchersKey] ??= /* @__PURE__ */ new Map();
+  runtimeElement[eventHandlersKey].set(eventName, handler);
+  if (runtimeElement[eventDispatchersKey].has(eventName)) return;
+  const dispatcher = (event) => {
+    eventDispatchDepth += 1;
+    try {
+      runtimeElement[eventHandlersKey]?.get(eventName)?.call(element, event);
+    } finally {
+      eventDispatchDepth -= 1;
+      if (eventDispatchDepth === 0) {
+        const roots = [...pendingEventRoots];
+        pendingEventRoots.clear();
+        for (const root of roots) {
+          if (!root.destroyed) root.render();
+        }
+      }
+    }
+  };
+  runtimeElement[eventDispatchersKey].set(eventName, dispatcher);
+  element.addEventListener(eventName, dispatcher);
+}
+function morphChildren(parent, nextContent) {
+  const nextNodes = nextContent instanceof DocumentFragment ? [...nextContent.childNodes] : [nextContent];
+  const currentNodes = [...parent.childNodes];
+  const length = Math.max(currentNodes.length, nextNodes.length);
+  for (let index = 0; index < length; index += 1) {
+    const current = currentNodes[index];
+    const next = nextNodes[index];
+    if (!current && next) {
+      parent.append(next);
+      continue;
+    }
+    if (current && !next) {
+      current.remove();
+      continue;
+    }
+    if (current && next) morphNode(current, next);
+  }
+}
+function morphNode(current, next) {
+  if (!nodesMatch(current, next)) {
+    current.parentNode?.replaceChild(next, current);
+    return;
+  }
+  if (current instanceof Text && next instanceof Text) {
+    if (current.data !== next.data) current.data = next.data;
+    return;
+  }
+  if (!(current instanceof Element) || !(next instanceof Element)) return;
+  const currentAttributes = new Set(current.getAttributeNames());
+  for (const attributeName of next.getAttributeNames()) {
+    const value = next.getAttribute(attributeName);
+    if (current.getAttribute(attributeName) !== value && value !== null) {
+      current.setAttribute(attributeName, value);
+    }
+    currentAttributes.delete(attributeName);
+  }
+  for (const attributeName of currentAttributes) current.removeAttribute(attributeName);
+  for (const propertyName of booleanPropertyNames) {
+    if (propertyName in current && propertyName in next) {
+      try {
+        current[propertyName] = next[propertyName];
+      } catch {
+      }
+    }
+  }
+  if ("value" in current && "value" in next && document.activeElement !== current) {
+    current.value = next.value;
+  }
+  const currentRuntime = current;
+  const nextRuntime = next;
+  currentRuntime[eventHandlersKey] = new Map(nextRuntime[eventHandlersKey] ?? []);
+  for (const eventName of currentRuntime[eventHandlersKey].keys()) {
+    if (!currentRuntime[eventDispatchersKey]?.has(eventName)) {
+      setEventHandler(
+        current,
+        eventName,
+        currentRuntime[eventHandlersKey].get(eventName)
+      );
+    }
+  }
+  currentRuntime[refKey] = nextRuntime[refKey];
+  if (currentRuntime[refKey]) currentRuntime[refKey].current = current;
+  const fragment = document.createDocumentFragment();
+  fragment.append(...next.childNodes);
+  morphChildren(current, fragment);
+}
+function nodesMatch(current, next) {
+  if (current.nodeType !== next.nodeType) return false;
+  if (current instanceof Text && next instanceof Text) return true;
+  if (!(current instanceof Element) || !(next instanceof Element)) return true;
+  return current.namespaceURI === next.namespaceURI && current.tagName === next.tagName && current.getAttribute("data-sbfx-dom-node") === next.getAttribute("data-sbfx-dom-node");
+}
+function eventNameForProp(element, prop) {
+  if (prop === "onChange") {
+    return element instanceof HTMLSelectElement ? "change" : "input";
+  }
+  return prop.slice(2).toLowerCase();
+}
+function normalizeChildren(children) {
+  if (children === void 0) return [];
+  const normalized = [];
+  const append = (child) => {
+    if (Array.isArray(child)) {
+      for (const nested of child) append(nested);
+      return;
+    }
+    normalized.push(child);
+  };
+  append(children);
+  return normalized;
+}
+function sameDependencies(left, right) {
+  return left.length === right.length && left.every((value, index) => Object.is(value, right[index]));
+}
+function requireInstance(hookName) {
+  if (!currentInstance) {
+    throw new Error(`${hookName} must be called while rendering a DOM component`);
+  }
+  return currentInstance;
+}
+function cleanupInstance(instance) {
+  for (const hook of instance.hooks) {
+    if (isHookEffect(hook)) hook.cleanup?.();
+  }
+}
+function isHookEffect(value) {
+  return isRecord(value) && typeof value.effect === "function" && "pending" in value;
+}
+function isRef(value) {
+  return isRecord(value) && "current" in value;
+}
+function isRecord(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+function toKebabCase(value) {
+  return value.replace(/[A-Z]/g, (character) => `-${character.toLowerCase()}`);
+}
+function captureFocus() {
+  const active = document.activeElement;
+  if (!(active instanceof HTMLInputElement) && !(active instanceof HTMLTextAreaElement) && !(active instanceof HTMLSelectElement) && !(active instanceof HTMLButtonElement) && !(active instanceof HTMLAnchorElement)) {
+    return {};
+  }
+  return {
+    path: active.dataset.sbfxDomPath,
+    ..."selectionStart" in active ? {
+      selectionStart: active.selectionStart,
+      selectionEnd: active.selectionEnd
+    } : {}
+  };
+}
+function restoreFocus(snapshot) {
+  if (!snapshot.path) return;
+  const next = document.querySelector(
+    `[data-sbfx-dom-path="${CSS.escape(snapshot.path)}"]`
+  );
+  if (!next) return;
+  next.focus();
+  if ((next instanceof HTMLInputElement || next instanceof HTMLTextAreaElement) && snapshot.selectionStart !== void 0) {
+    next.setSelectionRange(snapshot.selectionStart ?? 0, snapshot.selectionEnd ?? 0);
+  }
+}
 
 // src/disclosureIcon.ts
 var collapseDisclosurePath = "M3.354.146a.5.5 0 10-.708.708l4 4a.5.5 0 00.708 0l4-4a.5.5 0 00-.708-.708L7 3.793 3.354.146zM6.646 9.146a.5.5 0 01.708 0l4 4a.5.5 0 01-.708.708L7 10.207l-3.646 3.647a.5.5 0 01-.708-.708l4-4z";
@@ -4309,7 +4743,7 @@ void (async function importStorybookStory(payload) {
 
 // src/version.ts
 function getAddonVersion() {
-  return true ? "0.8.1" : "dev";
+  return true ? "0.9.0" : "dev";
 }
 
 // src/workspace.ts
@@ -4992,12 +5426,12 @@ function createFigmaExportDecorator(options) {
 }
 
 // src/source.ts
-function isRecord(value) {
+function isRecord2(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 function getParameterUrl(value) {
   if (typeof value === "string") return value;
-  if (!isRecord(value)) return void 0;
+  if (!isRecord2(value)) return void 0;
   return typeof value.url === "string" ? value.url : void 0;
 }
 
@@ -5229,19 +5663,167 @@ function beginVisualCommentCapture({
   return { cancel };
 }
 
+// src/reviewController.ts
+function createReviewStatusController({
+  apiPath,
+  fetcher = globalThis.fetch
+}) {
+  return {
+    async load(storyId, signal) {
+      const payload = await requestJson(
+        fetcher,
+        `${apiPath}?storyId=${encodeURIComponent(storyId)}`,
+        { signal },
+        `Review status GET ${apiPath}`
+      );
+      return payload.entry ?? null;
+    },
+    async save(storyId, entry) {
+      return requestJson(
+        fetcher,
+        apiPath,
+        {
+          body: JSON.stringify({ entry, storyId }),
+          headers: { "Content-Type": "application/json" },
+          method: "PUT"
+        },
+        `Review status PUT ${apiPath}`
+      );
+    }
+  };
+}
+function createVisualCommentsController({
+  apiPath,
+  fetcher = globalThis.fetch
+}) {
+  return {
+    beginCapture(options) {
+      return beginVisualCommentCapture(options);
+    },
+    delete(path) {
+      return requestJson(
+        fetcher,
+        `${apiPath}${path}`,
+        { method: "DELETE" },
+        `Visual comments DELETE ${apiPath}${path}`
+      );
+    },
+    getOverview(storyId) {
+      return requestJson(
+        fetcher,
+        `${apiPath}?storyId=${encodeURIComponent(storyId)}`,
+        void 0,
+        `Visual comments GET ${apiPath}`
+      );
+    },
+    patch(path, body) {
+      return requestJson(
+        fetcher,
+        `${apiPath}${path}`,
+        {
+          body: JSON.stringify(body),
+          headers: { "Content-Type": "application/json" },
+          method: "PATCH"
+        },
+        `Visual comments PATCH ${apiPath}${path}`
+      );
+    },
+    post(path, body) {
+      return requestJson(
+        fetcher,
+        `${apiPath}${path}`,
+        {
+          body: body === void 0 ? void 0 : JSON.stringify(body),
+          headers: body === void 0 ? void 0 : { "Content-Type": "application/json" },
+          method: "POST"
+        },
+        `Visual comments POST ${apiPath}${path}`
+      );
+    },
+    resolveTarget(selector) {
+      return resolveVisualCommentTarget(selector);
+    }
+  };
+}
+async function requestJson(fetcher, url, init, operation) {
+  const response = await fetcher(url, init);
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(
+      `${operation} returned HTTP ${response.status}${payload.error ? `: ${payload.error}` : "."}`
+    );
+  }
+  return payload;
+}
+
 // src/review.ts
-function UnfoldMoreDisclosureIcon() {
-  return h(
+function SvgIcon({
+  children,
+  size = 14
+}) {
+  return createElement(
     "svg",
     {
       "aria-hidden": "true",
       fill: "none",
-      height: 14,
+      height: size,
       viewBox: "0 0 14 14",
-      width: 14
+      width: size
     },
-    h("path", { d: unfoldMoreDisclosurePath, fill: "currentColor" })
+    children
   );
+}
+function PathIcon({ d, size }) {
+  return createElement(SvgIcon, { size }, createElement("path", {
+    d,
+    fill: "none",
+    stroke: "currentColor",
+    "stroke-linecap": "round",
+    "stroke-linejoin": "round",
+    "stroke-width": "1.25"
+  }));
+}
+function CollapseIcon({ size }) {
+  return createElement(SvgIcon, { size }, createElement("path", {
+    d: collapseDisclosurePath,
+    fill: "currentColor"
+  }));
+}
+function EditIcon({ size }) {
+  return createElement(SvgIcon, { size }, createElement("path", {
+    d: "M13.854 2.146l-2-2a.5.5 0 00-.708 0l-1.5 1.5-8.995 8.995a.499.499 0 00-.143.268L.012 13.39a.495.495 0 00.135.463.5.5 0 00.462.134l2.482-.496a.495.495 0 00.267-.143l8.995-8.995 1.5-1.5a.5.5 0 000-.708zM12 3.293l.793-.793L11.5 1.207 10.707 2 12 3.293zm-2-.586L1.707 11 3 12.293 11.293 4 10 2.707zM1.137 12.863l.17-.849.679.679-.849.17z",
+    fill: "currentColor"
+  }));
+}
+function EyeIcon({ size }) {
+  return createElement(SvgIcon, { size }, [
+    createElement("path", {
+      d: "M7 9.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5z",
+      fill: "currentColor"
+    }),
+    createElement("path", {
+      d: "M14 7l-.21.293C13.669 7.465 10.739 11.5 7 11.5S.332 7.465.21 7.293L0 7l.21-.293C.331 6.536 3.261 2.5 7 2.5s6.668 4.036 6.79 4.207L14 7zM2.896 5.302A12.725 12.725 0 001.245 7c.296.37.874 1.04 1.65 1.698C4.043 9.67 5.482 10.5 7 10.5c1.518 0 2.958-.83 4.104-1.802A12.72 12.72 0 0012.755 7c-.297-.37-.875-1.04-1.65-1.698C9.957 4.33 8.517 3.5 7 3.5c-1.519 0-2.958.83-4.104 1.802z",
+      fill: "currentColor"
+    })
+  ]);
+}
+function LinkIcon({ size }) {
+  return createElement(PathIcon, {
+    d: "M5.6 8.4l2.8-2.8M4.55 9.45l-1 .95a2.1 2.1 0 01-2.95-2.95l1.85-1.9a2.1 2.1 0 012.95 0M9.45 4.55l1-.95a2.1 2.1 0 012.95 2.95l-1.85 1.9a2.1 2.1 0 01-2.95 0",
+    size
+  });
+}
+function TrashIcon({ size }) {
+  return createElement(PathIcon, {
+    d: "M2.5 4h9M5 4V2.5h4V4m1.5 0l-.55 8H4.05L3.5 4M5.75 6v4M8.25 6v4",
+    size
+  });
+}
+function UnfoldMoreDisclosureIcon() {
+  return createElement(SvgIcon, null, createElement("path", {
+    d: unfoldMoreDisclosurePath,
+    fill: "currentColor"
+  }));
 }
 var defaultFigmaReviewStatusApiPath = "/__figma_export_review_status";
 var defaultLabels = {
@@ -5392,6 +5974,7 @@ function VisualCommentsSection({
   const deleteDialogTitleId = useId();
   const deleteDialogDescriptionId = useId();
   const apiPath = options?.apiPath ?? "/__figma_export_review_comments";
+  const commentsController = createVisualCommentsController({ apiPath });
   const authorStorageKey = options?.authorStorageKey ?? "sbfx:review-author";
   const [overview, setOverview] = useState(null);
   const [meetingTitle, setMeetingTitle] = useState(defaultMeetingTitle);
@@ -5447,13 +6030,7 @@ function VisualCommentsSection({
   );
   const editingCommentDraftIsValid = Boolean(editingCommentDraft.trim()) && editingCommentDraft.trim().length <= VISUAL_COMMENT_LIMITS.maxBodyLength;
   async function refresh() {
-    const response = await fetch(`${apiPath}?storyId=${encodeURIComponent(storyId)}`);
-    if (!response.ok) {
-      throw new Error(
-        `Visual comments GET ${apiPath} returned HTTP ${response.status}. Check the visual-comments server configuration.`
-      );
-    }
-    setOverview(await response.json());
+    setOverview(await commentsController.getOverview(storyId));
     setCommentsCapability("available");
     setCommentsCapabilityError("");
   }
@@ -5462,13 +6039,7 @@ function VisualCommentsSection({
     let active = true;
     const load = async () => {
       try {
-        const response = await fetch(`${apiPath}?storyId=${encodeURIComponent(storyId)}`);
-        if (!response.ok) {
-          throw new Error(
-            `Visual comments GET ${apiPath} returned HTTP ${response.status}. Check the visual-comments server configuration.`
-          );
-        }
-        const next = await response.json();
+        const next = await commentsController.getOverview(storyId);
         if (active) {
           setOverview(next);
           setCommentsCapability("available");
@@ -5514,7 +6085,7 @@ function VisualCommentsSection({
     }
     let animationFrame = 0;
     const syncPosition = () => {
-      const target = resolveVisualCommentTarget(options?.captureSelector);
+      const target = commentsController.resolveTarget(options?.captureSelector);
       if (!target) {
         setLivePinPosition(null);
         return;
@@ -5551,7 +6122,7 @@ function VisualCommentsSection({
   ]);
   useEffect(() => {
     if (!pendingDeleteCommentId) return;
-    const focusFrame = window.requestAnimationFrame(() => deleteCancelRef.current?.focus());
+    deleteCancelRef.current?.focus();
     const handleEscape = (event) => {
       if (event.key !== "Escape") return;
       event.preventDefault();
@@ -5559,15 +6130,12 @@ function VisualCommentsSection({
     };
     document.addEventListener("keydown", handleEscape);
     return () => {
-      window.cancelAnimationFrame(focusFrame);
       document.removeEventListener("keydown", handleEscape);
     };
   }, [pendingDeleteCommentId]);
   useEffect(() => {
     if (!editingCommentId) return;
-    const focusFrame = window.requestAnimationFrame(() => {
-      (commentEditPinRef.current ?? commentEditTextareaRef.current)?.focus();
-    });
+    (commentEditPinRef.current ?? commentEditTextareaRef.current)?.focus();
     const handleEscape = (event) => {
       if (event.key !== "Escape") return;
       event.preventDefault();
@@ -5575,7 +6143,6 @@ function VisualCommentsSection({
     };
     document.addEventListener("keydown", handleEscape);
     return () => {
-      window.cancelAnimationFrame(focusFrame);
       document.removeEventListener("keydown", handleEscape);
     };
   }, [editingCommentId]);
@@ -5592,17 +6159,7 @@ function VisualCommentsSection({
     setIsBusy(true);
     setVisualError("");
     try {
-      const response = await fetch(`${apiPath}${path}`, {
-        body: body === void 0 ? void 0 : JSON.stringify(body),
-        headers: body === void 0 ? void 0 : { "Content-Type": "application/json" },
-        method: "POST"
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(
-          `Visual comments POST ${apiPath}${path} returned HTTP ${response.status}${payload.error ? `: ${payload.error}` : "."}`
-        );
-      }
+      const payload = await commentsController.post(path, body);
       setReportPending(Boolean(payload.reportStale));
       await refresh();
       return payload;
@@ -5622,7 +6179,7 @@ function VisualCommentsSection({
     setPendingCapture(null);
     setPendingPoint(null);
     setIsCapturing(true);
-    captureControllerRef.current = beginVisualCommentCapture({
+    captureControllerRef.current = commentsController.beginCapture({
       onCancel: () => {
         setIsCapturing(false);
         setPendingPoint(null);
@@ -5773,7 +6330,7 @@ function VisualCommentsSection({
     setCommentErrors({ [commentId]: "" });
     setCommentPreviewErrors({});
   }
-  function cancelCommentEdit(commentId, restoreFocus = true) {
+  function cancelCommentEdit(commentId, restoreFocus2 = true) {
     const returnTarget = commentEditTriggerRef.current;
     setEditingCommentId(null);
     setCommentDrafts((current) => {
@@ -5797,7 +6354,7 @@ function VisualCommentsSection({
       return next;
     });
     commentEditTriggerRef.current = null;
-    if (restoreFocus && returnTarget) {
+    if (restoreFocus2 && returnTarget) {
       window.requestAnimationFrame(() => {
         if (returnTarget.isConnected) returnTarget.focus();
       });
@@ -5820,20 +6377,16 @@ function VisualCommentsSection({
       const path = `/sessions/${encodeURIComponent(overview.activeSession.id)}/comments/${encodeURIComponent(commentId)}`;
       const comment = overview.comments.find((entry) => entry.id === commentId);
       const pin = commentPinDrafts[commentId];
-      const includePin = Boolean(
-        comment?.preview && !commentPreviewErrors[commentId] && pin
+      const evidenceImage = document.querySelector(
+        `[data-comment-edit-modal] img[alt="Screenshot evidence for comment ${comment?.ordinal ?? ""}"]`
       );
-      const response = await fetch(`${apiPath}${path}`, {
-        body: JSON.stringify({ body, ...includePin ? { pin } : {} }),
-        headers: { "Content-Type": "application/json" },
-        method: "PATCH"
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(
-          payload.error ?? `Visual comments PATCH ${apiPath}${path} returned HTTP ${response.status}.`
-        );
-      }
+      const includePin = Boolean(
+        comment?.preview && !commentPreviewErrors[commentId] && evidenceImage?.complete && evidenceImage.naturalWidth > 0 && pin
+      );
+      const payload = await commentsController.patch(
+        path,
+        { body, ...includePin ? { pin } : {} }
+      );
       setReportPending(Boolean(payload.reportStale));
       await refresh();
       cancelCommentEdit(commentId);
@@ -5920,11 +6473,11 @@ function VisualCommentsSection({
     setPendingDeleteCommentId(commentId);
     setCommentErrors((current) => ({ ...current, [commentId]: "" }));
   }
-  function closeDeleteDialog(restoreFocus = true) {
+  function closeDeleteDialog(restoreFocus2 = true) {
     const returnTarget = deleteTriggerRef.current;
     setPendingDeleteCommentId(null);
     deleteTriggerRef.current = null;
-    if (restoreFocus && returnTarget) {
+    if (restoreFocus2 && returnTarget) {
       window.requestAnimationFrame(() => returnTarget.focus());
     }
   }
@@ -5936,13 +6489,7 @@ function VisualCommentsSection({
     try {
       preserveOpenPanelDuringMutation();
       const path = `/sessions/${encodeURIComponent(overview.activeSession.id)}/comments/${encodeURIComponent(commentId)}`;
-      const response = await fetch(`${apiPath}${path}`, { method: "DELETE" });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(
-          payload.error ?? `Visual comments DELETE ${apiPath}${path} returned HTTP ${response.status}.`
-        );
-      }
+      const payload = await commentsController.delete(path);
       setReportPending(Boolean(payload.reportStale));
       closeDeleteDialog(false);
       cancelCommentEdit(commentId);
@@ -5957,10 +6504,10 @@ function VisualCommentsSection({
       setCommentMutationId(null);
     }
   }
-  return h(
+  return createElement(
     Fragment,
     null,
-    h(
+    createElement(
       "aside",
       {
         "aria-label": labels.visualComments,
@@ -5969,21 +6516,21 @@ function VisualCommentsSection({
         "data-sbfx-capture-ignore": "true",
         "data-version": getAddonVersion()
       },
-      h(
+      createElement(
         "header",
         { className: "sbfx-comments-panel__header" },
-        h(
+        createElement(
           "div",
           {
             className: "sbfx-comments-panel__header-copy",
             hidden: !isPanelOpen
           },
-          h(
+          createElement(
             "h2",
             { className: "sbfx-review__label sbfx-comments-panel__subheading" },
             labels.visualComments
           ),
-          overview?.reportUrl ? h(
+          overview?.reportUrl ? createElement(
             "a",
             {
               className: "sbfx-review__button sbfx-review__button--secondary sbfx-review__report-link sbfx-comments-panel__reports",
@@ -5994,7 +6541,7 @@ function VisualCommentsSection({
             "Reports"
           ) : null
         ),
-        h(
+        createElement(
           "button",
           {
             "aria-controls": detailId,
@@ -6005,10 +6552,10 @@ function VisualCommentsSection({
             title: isPanelOpen ? labels.closeVisualComments : labels.openVisualComments,
             type: "button"
           },
-          h(EditIcon, { size: 14 })
+          createElement(EditIcon, { size: 14 })
         )
       ),
-      h(
+      createElement(
         "section",
         {
           className: "sbfx-review__visual-comments sbfx-comments-panel__detail",
@@ -6016,28 +6563,28 @@ function VisualCommentsSection({
           hidden: !isPanelOpen,
           id: detailId
         },
-        overview?.activeSession ? h(
+        overview?.activeSession ? createElement(
           Fragment,
           null,
-          h(
+          createElement(
             "div",
             { className: "sbfx-review__meeting" },
-            h(
+            createElement(
               "span",
               { className: "sbfx-review__meeting-title" },
               overview.activeSession.title
             )
           ),
-          h(
+          createElement(
             "p",
             { className: "sbfx-review__meta" },
             `${overview.activeSession.captureCount} capture${overview.activeSession.captureCount === 1 ? "" : "s"} \xB7 ${overview.activeSession.commentCount} comment${overview.activeSession.commentCount === 1 ? "" : "s"}`
           ),
-          isCapturing ? h(
+          isCapturing ? createElement(
             "div",
             { className: "sbfx-review__capture-prompt" },
-            h("p", null, "Click the UI point to capture. Press Escape to cancel."),
-            h(
+            createElement("p", null, "Click the UI point to capture. Press Escape to cancel."),
+            createElement(
               "button",
               {
                 className: "sbfx-review__button sbfx-review__button--secondary",
@@ -6046,10 +6593,10 @@ function VisualCommentsSection({
               },
               labels.cancelCapture
             )
-          ) : pendingCapture ? h(
+          ) : pendingCapture ? createElement(
             "div",
             { className: "sbfx-review__composer" },
-            h(
+            createElement(
               "div",
               {
                 className: "sbfx-review__snapshot-preview",
@@ -6062,8 +6609,8 @@ function VisualCommentsSection({
                   aspectRatio: `${pendingCapture.capture.width}/${pendingCapture.capture.height}`
                 }
               },
-              h("img", { alt: "Captured UI", src: pendingCapture.capture.dataUrl }),
-              h("button", {
+              createElement("img", { alt: "Captured UI", src: pendingCapture.capture.dataUrl }),
+              createElement("button", {
                 "aria-label": `${labels.adjustCommentPoint} ${nextOrdinal}`,
                 "aria-describedby": `${detailId}-point-hint`,
                 className: "sbfx-review__pin sbfx-review__pin--editable",
@@ -6076,7 +6623,7 @@ function VisualCommentsSection({
                 type: "button"
               }, nextOrdinal)
             ),
-            h(
+            createElement(
               "p",
               {
                 className: "sbfx-review__meta sbfx-review__point-hint",
@@ -6084,31 +6631,31 @@ function VisualCommentsSection({
               },
               labels.adjustCommentPointHint
             ),
-            h(
+            createElement(
               "label",
               { className: "sbfx-review__field" },
-              h("span", null, labels.authorName),
-              h("input", {
+              createElement("span", null, labels.authorName),
+              createElement("input", {
                 maxLength: VISUAL_COMMENT_LIMITS.maxAuthorLength,
                 onChange: (event) => setAuthorName(event.currentTarget.value),
                 value: authorName
               })
             ),
-            h(
+            createElement(
               "label",
               { className: "sbfx-review__field" },
-              h("span", null, labels.commentBody),
-              h("textarea", {
+              createElement("span", null, labels.commentBody),
+              createElement("textarea", {
                 maxLength: VISUAL_COMMENT_LIMITS.maxBodyLength,
                 onChange: (event) => setCommentBody(event.currentTarget.value),
                 rows: 2,
                 value: commentBody
               })
             ),
-            h(
+            createElement(
               "div",
               { className: "sbfx-review__visual-actions" },
-              h(
+              createElement(
                 "button",
                 {
                   className: "sbfx-review__button",
@@ -6118,7 +6665,7 @@ function VisualCommentsSection({
                 },
                 labels.submitComment
               ),
-              h(
+              createElement(
                 "button",
                 {
                   className: "sbfx-review__button sbfx-review__button--secondary",
@@ -6128,10 +6675,10 @@ function VisualCommentsSection({
                 labels.closeNotes
               )
             )
-          ) : h(
+          ) : createElement(
             "div",
             { className: "sbfx-review__visual-actions" },
-            h(
+            createElement(
               "button",
               {
                 className: "sbfx-review__button",
@@ -6141,7 +6688,7 @@ function VisualCommentsSection({
               },
               labels.addVisualComment
             ),
-            h(
+            createElement(
               "button",
               {
                 className: "sbfx-review__button sbfx-review__button--secondary",
@@ -6161,15 +6708,15 @@ function VisualCommentsSection({
               labels.endMeeting
             )
           ),
-          overview.comments.length ? h(
+          overview.comments.length ? createElement(
             Fragment,
             null,
-            h(
+            createElement(
               "p",
               { className: "sbfx-review__meta" },
               `${overview.comments.length} comment${overview.comments.length === 1 ? "" : "s"} on this story`
             ),
-            h(
+            createElement(
               "div",
               {
                 "aria-label": "Recent comments",
@@ -6177,39 +6724,39 @@ function VisualCommentsSection({
               },
               ...recentComments.map((comment) => {
                 const isCommentBusy = commentMutationId === comment.id;
-                return h(
+                return createElement(
                   "article",
                   {
                     className: "sbfx-comments-panel__comment",
                     "data-comment-id": comment.id,
                     key: comment.id
                   },
-                  h(
+                  createElement(
                     "div",
                     { className: "sbfx-comments-panel__comment-meta" },
-                    h("strong", null, comment.authorName),
-                    h(
+                    createElement("strong", null, comment.authorName),
+                    createElement(
                       "span",
                       {
                         className: `sbfx-comments-panel__comment-status${comment.resolvedAt ? " sbfx-comments-panel__comment-status--completed" : ""}`
                       },
                       comment.resolvedAt ? "Completed" : "Open"
                     ),
-                    h(
+                    createElement(
                       "time",
                       { dateTime: comment.createdAt },
                       new Date(comment.createdAt).toLocaleString()
                     )
                   ),
-                  h(
+                  createElement(
                     "p",
                     { className: "sbfx-comments-panel__comment-body" },
                     comment.body
                   ),
-                  h(
+                  createElement(
                     "div",
                     { className: "sbfx-comments-panel__comment-actions" },
-                    h(
+                    createElement(
                       "button",
                       {
                         "aria-label": labels.editComment,
@@ -6224,9 +6771,9 @@ function VisualCommentsSection({
                         title: labels.editComment,
                         type: "button"
                       },
-                      h(EditIcon, { size: 14 })
+                      createElement(EditIcon, { size: 14 })
                     ),
-                    h(
+                    createElement(
                       "button",
                       {
                         "aria-label": labels.deleteComment,
@@ -6239,23 +6786,23 @@ function VisualCommentsSection({
                         title: labels.deleteComment,
                         type: "button"
                       },
-                      h(TrashIcon, { size: 14 })
+                      createElement(TrashIcon, { size: 14 })
                     )
                   )
                 );
               })
             )
           ) : null
-        ) : h(
+        ) : createElement(
           "div",
           { className: "sbfx-review__meeting-start" },
-          h("input", {
+          createElement("input", {
             "aria-label": "Meeting title",
             maxLength: VISUAL_COMMENT_LIMITS.maxTitleLength,
             onChange: (event) => setMeetingTitle(event.currentTarget.value),
             value: meetingTitle
           }),
-          h(
+          createElement(
             "button",
             {
               className: "sbfx-review__button",
@@ -6276,11 +6823,45 @@ function VisualCommentsSection({
             labels.startMeeting
           )
         ),
-        reportPending ? h("p", { className: "sbfx-review__error" }, "Comment saved; report rebuild pending.") : null,
-        visualError ? h("p", { className: "sbfx-review__error" }, visualError) : null,
-        commentsCapabilityError ? h("p", { className: "sbfx-review__error" }, commentsCapabilityError) : null
+        overview?.recentSessions.length ? createElement(
+          "section",
+          {
+            "aria-label": "Recent meetings",
+            className: "sbfx-comments-panel__recent-meetings"
+          },
+          createElement("h3", { className: "sbfx-review__label" }, "Recent meetings"),
+          ...overview.recentSessions.slice(0, 5).map(
+            (session) => createElement(
+              "article",
+              {
+                className: "sbfx-comments-panel__meeting-history",
+                "data-meeting-id": session.id,
+                key: session.id
+              },
+              createElement("strong", null, session.title),
+              createElement(
+                "span",
+                { className: "sbfx-review__meta" },
+                `${session.commentCount} comment${session.commentCount === 1 ? "" : "s"}`
+              ),
+              createElement(
+                "a",
+                {
+                  className: "sbfx-review__button sbfx-review__button--secondary",
+                  href: `${apiPath}/reports/sessions/${encodeURIComponent(session.id)}/index.html`,
+                  rel: "noreferrer",
+                  target: "_blank"
+                },
+                "Open report"
+              )
+            )
+          )
+        ) : null,
+        reportPending ? createElement("p", { className: "sbfx-review__error" }, "Comment saved; report rebuild pending.") : null,
+        visualError ? createElement("p", { className: "sbfx-review__error" }, visualError) : null,
+        commentsCapabilityError ? createElement("p", { className: "sbfx-review__error" }, commentsCapabilityError) : null
       ),
-      editingComment ? createPortal(h(
+      editingComment ? createPortal(createElement(
         "div",
         {
           className: "sbfx-comments-panel__edit-backdrop",
@@ -6292,7 +6873,7 @@ function VisualCommentsSection({
             }
           }
         },
-        h(
+        createElement(
           "div",
           {
             "aria-labelledby": commentEditTitleId,
@@ -6300,7 +6881,7 @@ function VisualCommentsSection({
             className: "sbfx-comments-panel__edit-modal",
             role: "dialog"
           },
-          h(
+          createElement(
             "h2",
             {
               className: "sbfx-comments-panel__edit-heading",
@@ -6308,7 +6889,7 @@ function VisualCommentsSection({
             },
             `${labels.editComment} ${editingComment.ordinal}`
           ),
-          editingCommentHasPreview && editingComment.preview && editingCommentPin ? h(
+          editingCommentHasPreview && editingComment.preview && editingCommentPin ? createElement(
             "div",
             {
               className: "sbfx-review__snapshot-preview sbfx-comments-panel__edit-preview",
@@ -6322,7 +6903,7 @@ function VisualCommentsSection({
                 aspectRatio: `${editingComment.preview.width}/${editingComment.preview.height}`
               }
             },
-            h("img", {
+            createElement("img", {
               alt: `Screenshot evidence for comment ${editingComment.ordinal}`,
               onError: () => {
                 setCommentPreviewErrors((current) => ({
@@ -6340,7 +6921,7 @@ function VisualCommentsSection({
               },
               src: editingComment.preview.imageUrl
             }),
-            h(
+            createElement(
               "button",
               {
                 "aria-describedby": `${commentEditTitleId}-point-hint`,
@@ -6357,7 +6938,7 @@ function VisualCommentsSection({
               },
               editingComment.ordinal
             )
-          ) : h(
+          ) : createElement(
             "p",
             {
               className: "sbfx-review__evidence-unavailable",
@@ -6365,7 +6946,7 @@ function VisualCommentsSection({
             },
             labels.evidenceUnavailable
           ),
-          editingCommentHasPreview ? h(
+          editingCommentHasPreview ? createElement(
             "p",
             {
               className: "sbfx-review__meta sbfx-review__point-hint",
@@ -6373,11 +6954,11 @@ function VisualCommentsSection({
             },
             labels.adjustCommentPointHint
           ) : null,
-          h(
+          createElement(
             "label",
             { className: "sbfx-review__field" },
-            h("span", null, labels.commentBody),
-            h("textarea", {
+            createElement("span", null, labels.commentBody),
+            createElement("textarea", {
               maxLength: VISUAL_COMMENT_LIMITS.maxBodyLength,
               onChange: (event) => {
                 const value = event.currentTarget.value;
@@ -6395,7 +6976,7 @@ function VisualCommentsSection({
               value: editingCommentDraft
             })
           ),
-          commentErrors[editingComment.id] ? h(
+          commentErrors[editingComment.id] ? createElement(
             "p",
             {
               "aria-live": "polite",
@@ -6403,10 +6984,10 @@ function VisualCommentsSection({
             },
             commentErrors[editingComment.id]
           ) : null,
-          h(
+          createElement(
             "div",
             { className: "sbfx-comments-panel__edit-actions" },
-            h(
+            createElement(
               "button",
               {
                 className: "sbfx-review__button",
@@ -6417,7 +6998,7 @@ function VisualCommentsSection({
               },
               labels.saveCommentChanges
             ),
-            h(
+            createElement(
               "button",
               {
                 className: "sbfx-review__button sbfx-review__button--secondary",
@@ -6431,7 +7012,7 @@ function VisualCommentsSection({
           )
         )
       ), document.body) : null,
-      pendingDeleteCommentId ? h(
+      pendingDeleteCommentId ? createElement(
         "div",
         {
           "aria-describedby": deleteDialogDescriptionId,
@@ -6443,19 +7024,19 @@ function VisualCommentsSection({
           },
           role: "dialog"
         },
-        h(
+        createElement(
           "div",
           { className: "sbfx-comments-panel__dialog" },
-          h("h2", { id: deleteDialogTitleId }, labels.deleteCommentTitle),
-          h(
+          createElement("h2", { id: deleteDialogTitleId }, labels.deleteCommentTitle),
+          createElement(
             "p",
             { id: deleteDialogDescriptionId },
             labels.deleteCommentDescription
           ),
-          h(
+          createElement(
             "div",
             { className: "sbfx-comments-panel__dialog-actions" },
-            h(
+            createElement(
               "button",
               {
                 className: "sbfx-review__button sbfx-review__button--secondary",
@@ -6466,7 +7047,7 @@ function VisualCommentsSection({
               },
               labels.cancelDelete
             ),
-            h(
+            createElement(
               "button",
               {
                 className: "sbfx-review__button sbfx-comments-panel__delete-confirm",
@@ -6481,7 +7062,7 @@ function VisualCommentsSection({
         )
       ) : null
     ),
-    isPanelOpen && livePinPosition ? h(
+    isPanelOpen && livePinPosition ? createElement(
       "span",
       {
         "aria-hidden": "true",
@@ -6500,7 +7081,6 @@ function VisualCommentsSection({
 function FigmaExportReview({
   apiPath = defaultFigmaReviewStatusApiPath,
   autoMarkExported = true,
-  children,
   componentTitle,
   enabled,
   figmaSourceUrl,
@@ -6514,6 +7094,7 @@ function FigmaExportReview({
   visualComments
 }) {
   const labels = { ...defaultLabels, ...labelsOverride };
+  const reviewStatusController = createReviewStatusController({ apiPath });
   const initialFigmaSourceUrl = normalizeFigmaSourceUrl(figmaSourceUrl ?? "");
   const [entry, setEntry] = useState(() => normalizeEntry(null));
   const [draftDetails, setDraftDetails] = useState(() => ({
@@ -6553,21 +7134,15 @@ function FigmaExportReview({
     setErrorMessage("");
     async function loadReviewStatus() {
       try {
-        const response = await fetch(
-          `${apiPath}?storyId=${encodeURIComponent(storyId)}`,
-          { signal: controller.signal }
+        const savedEntryPayload = await reviewStatusController.load(
+          storyId,
+          controller.signal
         );
-        if (!response.ok) {
-          throw new Error(
-            `Review status GET ${apiPath} returned HTTP ${response.status}. Check the review-status server configuration.`
-          );
-        }
-        const payload = await response.json();
         const savedFigmaNodeUrl = normalizeFigmaSourceUrl(
-          payload.entry?.figmaNodeUrl ?? ""
+          savedEntryPayload?.figmaNodeUrl ?? ""
         );
         const nextEntry = normalizeEntry({
-          ...payload.entry ?? {},
+          ...savedEntryPayload ?? {},
           figmaNodeUrl: savedFigmaNodeUrl || initialFigmaSourceUrl
         });
         entryRef.current = nextEntry;
@@ -6603,22 +7178,7 @@ function FigmaExportReview({
     setErrorMessage("");
     saveQueueRef.current = saveQueueRef.current.catch(() => void 0).then(async () => {
       const entryToSave = entryRef.current;
-      const response = await fetch(apiPath, {
-        body: JSON.stringify({
-          entry: entryToSave,
-          storyId
-        }),
-        headers: {
-          "Content-Type": "application/json"
-        },
-        method: "PUT"
-      });
-      if (!response.ok) {
-        throw new Error(
-          `Review status PUT ${apiPath} returned HTTP ${response.status}. Check the review-status server configuration.`
-        );
-      }
-      const payload = await response.json();
+      const payload = await reviewStatusController.save(storyId, entryToSave);
       const savedEntry = normalizeEntry(payload.entry ?? entryToSave);
       entryRef.current = savedEntry;
       setEntry(savedEntry);
@@ -6675,11 +7235,10 @@ function FigmaExportReview({
     void saveReviewStatus({ figmaNodeUrl });
   }
   const reviewStatusOptions = getReviewStatusOptions(labels);
-  return h(
+  return createElement(
     Fragment,
     null,
-    children,
-    shouldShowPanel && workspaceSlot ? createPortal(h(
+    shouldShowPanel && workspaceSlot ? createPortal(createElement(
       "aside",
       {
         "aria-label": "Figma export review",
@@ -6689,35 +7248,35 @@ function FigmaExportReview({
         "data-save-state": saveState,
         "data-version": getAddonVersion()
       },
-      h(
+      createElement(
         "header",
         { className: "sbfx-review__header" },
-        h(
+        createElement(
           "span",
           { "aria-hidden": "true", className: "sbfx-review__mark" },
-          h(EyeIcon, { size: 14 })
+          createElement(EyeIcon, { size: 14 })
         ),
-        h(
+        createElement(
           "span",
           { className: "sbfx-review__heading" },
-          h(
+          createElement(
             "span",
             { className: "sbfx-review__title" },
             labels.title
           ),
-          h(
+          createElement(
             "span",
             { className: "sbfx-review__subtitle", title: componentTitle },
             componentTitle
           )
         ),
-        h(
+        createElement(
           "span",
           { className: "sbfx-review__status" },
-          h("span", { "aria-hidden": "true", className: "sbfx-review__status-dot" }),
+          createElement("span", { "aria-hidden": "true", className: "sbfx-review__status-dot" }),
           getStatusText(saveState)
         ),
-        h(
+        createElement(
           "button",
           {
             "aria-expanded": !isCollapsed,
@@ -6727,17 +7286,17 @@ function FigmaExportReview({
             title: isCollapsed ? "Expand export review panel" : "Collapse export review panel",
             type: "button"
           },
-          isCollapsed ? UnfoldMoreDisclosureIcon() : h(CollapseIcon, { "aria-hidden": "true", size: 14 })
+          isCollapsed ? UnfoldMoreDisclosureIcon() : createElement(CollapseIcon, { "aria-hidden": "true", size: 14 })
         )
       ),
-      h(
+      createElement(
         "div",
         { className: "sbfx-review__body" },
-        h(
+        createElement(
           "label",
           { className: "sbfx-review__field" },
-          h("span", null, labels.review),
-          h(
+          createElement("span", null, labels.review),
+          createElement(
             "select",
             {
               onChange: (event) => {
@@ -6748,16 +7307,16 @@ function FigmaExportReview({
               value: entry.figmaReviewStatus
             },
             ...reviewStatusOptions.map(
-              (option) => h("option", { key: option.value, value: option.value }, option.label)
+              (option) => createElement("option", { key: option.value, value: option.value }, option.label)
             )
           )
         )
       ),
-      shouldEditFigmaSource ? h(
+      shouldEditFigmaSource ? createElement(
         "label",
         { className: "sbfx-review__field" },
-        h("span", null, labels.figmaSource),
-        h("input", {
+        createElement("span", null, labels.figmaSource),
+        createElement("input", {
           onBlur: saveFigmaSourceUrl,
           onChange: (event) => {
             const figmaNodeUrl = event.currentTarget.value;
@@ -6775,14 +7334,14 @@ function FigmaExportReview({
           type: "url",
           value: draftDetails.figmaNodeUrl
         })
-      ) : h(
+      ) : createElement(
         "div",
         { className: "sbfx-review__source" },
-        h("span", { className: "sbfx-review__label" }, labels.figmaSource),
-        h(
+        createElement("span", { className: "sbfx-review__label" }, labels.figmaSource),
+        createElement(
           "div",
           { className: "sbfx-review__source-actions" },
-          h(
+          createElement(
             "a",
             {
               className: "sbfx-review__button sbfx-review__button--outline",
@@ -6790,10 +7349,10 @@ function FigmaExportReview({
               rel: "noreferrer",
               target: "_blank"
             },
-            h(LinkIcon, { size: 14 }),
+            createElement(LinkIcon, { size: 14 }),
             labels.openSource
           ),
-          h(
+          createElement(
             "button",
             {
               "aria-label": labels.editFigmaSource,
@@ -6801,14 +7360,14 @@ function FigmaExportReview({
               onClick: () => setIsSourceEditing(true),
               type: "button"
             },
-            h(EditIcon, { size: 14 })
+            createElement(EditIcon, { size: 14 })
           )
         )
       ),
-      showNotes ? h(
+      showNotes ? createElement(
         "div",
         { className: "sbfx-review__notes" },
-        h(
+        createElement(
           "button",
           {
             "aria-expanded": entry.notesOpen,
@@ -6818,17 +7377,17 @@ function FigmaExportReview({
             },
             type: "button"
           },
-          h("span", null, labels.notes),
-          h(
+          createElement("span", null, labels.notes),
+          createElement(
             "span",
             { className: "sbfx-review__notes-state" },
             entry.notesOpen ? labels.closeNotes : labels.openNotes
           )
         ),
-        entry.notesOpen ? h(
+        entry.notesOpen ? createElement(
           "label",
           { className: "sbfx-review__field" },
-          h("textarea", {
+          createElement("textarea", {
             onBlur: () => {
               void saveReviewStatus({ notes: draftDetails.notes });
             },
@@ -6842,17 +7401,17 @@ function FigmaExportReview({
             rows: 2,
             value: draftDetails.notes
           })
-        ) : draftDetails.notes ? h("p", { className: "sbfx-review__notes-summary" }, labels.notesSaved) : null
+        ) : draftDetails.notes ? createElement("p", { className: "sbfx-review__notes-summary" }, labels.notesSaved) : null
       ) : null,
-      entry.updatedAt ? h(
+      entry.updatedAt ? createElement(
         "p",
         { className: "sbfx-review__meta" },
         `Updated ${new Date(entry.updatedAt).toLocaleString()}`
       ) : null,
-      errorMessage ? h("p", { className: "sbfx-review__error" }, errorMessage) : null
+      errorMessage ? createElement("p", { className: "sbfx-review__error" }, errorMessage) : null
     ), workspaceSlot) : null,
     shouldShowPanel && viewMode === "story" && typeof document !== "undefined" ? createPortal(
-      h(VisualCommentsSection, {
+      createElement(VisualCommentsSection, {
         componentTitle,
         enabled,
         labels,
@@ -6870,6 +7429,7 @@ function createFigmaExportReviewDecorator(figmaExportOptions, reviewOptions) {
   const figmaExportDecorator = createFigmaExportDecorator(figmaExportOptions);
   const resolvedOptions = resolveFigmaExportAddonOptions(figmaExportOptions);
   return (Story, context) => {
+    const storyResult = figmaExportDecorator(Story, context);
     const includedStory = isStoryIncludedForFigmaExport(
       context.title,
       resolvedOptions
@@ -6877,31 +7437,60 @@ function createFigmaExportReviewDecorator(figmaExportOptions, reviewOptions) {
     const componentTitle = reviewOptions?.getComponentTitle?.(context, resolvedOptions) ?? getDefaultFigmaExportComponentTitle(context.title, resolvedOptions);
     const figmaSourceUrl = reviewOptions?.getFigmaSourceUrl?.(context, componentTitle) ?? getDefaultFigmaSourceUrl(context.parameters);
     const enabled = reviewOptions?.enabled !== false && includedStory && context.globals?.[resolvedOptions.globalName] === "on";
-    return h(
-      FigmaExportReview,
-      {
-        apiPath: reviewOptions?.apiPath,
-        autoMarkExported: reviewOptions?.autoMarkExported,
-        componentTitle,
-        enabled,
-        figmaSourceUrl,
-        labels: reviewOptions?.labels,
-        showNotes: reviewOptions?.showNotes,
-        storyId: context.id ?? "unknown-story",
-        storyName: context.name ?? "Story",
-        storyTitle: context.title ?? "",
-        storyUrl: typeof window === "undefined" ? void 0 : window.location.href,
-        viewMode: context.viewMode,
-        visualComments: reviewOptions?.visualComments ?? resolvedOptions.visualComments
-      },
-      figmaExportDecorator(Story, context)
-    );
+    syncFigmaReviewWorkspace({
+      apiPath: reviewOptions?.apiPath,
+      autoMarkExported: reviewOptions?.autoMarkExported,
+      componentTitle,
+      enabled,
+      figmaSourceUrl,
+      labels: reviewOptions?.labels,
+      showNotes: reviewOptions?.showNotes,
+      storyId: context.id ?? "unknown-story",
+      storyName: context.name ?? "Story",
+      storyTitle: context.title ?? "",
+      storyUrl: typeof window === "undefined" ? void 0 : window.location.href,
+      viewMode: context.viewMode,
+      visualComments: reviewOptions?.visualComments ?? resolvedOptions.visualComments
+    });
+    return storyResult;
   };
+}
+var reviewDomRoot;
+var reviewDomHost;
+function syncFigmaReviewWorkspace(props) {
+  if (typeof document === "undefined") return;
+  if (!props.enabled) {
+    destroyFigmaReviewWorkspace();
+    return;
+  }
+  if (!reviewDomHost?.isConnected) {
+    reviewDomHost = document.createElement("div");
+    reviewDomHost.dataset.sbfxReviewHost = "true";
+    reviewDomHost.dataset.sbfxCaptureIgnore = "true";
+    document.body.append(reviewDomHost);
+    reviewDomRoot = mountDom(
+      FigmaExportReview,
+      props,
+      reviewDomHost
+    );
+    return;
+  }
+  reviewDomRoot?.update(props);
+}
+function destroyFigmaReviewWorkspace() {
+  reviewDomRoot?.destroy();
+  reviewDomRoot = void 0;
+  reviewDomHost = void 0;
+}
+var hotModule = import.meta.hot;
+if (hotModule) {
+  hotModule.dispose(destroyFigmaReviewWorkspace);
 }
 export {
   FigmaExportReview,
   createFigmaExportReviewDecorator,
   defaultFigmaReviewStatusApiPath,
+  destroyFigmaReviewWorkspace,
   getDefaultFigmaExportComponentTitle,
   getDefaultFigmaSourceUrl
 };

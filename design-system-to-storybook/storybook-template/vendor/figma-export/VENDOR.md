@@ -13,18 +13,20 @@ borderSides 單邊框線 / auto layout 結構修復)。
 
 ## 修改流程
 
-1. 直接編輯 `vendor/figma-export/src/`
-2. 在此目錄重建 dist:
+1. 只編輯 canonical source：`design-system-to-storybook/assets/figma-export-addon/`
+2. 在 canonical addon 目錄重建 dist：
    ```sh
-   cd vendor/figma-export
-   npm install --no-save tsup typescript   # 第一次需要
-   npx tsup                                # DTS build 失敗是已知狀況,ESM 成功即可
+   cd design-system-to-storybook/assets/figma-export-addon
+   npm run build
    ```
-3. 跑 `node scripts/patch-figma-export-addon.mjs` 同步到 node_modules(或重跑 `npm install`)
-4. 重啟 Storybook
+3. 將 canonical 的 `src/`、`dist/`、`README.md`、`package.json`、
+   `tsconfig.json`、`tsup.config.ts` 同步到兩個 Storybook template mirrors。
+4. 跑 `node design-system-to-storybook/scripts/check_figma_export_addon_mirrors.mjs`。
+5. 重跑 template install/patch 流程並重啟 Storybook。
 
 ## 注意
 
-- 不要再直接編輯 `node_modules` 內的 addon —— 會在下次 postinstall 被覆蓋。
+- 不要直接編輯本目錄或 `node_modules` 內的 addon；兩者都會在同步／postinstall
+  時被 canonical source 覆蓋。
 - 長期而言建議把這份內容 sync 回 `harrychuang/storybook-addons` repo,
   讓 GitHub main 重新成為單一事實來源,屆時這個 vendor 目錄即可移除。

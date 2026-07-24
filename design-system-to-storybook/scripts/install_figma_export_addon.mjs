@@ -4,6 +4,14 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import {
+  detectStorybookEnvironment,
+  supportedRenderers,
+} from "./lib/storybook_environment.mjs";
+import {
+  applyFigmaExportWiring,
+  planFigmaExportWiring,
+} from "./lib/figma_export_wiring.mjs";
 
 const ADDON_NAME = "@harrychuang/storybook-addon-figma-export";
 const TGZ_PREFIX = "harrychuang-storybook-addon-figma-export-";
@@ -20,10 +28,20 @@ if (args.includes("--help") || args.includes("-h")) {
 const copyOnly = args.includes("--copy-only");
 const checkOnly = args.includes("--check");
 const forceReinstall = args.includes("--force-reinstall");
+const jsonOutput = args.includes("--json");
+const configureOnly = args.includes("--configure-only");
+const skipConfigure = args.includes("--skip-configure");
 const pmFlagIndex = args.indexOf("--package-manager");
 const forcedPackageManager = pmFlagIndex >= 0 ? args[pmFlagIndex + 1] : "";
+const rendererFlagIndex = args.indexOf("--renderer");
+const rendererOverride = rendererFlagIndex >= 0 ? args[rendererFlagIndex + 1] : "";
+const optionValueIndexes = new Set(
+  [pmFlagIndex, rendererFlagIndex]
+    .filter((index) => index >= 0)
+    .map((index) => index + 1),
+);
 const positional = args.filter((arg, index) => {
-  if (pmFlagIndex >= 0 && index === pmFlagIndex + 1) return false;
+  if (optionValueIndexes.has(index)) return false;
   return !arg.startsWith("--");
 });
 
@@ -43,14 +61,42 @@ try {
 }
 
 function main() {
+  if (configureOnly && (copyOnly || checkOnly || skipConfigure)) {
+    throw new Error(
+      "--configure-only cannot be combined with --copy-only, --check, or --skip-configure.",
+    );
+  }
   assertProductRoot(productRoot);
   assertBundledAddon();
+
+  const environment = detectStorybookEnvironment({
+    productRoot,
+    rendererOverride: rendererOverride || undefined,
+  });
+  reportEnvironment(environment);
+  assertInstallableEnvironment(environment);
+  const shouldConfigure =
+    configureOnly || (!copyOnly && !checkOnly && !skipConfigure);
+  const wiringPlan = shouldConfigure
+    ? planFigmaExportWiring({
+        productRoot,
+        fullReview: Object.values(environment.capabilities).every(
+          (state) => state === "supported",
+        ),
+      })
+    : null;
 
   const bundledVersion = readPackageJson(path.join(bundledAddonDir, "package.json")).version;
   if (!bundledVersion) {
     throw new Error(`Bundled addon package.json has no version at ${bundledAddonDir}`);
   }
   const state = readInstalledState();
+
+  if (configureOnly) {
+    const wiring = applyFigmaExportWiring(wiringPlan);
+    reportWiring(wiring);
+    return;
+  }
 
   if (checkOnly) {
     reportCheck(bundledVersion, state);
@@ -68,8 +114,9 @@ function main() {
     state.vendoredTarballs.includes(currentTgzName);
 
   if (upToDate) {
-    console.log(`${ADDON_NAME}@${bundledVersion} is already installed and up to date.`);
-    console.log("Use --force-reinstall to reinstall anyway.");
+    if (wiringPlan) reportWiring(applyFigmaExportWiring(wiringPlan));
+    logInfo(`${ADDON_NAME}@${bundledVersion} is already installed and up to date.`);
+    logInfo("Use --force-reinstall to reinstall anyway.");
     return;
   }
 
@@ -89,12 +136,12 @@ function main() {
   const packedName = path.basename(packedPath);
   const spec = `file:${toPosix(path.relative(productRoot, packedPath))}`;
 
-  console.log(`Packed bundled addon to ${packedPath}`);
+  logInfo(`Packed bundled addon to ${packedPath}`);
 
   if (copyOnly) {
-    console.log(`Copy-only mode. Install spec: ${spec}`);
+    logInfo(`Copy-only mode. Install spec: ${spec}`);
     if (state.legacyDir) {
-      console.log(
+      logInfo(
         `Note: legacy copied-directory layout detected at ${legacyVendorDir}; run without --copy-only to migrate it.`,
       );
     }
@@ -107,14 +154,19 @@ function main() {
   const needsIcons = !hasDependency(packageJsonPath, "@storybook/icons");
   const installArgs = installCommandArgs(packageManager, spec, needsIcons);
 
-  console.log(`Installing with ${packageManager}: ${installArgs.join(" ")}`);
+  logInfo(`Installing with ${packageManager}: ${installArgs.join(" ")}`);
 
   const result = spawnSync(packageManager, installArgs, {
     cwd: productRoot,
-    stdio: "inherit",
+    ...(jsonOutput ? { encoding: "utf8" } : { stdio: "inherit" }),
     env: process.env,
     shell: process.platform === "win32",
   });
+
+  if (jsonOutput) {
+    if (result.stdout) process.stderr.write(result.stdout);
+    if (result.stderr) process.stderr.write(result.stderr);
+  }
 
   if (result.error || result.status !== 0) {
     if (!tgzExistedBefore) {
@@ -128,21 +180,30 @@ function main() {
 
   pruneOldTarballs(packedName);
   migrateLegacyDir();
+  if (wiringPlan) reportWiring(applyFigmaExportWiring(wiringPlan));
 
-  console.log("");
-  console.log(`Installed ${ADDON_NAME}@${bundledVersion}`);
-  console.log(`Tarball: ${toPosix(path.relative(productRoot, packedPath))}`);
-  console.log(`Dependency spec: ${spec}`);
-  console.log("Commit the tarball together with package.json and the lockfile so teammates and CI install the same version.");
-  console.log("To upgrade later: update this skill so it bundles a newer addon, then re-run this installer. Use --check to see pending updates.");
+  logInfo("");
+  logInfo(`Installed ${ADDON_NAME}@${bundledVersion}`);
+  logInfo(`Tarball: ${toPosix(path.relative(productRoot, packedPath))}`);
+  logInfo(`Dependency spec: ${spec}`);
+  logInfo("Commit the tarball together with package.json and the lockfile so teammates and CI install the same version.");
+  logInfo("To upgrade later: update this skill so it bundles a newer addon, then re-run this installer. Use --check to see pending updates.");
+}
+
+function reportWiring(wiring) {
+  logInfo(
+    `Configured renderer-neutral Storybook ${wiring.fullReview ? "full review" : "core export"} wiring: ${wiring.files
+      .map((file) => toPosix(path.relative(productRoot, file)))
+      .join(", ")}`,
+  );
 }
 
 function reportCheck(bundledVersion, state) {
-  console.log(`Bundled addon version: ${bundledVersion}`);
+  logInfo(`Bundled addon version: ${bundledVersion}`);
 
   if (!state.declaredSpec) {
-    console.log("Installed addon version: not installed");
-    console.log("Status: not installed. Run the installer without --check to install.");
+    logInfo("Installed addon version: not installed");
+    logInfo("Status: not installed. Run the installer without --check to install.");
     process.exit(2);
   }
 
@@ -151,35 +212,97 @@ function reportCheck(bundledVersion, state) {
     : state.specVersion
       ? `${state.specVersion} (declared tarball spec; node_modules not installed)`
       : `unknown (declared spec: ${state.declaredSpec})`;
-  console.log(`Installed addon version: ${installedLabel}`);
+  logInfo(`Installed addon version: ${installedLabel}`);
 
   if (state.legacyDir || state.legacySpec) {
-    console.log(
+    logInfo(
       "Status: legacy copied-directory layout detected. Re-run the installer to migrate to the versioned tarball layout.",
     );
     process.exit(3);
   }
 
   if (!state.effectiveVersion) {
-    console.log("Status: installed version unknown. Re-run the installer to normalize to the tarball layout.");
+    logInfo("Status: installed version unknown. Re-run the installer to normalize to the tarball layout.");
     process.exit(3);
   }
 
   const cmp = compareVersions(bundledVersion, state.effectiveVersion);
   if (cmp > 0) {
-    console.log(
+    logInfo(
       `Status: update available (${state.effectiveVersion} -> ${bundledVersion}). Re-run the installer to upgrade.`,
     );
     process.exit(3);
   }
   if (cmp < 0) {
-    console.log(
+    logInfo(
       `Status: installed version ${state.effectiveVersion} is newer than the bundled asset ${bundledVersion}. Refresh the skill's vendored addon before reinstalling.`,
     );
     process.exit(0);
   }
-  console.log("Status: up to date.");
+  logInfo("Status: up to date.");
   process.exit(0);
+}
+
+function reportEnvironment(environment) {
+  if (jsonOutput) {
+    process.stdout.write(`${JSON.stringify(environment)}\n`);
+    return;
+  }
+
+  const version = environment.storybookMajor === null
+    ? "unknown"
+    : String(environment.storybookMajor);
+  logInfo(
+    `Storybook environment: renderer=${environment.renderer}, builder=${environment.builder}, major=${version}, confidence=${environment.confidence}`,
+  );
+  logInfo(
+    `Capabilities: ${Object.entries(environment.capabilities)
+      .map(([name, state]) => `${name}=${state}`)
+      .join(", ")}`,
+  );
+}
+
+function assertInstallableEnvironment(environment) {
+  if (environment.renderer === "unknown" || environment.confidence === "ambiguous") {
+    const signals = environment.signals.length > 0
+      ? environment.signals.join("; ")
+      : "none";
+    throw new Error(
+      `Unable to determine one safe Storybook environment. Signals: ${signals}. ` +
+        `Use --renderer <${supportedRenderers.join("|")}> to resolve renderer ambiguity.`,
+    );
+  }
+
+  if (environment.capabilities.coreExport !== "supported") {
+    throw new Error(
+      `Figma export is not verified for renderer=${environment.renderer}, ` +
+        `builder=${environment.builder}, Storybook major=${environment.storybookMajor ?? "unknown"}.`,
+    );
+  }
+
+  if (
+    rendererOverride === "vue3" &&
+    Object.values(environment.capabilities).some((state) => state !== "supported")
+  ) {
+    throw new Error(
+      "The explicit Vue renderer requires Vue 3 + Vite + Storybook 10 for complete " +
+        "Export, Review, Visual Comments, and persistence support.",
+    );
+  }
+
+  const unavailable = Object.entries(environment.capabilities)
+    .filter(([, state]) => state !== "supported")
+    .map(([name, state]) => `${name}=${state}`);
+  if (unavailable.length > 0) {
+    logInfo(
+      `Capability notice: this environment is not full-review parity (${unavailable.join(", ")}).`,
+    );
+  }
+}
+
+function logInfo(message) {
+  const stream = jsonOutput ? process.stderr : process.stdout;
+  stream.write(`${message}\n`);
 }
 
 function readInstalledState() {
@@ -262,7 +385,7 @@ function pruneOldTarballs(currentName) {
   for (const name of fs.readdirSync(vendorDir)) {
     if (name !== currentName && name.startsWith(TGZ_PREFIX) && name.endsWith(".tgz")) {
       fs.rmSync(path.join(vendorDir, name), { force: true });
-      console.log(`Removed superseded tarball ${name}`);
+      logInfo(`Removed superseded tarball ${name}`);
     }
   }
 }
@@ -280,7 +403,7 @@ function migrateLegacyDir() {
   }
 
   fs.renameSync(legacyVendorDir, backupDir);
-  console.log(
+  logInfo(
     `Migrated legacy copied-directory layout: backup kept at ${backupDir}. ` +
       "Delete it after verifying Storybook builds; the addon now installs from the versioned tarball.",
   );
@@ -405,8 +528,16 @@ Options:
                           files. Exit codes: 0 up to date, 2 not installed,
                           3 update available or legacy layout.
   --copy-only             Only produce the tarball and print the install spec.
+  --configure-only        Generate renderer-neutral main/preview wiring without
+                          installing the package.
   --force-reinstall       Reinstall even when versions match, or downgrade when
                           the installed version is newer than the bundled one.
   --package-manager <pm>  Force npm | pnpm | yarn | bun.
+  --renderer <renderer>   Resolve renderer ambiguity with react | vue3 |
+                          angular | svelte | web-components.
+  --skip-configure        Install the package without changing Storybook
+                          main/preview wiring.
+  --json                  Write one machine-readable capability report to
+                          stdout and human diagnostics to stderr.
   -h, --help              Show this help.`);
 }

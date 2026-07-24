@@ -7,7 +7,7 @@ Also use this reference before wiring `.storybook/main.*` or `.storybook/preview
 The addon has two preview UIs:
 
 - `createFigmaExportDecorator`: shows the export overlay for copying JSON or plugin-console code.
-- `createFigmaExportReviewDecorator`: wraps the export overlay and also shows the review overlay with the Open source action.
+- `createFigmaExportReviewDecorator`: returns the story result unchanged while synchronizing the export/review DOM workspace and Open source action outside the story root.
 
 For this skill, use `createFigmaExportReviewDecorator` by default. Do not configure only `createFigmaExportDecorator` unless the user explicitly opts out of review/Open source.
 
@@ -21,12 +21,31 @@ node <skill-root>/scripts/install_figma_export_addon.mjs <product-repo-root>
 
 The installer:
 
+- detects renderer, builder, and Storybook major from package dependencies and static `.storybook/main.*` references before mutation
+- reports separate `coreExport`, `reviewWorkspace`, `visualComments`, and `persistence` states; `--json` writes one report to stdout and `--renderer` resolves conflicting renderer signals
 - packs `assets/figma-export-addon/` into `<product-repo-root>/.storybook/vendor/harrychuang-storybook-addon-figma-export-<version>.tgz`
 - detects `npm`, `pnpm`, `yarn`, or `bun`
 - installs `file:.storybook/vendor/harrychuang-storybook-addon-figma-export-<version>.tgz`
 - installs `@storybook/icons@^1.0.0` only when the target package does not already declare `@storybook/icons`
+- generates `.storybook/figma-export.main.mjs` and `.storybook/figma-export.preview.mjs`, then safely wraps existing ESM default config exports without replacing their config objects
+- generates full Review/Visual Comments/Vite server wiring for React + Vite + Storybook 10 and Vue 3 + Vite + Storybook 10; other supported Storybook 10 combinations receive core export wiring only
 - upgrades in place when re-run with a newer bundled version, prunes superseded tarballs, and migrates the legacy `.storybook/vendor/figma-export-addon/` directory layout (kept as `figma-export-addon-legacy-backup` until deleted after verification)
 - reports bundled vs installed versions with `--check` (exit 0 up to date, 2 not installed, 3 update available or legacy layout)
+
+Use `--skip-configure` when the project already owns equivalent wiring. Use
+`--configure-only` to regenerate installer-owned wrappers without changing
+dependencies. The installer refuses partial/unsafe wiring or non-owned generated
+files instead of overwriting them.
+
+## Capability Matrix
+
+| Environment | Core export | Review / Visual Comments / persistence |
+|---|---|---|
+| React + Vite + Storybook 10 | `supported` | `supported` |
+| Vue 3 + Vite + Storybook 10 | `supported` | `supported`; no React/React DOM product dependency |
+| React/Vue 3 with Webpack 5, Angular, Svelte, Web Components on Storybook 10 | `supported` when detection is exact/inferred | `unsupported`; installer generates core-only wiring |
+| Unknown/conflicting renderer or unknown Storybook major | `unverified` | `unverified`; installer stops before mutation |
+| Storybook major other than 10 | `unverified` | `unsupported`; do not force installation |
 
 Generate config before editing Storybook files:
 
@@ -35,6 +54,13 @@ node <skill-root>/scripts/generate_figma_export_config.mjs <design-system-packag
 ```
 
 Default output is `<product-repo-root>/.storybook/figma-export.config.ts`. Keep project-specific Figma URLs, node IDs, class prefixes, theme globals, local graphics, token imports, review API settings, and source fallbacks in `.storybook/figma-export.config.ts`, `.storybook/preview.*`, or product code. The bundled addon should stay generic.
+
+The installer-owned `.mjs` wrappers intentionally use portable defaults. When
+the generated project config contains project-specific values, pass those
+values through the wrapper calls or replace the baseline wrapper calls with the
+explicit Preview/Main wiring below. Re-run future installs with
+`--skip-configure` once the project owns that explicit wiring; do not generate a
+config file and leave its values unused.
 
 The generated config covers:
 
@@ -153,14 +179,17 @@ export default {
 };
 ```
 
-For non-Vite Storybook builders, keep the preview decorator but record review-status persistence as blocked unless the project already has a middleware hook equivalent.
+For non-Vite Storybook builders, use the installer's core-only
+`createFigmaExportDecorator` wiring. Do not manually add the review decorator or
+Vite status plugin while the capability report says `unsupported`.
 
 ## Visual Comment Safety And Capture Limits
 
 Visual comments are additive to the existing review status, Figma source, and
 notes, but render in a separate top-right panel instead of inside Export review.
-The panel defaults to an Edit icon launcher and expands on demand. They work only
-in React Story view. The browser intercepts the selected
+The panel defaults to an Edit icon launcher and expands on demand. The complete
+workflow is verified in React + Vite and Vue 3 + Vite Story view on Storybook 10.
+The browser intercepts the selected
 pointer sequence before prototype handlers, captures the current in-memory UI,
 and stores a normalized pin plus immutable screenshot. Point selection immediately
 shows the next meeting-wide numbered tag. Before Save, the point can be adjusted
