@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "templateVersion": "0.9.0",
+  "status": "pending",
+  "completedBy": null,
+  "completedAt": null,
+  "manifest": {
+    "identity": "Design Automation Hub",
+    "absolutePathVerified": false,
+    "importedOnce": false
+  },
+  "projects": [
+    {
+      "acceptanceId": "project-a",
+      "projectProfileConfigured": false,
+      "realFigmaFileKeyVerified": false,
+      "coordinatorHealthVerified": false,
+      "contextVerified": false
+    },
+    {
+      "acceptanceId": "project-b",
+      "projectProfileConfigured": false,
+      "realFigmaFileKeyVerified": false,
+      "coordinatorHealthVerified": false,
+      "contextVerified": false
+    }
+  ],
+  "checks": {
+    "samePluginIdentity": false,
+    "fixedCopyContainsNoProjectName": false,
+    "standaloneCleanupVisible": false,
+    "workflowStatusVisible": false,
+    "reviewHidden": false
+  },
+  "notes": "Complete this in Figma Desktop with two real project profiles. Verify real file keys without storing them here. Import the shared manifest once, then reuse the same Plugin identity for both profiles. Do not mark template 1.0.0 until every required field above is verified."
+}
