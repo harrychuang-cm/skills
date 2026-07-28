@@ -620,6 +620,27 @@
     <script>
       const skillData = [
         {
+          tag: "$agent-automation-orchestrate",
+          key: "automation",
+          bullets: {
+            en: [
+              "Write one project automation contract",
+              "Run tasks with ordered runner fallback",
+              "Verify artifacts, then resume or report",
+            ],
+            ja: [
+              "project automation contract を作成",
+              "runner fallback の順に task を実行",
+              "成果物を検証し resume / status で確認",
+            ],
+            "zh-Hant": [
+              "建立專案自動化契約",
+              "依序 fallback 執行 task",
+              "驗證產物後續跑或回報",
+            ],
+          },
+        },
+        {
           tag: "$design-system-extractor",
           key: "extractor",
           bullets: {
@@ -787,6 +808,48 @@
             ],
           },
         },
+        {
+          tag: "$component-coverage-install",
+          key: "coverageInstall",
+          bullets: {
+            en: [
+              "Install the Storybook coverage tool",
+              "Generate a project component catalog",
+              "Verify checks, dev API, and skill mirrors",
+            ],
+            ja: [
+              "Storybook coverage tool を導入",
+              "プロジェクト固有の component catalog を生成",
+              "checks、dev API、skill mirror を検証",
+            ],
+            "zh-Hant": [
+              "安裝 Storybook 覆蓋率工具",
+              "產生專案專屬的元件目錄",
+              "驗證檢查腳本、dev API 與 skill 鏡像",
+            ],
+          },
+        },
+        {
+          tag: "$design-automation-hub-install",
+          key: "designHubInstall",
+          bullets: {
+            en: [
+              "Preview a zero-write install plan",
+              "Install the Figma plugin and coordinator",
+              "Add only the figma-cleanup task",
+            ],
+            ja: [
+              "書き込みなしの install plan を確認",
+              "Figma plugin と coordinator を導入",
+              "figma-cleanup task のみを追加",
+            ],
+            "zh-Hant": [
+              "先預覽不寫入的安裝計畫",
+              "安裝 Figma plugin 與 coordinator",
+              "只加入 figma-cleanup task",
+            ],
+          },
+        },
       ];
 
       const copy = {
@@ -820,6 +883,11 @@
           ],
           quickChoice: "Which skill should I use?",
           skills: {
+            automation: {
+              title: "Run a repeatable automation across agents",
+              body:
+                "Use this to turn a repeatable workflow into one project contract, then run, resume, or inspect it with ordered fallback across Claude Code, Codex, Cursor, or another headless CLI. Designers can set it up through a plain-language guided interview.",
+            },
             extractor: {
               title: "Extract a design system from references",
               body:
@@ -848,7 +916,7 @@
             governance: {
               title: "Keep UI work under design-system rules",
               body:
-                "Use this with any UI implementation skill. It discovers tokens, grids, motion, i18n, and shared components before coding, then stops for approval when tokens or components are missing.",
+                "Use this with any UI implementation skill. It discovers tokens, grids, motion, i18n, and shared components before coding, then stops for approval when tokens or components are missing. External skill: it is installed separately and does not live in the cm-skills repository.",
             },
             compare: {
               title: "Compare implementation with a reference",
@@ -859,6 +927,16 @@
               title: "Document pixel alignment drift",
               body:
                 "Use this when the team needs screenshot-backed design QA evidence, original design links, measured drift, and a static HTML report before or alongside fixes.",
+            },
+            coverageInstall: {
+              title: "Install the Storybook coverage analyzer",
+              body:
+                "Use this to bring the UI-image or PRD, coverage report, review, and implementation workflow into a React and Vite Storybook project, including the tool page, dev API, check scripts, and companion skills.",
+            },
+            designHubInstall: {
+              title: "Install the Design Automation Hub",
+              body:
+                "Use this when another repository needs the same Figma cleanup, AI plan, and human confirmation workflow. It installs the Figma plugin, local coordinator, and the figma-cleanup task on top of the automation contract.",
             },
           },
           recommendedFlow: "Recommended flow",
@@ -897,6 +975,11 @@
               title: "Document",
               body:
                 "Use $ui-pixel-align-report when review or handoff requires cropped evidence, source links, ownership, and recommended fixes.",
+            },
+            {
+              title: "Automate",
+              body:
+                "Use $agent-automation-orchestrate once the flow is repeatable, so the same task runs, resumes, and reports through one project contract.",
             },
           ],
           workflowTitle: "Common ways to combine skills",
@@ -941,6 +1024,16 @@
               body:
                 "Inspect the existing repo, reuse tokens and shared components, add the feature, and compare it with the reference.",
             },
+            {
+              title: "Repeatable design-to-engineering automation",
+              steps: [
+                "$agent-automation-orchestrate",
+                "$design-system-to-storybook",
+                "$ui-compare-to-reference",
+              ],
+              body:
+                "Describe the automation in plain language, let the project contract hold the runners and verification, then have each run build components and check the result.",
+            },
           ],
           pairingsTitle: "Skills that continue or pair well together",
           pairings: [
@@ -974,6 +1067,18 @@
               body:
                 "Use the report to document drift, then apply targeted visual fixes.",
             },
+            {
+              from: "$agent-automation-orchestrate",
+              to: "Any companion skill",
+              body:
+                "Keep the runner generic, and put the project's instructions, verification, and required artifacts in the task contract.",
+            },
+            {
+              from: "$design-automation-hub-install",
+              to: "$agent-automation-orchestrate",
+              body:
+                "Add the figma-cleanup task on top of the existing automation contract instead of installing a second runner.",
+            },
           ],
           examples: "Reusable AI coding agent request examples",
           prompts: [
@@ -984,7 +1089,11 @@
             "Use $ui-screenshot-to-storybook-product on reference/dashboard.png and implement it through reusable Storybook components.",
             "Use $ui-compare-to-reference on reference/dashboard.png and http://localhost:3000/dashboard.",
             "Use $ui-pixel-align-report on reference/dashboard.png and http://localhost:3000/dashboard.",
-            "If $frontend-product-implementation is not recognized, read ./frontend-product-implementation/SKILL.md and follow that workflow. Also read ./design-system-governance/SKILL.md for UI governance.",
+            "Use $agent-automation-orchestrate to set up automation for ./apps/web. I want ready-for-dev Figma components built into Storybook.",
+            "Use $agent-automation-orchestrate to run the build-components task in ./apps/web, with a dry run first.",
+            "Use $component-coverage-install to install the component coverage analyzer into ./apps/web.",
+            "Use $design-automation-hub-install to preview a Design Automation Hub installation for ./apps/web.",
+            "If $frontend-product-implementation is not recognized, read ./frontend-product-implementation/SKILL.md and follow that workflow. For UI governance, also read the SKILL.md of the separately installed design-system-governance skill; it is not part of this repository.",
           ],
           principleTitle: "Usage principle",
           principleStrong: "Do not skip the design-system layer.",
@@ -1052,6 +1161,11 @@
           ],
           quickChoice: "どの skill を使うべき？",
           skills: {
+            automation: {
+              title: "繰り返す automation を agent 横断で実行",
+              body:
+                "繰り返し使う workflow を 1 つの project contract にまとめ、Claude Code、Codex、Cursor などの headless CLI を順に fallback しながら run / resume / status で扱う時に使います。デザイナーは平易な言葉の guided setup から作成できます。",
+            },
             extractor: {
               title: "参照からデザインシステムを抽出",
               body:
@@ -1080,7 +1194,7 @@
             governance: {
               title: "UI 実装をデザインシステムのルールに沿わせる",
               body:
-                "UI 実装系 skill と一緒に使います。coding 前に tokens、grid、motion、i18n、共通コンポーネントを確認し、不足 token や component がある場合は先に確認します。",
+                "UI 実装系 skill と一緒に使います。coding 前に tokens、grid、motion、i18n、共通コンポーネントを確認し、不足 token や component がある場合は先に確認します。外部 skill：cm-skills repository には含まれず、別途インストールが必要です。",
             },
             compare: {
               title: "実装と参照画像を比較",
@@ -1091,6 +1205,16 @@
               title: "Pixel alignment のずれを文書化",
               body:
                 "修正前または修正と同時に、スクリーンショット証拠、元デザインリンク、測定したずれ、静的 HTML レポートが必要な時に使います。",
+            },
+            coverageInstall: {
+              title: "Storybook coverage analyzer を導入",
+              body:
+                "UI 画像や PRD から coverage report、レビュー、実装までの workflow を React + Vite の Storybook プロジェクトへ導入します。tool page、dev API、check scripts、companion skills を含みます。",
+            },
+            designHubInstall: {
+              title: "Design Automation Hub を導入",
+              body:
+                "別のリポジトリで同じ Figma cleanup、AI plan、人による確認の workflow が必要な時に使います。Figma plugin、ローカル coordinator、figma-cleanup task を automation contract の上に導入します。",
             },
           },
           recommendedFlow: "おすすめの流れ",
@@ -1129,6 +1253,11 @@
               title: "文書化",
               body:
                 "$ui-pixel-align-report で crop 証拠、source link、責任範囲、推奨修正をレビュー用に残します。",
+            },
+            {
+              title: "自動化",
+              body:
+                "流れが繰り返し使える段階になったら $agent-automation-orchestrate で 1 つの project contract にまとめ、同じ task を run / resume / status で扱えるようにします。",
             },
           ],
           workflowTitle: "よく使う skill の組み合わせ",
@@ -1173,6 +1302,16 @@
               body:
                 "既存 repo を確認し、tokens と shared components を再利用して機能を追加し、参照との差分を確認します。",
             },
+            {
+              title: "デザインからエンジニアリングまでの自動化",
+              steps: [
+                "$agent-automation-orchestrate",
+                "$design-system-to-storybook",
+                "$ui-compare-to-reference",
+              ],
+              body:
+                "自動化したい内容を平易な言葉で伝え、runner と検証は project contract に持たせ、各 run でコンポーネントを作成して結果を確認します。",
+            },
           ],
           pairingsTitle: "続けて使える、または相性のよい skills",
           pairings: [
@@ -1206,6 +1345,18 @@
               body:
                 "report で drift を記録し、その後に絞り込んだ visual fix を適用します。",
             },
+            {
+              from: "$agent-automation-orchestrate",
+              to: "任意の companion skill",
+              body:
+                "runner は汎用のまま保ち、プロジェクト固有の指示、検証、必要な成果物は task contract に置きます。",
+            },
+            {
+              from: "$design-automation-hub-install",
+              to: "$agent-automation-orchestrate",
+              body:
+                "2 つ目の runner を追加せず、既存の automation contract の上に figma-cleanup task を追加します。",
+            },
           ],
           examples: "AI coding agent への依頼例",
           prompts: [
@@ -1216,7 +1367,11 @@
             "Use $ui-screenshot-to-storybook-product on reference/dashboard.png and implement it through reusable Storybook components.",
             "Use $ui-compare-to-reference on reference/dashboard.png and http://localhost:3000/dashboard.",
             "Use $ui-pixel-align-report on reference/dashboard.png and http://localhost:3000/dashboard.",
-            "$frontend-product-implementation が認識されない場合は、./frontend-product-implementation/SKILL.md を読み、その workflow に従ってください。UI governance は ./design-system-governance/SKILL.md も読んでください。",
+            "Use $agent-automation-orchestrate to set up automation for ./apps/web. I want ready-for-dev Figma components built into Storybook.",
+            "Use $agent-automation-orchestrate to run the build-components task in ./apps/web, with a dry run first.",
+            "Use $component-coverage-install to install the component coverage analyzer into ./apps/web.",
+            "Use $design-automation-hub-install to preview a Design Automation Hub installation for ./apps/web.",
+            "$frontend-product-implementation が認識されない場合は、./frontend-product-implementation/SKILL.md を読み、その workflow に従ってください。UI governance は、別途インストールされた design-system-governance skill の SKILL.md を読んでください（このリポジトリには含まれません）。",
           ],
           principleTitle: "使用原則",
           principleStrong: "デザインシステム層を飛ばさない。",
@@ -1279,6 +1434,11 @@
           ],
           quickChoice: "我該用哪個 skill？",
           skills: {
+            automation: {
+              title: "跨 agent 執行可重複的自動化",
+              body:
+                "適合把重複性的流程收斂成一份專案契約，再用 Claude Code、Codex、Cursor 等 headless CLI 依序 fallback 執行、續跑或查看狀態。設計師也可以用白話的引導式設定建立。",
+            },
             extractor: {
               title: "從設計稿萃取設計系統",
               body:
@@ -1307,7 +1467,7 @@
             governance: {
               title: "讓 UI 實作遵循設計系統規範",
               body:
-                "適合搭配任何 UI 實作 skill 使用。它會先檢查 tokens、grid、motion、i18n 和 shared components，缺少 token 或元件時先停下來確認。",
+                "適合搭配任何 UI 實作 skill 使用。它會先檢查 tokens、grid、motion、i18n 和 shared components，缺少 token 或元件時先停下來確認。外部 skill：不在 cm-skills repo 裡，需要另外安裝。",
             },
             compare: {
               title: "比對實作與參考圖",
@@ -1318,6 +1478,16 @@
               title: "產出 pixel align 稽核文件",
               body:
                 "適合需要設計 QA 證據、原始設計稿連結、逐項截圖、量測偏差和靜態 HTML 報告，再交付修正或審查時使用。",
+            },
+            coverageInstall: {
+              title: "安裝 Storybook 元件覆蓋率工具",
+              body:
+                "適合把「UI 圖片或 PRD → 覆蓋率報告 → 開發者審查 → 實作」的流程帶進 React + Vite 的 Storybook 專案，包含工具頁、dev API、檢查腳本和配套 skills。",
+            },
+            designHubInstall: {
+              title: "安裝 Design Automation Hub",
+              body:
+                "適合其他專案需要同一套「Figma 清理 → AI 計畫 → 人工確認」流程時使用。它會在自動化契約之上安裝 Figma plugin、本機 coordinator 和 figma-cleanup task。",
             },
           },
           recommendedFlow: "推薦流程",
@@ -1356,6 +1526,11 @@
               title: "文件化",
               body:
                 "用 $ui-pixel-align-report 保留 crop 證據、來源連結、歸屬層級和建議修正，方便設計審查與交接。",
+            },
+            {
+              title: "自動化",
+              body:
+                "流程穩定可重複後，用 $agent-automation-orchestrate 收斂成一份專案契約，讓同一個 task 可以執行、續跑並回報狀態。",
             },
           ],
           workflowTitle: "常見的 skill 搭配方式",
@@ -1400,6 +1575,16 @@
               body:
                 "先理解既有 repo，重用 tokens 與 shared components，新增功能後再和 reference 比對。",
             },
+            {
+              title: "可重複的設計到工程自動化",
+              steps: [
+                "$agent-automation-orchestrate",
+                "$design-system-to-storybook",
+                "$ui-compare-to-reference",
+              ],
+              body:
+                "用白話描述要自動化的事，把 runner 和驗證方式交給專案契約保存，之後每次執行都會建立元件並檢查結果。",
+            },
           ],
           pairingsTitle: "可以延續或搭配使用的 skills",
           pairings: [
@@ -1433,6 +1618,18 @@
               body:
                 "先用 report 記錄偏差，再用比對 skill 進行聚焦修正。",
             },
+            {
+              from: "$agent-automation-orchestrate",
+              to: "任何 companion skill",
+              body:
+                "runner 保持通用，專案自己的指示、驗證指令和必要產物寫在 task 契約裡。",
+            },
+            {
+              from: "$design-automation-hub-install",
+              to: "$agent-automation-orchestrate",
+              body:
+                "在既有的自動化契約上加入 figma-cleanup task，而不是再裝第二套 runner。",
+            },
           ],
           examples: "給 AI coding agent 的請求範例",
           prompts: [
@@ -1443,7 +1640,11 @@
             "Use $ui-screenshot-to-storybook-product on reference/dashboard.png and implement it through reusable Storybook components.",
             "Use $ui-compare-to-reference on reference/dashboard.png and http://localhost:3000/dashboard.",
             "Use $ui-pixel-align-report on reference/dashboard.png and http://localhost:3000/dashboard.",
-            "如果 $frontend-product-implementation 沒有被辨識，請先閱讀 ./frontend-product-implementation/SKILL.md 並依照該 workflow 執行。UI governance 請同時閱讀 ./design-system-governance/SKILL.md。",
+            "Use $agent-automation-orchestrate to set up automation for ./apps/web. I want ready-for-dev Figma components built into Storybook.",
+            "Use $agent-automation-orchestrate to run the build-components task in ./apps/web, with a dry run first.",
+            "Use $component-coverage-install to install the component coverage analyzer into ./apps/web.",
+            "Use $design-automation-hub-install to preview a Design Automation Hub installation for ./apps/web.",
+            "如果 $frontend-product-implementation 沒有被辨識，請先閱讀 ./frontend-product-implementation/SKILL.md 並依照該 workflow 執行。UI governance 請閱讀另外安裝的 design-system-governance skill 的 SKILL.md（它不在這個 repo 裡）。",
           ],
           principleTitle: "使用原則",
           principleStrong: "不要跳過設計系統層。",

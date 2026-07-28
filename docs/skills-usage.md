@@ -17,8 +17,10 @@ Use $frontend-product-implementation to implement <feature> from <handoff docs p
 如果你的工具不會自動辨識 `$skill-name`，就明確要求它先讀對應的 `SKILL.md`：
 
 ```text
-Read <cm-skills path>/frontend-product-implementation/SKILL.md and follow that workflow to implement <feature> into <product repo path>. Also follow <cm-skills path>/design-system-governance/SKILL.md.
+Read <cm-skills path>/frontend-product-implementation/SKILL.md and follow that workflow to implement <feature> into <product repo path>. Also follow <design-system-governance skill path>/SKILL.md.
 ```
+
+`$design-system-governance` 是外部 skill，不在 cm-skills repo 裡，路徑請指向它實際安裝的位置。
 
 通用使用原則：
 
@@ -37,9 +39,12 @@ Read <cm-skills path>/frontend-product-implementation/SKILL.md and follow that w
 | 從一張畫面拆成可重用 Storybook 元件 | `$ui-screenshot-to-storybook-product` | 適合只有截圖或單一畫面時，先做元件化再組畫面。 |
 | 建立產品流程 prototype 和前端 handoff 文件 | `$storybook-product-prototype` | 產出 PRD、Flow、UI Spec、Data Spec、Frontend Handoff 和 clickable prototype。 |
 | 根據 handoff 文件實作前端產品功能 | `$frontend-product-implementation` | 把 handoff docs 變成產品 repo 裡的 routes、screens、states、fixtures、mock adapters。 |
-| 確保 UI 開發遵循設計系統規則 | `$design-system-governance` | 搭配實作類 skill 使用，先檢查 tokens、元件庫、i18n，缺 token/元件要先問。 |
+| 確保 UI 開發遵循設計系統規則 | `$design-system-governance` | 搭配實作類 skill 使用，先檢查 tokens、元件庫、i18n，缺 token/元件要先問。（外部 skill，不在本 repo） |
 | 比對已完成畫面和參考圖 | `$ui-compare-to-reference` | 找出 spacing、typography、color、layout 的偏差並修正。 |
 | 產出 pixel-level 設計 QA 報告 | `$ui-pixel-align-report` | 產出有截圖證據、差異標記、歸屬層級的 HTML 報告。 |
+| 把重複性流程變成自動化 | `$agent-automation-orchestrate` | 自動化的起始點：建立專案契約，之後用它執行、續跑、查狀態。 |
+| 在 Storybook 專案安裝元件覆蓋率工具 | `$component-coverage-install` | 帶入「UI 圖片/PRD → 覆蓋率報告 → 審查 → 實作」的工具和配套 skills。 |
+| 在其他專案安裝 Figma 清理自動化 | `$design-automation-hub-install` | 安裝 Figma plugin、本機 coordinator 和 figma-cleanup task。 |
 
 ## 每個 Skill 怎麼用
 
@@ -175,6 +180,8 @@ Use $frontend-product-implementation to implement the checkout flow from ./src/p
 
 ### `$design-system-governance`
 
+> **外部 skill：** 這個 skill 不在 cm-skills repo 裡，需要另外安裝。`scripts/install_agent_skills.mjs` 只會安裝這個 repo 裡的 skill 資料夾，不包含它。如果你的 agent 認不出 `$design-system-governance`，請改指向它實際安裝的位置（例如 `~/.claude/skills/design-system-governance/SKILL.md`），而不是 cm-skills 底下的路徑。
+
 用途：確保 UI 實作遵循設計系統規則。
 
 這通常不是單獨使用，而是搭配以下 skill：
@@ -246,6 +253,65 @@ Use $ui-compare-to-reference on reference/dashboard.png and http://localhost:300
 
 ```text
 Use $ui-pixel-align-report on reference/dashboard.png and http://localhost:3000/dashboard.
+```
+
+### `$agent-automation-orchestrate`
+
+用途：自動化流程的起始點。把重複性的工作寫成一份專案契約，之後由它執行、續跑和回報。
+
+適合情境：
+
+- 同一件事要在多個專案、多次重複執行。
+- 想讓 Claude Code、Codex、Cursor 等 CLI 依序 fallback，其中一個不能用時換下一個。
+- 已經有 `.agent-automation/config.json`，要執行或續跑某個 task。
+- 設計師想用白話描述一個自動化，不想碰指令和路徑。
+
+五種模式：`bootstrap`（建立契約）、`guide`（白話引導設定）、`run`（執行 task）、`resume`（續跑）、`status`（查狀態）。查詢和報告狀態是唯讀的，不會啟動付費 agent。
+
+契約分工：`runners` 放各家 CLI 的指令、preflight、timeout 和環境變數名稱；`tasks` 放這個專案的指示、配套 skill、驗證指令和必要產物。憑證一律不寫進契約。
+
+範例：
+
+```text
+Use $agent-automation-orchestrate to set up automation for ./apps/web. I want ready-for-dev Figma components built into Storybook.
+```
+
+```text
+Use $agent-automation-orchestrate to run the build-components task in ./apps/web, with a dry run first.
+```
+
+### `$component-coverage-install`
+
+用途：把 Storybook「Component Coverage Analyzer」工具安裝並綁定到 React + Vite 的 Storybook 專案。
+
+適合情境：
+
+- 想在新專案導入「UI 圖片或 PRD → 覆蓋率報告 → 開發者審查 → 實作」的流程。
+- 需要 Storybook Tools 頁、dev API、檢查腳本和配套的 analyze / implement skills。
+- 要更新既有安裝版本（依 `TEMPLATE_MANIFEST.json` 的版本比對，只覆蓋模板擁有的檔案）。
+
+範例：
+
+```text
+Use $component-coverage-install to install the component coverage analyzer into ./apps/web.
+```
+
+### `$design-automation-hub-install`
+
+用途：把 Design Automation Hub 安裝到指定的目標專案。
+
+適合情境：
+
+- 其他專案需要同一套「Figma 清理 → AI 計畫 → 人工確認」流程。
+- 不想複製整個產品 repo，也不想再裝第二套通用 runner。
+- 需要先看不寫入任何檔案的安裝計畫再決定。
+
+它會在既有的自動化契約上只加入 `figma-cleanup` task，保留原本的 runners 和其他 tasks。Figma Desktop 的 manifest 匯入是刻意保留給人工執行的步驟。
+
+範例：
+
+```text
+Use $design-automation-hub-install to preview a Design Automation Hub installation for ./apps/web.
 ```
 
 ## 建議工作流
@@ -336,6 +402,22 @@ $ui-pixel-align-report
 1. 先產生 pixel alignment report。
 2. 再根據 report 修正 UI。
 
+### 工作流 6：把流程變成可重複的自動化
+
+適合：上面某個工作流已經做過幾次，想讓它可以重複執行。
+
+```text
+$agent-automation-orchestrate
+-> 契約中指定的配套 skill
+-> $ui-compare-to-reference
+```
+
+說明：
+
+1. 用白話描述要自動化的事，讓它建立 `.agent-automation/config.json`。
+2. 驗證契約，先 dry run 看執行計畫，再實際執行。
+3. 每次執行結束後檢查驗證指令和必要產物，需要時用 `resume` 續跑。
+
 ## 哪些 Skill 常常搭配使用
 
 | 上游 skill | 下游 skill | 為什麼搭配 |
@@ -346,6 +428,8 @@ $ui-pixel-align-report
 | `$frontend-product-implementation` | `$ui-compare-to-reference` | 功能做完後，用參考圖檢查視覺偏差。 |
 | `$ui-pixel-align-report` | `$ui-compare-to-reference` | 先產出差異報告，再修正畫面。 |
 | `$design-system-governance` | 所有 UI 實作類 skill | 確保 token-first、component-first，不亂硬寫 UI。 |
+| `$agent-automation-orchestrate` | 契約中指定的配套 skill | runner 保持通用，專案自己的指示和驗證寫在 task 契約裡。 |
+| `$design-automation-hub-install` | `$agent-automation-orchestrate` | 在既有契約上加 `figma-cleanup` task，不用再裝第二套 runner。 |
 
 ## 給 AI coding agent 的請求模板
 
@@ -387,6 +471,18 @@ Use $ui-compare-to-reference on <reference screenshot> and <local URL or route o
 Use $ui-pixel-align-report on <reference screenshot> and <local URL>.
 ```
 
+### 建立自動化
+
+```text
+Use $agent-automation-orchestrate to set up automation for <repo path>. <用白話描述你想自動化的事>.
+```
+
+### 執行既有的自動化
+
+```text
+Use $agent-automation-orchestrate to run the <task id> task in <repo path>, with a dry run first.
+```
+
 ## 重要原則
 
 - 如果是 UI 實作，優先使用 `$design-system-governance`。
@@ -395,3 +491,5 @@ Use $ui-pixel-align-report on <reference screenshot> and <local URL>.
 - 如果真實 API 還沒準備好，可以先做 API/data contract、fixtures、mock adapter。
 - 如果只是想確認產品流程，先用 `$storybook-product-prototype`，不要急著進 production repo。
 - 如果畫面已經做完，再用 `$ui-compare-to-reference` 或 `$ui-pixel-align-report` 做 QA。
+- 如果同一件事要重複做，用 `$agent-automation-orchestrate` 收成契約，不要每次重寫一次流程。
+- 自動化的完成判定要分開看：契約驗證、agent 結束、專案驗證、commit、push 是五件事，不能互相代表。

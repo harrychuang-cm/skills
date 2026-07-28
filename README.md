@@ -6,6 +6,20 @@ Open the visual guide at [`docs/skills-guide.html`](docs/skills-guide.html) for 
 
 ## Skills
 
+`agent-automation-orchestrate` is the automation entry point. Every other skill describes work to be done; that skill is what schedules it, runs it, and proves it finished.
+
+### `agent-automation-orchestrate`
+
+Bootstrap, guide, validate, run, resume, and inspect reusable engineering automation across repositories, keeping repository-specific instructions, verification, artifacts, and domain decisions in a project contract instead of the shared runner:
+
+1. Resolve exactly one mode per request: `bootstrap`, `guide`, `run`, `resume`, or `status`. Inspecting, explaining, or reporting status is read-only and never starts a paid agent process.
+2. Resolve the target root with `scripts/inspect-project.mjs`, then create or refine `.agent-automation/config.json` — vendor-specific CLI command, argv, preflight, timeout, and environment names in `runners`; project-specific instruction, companion skill, verification commands, and required artifacts in `tasks`. Credential values never belong in the contract.
+3. Or use `guide` mode to reach the same contract through a plain-language, scenario-based interview aimed at designers, driven by the templates in `assets/scenario-templates/`.
+4. Execute one configured task with ordered runner fallback across Claude Code, Codex, Cursor, or any other headless CLI, stopping fallback after the first zero-exit runner.
+5. Check the project's verification commands and required artifacts, then write a sanitized, auditable run summary that `resume` and `status` read back.
+
+Use this when a project needs a portable multi-agent automation contract, when a designer describes a repeatable design-to-engineering automation in plain scenario language, when an existing `.agent-automation/config.json` task should run or resume, or when adapting one automation workflow to a repository with different build, test, artifact, or framework requirements. `design-automation-hub-install` installs its Figma cleanup task on top of this skill rather than replacing it.
+
 ### `design-system-extractor`
 
 Extract a reusable design-system package from screenshots, Figma references, exports, existing app folders, or prototype code:
@@ -90,7 +104,7 @@ Implement frontend products and features from handoff docs:
 
 1. Read PRD, Flow Spec, UI Spec, Data Spec, Production Handoff, Acceptance, and Implementation Guide docs.
 2. Inspect the target repo to detect routes/screens, design tokens, shared components, Storybook, i18n, data patterns, and tests.
-3. Follow `design-system-governance`: reuse tokens/components first, and stop for approval before creating missing tokens or shared components.
+3. Follow `design-system-governance` (an external skill — see Notes): reuse tokens/components first, and stop for approval before creating missing tokens or shared components.
 4. Build greenfield products or add features to existing products with deterministic fixtures and mock data adapters when real integration is out of scope.
 5. Verify with the repo's typecheck, tests, build, Storybook, or app preview commands.
 
@@ -107,6 +121,18 @@ Install and bind the Storybook「Component Coverage Analyzer」tool into any Rea
 5. Update a previously installed copy via the `TEMPLATE_MANIFEST.json` version, overwriting only template-owned files and retiring obsolete managed skill mirrors safely.
 
 Use this to bring the UI-image/PRD → coverage report → developer review → implementation workflow to a new Storybook project.
+
+### `design-automation-hub-install`
+
+Install the project-neutral Design Automation Hub into an explicit target repository:
+
+1. Preview a zero-write plan and validate the versioned template inventory.
+2. Reuse the canonical `agent-automation-orchestrate` dependency from the same complete `cm-skills` checkout.
+3. Install the Figma Plugin, portable standalone/compatible Coordinator, deterministic cleanup checker, and byte-identical `figma-design-automation` skill mirrors.
+4. Add only the `figma-cleanup` task to an existing valid project automation config while preserving runners and unrelated tasks.
+5. Update managed files with receipt-based collision protection and keep the Figma Desktop manifest import as an explicit manual handoff.
+
+Use this when another project needs the same safe Figma cleanup → AI plan → human confirmation workflow without copying the product repository or embedding a second generic runner.
 
 ## Usage
 
@@ -142,6 +168,35 @@ Default install locations:
 
 Cursor also discovers project skills from `<repo>/.agents/skills/<skill>/`. The component coverage workflow uses that shared project location for Cursor and Codex, avoiding an unnecessary third `.cursor/skills/` copy; its Claude Code compatibility mirror stays byte-identical and hash-checked.
 
+### Running an automation
+
+`agent-automation-orchestrate` drives the automation itself. Inspect the target repository, write or refine its contract, validate, then preview before executing:
+
+```sh
+node agent-automation-orchestrate/scripts/inspect-project.mjs --project-root <absolute-repo>
+node agent-automation-orchestrate/scripts/validate-project-config.mjs --project-root <absolute-repo>
+node agent-automation-orchestrate/scripts/run-task.mjs --project-root <absolute-repo> --task <task-id> --dry-run
+node agent-automation-orchestrate/scripts/run-task.mjs --project-root <absolute-repo> --task <task-id> --request "<user-request>"
+```
+
+Start the contract from `agent-automation-orchestrate/assets/agent-automation.config.example.json`, or ask the skill for a plain-language guided setup based on the scenario templates in `agent-automation-orchestrate/assets/scenario-templates/`:
+
+```text
+Use agent-automation-orchestrate to set up automation for <repo>. I want ready-for-dev Figma components built into Storybook.
+```
+
+Read a run summary, or resume a non-terminal run:
+
+```sh
+node agent-automation-orchestrate/scripts/status.mjs --project-root <absolute-repo>
+node agent-automation-orchestrate/scripts/status.mjs --project-root <absolute-repo> --run-id <run-id>
+node agent-automation-orchestrate/scripts/run-task.mjs --project-root <absolute-repo> --task <task-id> --resume <run-id> --request "<remaining-work>"
+```
+
+Validation must pass before every run or resume. Config validation, agent completion, project verification, Git commit, and Git push stay separate claims.
+
+### Per-skill installers
+
 For `design-system-to-storybook`, use the bundled installer to install the full skill package into Claude Code, Codex, or Cursor:
 
 ```sh
@@ -153,6 +208,18 @@ For a project-local install:
 ```sh
 node design-system-to-storybook/scripts/install_agent_skill.mjs --agent all --scope project --project-root <repo>
 ```
+
+Preview a Design Automation Hub installation:
+
+```sh
+node design-automation-hub-install/scripts/install-design-automation-hub.mjs \
+  --project-root <absolute-repo> \
+  --host-mode standalone \
+  --dry-run \
+  --json
+```
+
+After installation, validate the target and manually import the reported absolute manifest path in Figma Desktop under **Plugins → Development → Import plugin from manifest**.
 
 When invoking the visual comparison skill, provide the most specific target pair available. For example, prefer:
 
@@ -180,6 +247,13 @@ The generated report is a static HTML + CSS artifact, usually under `reports/des
 
 ```text
 .
+├── agent-automation-orchestrate/
+│   ├── SKILL.md
+│   ├── agents/
+│   ├── assets/
+│   │   └── scenario-templates/
+│   ├── references/
+│   └── scripts/
 ├── component-coverage-install/
 │   ├── SKILL.md
 │   ├── references/
@@ -196,6 +270,12 @@ The generated report is a static HTML + CSS artifact, usually under `reports/des
 │   ├── assets/
 │   ├── references/
 │   └── scripts/
+├── design-automation-hub-install/
+│   ├── SKILL.md
+│   ├── agents/
+│   ├── references/
+│   ├── scripts/
+│   └── template/
 ├── frontend-product-implementation/
 │   ├── SKILL.md
 │   ├── agents/
@@ -224,3 +304,4 @@ The generated report is a static HTML + CSS artifact, usually under `reports/des
 - Keep skills generic unless a project-specific assumption is explicitly required.
 - Prefer token-backed and component-first guidance for UI workflows.
 - Update this README when adding or renaming skills.
+- `design-system-governance` is referenced by the UI implementation skills and by the docs, but it does not live in this repository. Install it separately; `scripts/install_agent_skills.mjs` only installs the skill folders listed above. When an agent does not recognize `$design-system-governance`, point it at that skill's own installed path rather than a path under this repo.
