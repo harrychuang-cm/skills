@@ -29,7 +29,12 @@
 ## 6. 下游驗收（80sJP-Grok，需使用者環境）
 
 - [x] 6.1 重打包 addon tgz（npm pack）替換 80sJP-Grok/.storybook/vendor/harrychuang-storybook-addon-figma-export-*.tgz 並重新安裝，重啟 Storybook dev server（同時解除現存 vite optimize-dep 504）。完成條件：Storybook 啟動後 figmaExport overlay 徽章顯示 0.8.0。驗證：瀏覽器檢視 overlay。
-- [ ] 6.2 於 Figma 重跑匯入（外掛徽章 1.7.0）匯入 Inline story 新 payload。完成條件：Figma 內為完整段落（詳細は…をご確認ください…）、こちら 為 Hiragino Kaku Gothic ProN W6 紅色粗體、與 Storybook 截圖視覺一致。驗證：Figma 畫面與 story-truth 截圖比對。
+- [x] 6.2 於 Figma 重跑匯入（外掛徽章 1.7.0）匯入 Inline story 新 payload。完成條件：Figma 內為完整段落（詳細は…をご確認ください…）、こちら 為 Hiragino Kaku Gothic ProN W6 紅色粗體、與 Storybook 截圖視覺一致。驗證：Figma 畫面與 story-truth 截圖比對。
+
+  驗收記錄（2026-07-29，外掛實測版本 1.8.0）：
+  - 已驗證：段落結構完整（frame 375×52.78、4 個 text 節點，`こちら` x=48 w=48 h=27，尾段拆行 x=96 / x=0 y=26.19），以 Figma MCP 讀取節點確認；顏色 `#e21820`、line-height 26.4px 正確。最終一次匯入回報 **0 條警告**，而外掛對每次字型 fallback 皆會發出警告，故可判定未發生字型 fallback。
+  - 未驗證：實際 style 為 W6 或 W7。`selectNearestFontStyle` 依最近字重選擇，結果取決於 Figma 回報的可用 style 清單（`["W3","W6"]` → W6；`["W0".."W9"]` → W7）。完成條件寫死 W6 屬於未經查核的預期值，若日後實測為 W7，應修正本條件而非改動外掛。
+  - 過程發現：先前多次匯入失敗係環境問題而非工具缺陷。Figma 本機字型檔服務（`127.0.0.1:44950`）連線被拒，導致所有系統字型無法載入而 fallback 至 Noto 系列；重啟 Figma 後恢復。
 
 ## 7. 跨行 run 拆行（驗收發現的缺陷）
 
