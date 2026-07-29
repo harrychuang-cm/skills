@@ -237,6 +237,11 @@ type ImportStats = {
   targetPageName?: string;
   tokensChecked: number;
   variablesCreated: number;
+  // Identity of the variant group the import reconstructed, or null when the
+  // payload tree was reconstructed instead. Skipped holds the candidates that
+  // lost, so an unexpected result is diagnosable from the import report.
+  variantGroupSelected?: string | null;
+  variantGroupsSkipped?: string[];
   warnings: string[];
 };
 
@@ -359,6 +364,128 @@ type VariantComponentSpec = {
   spec: FigmaExportNode;
 };
 
+// Minimal shape the variant group selection rule needs. Declared structurally so
+// the rule stays a pure function testable without the Figma plugin runtime.
+type VariantGroupCandidateEntry = {
+  component: { name?: string; sourceName?: string };
+  depth: number;
+};
+
+type VariantGroupSelection = {
+  // Index into the supplied groups array, or -1 when no group qualifies.
+  selectedIndex: number;
+  selectedIdentity: string;
+  skippedIdentities: string[];
+};
+
+function normalizeComponentIdentity(value: string | undefined): string {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "");
+}
+
+function getVariantGroupIdentity(
+  group: readonly VariantGroupCandidateEntry[],
+): string {
+  const first = group[0];
+  if (!first) return "";
+  return first.component.sourceName || first.component.name || "";
+}
+
+function variantGroupMatchesTitle(
+  group: readonly VariantGroupCandidateEntry[],
+  componentTitle: string,
+): boolean {
+  const expected = normalizeComponentIdentity(componentTitle);
+  if (!expected) return false;
+  return group.some(
+    (entry) =>
+      normalizeComponentIdentity(entry.component.name) === expected ||
+      normalizeComponentIdentity(entry.component.sourceName) === expected,
+  );
+}
+
+function getVariantGroupCandidateDepth(
+  group: readonly VariantGroupCandidateEntry[],
+): number {
+  if (!group.length) return Number.MAX_SAFE_INTEGER;
+  return group.reduce(
+    (min, entry) => Math.min(min, safeNumber(entry.depth, 0)),
+    Number.MAX_SAFE_INTEGER,
+  );
+}
+
+// Chooses which variant group an artifact-kind `component` payload should be
+// reconstructed as, when the payload carries no root component reference.
+//
+// A payload root that IS a set of variants must become a component set, but a
+// composite component that merely USES several variants of a nested component
+// must not be replaced by that nested component's set. Two rules keep those
+// apart:
+//   1. A group whose component identity matches `componentTitle` wins outright,
+//      regardless of how many variants it holds.
+//   2. Otherwise only the root-most groups may qualify, and only when they hold
+//      at least two variants. A group nested below them is never eligible.
+// When nothing qualifies the caller reconstructs the payload's actual tree.
+function selectVariantGroup(
+  groups: readonly (readonly VariantGroupCandidateEntry[])[],
+  componentTitle: string,
+): VariantGroupSelection {
+  const nonEmpty = groups
+    .map((group, index) => ({ group, index }))
+    .filter((entry) => entry.group.length > 0);
+
+  const skippedIdentities: string[] = [];
+  const noSelection = (): VariantGroupSelection => ({
+    selectedIndex: -1,
+    selectedIdentity: "",
+    skippedIdentities: nonEmpty.map((entry) => getVariantGroupIdentity(entry.group)),
+  });
+
+  if (!nonEmpty.length) return noSelection();
+
+  // Rule 1: identity match beats every count or depth heuristic.
+  const matched = nonEmpty.filter((entry) =>
+    variantGroupMatchesTitle(entry.group, componentTitle),
+  );
+
+  // Rule 2: fall back to the root-most groups holding at least two variants.
+  const rootMostDepth = nonEmpty.reduce(
+    (min, entry) => Math.min(min, getVariantGroupCandidateDepth(entry.group)),
+    Number.MAX_SAFE_INTEGER,
+  );
+  const eligible = matched.length
+    ? matched
+    : nonEmpty.filter(
+        (entry) =>
+          entry.group.length >= 2 &&
+          getVariantGroupCandidateDepth(entry.group) === rootMostDepth,
+      );
+
+  if (!eligible.length) return noSelection();
+
+  const winner = eligible
+    .slice()
+    .sort((a, b) => {
+      const depthDelta =
+        getVariantGroupCandidateDepth(a.group) - getVariantGroupCandidateDepth(b.group);
+      if (depthDelta !== 0) return depthDelta;
+      return b.group.length - a.group.length;
+    })[0];
+
+  for (const entry of nonEmpty) {
+    if (entry.index === winner.index) continue;
+    skippedIdentities.push(getVariantGroupIdentity(entry.group));
+  }
+
+  return {
+    selectedIndex: winner.index,
+    selectedIdentity: getVariantGroupIdentity(winner.group),
+    skippedIdentities,
+  };
+}
+
 type ComponentDefinitionRecord = {
   component: FigmaComponentReference;
   node: ComponentNode;
@@ -385,7 +512,7 @@ type ComponentSectionTarget = {
 
 // Bump this on every behavior change so the Figma UI badge confirms which
 // build is running (Figma re-reads code.js per run, but the badge removes doubt).
-const PLUGIN_VERSION = "1.7.0 (2026-07-24)";
+const PLUGIN_VERSION = "1.8.0 (2026-07-29)";
 
 const SUPPORTED_PAYLOAD_VERSIONS = [1, 2] as const;
 const DEFAULT_TOKEN_PLUGIN_DATA_KEY = "storybookCssToken";
@@ -1320,6 +1447,17 @@ function createImportContext(payload: FigmaExportPayload) {
     const variantGroups = groupVariantComponentSpecs(variantSpecs);
     const variantGroup = chooseVariantGroup(variantGroups, fallbackName);
 
+    // A group that matched the component title but holds a single variant is a
+    // plain component, not a set — combining one node into a variant set would
+    // misrepresent it.
+    if (variantGroup && variantGroup.length < 2) {
+      const only = variantGroup[0];
+      return ensureComponentDefinition(only.spec, only.component, only.path, {
+        autoAttachComponentSet: true,
+        reuseComponents: true,
+      });
+    }
+
     if (!variantGroup) {
       const componentSpec = chooseComponentDefinitionSpec(componentSpecs, fallbackName);
       if (componentSpec) {
@@ -1539,45 +1677,21 @@ function createImportContext(payload: FigmaExportPayload) {
     groups: VariantComponentSpec[][],
     fallbackName: string,
   ): VariantComponentSpec[] | undefined {
-    return groups
-      .filter((group) => group.length >= 2)
-      .sort((a, b) => {
-        const preferredDelta =
-          Number(isPreferredVariantGroup(b, fallbackName)) -
-          Number(isPreferredVariantGroup(a, fallbackName));
-        if (preferredDelta !== 0) return preferredDelta;
-
-        const depthDelta = getVariantGroupDepth(a) - getVariantGroupDepth(b);
-        if (depthDelta !== 0) return depthDelta;
-
-        return b.length - a.length;
-      })[0];
+    const selection = selectVariantGroup(groups, fallbackName);
+    recordVariantGroupSelection(selection);
+    if (selection.selectedIndex < 0) return undefined;
+    return groups[selection.selectedIndex];
   }
 
-  function isPreferredVariantGroup(
-    group: VariantComponentSpec[],
-    fallbackName: string,
-  ): boolean {
-    const expectedName = normalizeComponentIdentity(fallbackName);
-    if (!expectedName) return false;
-
-    return group.some((entry) => {
-      return (
-        normalizeComponentIdentity(entry.component.name) === expectedName ||
-        normalizeComponentIdentity(entry.component.sourceName) === expectedName
+  function recordVariantGroupSelection(selection: VariantGroupSelection): void {
+    stats.variantGroupSelected =
+      selection.selectedIndex < 0 ? null : selection.selectedIdentity;
+    stats.variantGroupsSkipped = selection.skippedIdentities;
+    if (selection.selectedIndex < 0 && selection.skippedIdentities.length) {
+      warn(
+        `No variant group matched the component title; reconstructed the payload tree instead of ${selection.skippedIdentities.join(", ")}.`,
       );
-    });
-  }
-
-  function getVariantGroupDepth(group: VariantComponentSpec[]): number {
-    return Math.min(...group.map((entry) => entry.depth));
-  }
-
-  function normalizeComponentIdentity(value: string | undefined): string {
-    return String(value ?? "")
-      .trim()
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "");
+    }
   }
 
   function groupVariantComponentSpecs(
@@ -4444,6 +4558,7 @@ if (typeof module !== "undefined" && module) {
     parseFontStyleWeight,
     parsePayload,
     selectNearestFontStyle,
+    selectVariantGroup,
     setSvgRootSize,
     shouldClipContent,
   };

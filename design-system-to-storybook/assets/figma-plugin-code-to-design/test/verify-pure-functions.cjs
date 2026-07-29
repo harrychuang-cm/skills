@@ -538,4 +538,90 @@ assert.throws(
   "radial gradient with a single stop rejected",
 );
 
+// --- Variant group selection ----------------------------------------------
+
+function variantEntry(sourceName, variant, depth) {
+  return { component: { name: sourceName, sourceName, variant }, depth };
+}
+
+// Spec scenario: all-variants story still produces a component set.
+// Root-most group matching the title holds two variants.
+const allVariants = plugin.selectVariantGroup(
+  [[variantEntry("switch", "on", 1), variantEntry("switch", "off", 1)]],
+  "Components/Switch",
+);
+assert.equal(allVariants.selectedIndex, 0, "all-variants group selected");
+assert.equal(allVariants.selectedIdentity, "switch", "all-variants identity");
+assert.deepEqual(allVariants.skippedIdentities, [], "all-variants skipped none");
+
+// Spec scenario: single-variant group matching the component title is selected.
+// Spec example: Broker Import Menu containing three Icon variants.
+const brokerImportMenu = plugin.selectVariantGroup(
+  [
+    [variantEntry("broker-import-menu", "with-timestamp", 1)],
+    [
+      variantEntry("icon", "chevronDown-xs", 3),
+      variantEntry("icon", "refresh-xs", 3),
+      variantEntry("icon", "edit-xs", 3),
+    ],
+  ],
+  "Broker Import Menu",
+);
+assert.equal(brokerImportMenu.selectedIndex, 0, "title match beats variant count");
+assert.equal(
+  brokerImportMenu.selectedIdentity,
+  "broker-import-menu",
+  "matched identity wins over the larger nested group",
+);
+assert.deepEqual(
+  brokerImportMenu.skippedIdentities,
+  ["icon"],
+  "nested icon group reported as skipped",
+);
+
+// Spec scenario: nested group is rejected when no group matches the title.
+// The only multi-variant group sits below the root-most depth.
+const nestedOnly = plugin.selectVariantGroup(
+  [
+    [variantEntry("broker-import-menu", "with-timestamp", 1)],
+    [
+      variantEntry("icon", "chevronDown-xs", 3),
+      variantEntry("icon", "refresh-xs", 3),
+    ],
+  ],
+  "Unrelated Title",
+);
+assert.equal(nestedOnly.selectedIndex, -1, "nested group never replaces the root");
+assert.equal(nestedOnly.selectedIdentity, "", "no identity when nothing qualifies");
+assert.deepEqual(
+  nestedOnly.skippedIdentities,
+  ["broker-import-menu", "icon"],
+  "all candidates reported when nothing qualifies",
+);
+
+// Regression guard: a title that does not match still resolves through the
+// existing no-selection path rather than hijacking the single-variant group.
+const textLink = plugin.selectVariantGroup(
+  [[variantEntry("text-link", "inline", 1)]],
+  "Actions/Text Link",
+);
+assert.equal(textLink.selectedIndex, -1, "unmatched single variant selects nothing");
+assert.deepEqual(
+  textLink.skippedIdentities,
+  ["text-link"],
+  "unmatched single variant reported as skipped",
+);
+
+// Selection never throws on degenerate input.
+assert.equal(
+  plugin.selectVariantGroup([], "Anything").selectedIndex,
+  -1,
+  "empty group list selects nothing",
+);
+assert.equal(
+  plugin.selectVariantGroup([[]], "").selectedIndex,
+  -1,
+  "empty group and empty title select nothing",
+);
+
 console.log("verify-pure-functions: all assertions passed");
