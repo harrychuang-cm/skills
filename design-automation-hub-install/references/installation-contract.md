@@ -98,7 +98,8 @@ both canonical skills:
 5. Start `scripts/design-automation-hub/standalone.mjs` from the target root
    with an untracked `DESIGN_AUTOMATION_MEMBERS_JSON` value. The local access
    code MUST NOT enter tracked files or durable output.
-6. `GET http://127.0.0.1:8787/healthz` MUST return status `ok`, schema version
+6. `GET http://127.0.0.1:8787/healthz` — or the `PORT` override when the default
+   port is occupied — MUST return status `ok`, schema version
    `1`, and `extractionQueue: false`. Authenticated standalone Plugin context
    at `GET /v1/plugin/context?fileKey=<explicit-file-key>` MUST name the
    explicit project profile, expose cleanup and workflow status, and keep

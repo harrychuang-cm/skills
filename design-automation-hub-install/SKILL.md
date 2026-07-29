@@ -177,6 +177,11 @@ DESIGN_AUTOMATION_MEMBERS_JSON='[{"accessCode":"<local-access-code>","id":"<memb
   node scripts/design-automation-hub/standalone.mjs
 ```
 
+The Coordinator listens on `127.0.0.1:8787` by default. When that port is
+already taken the process exits with `EADDRINUSE` before serving anything; set
+`PORT` to a free port and use that same port in every verification command
+below. Do not stop an unrelated service to free the default port.
+
 Keep the access code out of tracked files, durable reports, screenshots, and
 shell transcripts. In another terminal, verify the public health endpoint:
 
