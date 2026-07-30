@@ -95,7 +95,7 @@ node test/verify-pure-functions.cjs
 node test/verify-bridge-helpers.cjs
 ```
 
-The script stubs the `figma` global, loads `code.js`, and asserts color parsing, gradient transforms, font style candidates, and payload validation compatibility.
+The script stubs the `figma` global, loads `code.js`, and asserts color parsing, gradient transforms, font style candidates, font environment-fault detection, and payload validation compatibility. `verify-bridge-helpers.cjs` evaluates the marker-delimited pure helpers in `ui.html` (bridge URLs, import summary formatting) outside Figma.
 
 ## Build
 
@@ -135,7 +135,7 @@ The JSON payload includes:
 1. Run the development plugin in a Figma design file.
 2. In the **Paste JSON** tab, paste the Storybook JSON (the hint confirms the payload is valid and names the story).
 3. Click `Import to Figma` (or press `Cmd/Ctrl+Enter` in the textarea).
-4. Review the status strip for created/reused variable counts and any binding warnings.
+4. Review the status strip for created/reused variable counts and any binding warnings. When a text node's font could not be loaded and a fallback was used, the summary reports how many fonts were substituted; if two or more families failed every style, the warnings lead with the local-font-service diagnosis (restart Figma or check font access permissions).
 
 ## Variable Reuse Rules
 

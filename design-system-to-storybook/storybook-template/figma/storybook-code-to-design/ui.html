@@ -7,7 +7,7 @@
         <p>Import Storybook exports as editable Figma layers</p>
       </div>
     </div>
-    <span class="badge" id="plugin-version" title="Plugin build version">build 1.8.0</span>
+    <span class="badge" id="plugin-version" title="Plugin build version">build 1.9.0</span>
   </header>
 
   <nav aria-label="Import method" class="tabs" role="tablist">
@@ -1121,6 +1121,40 @@
   }
   // sbfx-bridge-helpers-end
 
+  // sbfx-summary-helpers-start
+  // Pure import-summary formatting; kept DOM-free so
+  // test/verify-bridge-helpers.cjs can evaluate it under Node.
+  function formatImportSummary(stats) {
+    const componentSummary = stats.componentsCreated || stats.reusedComponents
+      ? ` ${stats.componentsCreated} components created, ${stats.reusedComponents} reused.`
+      : "";
+    // Font substitution sits with the node and variable counts, not in the
+    // scrollable warning detail — a silently substituted font otherwise reads
+    // as a clean import. Zero substitutions say nothing.
+    const substitutionCount = (stats.fontSubstitutions || []).length;
+    const fontSummary = substitutionCount ? ` ${substitutionCount} fonts substituted.` : "";
+    const rootSummary = stats.rootType
+      ? ` Root: ${stats.rootType}${stats.rootName ? ` (${stats.rootName})` : ""}.`
+      : "";
+    const importSummary = stats.artifactKind
+      ? ` Artifact: ${stats.artifactKind}${stats.importedAsComponent ? " component import" : ""}.`
+      : "";
+    const referenceSummary = stats.referencePlaced
+      ? " Browser Reference layer placed beside the import."
+      : "";
+    const skippedVariantGroups = stats.variantGroupsSkipped || [];
+    const skippedSummary = skippedVariantGroups.length
+      ? ` Skipped variant groups: ${skippedVariantGroups.join(", ")}.`
+      : "";
+    const variantSummary = stats.variantGroupSelected
+      ? ` Variant group: ${stats.variantGroupSelected}.${skippedSummary}`
+      : skippedSummary
+        ? ` Rebuilt the payload tree.${skippedSummary}`
+        : "";
+    return `${stats.nodesCreated} nodes created.${componentSummary} ${stats.variablesCreated} variables created, ${stats.reusedVariables} reused.${fontSummary}${rootSummary}${importSummary}${variantSummary}${referenceSummary}`;
+  }
+  // sbfx-summary-helpers-end
+
   const bridgeUrlInput = document.getElementById("bridge-url");
   const bridgeFetchButton = document.getElementById("bridge-fetch");
   const bridgeHint = document.getElementById("bridge-hint");
@@ -1346,28 +1380,7 @@
     if (message.type === "import-complete") {
       const stats = message.stats;
       const warningCount = stats.warnings.length;
-      const componentSummary = stats.componentsCreated || stats.reusedComponents
-        ? ` ${stats.componentsCreated} components created, ${stats.reusedComponents} reused.`
-        : "";
-      const rootSummary = stats.rootType
-        ? ` Root: ${stats.rootType}${stats.rootName ? ` (${stats.rootName})` : ""}.`
-        : "";
-      const importSummary = stats.artifactKind
-        ? ` Artifact: ${stats.artifactKind}${stats.importedAsComponent ? " component import" : ""}.`
-        : "";
-      const referenceSummary = stats.referencePlaced
-        ? " Browser Reference layer placed beside the import."
-        : "";
-      const skippedVariantGroups = stats.variantGroupsSkipped || [];
-      const skippedSummary = skippedVariantGroups.length
-        ? ` Skipped variant groups: ${skippedVariantGroups.join(", ")}.`
-        : "";
-      const variantSummary = stats.variantGroupSelected
-        ? ` Variant group: ${stats.variantGroupSelected}.${skippedSummary}`
-        : skippedSummary
-          ? ` Rebuilt the payload tree.${skippedSummary}`
-          : "";
-      const summary = `${stats.nodesCreated} nodes created.${componentSummary} ${stats.variablesCreated} variables created, ${stats.reusedVariables} reused.${rootSummary}${importSummary}${variantSummary}${referenceSummary}`;
+      const summary = formatImportSummary(stats);
       const detail = warningCount
         ? `${warningCount} warnings:\n${stats.warnings.slice(0, 12).join("\n")}`
         : "No warnings.";

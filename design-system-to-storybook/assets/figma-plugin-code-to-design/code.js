@@ -196,7 +196,7 @@ function selectVariantGroup(groups, componentTitle) {
 }
 // Bump this on every behavior change so the Figma UI badge confirms which
 // build is running (Figma re-reads code.js per run, but the badge removes doubt).
-var PLUGIN_VERSION = "1.8.0 (2026-07-29)";
+var PLUGIN_VERSION = "1.9.0 (2026-07-30)";
 var SUPPORTED_PAYLOAD_VERSIONS = [1, 2];
 var DEFAULT_TOKEN_PLUGIN_DATA_KEY = "storybookCssToken";
 var LEGACY_CM_TOKEN_PLUGIN_DATA_KEY = "cmCssToken";
@@ -386,6 +386,7 @@ function importStorybookDesign(payload_1) {
                     if (viewportNode.type === "SECTION") {
                         context.stats.sectionName = viewportNode.name;
                     }
+                    context.reportFontEnvironmentFault();
                     return [2 /*return*/, context.stats];
             }
         });
@@ -679,6 +680,7 @@ function createImportContext(payload) {
     var stats = {
         componentDefinitionsPrepared: 0,
         componentsCreated: 0,
+        fontSubstitutions: [],
         nodesCreated: 0,
         reusedComponents: 0,
         reusedVariables: 0,
@@ -1983,7 +1985,7 @@ function createImportContext(payload) {
                         _a = node;
                         return [4 /*yield*/, loadTextFont(styles, path)];
                     case 1:
-                        _a.fontName = _e.sent();
+                        _a.fontName = (_e.sent()).font;
                         node.characters = (_c = spec.text) !== null && _c !== void 0 ? _c : "";
                         node.fontSize = safeNumber(styles.fontSize, 14);
                         node.textAutoResize = "NONE";
@@ -2672,6 +2674,9 @@ function createImportContext(payload) {
     // Candidate style names cover Latin conventions only; families like
     // Hiragino (W3/W6) resolve through the family's actual style list by
     // nearest weight, so the first CSS family wins over a later fallback.
+    // Returns the style it tried so the caller records the W-number attempts
+    // only this path can discover, instead of reconstructing the pre-resolution
+    // candidate list at the reporting site.
     function loadNearestAvailableFont(family, weight, italic) {
         return __awaiter(this, void 0, void 0, function () {
             var styleNames, style, candidate, _a;
@@ -2682,7 +2687,7 @@ function createImportContext(payload) {
                         styleNames = _b.sent();
                         style = selectNearestFontStyle(styleNames, weight, italic);
                         if (!style)
-                            return [2 /*return*/, undefined];
+                            return [2 /*return*/, { attemptedStyles: [] }];
                         candidate = { family: family, style: style };
                         _b.label = 2;
                     case 2:
@@ -2690,78 +2695,128 @@ function createImportContext(payload) {
                         return [4 /*yield*/, figma.loadFontAsync(candidate)];
                     case 3:
                         _b.sent();
-                        return [2 /*return*/, candidate];
+                        return [2 /*return*/, { attemptedStyles: [style], font: candidate }];
                     case 4:
                         _a = _b.sent();
-                        return [2 /*return*/, undefined];
+                        return [2 /*return*/, { attemptedStyles: [style] }];
                     case 5: return [2 /*return*/];
                 }
             });
         });
     }
+    // A substitution is a load that differs from what the payload asked for:
+    // a later family in the CSS stack, or a style the requested weight never
+    // named — the available-style path picked that one. Synonyms of the
+    // requested weight ("SemiBold" for "Semi Bold") are the requested style,
+    // not a substitution. A payload with no specific family (CSS generic only)
+    // requested nothing to substitute. Recording never aborts an import.
+    function recordFontSubstitution(record) {
+        try {
+            if (!record.requestedFamily)
+                return;
+            if (record.font.family === record.requestedFamily &&
+                record.styleCandidates.includes(record.font.style)) {
+                return;
+            }
+            stats.fontSubstitutions.push({
+                attemptedStyles: record.attemptedStyles.slice(),
+                loadedFamily: record.font.family || "",
+                loadedStyle: record.font.style || "",
+                nodePath: record.path || "",
+                requestedFamily: record.requestedFamily,
+                requestedWeight: record.requestedWeight,
+            });
+        }
+        catch (_a) {
+            // Reporting a substitution must never break the import.
+        }
+    }
     function loadTextFont(styles, path) {
         return __awaiter(this, void 0, void 0, function () {
-            var fontWeight, fontItalic, families, styleCandidates, familyIndex, family, _i, styleCandidates_1, style, candidate, _a, nearest, fallback, error_4;
-            var _b;
-            return __generator(this, function (_c) {
-                switch (_c.label) {
+            function noteAttempt(style) {
+                if (!attemptedStyles.includes(style))
+                    attemptedStyles.push(style);
+            }
+            function resolved(font) {
+                recordFontSubstitution({
+                    attemptedStyles: attemptedStyles,
+                    font: font,
+                    path: path,
+                    requestedFamily: requestedFamily,
+                    requestedWeight: fontWeight,
+                    styleCandidates: styleCandidates,
+                });
+                return { attemptedStyles: attemptedStyles, font: font };
+            }
+            var fontWeight, fontItalic, families, styleCandidates, requestedFamily, attemptedStyles, familyIndex, family, _i, styleCandidates_1, style, candidate, _a, nearest, _b, _c, style, fallback, error_4;
+            var _d, _e;
+            return __generator(this, function (_f) {
+                switch (_f.label) {
                     case 0:
-                        fontWeight = (_b = styles.fontWeight) !== null && _b !== void 0 ? _b : 400;
+                        fontWeight = (_d = styles.fontWeight) !== null && _d !== void 0 ? _d : 400;
                         fontItalic = styles.fontStyle === "italic";
                         families = getFontFamilyCandidates(styles.fontFamily);
                         styleCandidates = getFontStyleCandidates(fontWeight, fontItalic);
+                        requestedFamily = (_e = families[0]) !== null && _e !== void 0 ? _e : "";
+                        attemptedStyles = [];
                         familyIndex = 0;
-                        _c.label = 1;
+                        _f.label = 1;
                     case 1:
                         if (!(familyIndex < families.length)) return [3 /*break*/, 10];
                         family = families[familyIndex];
                         _i = 0, styleCandidates_1 = styleCandidates;
-                        _c.label = 2;
+                        _f.label = 2;
                     case 2:
                         if (!(_i < styleCandidates_1.length)) return [3 /*break*/, 7];
                         style = styleCandidates_1[_i];
                         candidate = { family: family, style: style };
-                        _c.label = 3;
+                        noteAttempt(style);
+                        _f.label = 3;
                     case 3:
-                        _c.trys.push([3, 5, , 6]);
+                        _f.trys.push([3, 5, , 6]);
                         return [4 /*yield*/, figma.loadFontAsync(candidate)];
                     case 4:
-                        _c.sent();
+                        _f.sent();
                         if (familyIndex > 0) {
                             warn("Loaded fallback font for ".concat(path, "; ").concat(families[0], " was unavailable, using ").concat(family, " ").concat(style, "."));
                         }
-                        return [2 /*return*/, candidate];
+                        return [2 /*return*/, resolved(candidate)];
                     case 5:
-                        _a = _c.sent();
+                        _a = _f.sent();
                         return [3 /*break*/, 6];
                     case 6:
                         _i++;
                         return [3 /*break*/, 2];
                     case 7: return [4 /*yield*/, loadNearestAvailableFont(family, fontWeight, fontItalic)];
                     case 8:
-                        nearest = _c.sent();
-                        if (nearest) {
-                            if (familyIndex > 0) {
-                                warn("Loaded fallback font for ".concat(path, "; ").concat(families[0], " was unavailable, using ").concat(nearest.family, " ").concat(nearest.style, "."));
-                            }
-                            return [2 /*return*/, nearest];
+                        nearest = _f.sent();
+                        for (_b = 0, _c = nearest.attemptedStyles; _b < _c.length; _b++) {
+                            style = _c[_b];
+                            noteAttempt(style);
                         }
-                        _c.label = 9;
+                        if (nearest.font) {
+                            if (familyIndex > 0) {
+                                warn("Loaded fallback font for ".concat(path, "; ").concat(families[0], " was unavailable, using ").concat(nearest.font.family, " ").concat(nearest.font.style, "."));
+                            }
+                            return [2 /*return*/, resolved(nearest.font)];
+                        }
+                        _f.label = 9;
                     case 9:
                         familyIndex += 1;
                         return [3 /*break*/, 1];
                     case 10:
                         fallback = { family: "Inter", style: "Regular" };
-                        _c.label = 11;
+                        noteAttempt(fallback.style);
+                        _f.label = 11;
                     case 11:
-                        _c.trys.push([11, 13, , 14]);
+                        _f.trys.push([11, 13, , 14]);
                         return [4 /*yield*/, figma.loadFontAsync(fallback)];
                     case 12:
-                        _c.sent();
+                        _f.sent();
                         warn("Loaded fallback font for ".concat(path, "; ").concat(families.join(", ") || "CSS generic family", " (").concat(styleCandidates.join(", "), ") was unavailable."));
-                        return [2 /*return*/, fallback];
+                        return [2 /*return*/, resolved(fallback)];
                     case 13:
-                        error_4 = _c.sent();
+                        error_4 = _f.sent();
                         warn("Could not load fallback font for ".concat(path, ": ").concat(formatError(error_4)));
                         throw error_4;
                     case 14: return [2 /*return*/];
@@ -2905,6 +2960,15 @@ function createImportContext(payload) {
             });
         });
     }
+    // Turns this run's substitution records into the whole-environment reading.
+    // Placed first in warnings because the report area truncates, and this line
+    // names the corrective action for every per-node font warning below it. When
+    // the determination does not hold, those per-family messages stand alone.
+    function reportFontEnvironmentFault() {
+        var message = formatFontEnvironmentFaultWarning(detectFontEnvironmentFault(stats.fontSubstitutions));
+        if (message)
+            stats.warnings.unshift(message);
+    }
     return {
         canCreateComponentDefinition: canCreateComponentDefinition,
         createComponentSetFromVariants: createComponentSetFromVariants,
@@ -2913,6 +2977,7 @@ function createImportContext(payload) {
         getComponentDefinitionParentPage: getComponentDefinitionParentPage,
         organizeComponentDependencySections: organizeComponentDependencySections,
         preparePageComponentDefinitions: preparePageComponentDefinitions,
+        reportFontEnvironmentFault: reportFontEnvironmentFault,
         stats: stats,
         upsertVariables: upsertVariables,
     };
@@ -3797,6 +3862,37 @@ function selectNearestFontStyle(styles, weight, italic) {
     }
     return undefined;
 }
+// Two or more distinct requested families that failed every style in one run
+// cannot be explained by "those fonts are not installed" — it points at the
+// local font service being unreachable, which the plugin sandbox cannot probe
+// directly. One failing family stays a per-family report. Pure: no Figma API,
+// no network probing, and it never throws on malformed records.
+function detectFontEnvironmentFault(substitutions) {
+    var families = [];
+    for (var _i = 0, _a = substitutions !== null && substitutions !== void 0 ? substitutions : []; _i < _a.length; _i++) {
+        var substitution = _a[_i];
+        if (!substitution)
+            continue;
+        var requestedFamily = typeof substitution.requestedFamily === "string" ? substitution.requestedFamily : "";
+        var loadedFamily = typeof substitution.loadedFamily === "string" ? substitution.loadedFamily : "";
+        // A different loaded family means every style of the requested one failed;
+        // a style-only substitution means the family itself did load.
+        if (!requestedFamily || requestedFamily === loadedFamily)
+            continue;
+        if (!families.includes(requestedFamily))
+            families.push(requestedFamily);
+    }
+    return { families: families, isEnvironmentFault: families.length >= 2 };
+}
+// The report line for a determined environment fault: what failed, which
+// families, and the corrective action. Undefined when the determination does
+// not hold, so the individual per-family messages stand on their own.
+function formatFontEnvironmentFaultWarning(fault) {
+    if (!fault.isEnvironmentFault)
+        return undefined;
+    return ("All local fonts failed to load: ".concat(fault.families.join(", "), " could not be loaded in any style. ") +
+        "Figma's local font service is likely unavailable — restart Figma or check font access permissions, then import again.");
+}
 var CSS_GENERIC_FONT_FAMILIES = new Set([
     "cursive",
     "emoji",
@@ -3884,6 +3980,8 @@ if (typeof module !== "undefined" && module) {
         collectFontFamilyTokenNames: collectFontFamilyTokenNames,
         colorFromCss: colorFromCss,
         colorFromCssStrict: colorFromCssStrict,
+        detectFontEnvironmentFault: detectFontEnvironmentFault,
+        formatFontEnvironmentFaultWarning: formatFontEnvironmentFaultWarning,
         getFontFamilyCandidates: getFontFamilyCandidates,
         getFontStyleCandidates: getFontStyleCandidates,
         getLinearGradientTransform: getLinearGradientTransform,

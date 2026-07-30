@@ -221,10 +221,36 @@ type ImportMessage =
       type: "cancel";
     };
 
+// One text node whose font differs from what the payload asked for. Structured
+// rather than a warning string so the UI can count substitutions and the
+// environment-fault reading can be computed from the run's records.
+type FontSubstitution = {
+  attemptedStyles: string[];
+  loadedFamily: string;
+  loadedStyle: string;
+  nodePath: string;
+  requestedFamily: string;
+  requestedWeight: number;
+};
+
+// What the font resolution path hands back: the font it loaded plus every
+// style name it tried on the way there.
+type FontResolution = {
+  attemptedStyles: string[];
+  font: FontName;
+};
+
+type NearestFontAttempt = {
+  attemptedStyles: string[];
+  font?: FontName;
+};
+
 type ImportStats = {
   artifactKind?: FigmaExportArtifactKind;
   componentDefinitionsPrepared?: number;
   componentsCreated: number;
+  // Every text node this run loaded a different family or style for.
+  fontSubstitutions: FontSubstitution[];
   importedAsComponent?: boolean;
   nodesCreated: number;
   referencePlaced?: boolean;
@@ -512,7 +538,7 @@ type ComponentSectionTarget = {
 
 // Bump this on every behavior change so the Figma UI badge confirms which
 // build is running (Figma re-reads code.js per run, but the badge removes doubt).
-const PLUGIN_VERSION = "1.8.0 (2026-07-29)";
+const PLUGIN_VERSION = "1.9.0 (2026-07-30)";
 
 const SUPPORTED_PAYLOAD_VERSIONS = [1, 2] as const;
 const DEFAULT_TOKEN_PLUGIN_DATA_KEY = "storybookCssToken";
@@ -684,6 +710,7 @@ async function importStorybookDesign(
   if (viewportNode.type === "SECTION") {
     context.stats.sectionName = viewportNode.name;
   }
+  context.reportFontEnvironmentFault();
 
   return context.stats;
 }
@@ -1064,6 +1091,7 @@ function createImportContext(payload: FigmaExportPayload) {
   const stats: ImportStats = {
     componentDefinitionsPrepared: 0,
     componentsCreated: 0,
+    fontSubstitutions: [],
     nodesCreated: 0,
     reusedComponents: 0,
     reusedVariables: 0,
@@ -2413,7 +2441,7 @@ function createImportContext(payload: FigmaExportPayload) {
     const bindings = spec.bindings ?? {};
 
     node.name = spec.name || "text";
-    node.fontName = await loadTextFont(styles, path);
+    node.fontName = (await loadTextFont(styles, path)).font;
     node.characters = spec.text ?? "";
     node.fontSize = safeNumber(styles.fontSize, 14);
     node.textAutoResize = "NONE";
@@ -3284,36 +3312,93 @@ function createImportContext(payload: FigmaExportPayload) {
   // Candidate style names cover Latin conventions only; families like
   // Hiragino (W3/W6) resolve through the family's actual style list by
   // nearest weight, so the first CSS family wins over a later fallback.
+  // Returns the style it tried so the caller records the W-number attempts
+  // only this path can discover, instead of reconstructing the pre-resolution
+  // candidate list at the reporting site.
   async function loadNearestAvailableFont(
     family: string,
     weight: number,
     italic: boolean,
-  ): Promise<FontName | undefined> {
+  ): Promise<NearestFontAttempt> {
     const styleNames = await getAvailableFontStyles(family);
     const style = selectNearestFontStyle(styleNames, weight, italic);
-    if (!style) return undefined;
+    if (!style) return { attemptedStyles: [] };
     const candidate = { family, style };
     try {
       await figma.loadFontAsync(candidate);
-      return candidate;
+      return { attemptedStyles: [style], font: candidate };
     } catch {
-      return undefined;
+      return { attemptedStyles: [style] };
+    }
+  }
+
+  // A substitution is a load that differs from what the payload asked for:
+  // a later family in the CSS stack, or a style the requested weight never
+  // named — the available-style path picked that one. Synonyms of the
+  // requested weight ("SemiBold" for "Semi Bold") are the requested style,
+  // not a substitution. A payload with no specific family (CSS generic only)
+  // requested nothing to substitute. Recording never aborts an import.
+  function recordFontSubstitution(record: {
+    attemptedStyles: readonly string[];
+    font: FontName;
+    path: string;
+    requestedFamily: string;
+    requestedWeight: number;
+    styleCandidates: readonly string[];
+  }): void {
+    try {
+      if (!record.requestedFamily) return;
+      if (
+        record.font.family === record.requestedFamily &&
+        record.styleCandidates.includes(record.font.style)
+      ) {
+        return;
+      }
+      stats.fontSubstitutions.push({
+        attemptedStyles: record.attemptedStyles.slice(),
+        loadedFamily: record.font.family || "",
+        loadedStyle: record.font.style || "",
+        nodePath: record.path || "",
+        requestedFamily: record.requestedFamily,
+        requestedWeight: record.requestedWeight,
+      });
+    } catch {
+      // Reporting a substitution must never break the import.
     }
   }
 
   async function loadTextFont(
     styles: FigmaExportNode["styles"],
     path: string,
-  ): Promise<FontName> {
+  ): Promise<FontResolution> {
     const fontWeight = styles.fontWeight ?? 400;
     const fontItalic = styles.fontStyle === "italic";
     const families = getFontFamilyCandidates(styles.fontFamily);
     const styleCandidates = getFontStyleCandidates(fontWeight, fontItalic);
+    const requestedFamily = families[0] ?? "";
+    const attemptedStyles: string[] = [];
+
+    function noteAttempt(style: string): void {
+      if (!attemptedStyles.includes(style)) attemptedStyles.push(style);
+    }
+
+    function resolved(font: FontName): FontResolution {
+      recordFontSubstitution({
+        attemptedStyles,
+        font,
+        path,
+        requestedFamily,
+        requestedWeight: fontWeight,
+        styleCandidates,
+      });
+      return { attemptedStyles, font };
+    }
 
     for (let familyIndex = 0; familyIndex < families.length; familyIndex += 1) {
       const family = families[familyIndex];
       for (const style of styleCandidates) {
         const candidate = { family, style };
+        noteAttempt(style);
         try {
           await figma.loadFontAsync(candidate);
           if (familyIndex > 0) {
@@ -3321,30 +3406,32 @@ function createImportContext(payload: FigmaExportPayload) {
               `Loaded fallback font for ${path}; ${families[0]} was unavailable, using ${family} ${style}.`,
             );
           }
-          return candidate;
+          return resolved(candidate);
         } catch {
           // Try the next style, then the family's actual style list.
         }
       }
 
       const nearest = await loadNearestAvailableFont(family, fontWeight, fontItalic);
-      if (nearest) {
+      for (const style of nearest.attemptedStyles) noteAttempt(style);
+      if (nearest.font) {
         if (familyIndex > 0) {
           warn(
-            `Loaded fallback font for ${path}; ${families[0]} was unavailable, using ${nearest.family} ${nearest.style}.`,
+            `Loaded fallback font for ${path}; ${families[0]} was unavailable, using ${nearest.font.family} ${nearest.font.style}.`,
           );
         }
-        return nearest;
+        return resolved(nearest.font);
       }
     }
 
     const fallback = { family: "Inter", style: "Regular" };
+    noteAttempt(fallback.style);
     try {
       await figma.loadFontAsync(fallback);
       warn(
         `Loaded fallback font for ${path}; ${families.join(", ") || "CSS generic family"} (${styleCandidates.join(", ")}) was unavailable.`,
       );
-      return fallback;
+      return resolved(fallback);
     } catch (error) {
       warn(`Could not load fallback font for ${path}: ${formatError(error)}`);
       throw error;
@@ -3487,6 +3574,17 @@ function createImportContext(payload: FigmaExportPayload) {
     return false;
   }
 
+  // Turns this run's substitution records into the whole-environment reading.
+  // Placed first in warnings because the report area truncates, and this line
+  // names the corrective action for every per-node font warning below it. When
+  // the determination does not hold, those per-family messages stand alone.
+  function reportFontEnvironmentFault(): void {
+    const message = formatFontEnvironmentFaultWarning(
+      detectFontEnvironmentFault(stats.fontSubstitutions),
+    );
+    if (message) stats.warnings.unshift(message);
+  }
+
   return {
     canCreateComponentDefinition,
     createComponentSetFromVariants,
@@ -3495,6 +3593,7 @@ function createImportContext(payload: FigmaExportPayload) {
     getComponentDefinitionParentPage,
     organizeComponentDependencySections,
     preparePageComponentDefinitions,
+    reportFontEnvironmentFault,
     stats,
     upsertVariables,
   };
@@ -4457,6 +4556,45 @@ function selectNearestFontStyle(
   return undefined;
 }
 
+type FontEnvironmentFault = {
+  families: string[];
+  isEnvironmentFault: boolean;
+};
+
+// Two or more distinct requested families that failed every style in one run
+// cannot be explained by "those fonts are not installed" — it points at the
+// local font service being unreachable, which the plugin sandbox cannot probe
+// directly. One failing family stays a per-family report. Pure: no Figma API,
+// no network probing, and it never throws on malformed records.
+function detectFontEnvironmentFault(
+  substitutions: readonly FontSubstitution[] | undefined,
+): FontEnvironmentFault {
+  const families: string[] = [];
+  for (const substitution of substitutions ?? []) {
+    if (!substitution) continue;
+    const requestedFamily =
+      typeof substitution.requestedFamily === "string" ? substitution.requestedFamily : "";
+    const loadedFamily =
+      typeof substitution.loadedFamily === "string" ? substitution.loadedFamily : "";
+    // A different loaded family means every style of the requested one failed;
+    // a style-only substitution means the family itself did load.
+    if (!requestedFamily || requestedFamily === loadedFamily) continue;
+    if (!families.includes(requestedFamily)) families.push(requestedFamily);
+  }
+  return { families, isEnvironmentFault: families.length >= 2 };
+}
+
+// The report line for a determined environment fault: what failed, which
+// families, and the corrective action. Undefined when the determination does
+// not hold, so the individual per-family messages stand on their own.
+function formatFontEnvironmentFaultWarning(fault: FontEnvironmentFault): string | undefined {
+  if (!fault.isEnvironmentFault) return undefined;
+  return (
+    `All local fonts failed to load: ${fault.families.join(", ")} could not be loaded in any style. ` +
+    "Figma's local font service is likely unavailable — restart Figma or check font access permissions, then import again."
+  );
+}
+
 const CSS_GENERIC_FONT_FAMILIES = new Set([
   "cursive",
   "emoji",
@@ -4551,6 +4689,8 @@ if (typeof module !== "undefined" && module) {
     collectFontFamilyTokenNames,
     colorFromCss,
     colorFromCssStrict,
+    detectFontEnvironmentFault,
+    formatFontEnvironmentFaultWarning,
     getFontFamilyCandidates,
     getFontStyleCandidates,
     getLinearGradientTransform,

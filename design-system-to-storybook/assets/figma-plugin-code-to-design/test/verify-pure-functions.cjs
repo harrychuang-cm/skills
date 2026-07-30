@@ -624,4 +624,142 @@ assert.equal(
   "empty group and empty title select nothing",
 );
 
+// --- Font environment fault report -----------------------------------------
+
+// A substitution record as the import writes it. A loaded family that differs
+// from the requested one means every style of the requested family failed.
+function substitution(requestedFamily, loadedFamily, loadedStyle, attemptedStyles = []) {
+  return {
+    attemptedStyles,
+    loadedFamily,
+    loadedStyle,
+    nodePath: `${requestedFamily}-node`,
+    requestedFamily,
+    requestedWeight: 700,
+  };
+}
+
+// Spec scenario: no substitution at all is not an environment fault.
+assert.deepStrictEqual(
+  plugin.detectFontEnvironmentFault([]),
+  { families: [], isEnvironmentFault: false },
+  "zero substitutions are not an environment fault",
+);
+
+// Spec scenario: a single missing family is not an environment fault. Two
+// nodes requesting the same family still name one family.
+const singleFamilyFault = plugin.detectFontEnvironmentFault([
+  substitution("Hiragino Mincho ProN", "Noto Serif JP", "Regular"),
+  substitution("Hiragino Mincho ProN", "Noto Serif JP", "Regular"),
+]);
+assert.deepStrictEqual(
+  singleFamilyFault,
+  { families: ["Hiragino Mincho ProN"], isEnvironmentFault: false },
+  "one failing family is not an environment fault",
+);
+
+// Spec scenario: two failing families are an environment fault, and both
+// requested family names come back.
+const twoFamilyFault = plugin.detectFontEnvironmentFault([
+  substitution("Hiragino Kaku Gothic ProN", "Noto Sans JP", "Bold"),
+  substitution("Hiragino Mincho ProN", "Noto Serif JP", "Regular"),
+]);
+assert.deepStrictEqual(
+  twoFamilyFault,
+  {
+    families: ["Hiragino Kaku Gothic ProN", "Hiragino Mincho ProN"],
+    isEnvironmentFault: true,
+  },
+  "two failing families are an environment fault naming both families",
+);
+
+// A style-only substitution means the requested family did load, so it never
+// counts toward the environment fault even alongside a failing family.
+assert.deepStrictEqual(
+  plugin.detectFontEnvironmentFault([
+    substitution("Hiragino Kaku Gothic ProN", "Hiragino Kaku Gothic ProN", "W6"),
+    substitution("Hiragino Mincho ProN", "Noto Serif JP", "Regular"),
+  ]),
+  { families: ["Hiragino Mincho ProN"], isEnvironmentFault: false },
+  "a loaded family with a substituted style is not a failing family",
+);
+
+// Degenerate records never throw.
+assert.deepStrictEqual(
+  plugin.detectFontEnvironmentFault(undefined),
+  { families: [], isEnvironmentFault: false },
+  "absent substitution list is not an environment fault",
+);
+assert.deepStrictEqual(
+  plugin.detectFontEnvironmentFault([null, {}, { requestedFamily: "", loadedFamily: "Inter" }]),
+  { families: [], isEnvironmentFault: false },
+  "records with missing fields are skipped without throwing",
+);
+
+// Spec scenario: attempted styles include the W-number style the
+// available-style resolution tried, not only the pre-resolution candidates.
+// The candidate names for weight 700 never contain W6, and W6 only appears
+// once the family's own style list is consulted — so a recorded W6 attempt
+// can only have come from the available-style stage returning it.
+const weight700Candidates = plugin.getFontStyleCandidates(700);
+assert.ok(
+  !weight700Candidates.includes("W6"),
+  "candidate style names never contain the W-number style",
+);
+assert.strictEqual(
+  plugin.selectNearestFontStyle(["W3", "W6"], 700, false),
+  "W6",
+  "available-style resolution attempts W6 for weight 700",
+);
+const recordedAttempts = substitution(
+  "Hiragino Kaku Gothic ProN",
+  "Noto Sans JP",
+  "Bold",
+  weight700Candidates.concat([plugin.selectNearestFontStyle(["W3", "W6"], 700, false)]),
+).attemptedStyles;
+assert.ok(
+  recordedAttempts.includes("W6"),
+  "the substitution record carries the available-style W-number attempt",
+);
+assert.ok(
+  recordedAttempts.indexOf("Bold") < recordedAttempts.indexOf("W6"),
+  "candidate styles are attempted before the available-style resolution",
+);
+
+// Spec scenario: two failing families are reported as an environment fault.
+const twoFamilyReport = plugin.formatFontEnvironmentFaultWarning(
+  plugin.detectFontEnvironmentFault([
+    substitution("Hiragino Kaku Gothic ProN", "Noto Sans JP", "Bold"),
+    substitution("Hiragino Mincho ProN", "Noto Serif JP", "Regular"),
+  ]),
+);
+assert.ok(twoFamilyReport, "two failing families produce an environment fault report");
+assert.match(
+  twoFamilyReport,
+  /All local fonts failed to load/,
+  "report explains that local fonts cannot be loaded at all",
+);
+assert.ok(
+  twoFamilyReport.includes("Hiragino Kaku Gothic ProN") &&
+    twoFamilyReport.includes("Hiragino Mincho ProN"),
+  "report names both failing families",
+);
+assert.match(
+  twoFamilyReport,
+  /restart Figma or check font access permissions/i,
+  "report states the corrective action",
+);
+
+// Spec scenario: a single missing family is not an environment fault, so the
+// report adds nothing and the per-family messages stand alone.
+assert.equal(
+  plugin.formatFontEnvironmentFaultWarning(
+    plugin.detectFontEnvironmentFault([
+      substitution("Hiragino Mincho ProN", "Noto Serif JP", "Regular"),
+    ]),
+  ),
+  undefined,
+  "single failing family adds no environment fault report",
+);
+
 console.log("verify-pure-functions: all assertions passed");
