@@ -363,9 +363,29 @@ function checkManifestFixtures() {
   const manualAcceptance = JSON.parse(fs.readFileSync(manualAcceptancePath, "utf8"));
   validateManualAcceptance(manifest, manualAcceptance);
   const releaseManifest = { ...manifest, templateVersion: "1.0.0" };
+  // Build the incomplete sample independently of the recorded acceptance so this
+  // negative case keeps testing the release gate after real acceptance is filed.
   const pendingReleaseEvidence = {
     ...manualAcceptance,
     templateVersion: "1.0.0",
+    status: "pending",
+    completedBy: null,
+    completedAt: null,
+    manifest: {
+      ...manualAcceptance.manifest,
+      absolutePathVerified: false,
+      importedOnce: false,
+    },
+    projects: manualAcceptance.projects.map((project) => ({
+      ...project,
+      projectProfileConfigured: false,
+      realFigmaFileKeyVerified: false,
+      coordinatorHealthVerified: false,
+      contextVerified: false,
+    })),
+    checks: Object.fromEntries(
+      Object.keys(manualAcceptance.checks).map((name) => [name, false]),
+    ),
   };
   expectCode(
     () => validateManualAcceptance(releaseManifest, pendingReleaseEvidence),

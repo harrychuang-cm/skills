@@ -60,7 +60,7 @@ const sourceSync = [
 
 const manifest = {
   schemaVersion: 1,
-  templateVersion: "0.9.0",
+  templateVersion: "1.0.0",
   minimumAgentAutomationVersion: "1.0.0",
   files,
   manualActions: [

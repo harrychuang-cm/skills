@@ -22,5 +22,13 @@ profile, health, and context verification only.
 
 Keep `status: "pending"` until a human completes every required boolean and
 adds `completedBy` plus an ISO-8601 `completedAt`. Only then bump the template
-and acceptance evidence from `0.9.0` to `1.0.0`, rebuild the manifest, and run
-the full acceptance commands documented by the skill.
+and acceptance evidence to the next release version, rebuild the manifest, and
+run the full acceptance commands documented by the skill.
+
+The checker enforces this gate: `templateVersion` here must equal the template
+manifest version, and once that version is a release version the checker fails
+with `manual-two-project-acceptance-incomplete` unless every project boolean,
+every entry in `checks`, `manifest.absolutePathVerified`,
+`manifest.importedOnce`, `completedBy`, and a parseable `completedAt` are
+present. Re-record acceptance for each new release version rather than carrying
+an older record forward.

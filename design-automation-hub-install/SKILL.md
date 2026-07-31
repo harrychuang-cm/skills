@@ -182,6 +182,13 @@ already taken the process exits with `EADDRINUSE` before serving anything; set
 `PORT` to a free port and use that same port in every verification command
 below. Do not stop an unrelated service to free the default port.
 
+A `PORT` override verifies the Coordinator over HTTP only. The Plugin endpoint
+is fixed: `networkAccess.devAllowedDomains` and the Plugin sources both pin
+`http://localhost:8787`. Figma Desktop acceptance therefore requires the default
+port, so free `8787` with its owner's consent before that step instead of
+overriding it. An overridden port produces a Plugin that cannot reach the
+Coordinator, which is a port mismatch and not an acceptance failure.
+
 Keep the access code out of tracked files, durable reports, screenshots, and
 shell transcripts. In another terminal, verify the public health endpoint:
 

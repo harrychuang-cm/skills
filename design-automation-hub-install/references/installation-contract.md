@@ -100,7 +100,10 @@ both canonical skills:
    code MUST NOT enter tracked files or durable output.
 6. `GET http://127.0.0.1:8787/healthz` — or the `PORT` override when the default
    port is occupied — MUST return status `ok`, schema version
-   `1`, and `extractionQueue: false`. Authenticated standalone Plugin context
+   `1`, and `extractionQueue: false`. A `PORT` override covers HTTP
+   verification only; the Plugin pins `http://localhost:8787` in
+   `networkAccess.devAllowedDomains` and in its sources, so Figma Desktop
+   acceptance MUST run on the default port. Authenticated standalone Plugin context
    at `GET /v1/plugin/context?fileKey=<explicit-file-key>` MUST name the
    explicit project profile, expose cleanup and workflow status, and keep
    review false. Acceptance access codes and file keys MUST NOT be copied into
