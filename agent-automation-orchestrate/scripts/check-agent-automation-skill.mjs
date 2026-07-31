@@ -51,6 +51,7 @@ function runNode(script, args, options = {}) {
     encoding: "utf8",
     env: options.env ?? process.env,
     timeout: options.timeout ?? 15000,
+    ...(options.input === undefined ? {} : { input: options.input }),
   });
 }
 
@@ -147,7 +148,39 @@ try {
 
   writeText(
     fakeRunnerPath,
-    `import fs from "node:fs";\nimport path from "node:path";\nconst [mode, workspace] = process.argv.slice(2);\nif (mode === "preflight-fail") process.exit(7);\nif (mode === "agent-fail") process.exit(9);\nif (mode === "agent-success") fs.writeFileSync(path.join(workspace, "artifact.txt"), "created by fake runner\\n");\n`,
+    [
+      `import { spawn } from "node:child_process";`,
+      `import fs from "node:fs";`,
+      `import path from "node:path";`,
+      `const [mode, workspace] = process.argv.slice(2);`,
+      `if (mode === "preflight-fail") process.exit(7);`,
+      `if (mode === "preflight-zero-while-unauthenticated") {`,
+      `  process.stdout.write("Not logged in\\n");`,
+      `  process.exit(0);`,
+      `}`,
+      `if (mode === "agent-fail") process.exit(9);`,
+      `if (mode === "agent-read-stdin") {`,
+      `  let received = "";`,
+      `  try {`,
+      `    received = fs.readFileSync(0, "utf8");`,
+      `  } catch (error) {`,
+      `    received = "<unreadable:" + (error.code ?? "unknown") + ">";`,
+      `  }`,
+      `  fs.writeFileSync(path.join(workspace, "stdin-capture.txt"), received);`,
+      `  fs.writeFileSync(path.join(workspace, "artifact.txt"), "created by fake runner\\n");`,
+      `  process.exit(0);`,
+      `}`,
+      `if (mode === "agent-spawn-descendant") {`,
+      `  const descendant = spawn(process.execPath, ["-e", "setTimeout(() => {}, 600000)"], {`,
+      `    cwd: workspace,`,
+      `    stdio: "ignore",`,
+      `  });`,
+      `  fs.writeFileSync(path.join(workspace, "descendant-pid.txt"), String(descendant.pid));`,
+      `  await new Promise(() => {});`,
+      `}`,
+      `if (mode === "agent-success") fs.writeFileSync(path.join(workspace, "artifact.txt"), "created by fake runner\\n");`,
+      ``,
+    ].join("\n"),
   );
   writeText(
     verifyScriptPath,
@@ -333,6 +366,82 @@ try {
     ]);
     assert.notEqual(unknownResult.status, 0);
     assert.equal(parseJsonOutput(unknownResult, "unknown status").error.code, "run-not-found");
+  });
+
+  record("stdin-not-inherited", () => {
+    // The launcher is given a sentinel on standard input. A runner that inherited
+    // the launcher's stdin would read that sentinel; an isolated runner reads
+    // nothing. Content, not timing, is what discriminates here.
+    const stdinSentinel = "STDIN_MUST_NOT_REACH_RUNNER_5561\n";
+    const capturePath = path.join(projectRoot, "stdin-capture.txt");
+    fs.rmSync(capturePath, { force: true });
+    fs.rmSync(path.join(projectRoot, "artifact.txt"), { force: true });
+    writeJson(configPath, baseConfig([baseRunner("codex", "agent-read-stdin")]));
+    const result = runNode(
+      runScript,
+      ["--project-root", projectRoot, "--task", "implement"],
+      { input: stdinSentinel },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    const run = parseJsonOutput(result, "stdin isolation run");
+    assert.equal(run.phase, "completed");
+    assert.equal(run.attempts.at(-1).outcome, "success");
+    assert.equal(fs.existsSync(capturePath), true, "runner did not record what it read");
+    const captured = fs.readFileSync(capturePath, "utf8");
+    assert.equal(captured, "", `runner inherited the launcher stdin: ${JSON.stringify(captured)}`);
+    const persisted = JSON.stringify(run);
+    assert.equal(persisted.includes(stdinSentinel.trim()), false, "sentinel leaked into the summary");
+  });
+
+  record("timeout-kills-process-group", () => {
+    // The runner spawns a descendant that outlives the timeout and then waits
+    // forever. After the attempt settles as timeout, the descendant must be gone.
+    const pidPath = path.join(projectRoot, "descendant-pid.txt");
+    fs.rmSync(pidPath, { force: true });
+    const config = baseConfig([baseRunner("codex", "agent-spawn-descendant")]);
+    config.runners[0].timeoutMs = 3000;
+    writeJson(configPath, config);
+    const result = runNode(runScript, ["--project-root", projectRoot, "--task", "implement"], {
+      timeout: 30000,
+    });
+    const run = parseJsonOutput(result, "timeout run");
+    assert.equal(run.attempts.at(-1).outcome, "timeout");
+    assert.equal(fs.existsSync(pidPath), true, "runner never reported its descendant");
+    const descendantPid = Number(fs.readFileSync(pidPath, "utf8").trim());
+    assert.ok(Number.isInteger(descendantPid) && descendantPid > 0, "descendant pid was not recorded");
+    let alive = true;
+    for (let attempt = 0; attempt < 40 && alive; attempt += 1) {
+      try {
+        process.kill(descendantPid, 0);
+        spawnSync(process.execPath, ["-e", "setTimeout(() => {}, 100)"]);
+      } catch {
+        alive = false;
+      }
+    }
+    assert.equal(alive, false, `descendant ${descendantPid} survived the timeout`);
+  });
+
+  record("preflight-zero-exit-when-unauthenticated", () => {
+    // A preflight that exits zero while unauthenticated can never mark its runner
+    // unavailable. This pins that observable cost: the runner consumes a fallback
+    // position, reporting a preflight success followed by an agent failure.
+    writeJson(
+      configPath,
+      baseConfig([
+        baseRunner("cursor", "agent-fail", "preflight-zero-while-unauthenticated"),
+        baseRunner("codex", "agent-success"),
+      ]),
+    );
+    fs.rmSync(path.join(projectRoot, "artifact.txt"), { force: true });
+    const result = runNode(runScript, ["--project-root", projectRoot, "--task", "implement"]);
+    assert.equal(result.status, 0, result.stderr);
+    const run = parseJsonOutput(result, "always-zero preflight run");
+    const consumed = run.attempts[0];
+    assert.equal(consumed.runnerId, "cursor");
+    assert.equal(consumed.preflight.outcome, "success");
+    assert.notEqual(consumed.outcome, "unavailable");
+    assert.equal(consumed.outcome, "non-zero-exit");
+    assert.equal(run.selectedRunner.id, "codex");
   });
 
   process.stdout.write(`${JSON.stringify({ ok: true, checks }, null, 2)}\n`);

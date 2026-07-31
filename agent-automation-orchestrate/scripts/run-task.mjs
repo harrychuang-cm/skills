@@ -46,7 +46,41 @@ function buildChildEnv(runner, metadata) {
   return environment;
 }
 
-function executeProcess({ command, args, cwd, env, timeoutMs, stdio = "inherit" }) {
+// Children are started as process-group leaders so a timeout can terminate the
+// whole group, including processes the runner itself started. Signalling the
+// direct child alone leaves those descendants running and reparented to init.
+const activeChildren = new Set();
+
+function signalChildGroup(child, signal) {
+  if (typeof child?.pid !== "number") return;
+  try {
+    // Negative pid targets the whole process group.
+    process.kill(-child.pid, signal);
+  } catch {
+    try {
+      child.kill(signal);
+    } catch {
+      // The child already exited; nothing to signal.
+    }
+  }
+}
+
+// Detaching removes the child from the launcher's foreground process group, so a
+// terminal interrupt no longer reaches it automatically. Forward it explicitly to
+// keep interactive cancellation working.
+for (const forwardedSignal of ["SIGINT", "SIGTERM"]) {
+  process.on(forwardedSignal, () => {
+    for (const child of activeChildren) signalChildGroup(child, forwardedSignal);
+    process.exit(forwardedSignal === "SIGINT" ? 130 : 143);
+  });
+}
+
+// Child processes never inherit the launcher's standard input. A runner CLI that
+// reads stdin observes end of input immediately instead of blocking on an
+// inherited open pipe, which would otherwise wedge every attempt until timeoutMs
+// whenever the parent is not a terminal. Standard output and standard error keep
+// reaching the caller's terminal so diagnostic output stays visible.
+function executeProcess({ command, args, cwd, env, timeoutMs, stdio = ["ignore", "inherit", "inherit"] }) {
   return new Promise((resolve) => {
     let child;
     let settled = false;
@@ -58,11 +92,13 @@ function executeProcess({ command, args, cwd, env, timeoutMs, stdio = "inherit" 
       settled = true;
       clearTimeout(timeoutTimer);
       clearTimeout(forceTimer);
+      if (child) activeChildren.delete(child);
       resolve(result);
     };
 
     try {
-      child = spawn(command, args, { cwd, env, shell: false, stdio });
+      child = spawn(command, args, { cwd, env, shell: false, stdio, detached: true });
+      activeChildren.add(child);
     } catch (error) {
       finish({ outcome: "spawn-error", exitCode: null, signal: null, errorCode: error.code ?? "spawn-error" });
       return;
@@ -81,9 +117,9 @@ function executeProcess({ command, args, cwd, env, timeoutMs, stdio = "inherit" 
 
     timeoutTimer = setTimeout(() => {
       timedOut = true;
-      child.kill("SIGTERM");
+      signalChildGroup(child, "SIGTERM");
       forceTimer = setTimeout(() => {
-        child.kill("SIGKILL");
+        signalChildGroup(child, "SIGKILL");
         finish({ outcome: "timeout", exitCode: null, signal: "SIGKILL" });
       }, 1000);
     }, timeoutMs);
@@ -258,7 +294,6 @@ async function run() {
       cwd: projectRoot,
       env: childEnv,
       timeoutMs: runner.timeoutMs,
-      stdio: "inherit",
     });
     attempt.outcome = processResult.outcome;
     attempt.exitCode = processResult.exitCode;
@@ -297,7 +332,6 @@ async function run() {
       cwd: projectRoot,
       env: verificationEnv,
       timeoutMs: command.timeoutMs,
-      stdio: "inherit",
     });
     const passed = result.outcome === "success";
     summary.verification.push({
