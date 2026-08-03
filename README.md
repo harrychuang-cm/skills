@@ -146,6 +146,18 @@ The board is read-only: it starts nothing, animates nothing, and shows "possibly
 
 Use this when a designer needs to see what an automation pipeline does, where it currently stands, and when it is their turn — without reading Markdown contracts, run summary JSON, or asking an engineer.
 
+### `portfolio-dashboard`
+
+Aggregate many projects' pipeline boards into one self-contained overview dashboard:
+
+1. List the tracked projects in a portfolio definition file (`portfolio-dashboard/assets/default-portfolio.json` is the starting point; each entry is an id, a display name, and a project root).
+2. Build with `scripts/build-portfolio-status.mjs` — it re-runs the existing `pipeline-board` commands per project and derives one attention item per card by fixed priority: possibly-stopped run → first unmet or stale handoff → pending designer decisions → healthy.
+3. Render `scripts/render-portfolio-dashboard.mjs` into one HTML overview: one card per project with its current stage, why it is stuck, and a link to that project's own board, all inside a single shareable output directory.
+
+A project whose root is missing or whose definition is invalid becomes an error card with a stable error code instead of aborting the batch. Like the per-project board, the overview is a read-only static snapshot: no server, no port, no run button, no polling.
+
+Use this when a designer watches several automated projects and needs one page answering which project is where and who is blocked.
+
 ## Usage
 
 Install or reference these folders as agent skills in Claude Code, Codex, or Cursor. Each skill lives in its own directory and exposes a `SKILL.md` with frontmatter metadata and workflow instructions.
@@ -214,6 +226,15 @@ Generate the designer-facing board for any project with a `.pipeline-board/pipel
 ```sh
 node pipeline-board/scripts/build-pipeline-status.mjs --project-root <absolute-repo>
 node pipeline-board/scripts/render-pipeline-board.mjs --status <absolute-repo>/.pipeline-board/status.json --out <absolute-repo>/.pipeline-board/board.html
+```
+
+### Viewing the portfolio dashboard
+
+Aggregate every tracked project into one overview (all output lands in a `dashboard/` directory next to the portfolio definition), then open the overview HTML directly:
+
+```sh
+node portfolio-dashboard/scripts/build-portfolio-status.mjs --portfolio <path-to-portfolio.json>
+node portfolio-dashboard/scripts/render-portfolio-dashboard.mjs --status <path-to-portfolio.json-dir>/dashboard/portfolio-status.json
 ```
 
 ### Per-skill installers
@@ -302,6 +323,12 @@ The generated report is a static HTML + CSS artifact, usually under `reports/des
 │   ├── agents/
 │   └── references/
 ├── pipeline-board/
+│   ├── SKILL.md
+│   ├── agents/
+│   ├── assets/
+│   ├── references/
+│   └── scripts/
+├── portfolio-dashboard/
 │   ├── SKILL.md
 │   ├── agents/
 │   ├── assets/
