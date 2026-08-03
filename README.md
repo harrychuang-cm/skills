@@ -134,6 +134,18 @@ Install the project-neutral Design Automation Hub into an explicit target reposi
 
 Use this when another project needs the same safe Figma cleanup → AI plan → human confirmation workflow without copying the product repository or embedding a second generic runner.
 
+### `pipeline-board`
+
+Render a designer-readable automation pipeline board as one self-contained HTML file, derived entirely from evidence already on disk:
+
+1. Declare the pipeline order, candidate sources, and handoffs in a per-project sidecar definition (`.pipeline-board/pipeline.json`, seeded from `pipeline-board/assets/default-pipeline.json`).
+2. Build a derived status object with `scripts/build-pipeline-status.mjs` — source presence, produced vs verified stages, satisfied / blocked / stale handoffs, pending designer decisions, and honest run progress from the orchestrator's durable summaries.
+3. Render `scripts/render-pipeline-board.mjs` into a single HTML file that opens over `file://` with no server, port, install, or network, and never contains prompts, credentials, or environment values.
+
+The board is read-only: it starts nothing, animates nothing, and shows "possibly stopped — please confirm" instead of fake progress when a run record goes quiet past its timeout.
+
+Use this when a designer needs to see what an automation pipeline does, where it currently stands, and when it is their turn — without reading Markdown contracts, run summary JSON, or asking an engineer.
+
 ## Usage
 
 Install or reference these folders as agent skills in Claude Code, Codex, or Cursor. Each skill lives in its own directory and exposes a `SKILL.md` with frontmatter metadata and workflow instructions.
@@ -194,6 +206,15 @@ node agent-automation-orchestrate/scripts/run-task.mjs --project-root <absolute-
 ```
 
 Validation must pass before every run or resume. Config validation, agent completion, project verification, Git commit, and Git push stay separate claims.
+
+### Viewing the pipeline board
+
+Generate the designer-facing board for any project with a `.pipeline-board/pipeline.json` definition, then open the HTML directly in a browser:
+
+```sh
+node pipeline-board/scripts/build-pipeline-status.mjs --project-root <absolute-repo>
+node pipeline-board/scripts/render-pipeline-board.mjs --status <absolute-repo>/.pipeline-board/status.json --out <absolute-repo>/.pipeline-board/board.html
+```
 
 ### Per-skill installers
 
@@ -280,6 +301,12 @@ The generated report is a static HTML + CSS artifact, usually under `reports/des
 │   ├── SKILL.md
 │   ├── agents/
 │   └── references/
+├── pipeline-board/
+│   ├── SKILL.md
+│   ├── agents/
+│   ├── assets/
+│   ├── references/
+│   └── scripts/
 ├── storybook-product-prototype/
 │   ├── SKILL.md
 │   ├── agents/

@@ -3,9 +3,14 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 
-const targetRoot = path.resolve(process.argv[2] || process.cwd());
+const args = process.argv.slice(2);
+// --json emits the review counts and the outstanding rows on stdout instead of
+// writing the HTML file, so tooling can read the queue without scraping markup.
+const jsonMode = args.includes("--json");
+const positionalArgs = args.filter((arg) => !arg.startsWith("--"));
+const targetRoot = path.resolve(positionalArgs[0] || process.cwd());
 const outputPath = path.resolve(
-  process.argv[3] || path.join(targetRoot, "docs", "design-system", "review.html"),
+  positionalArgs[1] || path.join(targetRoot, "docs", "design-system", "review.html"),
 );
 
 const designSystemDir = path.join(targetRoot, "design-system");
@@ -582,6 +587,73 @@ const counts = {
     componentRows.filter((row) => row.status === "needs-review").length,
 };
 
+// The rows a reviewer still has to act on, ordered the way the HTML sections
+// present them. Color scale issues are included even though they carry the
+// "issue" status, because counts.needsReview also counts them; that keeps the
+// array length equal to counts.needsReview.
+function needsReviewEntries() {
+  const entries = [];
+  for (const row of sourceRows) {
+    if (row.status !== "needs-review") continue;
+    entries.push({
+      kind: "source-duplicate",
+      status: row.status,
+      candidate: row.candidate,
+      duplicate: row.duplicate,
+      matchType: row.matchType,
+      fingerprint: row.fingerprint,
+      suggested: row.suggested,
+      decision: row.decision,
+      rationale: row.rationale,
+    });
+  }
+  for (const { family, lighterStepToken, darkerStepToken } of colorScaleIssues) {
+    entries.push({
+      kind: "color-scale",
+      status: "issue",
+      family,
+      higherStep: { name: lighterStepToken.name, value: lighterStepToken.value },
+      lowerStep: { name: darkerStepToken.name, value: darkerStepToken.value },
+    });
+  }
+  for (const row of nearColorRows) {
+    if (row.status !== "needs-review") continue;
+    entries.push({
+      kind: "near-color",
+      status: row.status,
+      tokenA: { name: row.first.name, value: row.first.value },
+      tokenB: { name: row.second.name, value: row.second.value },
+      deltaE: Number(formatNumber(row.deltaE)),
+    });
+  }
+  for (const row of nearNumberRows) {
+    if (row.status !== "needs-review") continue;
+    entries.push({
+      kind: "near-number",
+      status: row.status,
+      tokenA: { name: row.first.name, value: row.first.value },
+      tokenB: { name: row.second.name, value: row.second.value },
+      difference: Number(formatNumber(row.diff)),
+      unitGroup: row.first.numeric.unitGroup,
+    });
+  }
+  for (const row of componentRows) {
+    if (row.status !== "needs-review") continue;
+    entries.push({
+      kind: "component-similarity",
+      status: row.status,
+      candidate: row.candidate,
+      similar: row.similar,
+      visual: row.visual,
+      reason: row.reason,
+      suggested: row.suggested,
+      decision: row.decision,
+      rationale: row.rationale,
+    });
+  }
+  return entries;
+}
+
 function css() {
   return `
     :root {
@@ -906,27 +978,33 @@ const html = `<!doctype html>
 </html>
 `;
 
-await fs.mkdir(path.dirname(outputPath), { recursive: true });
-await fs.writeFile(outputPath, html, "utf8");
+if (jsonMode) {
+  // Machine-readable mode keeps stdout to a single JSON object and writes no
+  // files, so a caller can parse it without cleaning up generated output.
+  console.log(JSON.stringify({ counts, needsReview: needsReviewEntries() }, null, 2));
+} else {
+  await fs.mkdir(path.dirname(outputPath), { recursive: true });
+  await fs.writeFile(outputPath, html, "utf8");
 
-let copiedAssets = false;
-try {
-  const assetEntries = await fs.readdir(designSystemAssetsDir);
-  if (assetEntries.length) {
-    await fs.cp(designSystemAssetsDir, path.join(path.dirname(outputPath), "assets"), {
-      recursive: true,
-    });
-    copiedAssets = true;
+  let copiedAssets = false;
+  try {
+    const assetEntries = await fs.readdir(designSystemAssetsDir);
+    if (assetEntries.length) {
+      await fs.cp(designSystemAssetsDir, path.join(path.dirname(outputPath), "assets"), {
+        recursive: true,
+      });
+      copiedAssets = true;
+    }
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
   }
-} catch (error) {
-  if (error.code !== "ENOENT") throw error;
-}
 
-console.log(`Generated ${path.relative(process.cwd(), outputPath) || outputPath}`);
-console.log(`Needs review: ${counts.needsReview}`);
-console.log(`Duplicate source rows: ${counts.sources}`);
-console.log(`Color scale issues: ${counts.colorScaleIssues}`);
-console.log(`Near color pairs: ${counts.nearColors}`);
-console.log(`Near number pairs: ${counts.nearNumbers}`);
-console.log(`Component similarity rows: ${counts.components}`);
-console.log(`Assets copied: ${copiedAssets ? "yes" : "no"}`);
+  console.log(`Generated ${path.relative(process.cwd(), outputPath) || outputPath}`);
+  console.log(`Needs review: ${counts.needsReview}`);
+  console.log(`Duplicate source rows: ${counts.sources}`);
+  console.log(`Color scale issues: ${counts.colorScaleIssues}`);
+  console.log(`Near color pairs: ${counts.nearColors}`);
+  console.log(`Near number pairs: ${counts.nearNumbers}`);
+  console.log(`Component similarity rows: ${counts.components}`);
+  console.log(`Assets copied: ${copiedAssets ? "yes" : "no"}`);
+}
