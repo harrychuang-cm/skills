@@ -168,6 +168,9 @@ try {
     assert.ok(html.includes("尚未開始"), "board must render stages as not started");
     assert.ok(html.includes("還沒有任何來源"), "board must say no source exists yet");
     assert.ok(html.includes("沒有任何執行紀錄"), "board must say no run data exists");
+    assert.ok(html.includes('class="app-shell"'), "board must render inside the application shell");
+    assert.ok(html.includes("flow-canvas") && html.includes("<svg"), "board must render the flow canvas");
+    assert.ok(html.includes("edge-line-blocked"), "blocked handoffs must carry their state class in the flow");
   });
 
   record("僅有來源", () => {
@@ -229,6 +232,7 @@ try {
     const html = renderBoard(root);
     assert.ok(html.includes("已驗證"), "board must show verified stages");
     assert.ok(html.includes("已銜接"), "board must show satisfied handoffs");
+    assert.ok(html.includes("edge-line-satisfied"), "satisfied handoffs must carry their state class in the flow");
   });
 
   record("上游較新造成過期", () => {
@@ -267,6 +271,7 @@ try {
     assert.ok(status.edges[0].reason.includes("過期"), "stale reason must be designer-readable");
     const html = renderBoard(root);
     assert.ok(html.includes("已過期"), "board must show the stale handoff");
+    assert.ok(html.includes("edge-line-stale"), "stale handoffs must carry their state class in the flow");
   });
 
   record("失效的中止點引用", () => {

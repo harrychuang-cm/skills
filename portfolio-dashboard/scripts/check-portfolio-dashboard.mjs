@@ -202,6 +202,8 @@ try {
     assert.ok(fs.existsSync(path.join(outDir, entry.boardFile)), "board file must exist in the output directory");
     assert.ok(overview.includes("流程健康・全部已驗證"));
     assert.ok(overview.includes(`href="${entry.boardFile}"`), "card must link to the board by relative name");
+    assert.ok(overview.includes('class="app-shell"'), "overview must render inside the application shell");
+    assert.ok(overview.includes('class="project-list"'), "the sidebar must list the tracked projects");
   });
 
   record("未成立連線", () => {
@@ -238,8 +240,13 @@ try {
     assert.equal(entry.error.code, "missing-project-root");
     assert.ok(!fs.existsSync(path.join(outDir, "ghost.html")), "a failed project must not get a board file");
     assert.ok(overview.includes("missing-project-root"), "the error card must show its stable code");
-    // Four ok cards → exactly four links. The error card carries none.
-    assert.equal(overview.split('<a ').length - 1, 4, "error cards must not contain links");
+    // Four ok cards → exactly four board-file links. Sidebar entries are
+    // in-page anchors (# targets), which are navigation, not board links, so
+    // the accounting counts .html hrefs and inspects the error card container.
+    const boardLinks = overview.match(/href="[^"#][^"]*\.html"/g) ?? [];
+    assert.equal(boardLinks.length, 4, "board-file links must equal the successful project count");
+    const errorCard = overview.match(/<article class="card card-error"[^>]*>[\s\S]*?<\/article>/);
+    assert.ok(errorCard && !errorCard[0].includes("<a "), "error cards must not contain links");
   });
 
   record("組合定義檔無效", () => {

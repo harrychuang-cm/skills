@@ -444,44 +444,29 @@ function renderEdges(status, titleById) {
 
 // No @keyframes, no transition, no progress bar. The durable record does not
 // move while an agent works, so nothing on this page may appear to.
+//
+// One fixed dark console theme on screen — the board reads as an instrument
+// panel, not a document. Print flips to light and drops the sidebar.
 function css() {
   return `
     :root {
-      color-scheme: light dark;
-      --bg: #f5f6f3;
-      --surface: #ffffff;
-      --surface-subtle: #f0f2ee;
-      --text: #141414;
-      --muted: #5d625c;
-      --border: #d7dbd3;
-      --border-strong: #aeb5aa;
-      --ok: #2f5d3a;
-      --ok-soft: #e4efe5;
-      --warn: #8a4b00;
-      --warn-soft: #f7ebda;
-      --stop: #9c2f21;
-      --stop-soft: #f7e2de;
-      --idle: #60645f;
-      --idle-soft: #ebedea;
-    }
-    @media (prefers-color-scheme: dark) {
-      :root {
-        --bg: #14161a;
-        --surface: #1c1f24;
-        --surface-subtle: #23272d;
-        --text: #eceef0;
-        --muted: #a3a9b0;
-        --border: #333941;
-        --border-strong: #4a525b;
-        --ok: #9fd4ac;
-        --ok-soft: #22312a;
-        --warn: #e8bb84;
-        --warn-soft: #322a20;
-        --stop: #eda49a;
-        --stop-soft: #342422;
-        --idle: #a3a9b0;
-        --idle-soft: #262a30;
-      }
+      color-scheme: dark;
+      --bg: #0e1116;
+      --rail: #0b0e12;
+      --surface: #151a21;
+      --surface-subtle: #1b222b;
+      --text: #e8ecf1;
+      --muted: #8b95a1;
+      --border: #2a323d;
+      --border-strong: #3b4551;
+      --ok: #4ade80;
+      --ok-soft: #12291b;
+      --warn: #f0b35f;
+      --warn-soft: #2d2214;
+      --stop: #f47c6a;
+      --stop-soft: #2e1a17;
+      --idle: #8b95a1;
+      --idle-soft: #1d242d;
     }
     * { box-sizing: border-box; }
     body {
@@ -489,93 +474,169 @@ function css() {
       background: var(--bg);
       color: var(--text);
       font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif;
-      line-height: 1.6;
+      line-height: 1.55;
+      font-size: 14px;
     }
     code {
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-      font-size: 0.9em;
+      font-size: 0.92em;
       overflow-wrap: anywhere;
     }
-    .page {
-      width: min(1040px, 100%);
-      margin: 0 auto;
-      padding: 32px 20px 64px;
+    .app-shell {
+      display: grid;
+      grid-template-columns: 232px minmax(0, 1fr);
+      min-height: 100vh;
     }
-    .hero {
-      padding: 28px 26px;
-      border: 1px solid var(--border);
-      border-radius: 14px;
-      background: var(--surface);
+    .sidebar {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow: auto;
+      background: var(--rail);
+      border-right: 1px solid var(--border);
+      padding: 18px 14px;
     }
-    .eyebrow {
-      margin: 0 0 6px;
-      font-size: 0.8rem;
-      letter-spacing: 0.12em;
+    .brand {
+      margin: 0 0 2px;
+      font-size: 0.72rem;
+      letter-spacing: 0.14em;
       text-transform: uppercase;
       color: var(--muted);
     }
-    .hero h1 { margin: 0 0 10px; font-size: 1.75rem; }
-    .hero-meta { margin: 0; color: var(--muted); font-size: 0.92rem; }
-    .notice {
-      margin: 20px 0 0;
-      padding: 20px 22px;
-      border: 1px solid var(--border-strong);
-      border-radius: 14px;
-      background: var(--surface-subtle);
-    }
-    .notice h2 { margin: 0 0 8px; font-size: 1.05rem; }
-    .notice p { margin: 0 0 8px; }
-    .notice p:last-child { margin-bottom: 0; }
-    .section { margin-top: 34px; }
-    .section h2 {
-      margin: 0 0 10px;
-      font-size: 1.2rem;
-      padding-bottom: 8px;
-      border-bottom: 1px solid var(--border);
-    }
-    .section-lead { margin: 12px 0 8px; color: var(--muted); font-size: 0.92rem; }
-    .section-lead.muted { color: var(--muted); }
-    .empty {
-      margin: 8px 0 0;
+    .brand-sub { margin: 0 0 18px; font-weight: 700; font-size: 0.95rem; }
+    .side-label {
+      margin: 16px 0 6px;
+      font-size: 0.7rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
       color: var(--muted);
-      font-size: 0.92rem;
     }
-    .chips { list-style: none; display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; }
-    .chip {
-      padding: 4px 12px;
-      border-radius: 999px;
-      border: 1px solid var(--border);
-      background: var(--surface);
+    .side-nav { display: flex; flex-direction: column; gap: 2px; }
+    .side-nav a {
+      display: block;
+      padding: 6px 10px;
+      border-radius: 7px;
+      color: var(--text);
+      text-decoration: none;
       font-size: 0.9rem;
     }
-    .chip-ok { border-color: var(--ok); background: var(--ok-soft); color: var(--ok); }
-    .chip-idle { color: var(--muted); background: var(--idle-soft); }
-    .stage {
-      margin-top: 16px;
+    .side-nav a:hover { background: var(--surface-subtle); }
+    .legend { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+    .legend li { display: flex; align-items: center; gap: 8px; font-size: 0.82rem; color: var(--muted); }
+    .dot { width: 9px; height: 9px; border-radius: 999px; flex: none; }
+    .dot-ok { background: var(--ok); }
+    .dot-warn { background: var(--warn); }
+    .dot-stop { background: var(--stop); }
+    .dot-idle { background: var(--idle); }
+    .workspace { min-width: 0; display: flex; flex-direction: column; }
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 3;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 12px;
+      padding: 14px 22px;
+      background: var(--bg);
+      border-bottom: 1px solid var(--border);
+    }
+    .topbar h1 { margin: 0; font-size: 1.05rem; }
+    .topbar-meta { color: var(--muted); font-size: 0.85rem; }
+    .panels { padding: 18px 22px 56px; display: flex; flex-direction: column; gap: 18px; }
+    .panel, .section, .notice {
+      margin: 0;
       border: 1px solid var(--border);
-      border-radius: 14px;
+      border-radius: 12px;
       background: var(--surface);
+      padding: 16px 18px;
+    }
+    .section h2, .panel h2 {
+      margin: 0 0 10px;
+      font-size: 0.8rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 8px;
+    }
+    .notice { background: var(--surface-subtle); border-color: var(--border-strong); }
+    .notice h2 { margin: 0 0 8px; font-size: 0.95rem; color: var(--text); text-transform: none; letter-spacing: 0; border: 0; padding: 0; }
+    .notice p { margin: 0 0 6px; font-size: 0.88rem; color: var(--muted); }
+    .notice p:last-child { margin-bottom: 0; }
+    .flow-scroll { overflow-x: auto; }
+    .flow-canvas { position: relative; }
+    .flow-canvas svg { position: absolute; inset: 0; }
+    .flow-node {
+      position: absolute;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      padding: 10px 12px;
+      border: 1px solid var(--border-strong);
+      border-radius: 10px;
+      background: var(--surface-subtle);
+      text-decoration: none;
+      color: var(--text);
       overflow: hidden;
     }
+    .flow-node:hover { border-color: var(--muted); }
+    .flow-node-title { font-weight: 650; font-size: 0.88rem; line-height: 1.3; }
+    .flow-node-meta { font-size: 0.78rem; color: var(--muted); }
+    .flow-source { background: var(--rail); }
+    .flow-col-label {
+      position: absolute;
+      font-size: 0.7rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .edge-line-satisfied { stroke: var(--ok); }
+    .edge-line-blocked { stroke: var(--stop); stroke-dasharray: 6 5; }
+    .edge-line-stale { stroke: var(--warn); stroke-dasharray: 6 5; }
+    .edge-line-idle { stroke: var(--border-strong); }
+    .edge-head-satisfied { fill: var(--ok); }
+    .edge-head-blocked { fill: var(--stop); }
+    .edge-head-stale { fill: var(--warn); }
+    .edge-head-idle { fill: var(--border-strong); }
+    .section-lead { margin: 10px 0 8px; color: var(--muted); font-size: 0.88rem; }
+    .empty { margin: 8px 0 0; color: var(--muted); font-size: 0.88rem; }
+    .chips { list-style: none; display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; }
+    .chip {
+      padding: 3px 11px;
+      border-radius: 999px;
+      border: 1px solid var(--border-strong);
+      background: var(--surface-subtle);
+      font-size: 0.85rem;
+    }
+    .chip-ok { border-color: var(--ok); background: var(--ok-soft); color: var(--ok); }
+    .chip-idle { color: var(--muted); }
+    .stage {
+      margin-top: 12px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--surface-subtle);
+      overflow: hidden;
+    }
+    .stage:target { border-color: var(--warn); box-shadow: 0 0 0 1px var(--warn); }
     .stage-head {
       display: flex;
       flex-wrap: wrap;
       gap: 10px;
       align-items: center;
       justify-content: space-between;
-      padding: 18px 22px;
+      padding: 12px 16px;
       border-bottom: 1px solid var(--border);
-      background: var(--surface-subtle);
     }
     .stage-title { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; }
-    .stage-title h3 { margin: 0; font-size: 1.1rem; }
+    .stage-title h3 { margin: 0; font-size: 0.98rem; }
     .stage-id { color: var(--muted); }
-    .badges { display: flex; flex-wrap: wrap; gap: 8px; }
+    .badges { display: flex; flex-wrap: wrap; gap: 6px; }
     .badge {
       display: inline-block;
-      padding: 3px 12px;
+      padding: 2px 10px;
       border-radius: 999px;
-      font-size: 0.85rem;
+      font-size: 0.78rem;
       border: 1px solid currentColor;
     }
     .tone-ok { color: var(--ok); background: var(--ok-soft); }
@@ -584,66 +645,222 @@ function css() {
     .tone-idle { color: var(--idle); background: var(--idle-soft); }
     .stage-body {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-      gap: 18px;
-      padding: 20px 22px;
+      grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+      gap: 14px;
+      padding: 14px 16px;
     }
     .label {
       display: block;
-      font-size: 0.78rem;
+      font-size: 0.7rem;
       letter-spacing: 0.08em;
       text-transform: uppercase;
       color: var(--muted);
-      margin-bottom: 6px;
+      margin-bottom: 5px;
     }
     .paths { list-style: none; margin: 0; padding: 0; }
     .paths li {
-      padding: 5px 0;
+      padding: 4px 0;
       border-bottom: 1px solid var(--border);
       display: flex;
       flex-wrap: wrap;
       gap: 8px;
       justify-content: space-between;
+      font-size: 0.85rem;
     }
     .paths li:last-child { border-bottom: none; }
-    .path-note { color: var(--muted); font-size: 0.84rem; }
-    .decisions { margin: 0; font-size: 1.3rem; }
-    .run {
-      padding: 18px 22px;
-      border-top: 1px solid var(--border);
-      background: var(--surface-subtle);
-    }
-    .run-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 8px; }
-    .run-title { font-weight: 600; }
-    .run-line { margin: 4px 0; font-size: 0.92rem; }
-    .stamps { list-style: none; margin: 8px 0; padding: 0; }
-    .stamps li { display: flex; flex-wrap: wrap; gap: 10px; font-size: 0.9rem; }
+    .path-note { color: var(--muted); font-size: 0.8rem; }
+    .decisions { margin: 0; font-size: 1.25rem; }
+    .run { padding: 12px 16px; border-top: 1px solid var(--border); background: var(--rail); }
+    .run-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 6px; }
+    .run-title { font-weight: 600; font-size: 0.9rem; }
+    .run-line { margin: 3px 0; font-size: 0.85rem; }
+    .stamps { list-style: none; margin: 6px 0; padding: 0; }
+    .stamps li { display: flex; flex-wrap: wrap; gap: 10px; font-size: 0.83rem; }
     .stamps span { color: var(--muted); min-width: 5.5em; }
     .edges { list-style: none; margin: 0; padding: 0; }
     .edge {
-      margin-top: 12px;
-      padding: 16px 20px;
+      margin-top: 10px;
+      padding: 12px 16px;
       border: 1px solid var(--border);
-      border-radius: 12px;
-      background: var(--surface);
+      border-radius: 10px;
+      background: var(--surface-subtle);
     }
     .edge-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; justify-content: space-between; }
-    .edge-route { font-weight: 600; }
-    .edge-artifact { display: block; margin-top: 6px; color: var(--muted); }
-    .edge-reason { margin: 6px 0 0; font-size: 0.92rem; }
-    footer {
-      margin-top: 40px;
-      padding-top: 16px;
-      border-top: 1px solid var(--border);
-      color: var(--muted);
-      font-size: 0.88rem;
-    }
+    .edge-route { font-weight: 600; font-size: 0.9rem; }
+    .edge-artifact { display: block; margin-top: 5px; color: var(--muted); }
+    .edge-reason { margin: 5px 0 0; font-size: 0.85rem; color: var(--muted); }
+    footer { color: var(--muted); font-size: 0.82rem; }
     footer p { margin: 0 0 6px; }
+    @media (max-width: 900px) {
+      .app-shell { display: block; }
+      .sidebar { position: relative; height: auto; border-right: 0; border-bottom: 1px solid var(--border); }
+    }
     @media print {
-      body { background: #ffffff; }
-      .stage, .edge, .hero, .notice { break-inside: avoid; }
+      :root {
+        color-scheme: light;
+        --bg: #ffffff;
+        --rail: #f4f5f2;
+        --surface: #ffffff;
+        --surface-subtle: #f4f5f2;
+        --text: #141414;
+        --muted: #5d625c;
+        --border: #d7dbd3;
+        --border-strong: #aeb5aa;
+        --ok: #2f5d3a;
+        --ok-soft: #e4efe5;
+        --warn: #8a4b00;
+        --warn-soft: #f7ebda;
+        --stop: #9c2f21;
+        --stop-soft: #f7e2de;
+        --idle: #60645f;
+        --idle-soft: #ebedea;
+      }
+      .sidebar { display: none; }
+      .app-shell { display: block; }
+      .stage, .edge, .notice, .panel { break-inside: avoid; }
     }
   `;
+}
+
+// ---------------------------------------------------------------------------
+// Flow canvas
+// ---------------------------------------------------------------------------
+
+// Deterministic geometry: every coordinate derives from column/row indices and
+// this single set of constants, which also sizes the canvas the SVG overlay
+// covers. Nothing is measured from the DOM, so the drawing cannot depend on
+// the reading machine.
+const FLOW = {
+  nodeW: 185,
+  nodeH: 86,
+  colGap: 64,
+  rowGap: 16,
+  padX: 18,
+  padTop: 36,
+  laneStart: 30,
+  laneStep: 22,
+  padBottom: 26,
+};
+
+function flowStageTone(stage) {
+  if (stage.run?.phase === "possibly-stopped") return "stop";
+  return tone(STAGE_STATE_TONES, stage.state);
+}
+
+function flowStageMeta(stage) {
+  const lines = [label(STAGE_STATE_LABELS, stage.state)];
+  if (stage.state === "produced" && stage.auditConfigured && !stage.verified) lines.push(UNVERIFIED_LABEL);
+  if (stage.run?.phase === "possibly-stopped") lines.push(label(RUN_PHASE_LABELS, "possibly-stopped"));
+  if (stage.pendingDecisions !== null && stage.pendingDecisions > 0) lines.push(`待決 ${stage.pendingDecisions} 項`);
+  return lines;
+}
+
+// Arrowheads are explicit polygons. SVG marker references use url(#id) syntax,
+// which the frozen self-containment scan rejects as a CSS url() pattern, so
+// markers are off the table by construction.
+function arrowRight(x, y, cls) {
+  return `<polygon class="edge-head-${cls}" points="${x - 8},${y - 4.5} ${x},${y} ${x - 8},${y + 4.5}"/>`;
+}
+
+function arrowUpFromBelow(x, y, cls) {
+  return `<polygon class="edge-head-${cls}" points="${x - 4.5},${y + 8} ${x},${y} ${x + 4.5},${y + 8}"/>`;
+}
+
+export function renderFlow(status) {
+  const stageCount = status.stages.length;
+  const present = status.sources.filter((source) => source.present);
+  const sourceNodes = present.length
+    ? present.map((source) => ({ title: source.title, meta: ["已提供"], tone: "ok" }))
+    : [{ title: "還沒有任何來源", meta: ["可接受的類型見來源面板"], tone: "idle" }];
+
+  const colX = (col) => FLOW.padX + col * (FLOW.nodeW + FLOW.colGap);
+  const stageY = FLOW.padTop;
+  const sourceY = (row) => FLOW.padTop + row * (FLOW.nodeH + FLOW.rowGap);
+
+  const stageIndexById = new Map(status.stages.map((stage, index) => [stage.id, index]));
+  const skipEdges = status.edges.filter(
+    (edge) => (stageIndexById.get(edge.to) ?? 0) - (stageIndexById.get(edge.from) ?? 0) > 1,
+  );
+
+  const width = colX(stageCount) + FLOW.nodeW + FLOW.padX;
+  const sourceStackHeight = sourceNodes.length * FLOW.nodeH + (sourceNodes.length - 1) * FLOW.rowGap;
+  const laneBase = stageY + FLOW.nodeH + FLOW.laneStart;
+  const height =
+    Math.max(FLOW.padTop + sourceStackHeight, laneBase + skipEdges.length * FLOW.laneStep) + FLOW.padBottom;
+
+  const svgParts = [];
+  const nodeParts = [];
+
+  nodeParts.push(
+    `<span class="flow-col-label" style="left:${colX(0)}px;top:${FLOW.padTop - 22}px">來源</span>`,
+    `<span class="flow-col-label" style="left:${colX(1)}px;top:${FLOW.padTop - 22}px">階段流程</span>`,
+  );
+
+  sourceNodes.forEach((node, row) => {
+    nodeParts.push(
+      `<a class="flow-node flow-source" href="#sources" style="left:${colX(0)}px;top:${sourceY(row)}px;width:${FLOW.nodeW}px;height:${FLOW.nodeH}px">
+        <span class="flow-node-title">${escapeHtml(node.title)}</span>
+        <span class="flow-node-meta">${node.meta.map(escapeHtml).join("・")}</span>
+      </a>`,
+    );
+    // Cosmetic fan-in from sources to the first stage: idle-toned on purpose —
+    // it depicts where material enters and claims no handoff state.
+    const fromY = sourceY(row) + FLOW.nodeH / 2;
+    const toX = colX(1);
+    const toY = stageY + FLOW.nodeH / 2;
+    const bendX = colX(0) + FLOW.nodeW + FLOW.colGap / 2;
+    svgParts.push(
+      `<path class="edge-line-idle" fill="none" stroke-width="1.5" d="M ${colX(0) + FLOW.nodeW} ${fromY} H ${bendX} V ${toY} H ${toX - 9}"/>`,
+      arrowRight(toX, toY, "idle"),
+    );
+  });
+
+  status.stages.forEach((stage, index) => {
+    const x = colX(index + 1);
+    const stageTone = flowStageTone(stage);
+    nodeParts.push(
+      `<a class="flow-node flow-stage" id="flow-stage-${escapeAttr(stage.id)}" href="#stage-${escapeAttr(stage.id)}" style="left:${x}px;top:${stageY}px;width:${FLOW.nodeW}px;height:${FLOW.nodeH}px">
+        <span class="flow-node-title">${escapeHtml(stage.title)}</span>
+        <span class="flow-node-meta"><span class="badge tone-${escapeAttr(stageTone)}">${escapeHtml(
+          flowStageMeta(stage)[0],
+        )}</span></span>
+        ${
+          flowStageMeta(stage).length > 1
+            ? `<span class="flow-node-meta">${flowStageMeta(stage).slice(1).map(escapeHtml).join("・")}</span>`
+            : ""
+        }
+      </a>`,
+    );
+  });
+
+  let laneIndex = 0;
+  for (const edge of status.edges) {
+    const fromCol = (stageIndexById.get(edge.from) ?? 0) + 1;
+    const toCol = (stageIndexById.get(edge.to) ?? 0) + 1;
+    const cls = ["satisfied", "blocked", "stale"].includes(edge.state) ? edge.state : "idle";
+    if (toCol - fromCol === 1) {
+      const y = stageY + FLOW.nodeH / 2;
+      svgParts.push(
+        `<line class="edge-line-${cls}" stroke-width="2" x1="${colX(fromCol) + FLOW.nodeW}" y1="${y}" x2="${colX(toCol) - 9}" y2="${y}"/>`,
+        arrowRight(colX(toCol), y, cls),
+      );
+    } else {
+      const laneY = laneBase + laneIndex * FLOW.laneStep;
+      laneIndex += 1;
+      const fromX = colX(fromCol) + FLOW.nodeW / 2;
+      const toX = colX(toCol) + FLOW.nodeW / 2;
+      const bottomY = stageY + FLOW.nodeH;
+      svgParts.push(
+        `<path class="edge-line-${cls}" fill="none" stroke-width="2" d="M ${fromX} ${bottomY} V ${laneY} H ${toX} V ${bottomY + 9}"/>`,
+        arrowUpFromBelow(toX, bottomY, cls),
+      );
+    }
+  }
+
+  return `<div class="flow-canvas" style="width:${width}px;height:${height}px">
+    <svg viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" aria-hidden="true">${svgParts.join("")}</svg>
+    ${nodeParts.join("")}
+  </div>`;
 }
 
 export function renderBoard(status) {
@@ -659,38 +876,65 @@ export function renderBoard(status) {
 <style>${css()}</style>
 </head>
 <body>
-<main class="page">
-  <header class="hero">
-    <p class="eyebrow">Pipeline Board</p>
-    <h1>${escapeHtml(heading)}</h1>
-    <p class="hero-meta">產生時間：${escapeHtml(formatStamp(status.generatedAt) || "沒有紀錄")}</p>
-  </header>
+<div class="app-shell">
+  <aside class="sidebar">
+    <p class="brand">Pipeline Board</p>
+    <p class="brand-sub">${escapeHtml(status.projectName || "自動化流程看板")}</p>
+    <p class="side-label">導覽</p>
+    <nav class="side-nav">
+      <a href="#flow">流程圖</a>
+      <a href="#sources">來源</a>
+      ${status.stages
+        .map((stage) => `<a href="#stage-${escapeAttr(stage.id)}">${escapeHtml(stage.title)}</a>`)
+        .join("")}
+      <a href="#handoffs">階段之間的銜接</a>
+    </nav>
+    <p class="side-label">圖例</p>
+    <ul class="legend">
+      <li><span class="dot dot-ok"></span>已驗證・已銜接</li>
+      <li><span class="dot dot-warn"></span>檔案已產出・已過期</li>
+      <li><span class="dot dot-stop"></span>未銜接・可能已停止</li>
+      <li><span class="dot dot-idle"></span>尚未開始</li>
+    </ul>
+  </aside>
+  <div class="workspace">
+    <header class="topbar">
+      <h1>${escapeHtml(heading)}</h1>
+      <span class="topbar-meta">快照 ${escapeHtml(formatStamp(status.generatedAt) || "沒有紀錄")}</span>
+    </header>
+    <main class="panels">
+      <section class="panel" id="flow">
+        <h2>流程圖</h2>
+        <div class="flow-scroll">${renderFlow(status)}</div>
+      </section>
 
-  <section class="notice">
-    <h2>這份看板是唯讀的</h2>
-    <p>這個頁面只會呈現硬碟上已經存在的證據。它<strong>不會啟動任何自動化</strong>，沒有執行按鈕、沒有排程、也沒有觸發器。</p>
-    <p>所有自動化都由人在自己的終端機裡執行。看板不會代替任何人按下開始。</p>
-    <p>畫面上的狀態不會自己更新。重新整理這一頁不會取得新資料；要看到新的狀態，需要重新產生 <code>status.json</code> 並重新輸出這個檔案。</p>
-  </section>
+      ${renderSources(status)}
 
-  ${renderSources(status)}
+      <section class="section" id="stages">
+        <h2>階段</h2>
+        ${status.stages.map(renderStage).join("")}
+      </section>
 
-  <section class="section" id="stages">
-    <h2>階段</h2>
-    ${status.stages.map(renderStage).join("")}
-  </section>
+      ${renderEdges(status, titleById)}
 
-  ${renderEdges(status, titleById)}
+      <section class="notice">
+        <h2>這份看板是唯讀的</h2>
+        <p>這個頁面只會呈現硬碟上已經存在的證據。它<strong>不會啟動任何自動化</strong>，沒有執行按鈕、沒有排程、也沒有觸發器。</p>
+        <p>所有自動化都由人在自己的終端機裡執行。看板不會代替任何人按下開始。</p>
+        <p>畫面上的狀態不會自己更新。重新整理這一頁不會取得新資料；要看到新的狀態，需要重新產生 <code>status.json</code> 並重新輸出這個檔案。</p>
+      </section>
 
-  <footer>
-    <p>${
-      status.hasRunData
-        ? "執行紀錄來自專案裡既有的執行摘要檔。"
-        : "這個專案目前沒有任何執行紀錄，所有階段只依照硬碟上的檔案判讀。"
-    }</p>
-    <p>這個檔案是自足的：沒有外部樣式、字型、圖片或網路請求，離線用 file:// 開啟結果完全相同。</p>
-  </footer>
-</main>
+      <footer>
+        <p>${
+          status.hasRunData
+            ? "執行紀錄來自專案裡既有的執行摘要檔。"
+            : "這個專案目前沒有任何執行紀錄，所有階段只依照硬碟上的檔案判讀。"
+        }</p>
+        <p>這個檔案是自足的：沒有外部樣式、字型、圖片或網路請求，離線用 file:// 開啟結果完全相同。</p>
+      </footer>
+    </main>
+  </div>
+</div>
 </body>
 </html>
 `;

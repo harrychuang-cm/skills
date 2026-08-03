@@ -227,9 +227,14 @@ function attentionDetail(attention) {
   return "";
 }
 
+function projectTone(project) {
+  if (!project.ok) return "stop";
+  return project.attention ? (ATTENTION_TONES[project.attention.kind] ?? "idle") : "idle";
+}
+
 function renderCard(project) {
   if (!project.ok) {
-    return `<article class="card card-error">
+    return `<article class="card card-error" id="card-${escapeAttr(project.id)}">
       <header class="card-head">
         <h3>${escapeHtml(project.name || project.id)}</h3>
         ${badge("無法讀取", "stop")}
@@ -241,7 +246,7 @@ function renderCard(project) {
 
   const attention = project.attention;
   const tone = attention ? (ATTENTION_TONES[attention.kind] ?? "idle") : "idle";
-  return `<article class="card">
+  return `<article class="card" id="card-${escapeAttr(project.id)}">
     <header class="card-head">
       <h3>${escapeHtml(project.name)}</h3>
       ${badge(label(ATTENTION_LABELS, attention?.kind), tone)}
@@ -273,44 +278,30 @@ function renderCard(project) {
 
 // No @keyframes, no transition, no progress bar: the page is a snapshot and
 // must never look like it is moving.
+//
+// One fixed dark console theme on screen; print flips to light and drops the
+// sidebar. Same token set as the per-project board so the two surfaces read
+// as one product.
 function css() {
   return `
     :root {
-      color-scheme: light dark;
-      --bg: #f5f6f3;
-      --surface: #ffffff;
-      --surface-subtle: #f0f2ee;
-      --text: #141414;
-      --muted: #5d625c;
-      --border: #d7dbd3;
-      --border-strong: #aeb5aa;
-      --ok: #2f5d3a;
-      --ok-soft: #e4efe5;
-      --warn: #8a4b00;
-      --warn-soft: #f7ebda;
-      --stop: #9c2f21;
-      --stop-soft: #f7e2de;
-      --idle: #60645f;
-      --idle-soft: #ebedea;
-    }
-    @media (prefers-color-scheme: dark) {
-      :root {
-        --bg: #14161a;
-        --surface: #1c1f24;
-        --surface-subtle: #23272d;
-        --text: #eceef0;
-        --muted: #a3a9b0;
-        --border: #333941;
-        --border-strong: #4a525b;
-        --ok: #9fd4ac;
-        --ok-soft: #22312a;
-        --warn: #e8bb84;
-        --warn-soft: #322a20;
-        --stop: #eda49a;
-        --stop-soft: #342422;
-        --idle: #a3a9b0;
-        --idle-soft: #262a30;
-      }
+      color-scheme: dark;
+      --bg: #0e1116;
+      --rail: #0b0e12;
+      --surface: #151a21;
+      --surface-subtle: #1b222b;
+      --text: #e8ecf1;
+      --muted: #8b95a1;
+      --border: #2a323d;
+      --border-strong: #3b4551;
+      --ok: #4ade80;
+      --ok-soft: #12291b;
+      --warn: #f0b35f;
+      --warn-soft: #2d2214;
+      --stop: #f47c6a;
+      --stop-soft: #2e1a17;
+      --idle: #8b95a1;
+      --idle-soft: #1d242d;
     }
     * { box-sizing: border-box; }
     body {
@@ -318,59 +309,103 @@ function css() {
       background: var(--bg);
       color: var(--text);
       font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif;
-      line-height: 1.6;
+      line-height: 1.55;
+      font-size: 14px;
     }
     code {
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-      font-size: 0.9em;
+      font-size: 0.92em;
       overflow-wrap: anywhere;
     }
     a { color: var(--ok); }
-    .page {
-      width: min(1120px, 100%);
-      margin: 0 auto;
-      padding: 32px 20px 64px;
+    .app-shell {
+      display: grid;
+      grid-template-columns: 248px minmax(0, 1fr);
+      min-height: 100vh;
     }
-    .hero {
-      padding: 28px 26px;
-      border: 1px solid var(--border);
-      border-radius: 14px;
-      background: var(--surface);
+    .sidebar {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow: auto;
+      background: var(--rail);
+      border-right: 1px solid var(--border);
+      padding: 18px 14px;
     }
-    .eyebrow {
-      margin: 0 0 6px;
-      font-size: 0.8rem;
-      letter-spacing: 0.12em;
+    .brand {
+      margin: 0 0 2px;
+      font-size: 0.72rem;
+      letter-spacing: 0.14em;
       text-transform: uppercase;
       color: var(--muted);
     }
-    .hero h1 { margin: 0 0 10px; font-size: 1.75rem; }
-    .hero-meta { margin: 0; color: var(--muted); font-size: 0.92rem; }
-    .notice {
-      margin: 20px 0 0;
-      padding: 20px 22px;
-      border: 1px solid var(--border-strong);
-      border-radius: 14px;
-      background: var(--surface-subtle);
+    .brand-sub { margin: 0 0 18px; font-weight: 700; font-size: 0.95rem; }
+    .side-label {
+      margin: 16px 0 6px;
+      font-size: 0.7rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
     }
-    .notice h2 { margin: 0 0 8px; font-size: 1.05rem; }
-    .notice p { margin: 0 0 8px; }
+    .project-list { display: flex; flex-direction: column; gap: 2px; }
+    .project-list a {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      border-radius: 7px;
+      color: var(--text);
+      text-decoration: none;
+      font-size: 0.9rem;
+    }
+    .project-list a:hover { background: var(--surface-subtle); }
+    .dot { width: 9px; height: 9px; border-radius: 999px; flex: none; }
+    .dot-ok { background: var(--ok); }
+    .dot-warn { background: var(--warn); }
+    .dot-stop { background: var(--stop); }
+    .dot-idle { background: var(--idle); }
+    .legend { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+    .legend li { display: flex; align-items: center; gap: 8px; font-size: 0.82rem; color: var(--muted); }
+    .workspace { min-width: 0; display: flex; flex-direction: column; }
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 3;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 12px;
+      padding: 14px 22px;
+      background: var(--bg);
+      border-bottom: 1px solid var(--border);
+    }
+    .topbar h1 { margin: 0; font-size: 1.05rem; }
+    .topbar-meta { color: var(--muted); font-size: 0.85rem; }
+    .panels { padding: 18px 22px 56px; display: flex; flex-direction: column; gap: 18px; }
+    .notice {
+      border: 1px solid var(--border-strong);
+      border-radius: 12px;
+      background: var(--surface-subtle);
+      padding: 16px 18px;
+    }
+    .notice h2 { margin: 0 0 8px; font-size: 0.95rem; }
+    .notice p { margin: 0 0 6px; font-size: 0.88rem; color: var(--muted); }
     .notice p:last-child { margin-bottom: 0; }
     .cards {
-      margin-top: 28px;
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-      gap: 16px;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 14px;
     }
     .card {
       border: 1px solid var(--border);
-      border-radius: 14px;
+      border-radius: 12px;
       background: var(--surface);
-      padding: 20px 22px;
+      padding: 16px 18px;
       display: flex;
       flex-direction: column;
       gap: 8px;
     }
+    .card:target { border-color: var(--warn); box-shadow: 0 0 0 1px var(--warn); }
     .card-error { border-color: var(--stop); }
     .card-head {
       display: flex;
@@ -379,37 +414,55 @@ function css() {
       align-items: center;
       justify-content: space-between;
     }
-    .card-head h3 { margin: 0; font-size: 1.1rem; }
+    .card-head h3 { margin: 0; font-size: 1rem; }
     .badge {
       display: inline-block;
-      padding: 3px 12px;
+      padding: 2px 10px;
       border-radius: 999px;
-      font-size: 0.85rem;
+      font-size: 0.78rem;
       border: 1px solid currentColor;
     }
     .tone-ok { color: var(--ok); background: var(--ok-soft); }
     .tone-warn { color: var(--warn); background: var(--warn-soft); }
     .tone-stop { color: var(--stop); background: var(--stop-soft); }
     .tone-idle { color: var(--idle); background: var(--idle-soft); }
-    .stage-line { margin: 0; font-size: 0.95rem; }
-    .attention-line { margin: 0; font-size: 0.92rem; color: var(--muted); }
+    .stage-line { margin: 0; font-size: 0.9rem; }
+    .attention-line { margin: 0; font-size: 0.86rem; color: var(--muted); }
     .attention-count { font-size: 1.3rem; color: var(--text); }
     .error-code { margin: 0; }
-    .runs { list-style: none; margin: 0; padding: 0; font-size: 0.9rem; color: var(--muted); }
+    .runs { list-style: none; margin: 0; padding: 0; font-size: 0.85rem; color: var(--muted); }
     .runs li { padding: 2px 0; }
-    .runs-empty { margin: 0; font-size: 0.9rem; color: var(--muted); }
-    .card-link { margin: 4px 0 0; font-size: 0.95rem; }
-    footer {
-      margin-top: 40px;
-      padding-top: 16px;
-      border-top: 1px solid var(--border);
-      color: var(--muted);
-      font-size: 0.88rem;
-    }
+    .runs-empty { margin: 0; font-size: 0.85rem; color: var(--muted); }
+    .card-link { margin: 4px 0 0; font-size: 0.9rem; }
+    footer { color: var(--muted); font-size: 0.82rem; }
     footer p { margin: 0 0 6px; }
+    @media (max-width: 900px) {
+      .app-shell { display: block; }
+      .sidebar { position: relative; height: auto; border-right: 0; border-bottom: 1px solid var(--border); }
+    }
     @media print {
-      body { background: #ffffff; }
-      .card, .hero, .notice { break-inside: avoid; }
+      :root {
+        color-scheme: light;
+        --bg: #ffffff;
+        --rail: #f4f5f2;
+        --surface: #ffffff;
+        --surface-subtle: #f4f5f2;
+        --text: #141414;
+        --muted: #5d625c;
+        --border: #d7dbd3;
+        --border-strong: #aeb5aa;
+        --ok: #2f5d3a;
+        --ok-soft: #e4efe5;
+        --warn: #8a4b00;
+        --warn-soft: #f7ebda;
+        --stop: #9c2f21;
+        --stop-soft: #f7e2de;
+        --idle: #60645f;
+        --idle-soft: #ebedea;
+      }
+      .sidebar { display: none; }
+      .app-shell { display: block; }
+      .card, .notice { break-inside: avoid; }
     }
   `;
 }
@@ -430,31 +483,55 @@ export function renderDashboard(status) {
 <style>${css()}</style>
 </head>
 <body>
-<main class="page">
-  <header class="hero">
-    <p class="eyebrow">Portfolio Dashboard</p>
-    <h1>${escapeHtml(heading)}</h1>
-    <p class="hero-meta">產生時間：${escapeHtml(formatStamp(status.generatedAt) || "沒有紀錄")} · ${okCount} 個專案可讀${
-      errorCount ? `、${errorCount} 個專案無法讀取` : ""
-    }</p>
-  </header>
+<div class="app-shell">
+  <aside class="sidebar">
+    <p class="brand">Portfolio Dashboard</p>
+    <p class="brand-sub">${escapeHtml(status.portfolioName || "自動化儀表板")}</p>
+    <p class="side-label">專案</p>
+    <nav class="project-list">
+      ${status.projects
+        .map(
+          (project) =>
+            `<a href="#card-${escapeAttr(project.id)}"><span class="dot dot-${escapeAttr(
+              projectTone(project),
+            )}"></span>${escapeHtml(project.name || project.id)}</a>`,
+        )
+        .join("")}
+    </nav>
+    <p class="side-label">圖例</p>
+    <ul class="legend">
+      <li><span class="dot dot-ok"></span>流程健康</li>
+      <li><span class="dot dot-warn"></span>等待設計決定・已過期</li>
+      <li><span class="dot dot-stop"></span>需要確認・卡住・無法讀取</li>
+      <li><span class="dot dot-idle"></span>尚未全部驗證</li>
+    </ul>
+  </aside>
+  <div class="workspace">
+    <header class="topbar">
+      <h1>${escapeHtml(heading)}</h1>
+      <span class="topbar-meta">快照 ${escapeHtml(formatStamp(status.generatedAt) || "沒有紀錄")} · ${okCount} 個專案可讀${
+        errorCount ? `、${errorCount} 個專案無法讀取` : ""
+      }</span>
+    </header>
+    <main class="panels">
+      <section class="cards">
+        ${status.projects.map(renderCard).join("")}
+      </section>
 
-  <section class="notice">
-    <h2>這是一張靜態快照</h2>
-    <p>這個頁面彙整每個專案流程板當時的狀態。它<strong>不會啟動任何自動化</strong>，沒有執行按鈕、沒有排程、也不會自己更新。</p>
-    <p>要看到新的狀態，請重新執行 <code>build-portfolio-status.mjs</code> 與 <code>render-portfolio-dashboard.mjs</code> 兩支指令。</p>
-    <p>每張卡片的連結都指向同一次彙整產生的專案流程板，整個資料夾可以直接分享。</p>
-  </section>
+      <section class="notice">
+        <h2>這是一張靜態快照</h2>
+        <p>這個頁面彙整每個專案流程板當時的狀態。它<strong>不會啟動任何自動化</strong>，沒有執行按鈕、沒有排程、也不會自己更新。</p>
+        <p>要看到新的狀態，請重新執行 <code>build-portfolio-status.mjs</code> 與 <code>render-portfolio-dashboard.mjs</code> 兩支指令。</p>
+        <p>每張卡片的連結都指向同一次彙整產生的專案流程板，整個資料夾可以直接分享。</p>
+      </section>
 
-  <section class="cards">
-    ${status.projects.map(renderCard).join("")}
-  </section>
-
-  <footer>
-    <p>卡片上的注意事項由彙整階段依固定優先序推導：可能已停止的執行 → 第一條未銜接或已過期的交接 → 等待中的設計決定 → 流程健康。</p>
-    <p>這個檔案是自足的：沒有外部樣式、字型、圖片或網路請求，離線用 file:// 開啟結果完全相同。</p>
-  </footer>
-</main>
+      <footer>
+        <p>卡片上的注意事項由彙整階段依固定優先序推導：可能已停止的執行 → 第一條未銜接或已過期的交接 → 等待中的設計決定 → 流程健康。</p>
+        <p>這個檔案是自足的：沒有外部樣式、字型、圖片或網路請求，離線用 file:// 開啟結果完全相同。</p>
+      </footer>
+    </main>
+  </div>
+</div>
 </body>
 </html>
 `;
