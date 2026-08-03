@@ -299,7 +299,11 @@ code:
 ---
 ### Requirement: The overview presents projects inside an application shell
 
-The rendered overview SHALL use an application-shell layout: a left sidebar listing every project entry with a status indicator derived from its attention tone or error state and an in-page anchor to that project's card, a top bar carrying the portfolio name, generation time, and the readable and failed counts, and a main panel area laid out as a card grid, styled as a fixed dark console theme on screen with a light print stylesheet. Card content and board links SHALL keep their existing semantics. In-page anchors MUST NOT count as board links: the number of links whose target is a board file SHALL equal the number of successfully aggregated projects, and an error card's own container SHALL contain no anchor element. The page MUST NOT contain a script element, a button element, a keyframes rule, or a transition rule, and the existing self-containment scan patterns, sanitization allowlist, and label strings SHALL remain unchanged.
+The rendered overview SHALL use an application-shell layout: a left sidebar listing every project entry with a status indicator derived from its attention tone or error state and an in-page anchor to that project's card, a top bar carrying the portfolio name, generation time, and the readable and failed counts, and a main panel area laid out as a card grid, styled as a fixed dark console theme on screen with a light print stylesheet. Card content and board links SHALL keep their existing semantics. In-page anchors MUST NOT count as board links: the number of links whose target is a board file SHALL equal the number of successfully aggregated projects, and an error card's own container SHALL contain no anchor element.
+
+The page MUST NOT contain a script element, a button element, a keyframes rule, or a transition rule, and the existing self-containment scan patterns and sanitization allowlist SHALL remain unchanged.
+
+Label semantics SHALL remain unchanged; user-facing copy SHALL use designer-plain language. Each card SHALL lead with what the designer should do or know, and error cards SHALL lead with a plain-language title mapped from the stable error code by the renderer, followed by the reason, with the stable error code itself demoted to secondary text but still present verbatim. Codes without a mapping SHALL fall back to showing the reason and the code.
 
 #### Scenario: Sidebar lists every project with a status indicator
 
@@ -313,6 +317,12 @@ The rendered overview SHALL use an application-shell layout: a left sidebar list
 - **THEN** exactly one link targets a board file
 - **AND** the error card's container contains no anchor element
 
+#### Scenario: Error cards lead with plain language
+
+- **WHEN** a project fails aggregation because its root directory does not exist
+- **THEN** the error card's most prominent text is a plain-language title a designer can act on
+- **AND** the stable error code still appears verbatim as secondary text
+
 #### Scenario: The shell adds no execution or animation surface
 
 - **WHEN** the overview is rendered with the application-shell layout
@@ -320,12 +330,73 @@ The rendered overview SHALL use an application-shell layout: a left sidebar list
 - **AND** the unchanged self-containment scan accepts the output
 
 <!-- @trace
-source: restyle-boards-app-shell
+source: add-flow-motion-designer-ux
 updated: 2026-08-03
 code:
+  - pipeline-board/scripts/render-pipeline-board.mjs
+  - pipeline-board/scripts/check-pipeline-board.mjs
   - portfolio-dashboard/scripts/render-portfolio-dashboard.mjs
+  - .spectra.yaml
+  - portfolio-dashboard/scripts/check-portfolio-dashboard.mjs
+-->
+
+---
+### Requirement: The overview and the project boards share one design token block byte-for-byte
+
+The rendered overview SHALL declare the same design token block the per-project board declares, delimited by the same start and end marker comments, with identical token names and identical values. The checker SHALL extract the delimited block from one generated project board and from the overview produced in the same aggregation and SHALL assert the two extracted strings are equal, so a drift in either renderer fails the check rather than shipping two divergent themes. The token block SHALL introduce no keyframes rule, keeping the overview animation-free.
+
+#### Scenario: Both renderers emit an identical token block
+
+- **WHEN** one aggregation produces the overview and the project boards in the same output directory
+- **THEN** the token block extracted from a project board and the token block extracted from the overview are equal strings
+
+#### Scenario: The shared token block adds no animation to the overview
+
+- **WHEN** the overview renders with the shared token block
+- **THEN** the overview contains no keyframes rule
+
+
+<!-- @trace
+source: refine-board-visual-detail
+updated: 2026-08-03
+code:
+  - pipeline-board/scripts/check-pipeline-board.mjs
   - pipeline-board/scripts/render-pipeline-board.mjs
   - .spectra.yaml
-  - pipeline-board/scripts/check-pipeline-board.mjs
   - portfolio-dashboard/scripts/check-portfolio-dashboard.mjs
+  - portfolio-dashboard/scripts/render-portfolio-dashboard.mjs
+-->
+
+---
+### Requirement: Link color is neutral and card content is ranked by visual weight
+
+The overview SHALL use a neutral link color token for anchor text, distinct in value from every status tone token, so a link is never read as a healthy-status signal. Each project card SHALL rank its content by visual weight: the attention item SHALL be the heaviest element of the card, the project name SHALL sit above it as identification, and the current stage line, run lines, and board link SHALL render as progressively lighter secondary text. Attention counts SHALL render with tabular numerals. Every focusable element SHALL receive a visible focus indicator through a focus-visible rule. All existing attention labels, error titles, and error codes SHALL remain unchanged, and error cards SHALL continue to contain no anchor element.
+
+#### Scenario: A link is not mistaken for a status
+
+- **WHEN** the overview renders its anchors
+- **THEN** the global anchor rule uses the neutral link token
+- **AND** the global anchor rule does not use the healthy status tone token
+
+#### Scenario: Card content is ranked
+
+- **WHEN** a successful project card renders
+- **THEN** the attention item carries the heaviest visual weight in the card
+- **AND** the current stage line, run lines, and board link render as lighter secondary text
+
+#### Scenario: Existing labels and error card structure are preserved
+
+- **WHEN** the overview renders both successful and failed project entries
+- **THEN** every existing attention label, error title, and error code string is unchanged
+- **AND** the error card container contains no anchor element
+
+<!-- @trace
+source: refine-board-visual-detail
+updated: 2026-08-03
+code:
+  - pipeline-board/scripts/check-pipeline-board.mjs
+  - pipeline-board/scripts/render-pipeline-board.mjs
+  - .spectra.yaml
+  - portfolio-dashboard/scripts/check-portfolio-dashboard.mjs
+  - portfolio-dashboard/scripts/render-portfolio-dashboard.mjs
 -->

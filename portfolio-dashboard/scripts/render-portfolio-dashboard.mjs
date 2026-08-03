@@ -54,6 +54,17 @@ export function parseArgs(argv) {
   return options;
 }
 
+// Renderer-side plain-language titles for stable error codes. The codes and
+// the build script stay untouched; a code without a mapping falls back to the
+// reason plus the raw code, so unknown future codes degrade gracefully.
+const ERROR_TITLES = {
+  "missing-project-root": "找不到這個專案的資料夾",
+  "project-build-failed": "這個專案的流程板建置失敗",
+  "unreadable-status": "讀不到這個專案的狀態",
+  "unsupported-status-schema": "這個專案的狀態版本太新，儀表板還看不懂",
+  "project-render-failed": "這個專案的流程板畫不出來",
+};
+
 const ATTENTION_LABELS = {
   "needs-confirmation": "需要人工確認",
   "blocked-edge": "卡在未銜接的交接",
@@ -234,13 +245,17 @@ function projectTone(project) {
 
 function renderCard(project) {
   if (!project.ok) {
+    // The plain-language title is what a designer acts on; the stable code is
+    // kept verbatim as small print for whoever debugs it.
+    const title = ERROR_TITLES[project.error.code];
     return `<article class="card card-error" id="card-${escapeAttr(project.id)}">
       <header class="card-head">
         <h3>${escapeHtml(project.name || project.id)}</h3>
         ${badge("無法讀取", "stop")}
       </header>
-      <p class="error-code"><code>${escapeHtml(project.error.code)}</code></p>
+      ${title ? `<p class="error-title">${escapeHtml(title)}</p>` : ""}
       <p class="attention-line">${escapeHtml(project.error.reason)}</p>
+      <p class="fine"><code>${escapeHtml(project.error.code)}</code></p>
     </article>`;
   }
 
@@ -251,6 +266,8 @@ function renderCard(project) {
       <h3>${escapeHtml(project.name)}</h3>
       ${badge(label(ATTENTION_LABELS, attention?.kind), tone)}
     </header>
+    ${attention?.reason ? `<p class="attention-main">${escapeHtml(attention.reason)}</p>` : ""}
+    ${attentionDetail(attention)}
     <p class="stage-line">目前階段：${
       project.currentStage
         ? `${escapeHtml(project.currentStage.title)}（${escapeHtml(
@@ -258,8 +275,6 @@ function renderCard(project) {
           )}）`
         : "全部階段都已驗證"
     }</p>
-    ${attention?.reason ? `<p class="attention-line">${escapeHtml(attention.reason)}</p>` : ""}
-    ${attentionDetail(attention)}
     ${
       project.runLines.length
         ? `<ul class="runs">${project.runLines
@@ -302,6 +317,27 @@ function css() {
       --stop-soft: #2e1a17;
       --idle: #8b95a1;
       --idle-soft: #1d242d;
+      /* tokens:start */
+      --s1: 4px;
+      --s2: 8px;
+      --s3: 12px;
+      --s4: 16px;
+      --s5: 20px;
+      --s6: 28px;
+      --r1: 6px;
+      --r2: 10px;
+      --r3: 14px;
+      --rp: 999px;
+      --lift-1: inset 0 1px 0 rgb(255 255 255 / 5%);
+      --lift-2: 0 1px 2px rgb(0 0 0 / 30%), inset 0 1px 0 rgb(255 255 255 / 4%);
+      --lift-3: 0 8px 24px rgb(0 0 0 / 40%);
+      --focus: rgb(124 196 255 / 100%);
+      --link: rgb(143 201 255 / 100%);
+      --ok-edge: rgb(74 222 128 / 34%);
+      --warn-edge: rgb(240 179 95 / 34%);
+      --stop-edge: rgb(244 124 106 / 34%);
+      --idle-edge: rgb(139 149 161 / 28%);
+      /* tokens:end */
     }
     * { box-sizing: border-box; }
     body {
@@ -317,7 +353,18 @@ function css() {
       font-size: 0.92em;
       overflow-wrap: anywhere;
     }
-    a { color: var(--ok); }
+    /* A link is not a status. Using the healthy tone here made every link read
+       as a green "this project is fine" signal. */
+    a { color: var(--link); }
+    :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+    ::selection { background: rgb(124 196 255 / 30%); color: var(--text); }
+    .topbar-meta, .attention-count, .runs, .stage-line, code {
+      font-variant-numeric: tabular-nums;
+    }
+    .sidebar { scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; }
+    .sidebar::-webkit-scrollbar { width: 10px; }
+    .sidebar::-webkit-scrollbar-track { background: transparent; }
+    .sidebar::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: var(--rp); }
     .app-shell {
       display: grid;
       grid-template-columns: 248px minmax(0, 1fr);
@@ -330,7 +377,7 @@ function css() {
       overflow: auto;
       background: var(--rail);
       border-right: 1px solid var(--border);
-      padding: 18px 14px;
+      padding: var(--s5) var(--s3);
     }
     .brand {
       margin: 0 0 2px;
@@ -340,26 +387,27 @@ function css() {
       color: var(--muted);
     }
     .brand-sub { margin: 0 0 18px; font-weight: 700; font-size: 0.95rem; }
+    /* Chinese labels get Chinese typographic treatment; .brand stays Latin and
+       keeps its tracking. Same rule as the per-project board. */
     .side-label {
-      margin: 16px 0 6px;
-      font-size: 0.7rem;
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
+      margin: var(--s4) 0 var(--s2);
+      font-size: 0.75rem;
+      font-weight: 600;
       color: var(--muted);
     }
     .project-list { display: flex; flex-direction: column; gap: 2px; }
     .project-list a {
       display: flex;
       align-items: center;
-      gap: 8px;
-      padding: 6px 10px;
-      border-radius: 7px;
+      gap: var(--s2);
+      padding: var(--s2) var(--s3);
+      border-radius: var(--r1);
       color: var(--text);
       text-decoration: none;
       font-size: 0.9rem;
     }
     .project-list a:hover { background: var(--surface-subtle); }
-    .dot { width: 9px; height: 9px; border-radius: 999px; flex: none; }
+    .dot { width: 9px; height: 9px; border-radius: var(--rp); flex: none; }
     .dot-ok { background: var(--ok); }
     .dot-warn { background: var(--warn); }
     .dot-stop { background: var(--stop); }
@@ -374,39 +422,46 @@ function css() {
       display: flex;
       flex-wrap: wrap;
       align-items: baseline;
-      gap: 12px;
-      padding: 14px 22px;
-      background: var(--bg);
+      gap: var(--s3);
+      padding: var(--s3) var(--s6);
+      background: var(--surface);
       border-bottom: 1px solid var(--border);
+      box-shadow: var(--lift-3);
     }
     .topbar h1 { margin: 0; font-size: 1.05rem; }
     .topbar-meta { color: var(--muted); font-size: 0.85rem; }
-    .panels { padding: 18px 22px 56px; display: flex; flex-direction: column; gap: 18px; }
-    .notice {
-      border: 1px solid var(--border-strong);
-      border-radius: 12px;
-      background: var(--surface-subtle);
-      padding: 16px 18px;
+    .panels { padding: var(--s5) var(--s6) 56px; display: flex; flex-direction: column; gap: var(--s5); }
+    /* Same three elevation levels as the per-project board: the card grid and
+       the notice are primary panels, each project card sits inside one, and the
+       run list sinks below the card that holds it. */
+    .notice, .cards {
+      border: 1px solid var(--border);
+      border-radius: var(--r3);
+      background: var(--surface);
+      box-shadow: var(--lift-2);
+      padding: var(--s5);
     }
-    .notice h2 { margin: 0 0 8px; font-size: 0.95rem; }
-    .notice p { margin: 0 0 6px; font-size: 0.88rem; color: var(--muted); }
+    .notice { border-color: var(--border-strong); }
+    .notice h2 { margin: 0 0 var(--s2); font-size: 0.95rem; font-weight: 650; }
+    .notice p { margin: 0 0 var(--s2); font-size: 0.88rem; color: var(--muted); }
     .notice p:last-child { margin-bottom: 0; }
     .cards {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-      gap: 14px;
+      gap: var(--s4);
     }
     .card {
       border: 1px solid var(--border);
-      border-radius: 12px;
-      background: var(--surface);
-      padding: 16px 18px;
+      border-radius: var(--r2);
+      background: var(--surface-subtle);
+      box-shadow: var(--lift-1);
+      padding: var(--s4);
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      gap: var(--s2);
     }
     .card:target { border-color: var(--warn); box-shadow: 0 0 0 1px var(--warn); }
-    .card-error { border-color: var(--stop); }
+    .card-error { border-color: var(--stop-edge); box-shadow: inset 3px 0 0 var(--stop), var(--lift-1); }
     .card-head {
       display: flex;
       flex-wrap: wrap;
@@ -414,11 +469,13 @@ function css() {
       align-items: center;
       justify-content: space-between;
     }
-    .card-head h3 { margin: 0; font-size: 1rem; }
+    /* The project name identifies, the attention item is what the reader acts
+       on — so the name reads as a label above the headline, not against it. */
+    .card-head h3 { margin: 0; font-size: 0.85rem; font-weight: 600; color: var(--muted); }
     .badge {
       display: inline-block;
       padding: 2px 10px;
-      border-radius: 999px;
+      border-radius: var(--rp);
       font-size: 0.78rem;
       border: 1px solid currentColor;
     }
@@ -426,14 +483,24 @@ function css() {
     .tone-warn { color: var(--warn); background: var(--warn-soft); }
     .tone-stop { color: var(--stop); background: var(--stop-soft); }
     .tone-idle { color: var(--idle); background: var(--idle-soft); }
-    .stage-line { margin: 0; font-size: 0.9rem; }
+    .attention-main { margin: 0; font-size: 1.15rem; font-weight: 680; line-height: 1.35; }
     .attention-line { margin: 0; font-size: 0.86rem; color: var(--muted); }
-    .attention-count { font-size: 1.3rem; color: var(--text); }
-    .error-code { margin: 0; }
-    .runs { list-style: none; margin: 0; padding: 0; font-size: 0.85rem; color: var(--muted); }
+    .attention-count { font-size: 1.05rem; font-weight: 680; color: var(--text); font-variant-numeric: tabular-nums; }
+    .stage-line { margin: 0; font-size: 0.86rem; color: var(--muted); }
+    .error-title { margin: 0; font-size: 1.15rem; font-weight: 680; line-height: 1.35; color: var(--stop); }
+    .fine { margin: 0; font-size: 0.76rem; color: var(--muted); opacity: 0.85; }
+    .runs {
+      list-style: none;
+      margin: 0;
+      padding: var(--s2) var(--s3);
+      background: var(--rail);
+      border-radius: var(--r1);
+      font-size: 0.84rem;
+      color: var(--muted);
+    }
     .runs li { padding: 2px 0; }
-    .runs-empty { margin: 0; font-size: 0.85rem; color: var(--muted); }
-    .card-link { margin: 4px 0 0; font-size: 0.9rem; }
+    .runs-empty { margin: 0; font-size: 0.84rem; color: var(--muted); }
+    .card-link { margin: var(--s1) 0 0; font-size: 0.84rem; }
     footer { color: var(--muted); font-size: 0.82rem; }
     footer p { margin: 0 0 6px; }
     @media (max-width: 900px) {
@@ -462,6 +529,8 @@ function css() {
       }
       .sidebar { display: none; }
       .app-shell { display: block; }
+      /* Elevation is a screen affordance; on paper it only prints as smudges. */
+      .topbar, .notice, .cards, .card { box-shadow: none; }
       .card, .notice { break-inside: avoid; }
     }
   `;
@@ -520,9 +589,9 @@ export function renderDashboard(status) {
 
       <section class="notice">
         <h2>這是一張靜態快照</h2>
-        <p>這個頁面彙整每個專案流程板當時的狀態。它<strong>不會啟動任何自動化</strong>，沒有執行按鈕、沒有排程、也不會自己更新。</p>
-        <p>要看到新的狀態，請重新執行 <code>build-portfolio-status.mjs</code> 與 <code>render-portfolio-dashboard.mjs</code> 兩支指令。</p>
-        <p>每張卡片的連結都指向同一次彙整產生的專案流程板，整個資料夾可以直接分享。</p>
+        <p>每張卡片說的是「這個專案現在最需要什麼」，點卡片連結可以看該專案的完整流程板；整個資料夾可以直接分享。它<strong>不會啟動任何自動化</strong>，也不會自己更新。</p>
+        <p>想看最新狀態，請工程師或 AI 助手重新產生一次快照。</p>
+        <p class="fine">重新產生指令：build-portfolio-status.mjs → render-portfolio-dashboard.mjs</p>
       </section>
 
       <footer>

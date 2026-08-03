@@ -313,7 +313,11 @@ code:
 ---
 ### Requirement: The board presents the pipeline as a horizontal flow inside an application shell
 
-The rendered board SHALL use an application-shell layout: a left sidebar carrying section navigation and a state legend, a top bar carrying the project name and generation time, and a scrollable main panel area, styled as a fixed dark console theme on screen with a light print stylesheet. The main canvas SHALL present the pipeline as a horizontal flow: a source column followed by one column per stage in declaration order, with handoff edges drawn as inline SVG whose stroke color and line style distinguish the satisfied, blocked, and stale states, and with arrowheads drawn as explicit polygon geometry rather than SVG marker references. Each stage node SHALL show its title, its state, and its pending decision count when one exists, and SHALL be an in-page anchor to an always-rendered inspector panel below the flow that carries that stage's produced files, missing files, and run record, highlighted via the CSS :target selector. The page MUST NOT contain a script element, a button element, a keyframes rule, or a transition rule, and the existing self-containment scan patterns, sanitization allowlist, and state label strings SHALL remain unchanged.
+The rendered board SHALL use an application-shell layout: a left sidebar carrying section navigation and a state legend, a top bar carrying the project name and generation time, and a scrollable main panel area, styled as a fixed dark console theme on screen with a light print stylesheet. The main canvas SHALL present the pipeline as a horizontal flow: a source column followed by one column per stage in declaration order, with handoff edges drawn as inline SVG whose stroke color and line style distinguish the satisfied, blocked, and stale states, and with arrowheads drawn as explicit polygon geometry rather than SVG marker references. Each stage node SHALL show its title, its state, and its pending decision count when one exists, and SHALL be an in-page anchor to an always-rendered inspector panel below the flow that carries that stage's produced files, missing files, and run record, highlighted via the CSS :target selector.
+
+The page MUST NOT contain a script element, a button element, or a transition rule. Keyframes rules are permitted solely to animate flow direction along edge lines: satisfied edges SHALL flow forward, stale edges SHALL flow forward slowly, blocked edges SHALL stay static, and no node, badge, or execution-state element may carry any animation. A prefers-reduced-motion media rule SHALL disable all animation and fall back to a static rendering in which the three edge states remain distinguishable by color and line style.
+
+The existing self-containment scan patterns and sanitization allowlist SHALL remain unchanged. State label semantics SHALL remain unchanged; user-facing copy SHALL use designer-plain language, with technical identifiers such as error codes, command names, and file paths demoted to secondary text but still present.
 
 #### Scenario: Broken handoffs are visually distinct in the flow
 
@@ -327,19 +331,136 @@ The rendered board SHALL use an application-shell layout: a left sidebar carryin
 - **THEN** an inspector panel for that stage exists in the same document with its produced files, missing files, and run record
 - **AND** the panel gains a highlight through a :target CSS rule without any JavaScript
 
-#### Scenario: The shell adds no execution or animation surface
+#### Scenario: Motion carries direction, never execution progress
+
+- **WHEN** the board renders a satisfied edge, a stale edge, and a blocked edge
+- **THEN** the animation declarations bind only to the satisfied and stale edge classes
+- **AND** the blocked edge class and every node, badge, and execution-state element carry no animation
+
+#### Scenario: Reduced motion falls back to static
+
+- **WHEN** the reader's system requests reduced motion
+- **THEN** a prefers-reduced-motion rule disables all animation
+- **AND** the three edge states remain distinguishable by color and line style
+
+#### Scenario: The shell adds no execution surface
 
 - **WHEN** the board is rendered with the application-shell layout
-- **THEN** the output contains no script element, no button element, no keyframes rule, and no transition rule
+- **THEN** the output contains no script element, no button element, and no transition rule
 - **AND** the unchanged self-containment scan accepts the output
 
 <!-- @trace
-source: restyle-boards-app-shell
+source: add-flow-motion-designer-ux
 updated: 2026-08-03
 code:
+  - pipeline-board/scripts/render-pipeline-board.mjs
+  - pipeline-board/scripts/check-pipeline-board.mjs
   - portfolio-dashboard/scripts/render-portfolio-dashboard.mjs
+  - .spectra.yaml
+  - portfolio-dashboard/scripts/check-portfolio-dashboard.mjs
+-->
+
+---
+### Requirement: The board's visual system derives from a named token block
+
+The rendered board SHALL declare a design token block delimited by a start marker comment and an end marker comment inside its root custom-property scope, covering a spacing scale, a corner-radius scale, three elevation levels, a focus color, a link color, and a low-alpha border variant for each of the four status tones. Every spacing and corner-radius value used by the board's container styling SHALL reference a token from that block instead of an inline literal. Container styling SHALL express three distinct elevation levels — primary panels, secondary cards, and embedded blocks — using background color and box-shadow only, and the print stylesheet SHALL reset every elevation to no shadow. The token block SHALL NOT introduce any external resource, data URI, or font reference, so the unchanged self-containment scan continues to accept the output.
+
+#### Scenario: The token block is present and drives container styling
+
+- **WHEN** the board renders
+- **THEN** the output contains the delimited token block declaring the spacing scale, the radius scale, the three elevation levels, the focus color, the link color, and the four per-tone border variants
+- **AND** the primary panel, secondary card, and embedded block styles reference tokens from that block
+
+#### Scenario: Elevation never survives into print
+
+- **WHEN** the board is rendered and its print stylesheet applies
+- **THEN** every elevation is reset to no shadow
+- **AND** the light print theme and the hidden sidebar remain unchanged
+
+#### Scenario: The token block carries no external reference
+
+- **WHEN** the board renders with the token block in place
+- **THEN** the unchanged self-containment scan accepts the output
+- **AND** the output contains no url reference, data URI, or external font declaration
+
+
+<!-- @trace
+source: refine-board-visual-detail
+updated: 2026-08-03
+code:
+  - pipeline-board/scripts/check-pipeline-board.mjs
   - pipeline-board/scripts/render-pipeline-board.mjs
   - .spectra.yaml
-  - pipeline-board/scripts/check-pipeline-board.mjs
   - portfolio-dashboard/scripts/check-portfolio-dashboard.mjs
+  - portfolio-dashboard/scripts/render-portfolio-dashboard.mjs
+-->
+
+---
+### Requirement: Flow nodes carry their own state signal
+
+Each node in the flow canvas SHALL carry a per-tone class derived from the tone its badge already uses, introducing no new state derivation. That class SHALL render a status-color edge marker on the node so a reader locates a problem stage without reading its label text. Node geometry and the flow canvas coordinate constants SHALL remain unchanged. The base flow-node rule SHALL remain a standalone rule carrying no animation, and the number of animation declarations bound to the flow animation SHALL remain exactly two.
+
+#### Scenario: A problem stage is identifiable without reading text
+
+- **WHEN** a project renders with stages in differing states
+- **THEN** each flow node carries a per-tone class matching the tone of its own badge
+- **AND** the node styling renders a status-color edge marker for that tone
+
+##### Example: tone class follows badge tone
+
+| Stage condition | Badge tone | Node class suffix |
+| --------------- | ---------- | ----------------- |
+| verified | ok | ok |
+| produced but not verified | warn | warn |
+| run awaiting human confirmation | stop | stop |
+| not started | idle | idle |
+
+#### Scenario: Nodes stay motionless
+
+- **WHEN** the board renders with animated flow edges
+- **THEN** the base flow-node rule exists as a standalone rule containing no animation
+- **AND** the number of animation declarations bound to the flow animation is exactly two
+
+
+<!-- @trace
+source: refine-board-visual-detail
+updated: 2026-08-03
+code:
+  - pipeline-board/scripts/check-pipeline-board.mjs
+  - pipeline-board/scripts/render-pipeline-board.mjs
+  - .spectra.yaml
+  - portfolio-dashboard/scripts/check-portfolio-dashboard.mjs
+  - portfolio-dashboard/scripts/render-portfolio-dashboard.mjs
+-->
+
+---
+### Requirement: Keyboard focus, numerals, and label typography are explicitly styled
+
+Every focusable element in the board SHALL receive a visible focus indicator through a focus-visible rule using the focus token. Numeric text — snapshot times, pending decision counts, and run timestamps — SHALL render with tabular numerals so values do not shift horizontally between states. Labels written in Chinese SHALL NOT apply a Latin small-caps convention: their styling SHALL carry no text-transform and no widened letter spacing, and SHALL establish hierarchy through size, weight, and color instead. Scrollable regions SHALL use a thin scrollbar matching the dark theme, and the document SHALL define its own text selection colors. All existing state label strings SHALL remain unchanged.
+
+#### Scenario: Keyboard navigation is visible
+
+- **WHEN** a reader moves focus with the keyboard through the sidebar links, the flow nodes, and the in-page anchors
+- **THEN** each focused element renders a visible focus indicator derived from the focus token
+
+#### Scenario: Numbers do not shift between states
+
+- **WHEN** the board renders snapshot times, pending decision counts, and run timestamps
+- **THEN** those values render with tabular numerals
+
+#### Scenario: Chinese labels use Chinese typographic convention
+
+- **WHEN** the board renders its sidebar labels, panel headings, and field labels
+- **THEN** those rules carry no text-transform and no widened letter spacing
+- **AND** every existing state label string is unchanged
+
+<!-- @trace
+source: refine-board-visual-detail
+updated: 2026-08-03
+code:
+  - pipeline-board/scripts/check-pipeline-board.mjs
+  - pipeline-board/scripts/render-pipeline-board.mjs
+  - .spectra.yaml
+  - portfolio-dashboard/scripts/check-portfolio-dashboard.mjs
+  - portfolio-dashboard/scripts/render-portfolio-dashboard.mjs
 -->

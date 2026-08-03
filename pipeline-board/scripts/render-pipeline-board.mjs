@@ -467,6 +467,27 @@ function css() {
       --stop-soft: #2e1a17;
       --idle: #8b95a1;
       --idle-soft: #1d242d;
+      /* tokens:start */
+      --s1: 4px;
+      --s2: 8px;
+      --s3: 12px;
+      --s4: 16px;
+      --s5: 20px;
+      --s6: 28px;
+      --r1: 6px;
+      --r2: 10px;
+      --r3: 14px;
+      --rp: 999px;
+      --lift-1: inset 0 1px 0 rgb(255 255 255 / 5%);
+      --lift-2: 0 1px 2px rgb(0 0 0 / 30%), inset 0 1px 0 rgb(255 255 255 / 4%);
+      --lift-3: 0 8px 24px rgb(0 0 0 / 40%);
+      --focus: rgb(124 196 255 / 100%);
+      --link: rgb(143 201 255 / 100%);
+      --ok-edge: rgb(74 222 128 / 34%);
+      --warn-edge: rgb(240 179 95 / 34%);
+      --stop-edge: rgb(244 124 106 / 34%);
+      --idle-edge: rgb(139 149 161 / 28%);
+      /* tokens:end */
     }
     * { box-sizing: border-box; }
     body {
@@ -482,6 +503,16 @@ function css() {
       font-size: 0.92em;
       overflow-wrap: anywhere;
     }
+    a { color: var(--link); }
+    /* Keyboard use is a first-class path through this page, so it gets a
+       visible ring rather than the browser default that dark themes swallow. */
+    :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+    ::selection { background: rgb(124 196 255 / 30%); color: var(--text); }
+    /* Counts and timestamps sit in columns the reader compares, so their
+       digits share one advance width and stop shifting between snapshots. */
+    .topbar-meta, .decisions, .run-line, .path-note, .stamps, .flow-node-meta, code {
+      font-variant-numeric: tabular-nums;
+    }
     .app-shell {
       display: grid;
       grid-template-columns: 232px minmax(0, 1fr);
@@ -494,7 +525,7 @@ function css() {
       overflow: auto;
       background: var(--rail);
       border-right: 1px solid var(--border);
-      padding: 18px 14px;
+      padding: var(--s5) var(--s3);
     }
     .brand {
       margin: 0 0 2px;
@@ -504,18 +535,21 @@ function css() {
       color: var(--muted);
     }
     .brand-sub { margin: 0 0 18px; font-weight: 700; font-size: 0.95rem; }
+    /* Chinese labels get Chinese typographic treatment: no small-caps
+       transform (a no-op on Han characters) and no widened tracking (which
+       only loosens them). Hierarchy comes from size, weight, and color.
+       .brand stays Latin and keeps its tracking. */
     .side-label {
-      margin: 16px 0 6px;
-      font-size: 0.7rem;
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
+      margin: var(--s4) 0 var(--s2);
+      font-size: 0.75rem;
+      font-weight: 600;
       color: var(--muted);
     }
     .side-nav { display: flex; flex-direction: column; gap: 2px; }
     .side-nav a {
       display: block;
-      padding: 6px 10px;
-      border-radius: 7px;
+      padding: var(--s2) var(--s3);
+      border-radius: var(--r1);
       color: var(--text);
       text-decoration: none;
       font-size: 0.9rem;
@@ -523,7 +557,7 @@ function css() {
     .side-nav a:hover { background: var(--surface-subtle); }
     .legend { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
     .legend li { display: flex; align-items: center; gap: 8px; font-size: 0.82rem; color: var(--muted); }
-    .dot { width: 9px; height: 9px; border-radius: 999px; flex: none; }
+    .dot { width: 9px; height: 9px; border-radius: var(--rp); flex: none; }
     .dot-ok { background: var(--ok); }
     .dot-warn { background: var(--warn); }
     .dot-stop { background: var(--stop); }
@@ -536,34 +570,45 @@ function css() {
       display: flex;
       flex-wrap: wrap;
       align-items: baseline;
-      gap: 12px;
-      padding: 14px 22px;
-      background: var(--bg);
+      gap: var(--s3);
+      padding: var(--s3) var(--s6);
+      background: var(--surface);
       border-bottom: 1px solid var(--border);
+      box-shadow: var(--lift-3);
     }
     .topbar h1 { margin: 0; font-size: 1.05rem; }
     .topbar-meta { color: var(--muted); font-size: 0.85rem; }
-    .panels { padding: 18px 22px 56px; display: flex; flex-direction: column; gap: 18px; }
+    .panels { padding: var(--s5) var(--s6) 56px; display: flex; flex-direction: column; gap: var(--s5); }
+    /* Three elevation levels, background and box-shadow only. Primary panels
+       lift off the page, secondary cards sit inside them, embedded blocks sink
+       below them. Nothing here reaches outside the file. */
     .panel, .section, .notice {
       margin: 0;
       border: 1px solid var(--border);
-      border-radius: 12px;
+      border-radius: var(--r3);
       background: var(--surface);
-      padding: 16px 18px;
+      box-shadow: var(--lift-2);
+      padding: var(--s4) var(--s5) var(--s5);
     }
     .section h2, .panel h2 {
-      margin: 0 0 10px;
-      font-size: 0.8rem;
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
+      margin: 0 calc(var(--s5) * -1) var(--s4);
+      padding: 0 var(--s5) var(--s3);
+      font-size: 0.82rem;
+      font-weight: 650;
       color: var(--muted);
       border-bottom: 1px solid var(--border);
-      padding-bottom: 8px;
     }
-    .notice { background: var(--surface-subtle); border-color: var(--border-strong); }
-    .notice h2 { margin: 0 0 8px; font-size: 0.95rem; color: var(--text); text-transform: none; letter-spacing: 0; border: 0; padding: 0; }
-    .notice p { margin: 0 0 6px; font-size: 0.88rem; color: var(--muted); }
+    .notice { border-color: var(--border-strong); }
+    .notice h2 { margin: 0 0 var(--s2); font-size: 0.95rem; font-weight: 650; color: var(--text); border: 0; padding: 0; }
+    .notice p { margin: 0 0 var(--s2); font-size: 0.88rem; color: var(--muted); }
     .notice p:last-child { margin-bottom: 0; }
+    .sidebar, .flow-scroll { scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; }
+    .sidebar::-webkit-scrollbar, .flow-scroll::-webkit-scrollbar { width: 10px; height: 10px; }
+    .sidebar::-webkit-scrollbar-track, .flow-scroll::-webkit-scrollbar-track { background: transparent; }
+    .sidebar::-webkit-scrollbar-thumb, .flow-scroll::-webkit-scrollbar-thumb {
+      background: var(--border-strong);
+      border-radius: var(--rp);
+    }
     .flow-scroll { overflow-x: auto; }
     .flow-canvas { position: relative; }
     .flow-canvas svg { position: absolute; inset: 0; }
@@ -571,30 +616,55 @@ function css() {
       position: absolute;
       display: flex;
       flex-direction: column;
-      gap: 5px;
-      padding: 10px 12px;
-      border: 1px solid var(--border-strong);
-      border-radius: 10px;
+      gap: var(--s1);
+      padding: var(--s2) var(--s3);
+      border: 1px solid var(--border);
+      border-radius: var(--r2);
       background: var(--surface-subtle);
+      box-shadow: var(--lift-1);
       text-decoration: none;
       color: var(--text);
       overflow: hidden;
     }
     .flow-node:hover { border-color: var(--muted); }
+    /* The node carries its own state so a reader locates a problem stage by
+       color, before reading a single label. Tone comes from the same value the
+       node's badge already uses — no second state derivation exists. */
+    .flow-node-tone-ok { border-color: var(--ok-edge); box-shadow: inset 3px 0 0 var(--ok), var(--lift-1); }
+    .flow-node-tone-warn { border-color: var(--warn-edge); box-shadow: inset 3px 0 0 var(--warn), var(--lift-1); }
+    .flow-node-tone-stop { border-color: var(--stop-edge); box-shadow: inset 3px 0 0 var(--stop), var(--lift-1); }
+    .flow-node-tone-idle { border-color: var(--idle-edge); box-shadow: inset 3px 0 0 var(--idle), var(--lift-1); }
     .flow-node-title { font-weight: 650; font-size: 0.88rem; line-height: 1.3; }
+    .flow-node-title .dot { display: inline-block; width: 7px; height: 7px; vertical-align: middle; margin-right: var(--s2); }
     .flow-node-meta { font-size: 0.78rem; color: var(--muted); }
     .flow-source { background: var(--rail); }
     .flow-col-label {
       position: absolute;
-      font-size: 0.7rem;
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
+      font-size: 0.75rem;
+      font-weight: 600;
       color: var(--muted);
     }
-    .edge-line-satisfied { stroke: var(--ok); }
+    /* Motion speaks direction only: a connected handoff flows toward its
+       target, a stale one flows slowly, a broken one stands still. Nodes,
+       badges, and execution states never animate — the durable record does
+       not move while an agent works, and neither may they. */
+    @keyframes flow-dash { to { stroke-dashoffset: -30; } }
+    .edge-line-satisfied {
+      stroke: var(--ok);
+      stroke-dasharray: 9 6;
+      animation: flow-dash 1.2s linear infinite;
+    }
     .edge-line-blocked { stroke: var(--stop); stroke-dasharray: 6 5; }
-    .edge-line-stale { stroke: var(--warn); stroke-dasharray: 6 5; }
+    .edge-line-stale {
+      stroke: var(--warn);
+      stroke-dasharray: 6 5;
+      animation: flow-dash 3s linear infinite;
+    }
     .edge-line-idle { stroke: var(--border-strong); }
+    @media (prefers-reduced-motion: reduce) {
+      .edge-line-satisfied, .edge-line-stale { animation: none; }
+      .edge-line-satisfied { stroke-dasharray: none; }
+    }
     .edge-head-satisfied { fill: var(--ok); }
     .edge-head-blocked { fill: var(--stop); }
     .edge-head-stale { fill: var(--warn); }
@@ -603,8 +673,8 @@ function css() {
     .empty { margin: 8px 0 0; color: var(--muted); font-size: 0.88rem; }
     .chips { list-style: none; display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; }
     .chip {
-      padding: 3px 11px;
-      border-radius: 999px;
+      padding: 3px var(--s3);
+      border-radius: var(--rp);
       border: 1px solid var(--border-strong);
       background: var(--surface-subtle);
       font-size: 0.85rem;
@@ -612,10 +682,11 @@ function css() {
     .chip-ok { border-color: var(--ok); background: var(--ok-soft); color: var(--ok); }
     .chip-idle { color: var(--muted); }
     .stage {
-      margin-top: 12px;
+      margin-top: var(--s3);
       border: 1px solid var(--border);
-      border-radius: 10px;
+      border-radius: var(--r2);
       background: var(--surface-subtle);
+      box-shadow: var(--lift-1);
       overflow: hidden;
     }
     .stage:target { border-color: var(--warn); box-shadow: 0 0 0 1px var(--warn); }
@@ -635,7 +706,7 @@ function css() {
     .badge {
       display: inline-block;
       padding: 2px 10px;
-      border-radius: 999px;
+      border-radius: var(--rp);
       font-size: 0.78rem;
       border: 1px solid currentColor;
     }
@@ -651,26 +722,38 @@ function css() {
     }
     .label {
       display: block;
-      font-size: 0.7rem;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
+      font-size: 0.76rem;
+      font-weight: 600;
       color: var(--muted);
-      margin-bottom: 5px;
+      margin-bottom: var(--s2);
     }
-    .paths { list-style: none; margin: 0; padding: 0; }
+    /* Third level: embedded blocks sink into the card that holds them. Inside
+       the run block the surface is already sunken, so nesting stays flat. */
+    .paths {
+      list-style: none;
+      margin: 0;
+      padding: var(--s1) var(--s3);
+      background: var(--rail);
+      border-radius: var(--r1);
+    }
+    .run .paths { background: none; padding: 0; }
     .paths li {
-      padding: 4px 0;
+      padding: var(--s1) 0;
       border-bottom: 1px solid var(--border);
       display: flex;
       flex-wrap: wrap;
-      gap: 8px;
+      gap: var(--s2);
       justify-content: space-between;
       font-size: 0.85rem;
     }
     .paths li:last-child { border-bottom: none; }
     .path-note { color: var(--muted); font-size: 0.8rem; }
-    .decisions { margin: 0; font-size: 1.25rem; }
-    .run { padding: 12px 16px; border-top: 1px solid var(--border); background: var(--rail); }
+    .decisions { margin: 0; font-size: 1.5rem; font-weight: 680; line-height: 1.2; }
+    .run {
+      padding: var(--s3) var(--s4);
+      border-top: 1px solid var(--border);
+      background: var(--rail);
+    }
     .run-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 6px; }
     .run-title { font-weight: 600; font-size: 0.9rem; }
     .run-line { margin: 3px 0; font-size: 0.85rem; }
@@ -679,11 +762,12 @@ function css() {
     .stamps span { color: var(--muted); min-width: 5.5em; }
     .edges { list-style: none; margin: 0; padding: 0; }
     .edge {
-      margin-top: 10px;
-      padding: 12px 16px;
+      margin-top: var(--s2);
+      padding: var(--s3) var(--s4);
       border: 1px solid var(--border);
-      border-radius: 10px;
+      border-radius: var(--r2);
       background: var(--surface-subtle);
+      box-shadow: var(--lift-1);
     }
     .edge-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; justify-content: space-between; }
     .edge-route { font-weight: 600; font-size: 0.9rem; }
@@ -691,6 +775,7 @@ function css() {
     .edge-reason { margin: 5px 0 0; font-size: 0.85rem; color: var(--muted); }
     footer { color: var(--muted); font-size: 0.82rem; }
     footer p { margin: 0 0 6px; }
+    .fine { font-size: 0.76rem; color: var(--muted); opacity: 0.85; }
     @media (max-width: 900px) {
       .app-shell { display: block; }
       .sidebar { position: relative; height: auto; border-right: 0; border-bottom: 1px solid var(--border); }
@@ -717,7 +802,12 @@ function css() {
       }
       .sidebar { display: none; }
       .app-shell { display: block; }
+      /* Elevation is a screen affordance. On paper it would only print as grey
+         smudges, so every level flattens. */
+      .topbar, .panel, .section, .notice, .stage, .edge, .flow-node { box-shadow: none; }
       .stage, .edge, .notice, .panel { break-inside: avoid; }
+      .edge-line-satisfied, .edge-line-stale { animation: none; }
+      .edge-line-satisfied { stroke-dasharray: none; }
     }
   `;
 }
@@ -798,8 +888,8 @@ export function renderFlow(status) {
 
   sourceNodes.forEach((node, row) => {
     nodeParts.push(
-      `<a class="flow-node flow-source" href="#sources" style="left:${colX(0)}px;top:${sourceY(row)}px;width:${FLOW.nodeW}px;height:${FLOW.nodeH}px">
-        <span class="flow-node-title">${escapeHtml(node.title)}</span>
+      `<a class="flow-node flow-source flow-node-tone-${escapeAttr(node.tone)}" href="#sources" style="left:${colX(0)}px;top:${sourceY(row)}px;width:${FLOW.nodeW}px;height:${FLOW.nodeH}px">
+        <span class="flow-node-title"><span class="dot dot-${escapeAttr(node.tone)}"></span>${escapeHtml(node.title)}</span>
         <span class="flow-node-meta">${node.meta.map(escapeHtml).join("・")}</span>
       </a>`,
     );
@@ -819,8 +909,8 @@ export function renderFlow(status) {
     const x = colX(index + 1);
     const stageTone = flowStageTone(stage);
     nodeParts.push(
-      `<a class="flow-node flow-stage" id="flow-stage-${escapeAttr(stage.id)}" href="#stage-${escapeAttr(stage.id)}" style="left:${x}px;top:${stageY}px;width:${FLOW.nodeW}px;height:${FLOW.nodeH}px">
-        <span class="flow-node-title">${escapeHtml(stage.title)}</span>
+      `<a class="flow-node flow-stage flow-node-tone-${escapeAttr(stageTone)}" id="flow-stage-${escapeAttr(stage.id)}" href="#stage-${escapeAttr(stage.id)}" style="left:${x}px;top:${stageY}px;width:${FLOW.nodeW}px;height:${FLOW.nodeH}px">
+        <span class="flow-node-title"><span class="dot dot-${escapeAttr(stageTone)}"></span>${escapeHtml(stage.title)}</span>
         <span class="flow-node-meta"><span class="badge tone-${escapeAttr(stageTone)}">${escapeHtml(
           flowStageMeta(stage)[0],
         )}</span></span>
@@ -919,9 +1009,9 @@ export function renderBoard(status) {
 
       <section class="notice">
         <h2>這份看板是唯讀的</h2>
-        <p>這個頁面只會呈現硬碟上已經存在的證據。它<strong>不會啟動任何自動化</strong>，沒有執行按鈕、沒有排程、也沒有觸發器。</p>
-        <p>所有自動化都由人在自己的終端機裡執行。看板不會代替任何人按下開始。</p>
-        <p>畫面上的狀態不會自己更新。重新整理這一頁不會取得新資料；要看到新的狀態，需要重新產生 <code>status.json</code> 並重新輸出這個檔案。</p>
+        <p>看板只呈現硬碟上已經存在的證據，<strong>不會啟動任何自動化</strong>；連線的流動代表這條路是通的，不代表有東西正在執行。</p>
+        <p>畫面不會自己更新。想看最新狀態，請工程師或 AI 助手重新產生一次快照。</p>
+        <p class="fine">重新產生指令：build-pipeline-status.mjs → render-pipeline-board.mjs</p>
       </section>
 
       <footer>

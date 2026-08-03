@@ -130,6 +130,21 @@ function edgeStates(status) {
   return status.edges.map((edge) => edge.state);
 }
 
+// A node's tone must be the same value its own badge already uses. If these
+// ever diverge the flow would color a stage one way and label it another, which
+// is exactly the kind of quiet disagreement this board exists to prevent.
+function assertNodeToneMatchesBadge(html) {
+  const nodes = html.match(/<a class="flow-node flow-stage flow-node-tone-[a-z]+"[\s\S]*?<\/a>/g) ?? [];
+  assert.ok(nodes.length, "the flow must render at least one stage node");
+  for (const node of nodes) {
+    const nodeTone = node.match(/flow-node-tone-([a-z]+)/)[1];
+    const badgeTone = node.match(/badge tone-([a-z]+)/)[1];
+    const dotTone = node.match(/dot dot-([a-z]+)/)[1];
+    assert.equal(badgeTone, nodeTone, "node tone must match its badge tone");
+    assert.equal(dotTone, nodeTone, "node dot must match its badge tone");
+  }
+}
+
 function stderrCode(result) {
   try {
     return JSON.parse(result.stderr).code;
@@ -171,6 +186,46 @@ try {
     assert.ok(html.includes('class="app-shell"'), "board must render inside the application shell");
     assert.ok(html.includes("flow-canvas") && html.includes("<svg"), "board must render the flow canvas");
     assert.ok(html.includes("edge-line-blocked"), "blocked handoffs must carry their state class in the flow");
+    // Motion speaks direction only: the flow animation exists, binds solely to
+    // the satisfied and stale edge classes, never to blocked edges or nodes,
+    // and reduced-motion readers get a fully static fallback.
+    assert.ok(html.includes("@keyframes flow-dash"), "the flow animation rule must exist");
+    assert.ok(html.includes("prefers-reduced-motion"), "the reduced-motion fallback must exist");
+    assert.ok(html.match(/\.edge-line-satisfied \{[^}]*\}/)[0].includes("flow-dash"), "satisfied edges must flow");
+    assert.ok(html.match(/\.edge-line-stale \{[^}]*\}/)[0].includes("flow-dash"), "stale edges must flow slowly");
+    assert.ok(!html.match(/\.edge-line-blocked \{[^}]*\}/)[0].includes("animation"), "blocked edges must stay static");
+    assert.ok(!html.match(/\.flow-node \{[^}]*\}/)[0].includes("animation"), "nodes must never animate");
+    const animationDeclarations = html.match(/animation:[^;]+;/g) ?? [];
+    assert.equal(
+      animationDeclarations.filter((decl) => decl.includes("flow-dash")).length,
+      2,
+      "flow-dash binds exactly the satisfied and stale edge rules",
+    );
+    // The visual system is token-driven, so the delimited block must ship and
+    // must carry every scale the container styling depends on.
+    const tokenBlock = html.match(/\/\* tokens:start \*\/[\s\S]*?\/\* tokens:end \*\//);
+    assert.ok(tokenBlock, "the design token block must be present");
+    for (const token of ["--s1:", "--s6:", "--r1:", "--r3:", "--rp:", "--lift-1:", "--lift-2:", "--lift-3:", "--focus:", "--link:", "--ok-edge:", "--warn-edge:", "--stop-edge:", "--idle-edge:"]) {
+      assert.ok(tokenBlock[0].includes(token), `the token block must declare ${token}`);
+    }
+    assert.ok(html.includes("tabular-nums"), "counts and timestamps must use tabular numerals");
+    assert.ok(html.includes(":focus-visible"), "keyboard focus must be visible");
+    // Chinese labels must not carry the Latin small-caps convention: uppercase
+    // is a no-op on Han characters and widened tracking only loosens them.
+    for (const selector of [/\.side-label \{[^}]*\}/, /\.label \{[^}]*\}/, /\.flow-col-label \{[^}]*\}/]) {
+      const rule = html.match(selector)[0];
+      assert.ok(!rule.includes("text-transform"), `${selector} must not uppercase Chinese labels`);
+      assert.ok(!rule.includes("letter-spacing"), `${selector} must not widen Chinese tracking`);
+    }
+    assert.ok(
+      html.match(/\.brand \{[^}]*\}/)[0].includes("text-transform: uppercase"),
+      "the Latin brand line keeps its own treatment",
+    );
+    assert.ok(
+      /class="flow-node flow-stage flow-node-tone-(ok|warn|stop|idle)"/.test(html),
+      "every stage node must carry its own state tone class",
+    );
+    assertNodeToneMatchesBadge(html);
   });
 
   record("僅有來源", () => {
@@ -233,6 +288,7 @@ try {
     assert.ok(html.includes("已驗證"), "board must show verified stages");
     assert.ok(html.includes("已銜接"), "board must show satisfied handoffs");
     assert.ok(html.includes("edge-line-satisfied"), "satisfied handoffs must carry their state class in the flow");
+    assertNodeToneMatchesBadge(html);
   });
 
   record("上游較新造成過期", () => {
@@ -331,6 +387,11 @@ try {
     const html = renderBoard(root);
     assert.ok(html.includes("可能已停止"), "board must ask for human confirmation");
     assert.ok(html.includes("未執行 2 項"), "board must report checks that never ran");
+    assert.ok(
+      html.includes('class="flow-node flow-stage flow-node-tone-stop"'),
+      "a run past its timeout must tone its node stop, not its stage state",
+    );
+    assertNodeToneMatchesBadge(html);
   });
 
   process.stdout.write(`${JSON.stringify({ ok: true, checks }, null, 2)}\n`);

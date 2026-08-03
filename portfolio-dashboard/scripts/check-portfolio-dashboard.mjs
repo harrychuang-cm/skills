@@ -204,6 +204,47 @@ try {
     assert.ok(overview.includes(`href="${entry.boardFile}"`), "card must link to the board by relative name");
     assert.ok(overview.includes('class="app-shell"'), "overview must render inside the application shell");
     assert.ok(overview.includes('class="project-list"'), "the sidebar must list the tracked projects");
+    assert.ok(!overview.includes("@keyframes"), "the overview has no flow edges and must stay animation-free");
+    // The two surfaces are one product, so they must ship one token block. Both
+    // sides of this comparison are files this aggregation just wrote, so a drift
+    // in either renderer fails here instead of shipping two divergent themes.
+    const tokens = (html, what) => {
+      const found = html.match(/\/\* tokens:start \*\/[\s\S]*?\/\* tokens:end \*\//);
+      assert.ok(found, `${what} must carry the design token block`);
+      return found[0];
+    };
+    const boardHtml = fs.readFileSync(path.join(outDir, entry.boardFile), "utf8");
+    assert.equal(
+      tokens(overview, "the overview"),
+      tokens(boardHtml, "the project board"),
+      "the overview and the project boards must share one token block byte-for-byte",
+    );
+    assert.ok(overview.includes(":focus-visible"), "keyboard focus must be visible");
+    assert.ok(overview.includes("tabular-nums"), "attention counts and timestamps must use tabular numerals");
+    // A link is not a status: reusing the healthy tone made every link read as
+    // a green "this project is fine" signal.
+    const anchorRule = overview.match(/\n {4}a \{[^}]*\}/);
+    assert.ok(anchorRule, "the overview must set its own anchor color");
+    assert.ok(anchorRule[0].includes("var(--link)"), "anchors must use the neutral link token");
+    assert.ok(!anchorRule[0].includes("var(--ok)"), "anchors must not reuse the healthy status tone");
+    const sideLabel = overview.match(/\.side-label \{[^}]*\}/)[0];
+    assert.ok(!sideLabel.includes("text-transform"), "Chinese sidebar labels must not be uppercased");
+    assert.ok(!sideLabel.includes("letter-spacing"), "Chinese sidebar labels must not be tracked out");
+    // The card is read attention-first: the item the designer acts on outweighs
+    // the name that identifies it, and everything below it steps down.
+    const fontSize = (selector) => {
+      const rule = overview.match(new RegExp(`${selector} \\{[^}]*\\}`))[0];
+      const size = rule.match(/font-size: ([\d.]+)rem/);
+      assert.ok(size, `${selector} must declare a font size to rank against`);
+      return Number(size[1]);
+    };
+    const attention = fontSize("\\.attention-main");
+    assert.ok(attention > fontSize("\\.card-head h3"), "the attention item must outweigh the project name");
+    const secondary = ["\\.stage-line", "\\.runs", "\\.card-link"].map(fontSize);
+    assert.ok(
+      secondary.every((size, index) => size <= attention && (index === 0 || size <= secondary[index - 1])),
+      "stage line, run lines, and board link must step down from the attention item",
+    );
   });
 
   record("未成立連線", () => {
@@ -240,6 +281,10 @@ try {
     assert.equal(entry.error.code, "missing-project-root");
     assert.ok(!fs.existsSync(path.join(outDir, "ghost.html")), "a failed project must not get a board file");
     assert.ok(overview.includes("missing-project-root"), "the error card must show its stable code");
+    assert.ok(
+      overview.includes("找不到這個專案的資料夾"),
+      "the error card must lead with a plain-language title a designer can act on",
+    );
     // Four ok cards → exactly four board-file links. Sidebar entries are
     // in-page anchors (# targets), which are navigation, not board links, so
     // the accounting counts .html hrefs and inspects the error card container.
