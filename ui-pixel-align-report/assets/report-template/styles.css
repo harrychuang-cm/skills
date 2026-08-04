@@ -289,6 +289,21 @@ h3 {
   color: var(--muted);
 }
 
+.badge.drift {
+  background: var(--high-soft);
+  color: var(--high);
+}
+
+.badge.required-adaptation {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.badge.adaptation {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+
 .finding-body {
   display: grid;
   gap: 18px;

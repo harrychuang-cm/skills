@@ -33,35 +33,51 @@ Use this before implementation when the design system needs to be documented and
 
 ### `ui-compare-to-reference`
 
-Compare an implemented UI against one or more reference screenshots, then apply focused visual fixes. This skill is project-agnostic: it discovers the target repo's screenshots, routes, components, Storybook stories, styling system, and design tokens before editing.
+Compare an implemented UI against a reference, then apply the visual fixes. The reference can be a Figma frame, a design export or screenshot, or **another platform's source code** — a web implementation used as the truth for an app, or an app implementation used as the truth for web. Project-agnostic: it discovers the target repo's references, routes, components, Storybook stories, styling system, and design tokens before editing.
 
 Supported target examples:
 
 ```text
-screen-2.png
+reports/design-pixel-align/wallet/findings.json
+https://www.figma.com/design/...?node-id=1-234 src/screens/WalletHome.tsx
+apps/web/src/pages/Wallet.tsx apps/mobile/src/screens/WalletHome.tsx
 screen-2.png http://localhost:3000/dashboard
-screen-2.png /dashboard
 screen-2.png src/pages/Dashboard.tsx
 http://localhost:3000/dashboard
-src/pages/Dashboard.tsx
 Dashboard.stories.tsx
 ```
 
-Use this when you need visual parity checks, layout drift fixes, token alignment, or screenshot-to-implementation comparison.
+Fixes are layered — token/theme, then shared primitive, then composition, then page-only — and classified before they are applied, so genuine platform adaptations (font substitution, touch-target minimums, safe areas, density across form factors) are not "fixed" into bugs. `references/apply-to-platform.md` covers how to express each correction idiomatically in web, React Native, Flutter, SwiftUI, and Compose.
+
+Use this when an app or web UI does not match its design, when porting a screen between web and native, or when repairing layout and token drift.
 
 ### `ui-pixel-align-report`
 
-Generate a design pixel alignment audit between an original design reference and an implemented UI. The skill captures or organizes full screenshots, per-issue crops, measured visual drift, ownership classification, and recommended fixes into a static HTML + CSS report.
+Audit an implemented UI against a design or code reference and produce a screenshot-backed pixel alignment report. Same six comparison directions as `ui-compare-to-reference`; this skill produces evidence rather than edits, and its `findings.json` is the handoff into the fix skill.
+
+Rather than eyeballing two surfaces, it extracts **both** sides into a platform-neutral UI Spec and diffs the specs:
+
+```text
+reference ──┐
+            ├─► UI Spec ──► parity-aware diff ──► candidates ──► review ──► findings.json ──► HTML report
+implement ──┘
+```
+
+1. Extract the reference — Figma MCP first for exact values and variable names, image measurement only as a fallback (recorded as `estimated` fidelity).
+2. Extract the implementation, preferring a measured rendered surface over source reading.
+3. Diff with `scripts/diff_spec.mjs`, which matches nodes, compares with unit-aware tolerances, and applies `assets/parity-policy.json` to classify each difference as drift, accepted adaptation, required adaptation, or ignored.
+4. Review the candidates, add per-finding crops, and render with `scripts/generate_report.mjs`.
 
 Expected report inputs include:
 
 ```text
-reference/dashboard.png http://localhost:3000/dashboard
-https://www.figma.com/design/...node-id=1-2 http://localhost:3000/dashboard
-figma-frame.png Dashboard.stories.tsx
+https://www.figma.com/design/...?node-id=1-2 http://localhost:3000/dashboard
+https://www.figma.com/design/...?node-id=1-2 src/screens/WalletHome.tsx
+apps/web/src/pages/Wallet.tsx apps/mobile/src/screens/WalletHome.tsx
+reference/dashboard.png Dashboard.stories.tsx
 ```
 
-Use this when you need reviewable evidence, design QA documentation, screenshot-backed incorrect style findings, or a handoff artifact before applying visual fixes.
+Use this when you need reviewable evidence, design QA documentation, cross-platform parity audits, or a handoff artifact before applying visual fixes.
 
 ### `ui-screenshot-to-storybook-product`
 

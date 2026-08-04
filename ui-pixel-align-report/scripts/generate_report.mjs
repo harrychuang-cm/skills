@@ -99,6 +99,7 @@ function normalizeReport(data, titleOverride) {
     title,
     summary: data.summary || "",
     source,
+    parity: data.parity || null,
     screenshots: normalizeImageSet(data.screenshots || {}),
     findings: sortFindings(findings),
     generatedAt: data.generatedAt || new Date().toISOString(),
@@ -110,6 +111,9 @@ function normalizeFinding(finding, index) {
   return {
     id,
     severity: normalizeSeverity(finding.severity),
+    intent: normalizeIntent(finding.intent),
+    parityClass: finding.parityClass || "",
+    specField: finding.specField || "",
     block: finding.block || finding.title || "Unspecified block",
     ownership: finding.ownership || "unclassified",
     status: finding.status || "open",
@@ -124,6 +128,14 @@ function normalizeFinding(finding, index) {
     notes: normalizeList(finding.notes),
     assets: normalizeImageSet(finding.assets || {}),
   };
+}
+
+function normalizeIntent(value) {
+  const intent = String(value || "drift").toLowerCase();
+  if (intent === "drift" || intent === "adaptation" || intent === "required-adaptation") {
+    return intent;
+  }
+  return "drift";
 }
 
 function normalizeSeverity(value) {
@@ -255,6 +267,16 @@ function renderHtml(report) {
           ${renderStat(stats.medium, "Medium severity")}
           ${renderStat(stats.low, "Low severity")}
         </div>
+        ${
+          stats.adaptation || stats["required-adaptation"]
+            ? `<div class="stats">
+          ${renderStat(stats.drift, "Drift to fix")}
+          ${renderStat(stats["required-adaptation"], "Required adaptations")}
+          ${renderStat(stats.adaptation, "Accepted adaptations")}
+        </div>`
+            : ""
+        }
+        ${renderParity(report.parity)}
       </section>
 
       <section class="section" aria-labelledby="screenshots-heading">
@@ -293,22 +315,60 @@ function countFindings(findings) {
     (stats, finding) => {
       stats.total += 1;
       stats[finding.severity] += 1;
+      stats[finding.intent] += 1;
       return stats;
     },
-    { total: 0, high: 0, medium: 0, low: 0 },
+    { total: 0, high: 0, medium: 0, low: 0, drift: 0, adaptation: 0, "required-adaptation": 0 },
   );
+}
+
+function renderParity(parity) {
+  if (!parity) return "";
+  const rows = [
+    [
+      "Form factor",
+      parity.formFactor === "cross"
+        ? "Cross form factor — spacing and sizing compared as adaptive"
+        : "Same form factor — spacing and sizing compared strictly",
+    ],
+    [
+      "Rendering engines",
+      parity.engines === "cross"
+        ? "Cross engine — shadow strings not compared, elevation is"
+        : "Same engine — shadows compared directly",
+    ],
+    ["Reference fidelity", parity.referenceFidelity || "unknown"],
+    ["Implementation fidelity", parity.implementationFidelity || "unknown"],
+    ["Parity policy", parity.policy || "default"],
+  ].filter(([, value]) => value);
+
+  return `<div class="meta-grid">${rows
+    .map(([label, value]) => renderMetaCard(label, value))
+    .join("")}</div>`;
 }
 
 function renderSourceMeta(source, generatedAt) {
   const rows = [
-    ["Design", source.designName || source.designUrl || "Not specified", source.designUrl],
+    [
+      "Design",
+      joinPlatform(source.designName || source.designUrl || source.designSource, source.designPlatform),
+      source.designUrl,
+    ],
     [
       "Implementation",
-      source.implementationName || source.implementationUrl || source.route || "Not specified",
+      joinPlatform(
+        source.implementationName || source.implementationUrl || source.implementationSource || source.route,
+        source.implementationPlatform,
+      ),
       source.implementationUrl,
     ],
     ["Route / Story", source.route || source.story || source.file || "Not specified"],
-    ["Viewport", source.viewport || "Not specified"],
+    [
+      "Viewport",
+      source.referenceViewport && source.referenceViewport !== source.viewport
+        ? `${source.viewport || "?"} (reference ${source.referenceViewport})`
+        : source.viewport || "Not specified",
+    ],
     ["Theme", source.theme || "Not specified"],
     ["Captured", source.capturedAt || generatedAt],
   ];
@@ -316,6 +376,11 @@ function renderSourceMeta(source, generatedAt) {
   return `<div class="meta-grid">${rows
     .map(([label, value, href]) => renderMetaCard(label, value, href))
     .join("")}</div>`;
+}
+
+function joinPlatform(value, platform) {
+  const base = value || "Not specified";
+  return platform ? `${base} · ${platform}` : base;
 }
 
 function renderMetaCard(label, value, href = "") {
@@ -341,8 +406,10 @@ function renderFinding(finding) {
       </div>
       <div class="badges">
         ${renderBadge(finding.severity, finding.severity)}
+        ${renderBadge(intentLabel(finding.intent), finding.intent)}
         ${renderBadge(finding.status, finding.status)}
         ${renderBadge(finding.ownership, "neutral")}
+        ${finding.specField ? renderBadge(finding.specField, "neutral") : ""}
       </div>
     </header>
     <div class="finding-body">
@@ -363,6 +430,12 @@ function renderFinding(finding) {
       ${renderDetail("Notes", finding.notes)}
     </div>
   </article>`;
+}
+
+function intentLabel(intent) {
+  if (intent === "adaptation") return "accepted adaptation";
+  if (intent === "required-adaptation") return "must adapt";
+  return "drift";
 }
 
 function renderBadge(label, tone) {

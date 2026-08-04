@@ -1,72 +1,149 @@
 ---
 name: ui-pixel-align-report
 description: >-
-  Generate a design pixel alignment audit between an original design reference
-  and an implemented UI, with per-issue screenshot evidence and a static HTML
-  plus CSS report. Use when the user asks for design-to-implementation visual
-  QA, pixel align documentation, Figma or screenshot comparison reports,
-  captured incorrect styles, visual drift evidence, or handoff documentation
-  before or alongside UI fixes.
+  Audit an implemented UI against a design or code reference and produce a
+  screenshot-backed pixel alignment report. The reference can be a Figma file or
+  frame, a design export or screenshot, or another platform's source code — a web
+  implementation used as the truth for an app, or an app implementation used as
+  the truth for web. Use for design-to-implementation visual QA, cross-platform
+  parity audits, Figma comparison reports, captured incorrect styles, visual
+  drift evidence, or handoff documentation before or alongside UI fixes.
 ---
 
 # UI Pixel Align Report
 
-Use this skill to compare an original design reference with an implemented UI and produce a durable design pixel alignment report. The primary output is evidence: full screenshots, focused issue crops, measured visual drift, ownership classification, and recommended fixes.
+Compare a reference UI with an implemented UI and produce durable evidence: full screenshots, focused issue crops, measured drift, ownership classification, and recommended fixes.
 
-This skill documents visual drift first. Do not edit implementation code unless the user explicitly asks to apply fixes after or during the audit. If the task is only to fix a screen without a report, use `ui-compare-to-reference` instead.
+This skill **documents** drift. It does not edit implementation code unless the user explicitly asks for fixes as well. To fix a screen, use `ui-compare-to-reference` — it reads the `findings.json` this skill produces.
+
+## What this skill compares
+
+The reference and the implementation may be on different platforms. All six combinations are supported:
+
+| Reference | Implementation | Typical ask |
+|---|---|---|
+| Figma frame | web | "設計稿跟網頁對不上" |
+| Figma frame | app (RN / Flutter / iOS / Android) | "App 跟設計稿差很多" |
+| Web source or live URL | app | "照著網頁版把 App 修對" |
+| App source or running app | web | "Web 版要跟 App 一致" |
+| Screenshot / export | web or app | no Figma access |
+| App on one OS | app on the other OS | iOS ↔ Android parity |
+
+## Method
+
+Never eyeball one surface against the other. Extract **both** sides into the platform-neutral UI Spec, then diff the specs. Screenshots are evidence for the report, not the measurement instrument.
+
+```
+reference ──┐
+            ├─► UI Spec ──► parity-aware diff ──► candidate findings ──► review ──► findings.json ──► HTML report
+implement ──┘
+```
 
 ## Inputs
 
-Accept any combination of:
+- **Reference:** Figma URL or node URL, Figma selection, design export, screenshot, image folder, another repo's source path, a running URL for the reference implementation, or a named frame.
+- **Implementation:** live URL, route, Storybook URL, story file, page file, component file, simulator/device screenshot, or an inferred target.
+- **Capture context:** viewport, device scale factor, theme, locale, branch, environment, auth state, test data state.
+- **Report destination:** default `reports/design-pixel-align/<screen-or-component>/`.
 
-- **Design reference:** Figma URL, Figma node URL, design export, screenshot, image folder, or named design frame.
-- **Implementation target:** live URL, route, Storybook URL, story file, page file, component file, or an inferred target.
-- **Capture context:** viewport, device scale factor, theme, locale, branch, environment, auth state, or test data state.
-- **Report destination:** default to `reports/design-pixel-align/<screen-or-component>/`.
-
-Treat an explicit design reference plus implementation target as authoritative. Do not replace it with auto-discovery unless one side cannot be loaded.
+An explicit reference + implementation pair is authoritative. Do not replace it with auto-discovery unless one side cannot be loaded.
 
 ## Workflow
 
-1. Resolve the design source, implementation target, viewport, density, theme, and state to compare.
-2. Discover the target project's styling system, tokens, shared components, routes, Storybook stories, and design guidance.
-3. Capture or collect a full reference image and a full implementation image at the same viewport and state whenever possible.
-4. Inspect the two surfaces and identify visual drift one finding at a time. Focus on incorrect styles: spacing, layout, typography, color, radius, border, shadow, elevation, iconography, imagery, responsive behavior, and visible interaction states.
-5. For each finding, create focused evidence crops for the reference and implementation. Add a diff or overlay crop when practical.
-6. Classify ownership before recommending a fix: `token/theme`, `primitive/shared component`, `component variant/props`, `composition`, or `page-only`.
-7. Write a `findings.json` file and generate the static report with `scripts/generate_report.mjs`.
-8. Open or inspect the generated `index.html` and verify that links, images, metadata, and finding details render correctly.
+1. **Resolve the comparison.** Identify both platforms, both viewports, theme, density, locale, and state. State the pair explicitly before doing anything else — "Figma 390×844 → React Native 390×844, light, en" — because the parity rules depend on it.
+
+2. **Extract the reference UI Spec** into `spec/reference.json`.
+   - Figma → `references/extract-figma.md`. Use the Figma MCP tools first; fall back to image measurement only when MCP is unavailable, and record `fidelity: "estimated"`.
+   - Reference source code or a running reference app → `references/extract-code.md`.
+   - Schema and unit normalization → `references/ui-spec.md`.
+
+3. **Extract the implementation UI Spec** into `spec/implementation.json` using the same reference docs. Render and measure whenever the surface can actually run; read source only when it cannot.
+
+4. **Capture full-surface images** for both sides at the same viewport, theme, and state. These become `screenshots.reference` and `screenshots.implementation`.
+
+5. **Diff the specs.**
+
+   ```sh
+   node <skill-root>/scripts/diff_spec.mjs \
+     --reference reports/design-pixel-align/wallet/spec/reference.json \
+     --implementation reports/design-pixel-align/wallet/spec/implementation.json \
+     --output reports/design-pixel-align/wallet/findings.candidates.json
+   ```
+
+   The script matches nodes, compares fields with unit-aware tolerances, applies `assets/parity-policy.json`, and proposes severity. Pass `--policy` to use a project-specific policy.
+
+6. **Review every candidate.** The script handles arithmetic; you handle judgement. For each candidate decide:
+   - Is it real, or an artifact of a bad node match or a wrong capture scale?
+   - Is it drift, a sanctioned platform adaptation, or an adaptation the implementation failed to make?
+   - Who owns it: `token/theme`, `primitive/shared component`, `component variant/props`, `composition`, or `page-only`?
+   - Which files and tokens does the fix touch?
+
+   Delete false positives. Record how many candidates were reviewed and how many were dropped.
+
+7. **Add per-finding evidence.** Crop the reference and the implementation for each surviving finding. Add a diff or overlay crop when practical.
+
+8. **Write `findings.json`** and generate the report:
+
+   ```sh
+   node <skill-root>/scripts/generate_report.mjs \
+     --input reports/design-pixel-align/wallet/findings.json \
+     --output reports/design-pixel-align/wallet
+   ```
+
+9. **Verify the output.** Open `index.html` and check that images resolve, links work, and the platform pair, viewports, fidelity, and parity mode are visible.
+
+## Parity Rules
+
+Cross-platform comparison fails when every difference is treated as a defect. `references/parity-policy.md` is the full rule set; the short version:
+
+- **`drift`** — must match, does not. This is the fixable set.
+- **`adaptation`** — a difference the platform or form factor justifies (font substitution, cross-form-factor density). Report at `low`, never as a defect.
+- **`required-adaptation`** — the implementation copied the reference where it should have diverged: a 32pt button on iOS that needs 44pt, content ignoring safe-area insets, fixed-height text containers that clip under Dynamic Type.
+- **`ignored`** — OS chrome, scrollbars, hover states on touch targets, absolute positions.
+
+The single most important input is the **form factor relationship**. Same viewport class → spacing and typography compare strictly. Desktop reference vs phone target → compare ratio and hierarchy, not absolute pixels. The diff script decides this from the two viewports; state which mode applied in the report summary.
 
 ## Finding Rules
 
-- Record one visual problem per finding. Split unrelated problems even when they appear in the same UI block.
-- Preserve original design links. For Figma, include the frame or node URL in `source.designUrl` and per-finding `designReference` when available.
-- Use concrete deltas when possible: `+8px top padding`, `font 16px expected vs 14px actual`, `radius 12px expected vs 8px actual`, `color expected #111827 vs #1f2937`.
-- Prefer token names over raw values when the target project has tokens.
-- Keep recommended fixes implementation-aware: cite likely files, components, props, variants, or tokens.
-- Mark severity by user impact:
-  - `high`: visible layout break, wrong hierarchy, clipped/overlapping content, or brand-critical mismatch.
-  - `medium`: noticeable spacing, typography, color, or component-state drift.
-  - `low`: small polish issue that does not change comprehension or task flow.
+- One visual problem per finding. Split unrelated problems even in the same block.
+- Preserve source links. For Figma, put the frame or node URL in `source.designUrl` and per-finding `designReference`.
+- Use concrete deltas: `padding top -8px (expected 24, actual 16)`, `radius 12px expected vs 8px actual`, `color expected #6b7280 vs #9ca3af`.
+- Prefer token names over raw values when the project has tokens.
+- Keep fixes implementation-aware: cite files, components, props, variants, tokens.
+- Severity by user impact:
+  - `high` — layout break, wrong hierarchy, clipped or overlapping content, wrong copy, brand-critical mismatch, or a missed required adaptation.
+  - `medium` — noticeable spacing, typography, color, or component-state drift.
+  - `low` — polish that does not change comprehension, and all accepted adaptations.
+- Do not file sub-2px findings from an `estimated` spec. Image measurement does not support that precision.
 - If no drift is found, still generate a report with full screenshots, comparison metadata, and an empty findings list.
 
 ## Findings JSON
 
-Create a JSON file using this shape. Paths may be absolute or relative to the JSON file.
+`diff_spec.mjs` emits this shape already; edit its output rather than writing from scratch. Paths may be absolute or relative to the JSON file.
 
-```json
+```jsonc
 {
-  "title": "Dashboard Design Pixel Align",
-  "summary": "Reference Figma frame compared with localhost dashboard at 1440x900 light theme.",
+  "title": "Wallet Home — Figma vs React Native parity",
+  "summary": "Figma 390x844 reference compared with the React Native screen at the same form factor.",
   "source": {
-    "designName": "Dashboard / Desktop",
-    "designUrl": "https://www.figma.com/design/file?node-id=1-2",
-    "implementationName": "Dashboard route",
-    "implementationUrl": "http://localhost:3000/dashboard",
-    "route": "/dashboard",
-    "viewport": "1440x900",
+    "designName": "Wallet / Home",
+    "designUrl": "https://www.figma.com/design/file?node-id=1-234",
+    "designPlatform": "figma",
+    "implementationName": "WalletHome screen",
+    "implementationUrl": "",
+    "implementationSource": "src/screens/WalletHome.tsx",
+    "implementationPlatform": "react-native",
+    "viewport": "390x844",
+    "referenceViewport": "390x844",
     "theme": "light",
-    "capturedAt": "2026-06-17T10:00:00Z"
+    "capturedAt": "2026-08-04T02:00:00Z"
+  },
+  "parity": {
+    "policy": "assets/parity-policy.json",
+    "formFactor": "same",
+    "engines": "cross",
+    "referenceFidelity": "measured",
+    "implementationFidelity": "measured"
   },
   "screenshots": {
     "reference": "captures/reference-full.png",
@@ -76,18 +153,21 @@ Create a JSON file using this shape. Paths may be absolute or relative to the JS
   "findings": [
     {
       "id": "PA-001",
-      "severity": "high",
-      "block": "Portfolio summary card",
+      "severity": "medium",
+      "intent": "drift",
+      "parityClass": "strict",
+      "specField": "box.padding",
+      "block": "Balance summary card",
       "ownership": "primitive/shared component",
       "status": "open",
-      "expected": "Card radius is 12px and horizontal padding is 24px.",
-      "actual": "Rendered card radius is 8px and horizontal padding is 16px.",
-      "delta": ["radius -4px", "horizontal padding -8px"],
-      "recommendedFix": "Update the SummaryCard medium variant to use the existing surface radius and spacing token.",
+      "expected": "padding is [24, 24, 24, 24].",
+      "actual": "Implementation renders [16, 16, 16, 16].",
+      "delta": ["padding top -8px (expected 24, actual 16)"],
+      "recommendedFix": "Apply --sys-space-6 to padding on the SummaryCard component instead of the current value.",
       "designReference": "https://www.figma.com/design/file?node-id=4-8",
       "implementationReference": "src/components/SummaryCard.tsx",
-      "tokens": ["--sys-radius-lg", "--sys-space-6"],
-      "files": ["src/components/SummaryCard.tsx", "src/tokens.css"],
+      "tokens": ["--sys-space-6"],
+      "files": ["src/components/SummaryCard.tsx", "src/theme/tokens.ts"],
       "assets": {
         "reference": "captures/pa-001-reference.png",
         "implementation": "captures/pa-001-implementation.png",
@@ -98,39 +178,41 @@ Create a JSON file using this shape. Paths may be absolute or relative to the JS
 }
 ```
 
-## Report Generation
+`intent`, `parityClass`, and `specField` are optional; when present they render as badges and drive the drift / adaptation counters.
 
-Run the bundled generator after writing `findings.json`:
+## Report Generation
 
 ```sh
 node <skill-root>/scripts/generate_report.mjs \
-  --input reports/design-pixel-align/dashboard/findings.json \
-  --output reports/design-pixel-align/dashboard
+  --input <findings.json> --output <report-dir>
 ```
 
-The generator creates:
-
-- `index.html`
-- `styles.css`
-- `assets/` with copied local screenshots referenced by the JSON
-
-Use `--title "Custom title"` to override the JSON title. Use `--no-copy-assets` only when the referenced image paths are already stable relative to the report.
+Produces `index.html`, `styles.css`, and `assets/` with copied local screenshots. `--title` overrides the JSON title. `--no-copy-assets` only when image paths are already stable relative to the report.
 
 ## Report Quality Bar
 
-- The report must include the original design link or explain why no source link exists.
-- The report must include the implementation target: URL, route, story, or source file.
-- Every finding should have at least a reference crop and implementation crop unless the source cannot be captured.
-- Every finding should include expected, actual, delta, ownership, severity, and recommended fix.
-- The HTML should be self-contained except for local image assets and external source links.
-- The generated report should be reviewable without private conversation context.
+- Both platforms and both viewports are stated, not just the implementation's.
+- The parity mode (same vs cross form factor) and both fidelity levels are visible, so a reader knows how much to trust the numbers.
+- The original design link is present, or the report explains why there is none.
+- Every finding has a reference crop and an implementation crop unless the source could not be captured.
+- Every finding has expected, actual, delta, ownership, severity, intent, and a recommended fix.
+- Adaptations are visibly separated from drift. A reader must be able to tell what to fix from what to leave alone.
+- Self-contained except for local image assets and external source links.
+- Reviewable without any conversation context.
 
 ## Validation
 
-Before finishing:
+1. `index.html`, `styles.css`, and copied assets exist.
+2. All image references resolve.
+3. Design source, implementation source, both platforms, viewport, theme, and capture date are visible.
+4. Findings are sorted high severity first, drift before adaptation.
+5. Node counts add up: matched + missing + extra covers what the specs contain, and the coverage block names what was deliberately skipped.
+6. If fixes were also applied, run the project's cheapest reliable validation and mark which findings are fixed versus open.
 
-1. Confirm `index.html`, `styles.css`, and copied assets exist.
-2. Open or inspect `index.html` and verify that all image references resolve.
-3. Check that the design URL, implementation URL or file, viewport, theme, and capture date are visible.
-4. Confirm findings are sorted in a useful review order, usually high severity first and top-to-bottom screen order within the same severity.
-5. If fixes were also applied, run the target project's cheapest reliable validation and note which findings were fixed versus left open.
+## Reference Files
+
+- `references/ui-spec.md` — the platform-neutral spec schema, unit normalization, capture depth.
+- `references/extract-figma.md` — Figma MCP extraction, auto-layout mapping, image fallback.
+- `references/extract-code.md` — reading web, React Native, Flutter, SwiftUI, and Compose into the spec.
+- `references/parity-policy.md` — must-match, may-adapt, must-differ, ignored.
+- `assets/parity-policy.json` — the machine-readable policy the diff script applies.
