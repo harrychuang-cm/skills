@@ -40,8 +40,8 @@ Read <cm-skills path>/frontend-product-implementation/SKILL.md and follow that w
 | 建立產品流程 prototype 和前端 handoff 文件 | `$storybook-product-prototype` | 產出 PRD、Flow、UI Spec、Data Spec、Frontend Handoff 和 clickable prototype。 |
 | 根據 handoff 文件實作前端產品功能 | `$frontend-product-implementation` | 把 handoff docs 變成產品 repo 裡的 routes、screens、states、fixtures、mock adapters。 |
 | 確保 UI 開發遵循設計系統規則 | `$design-system-governance` | 搭配實作類 skill 使用，先檢查 tokens、元件庫、i18n，缺 token/元件要先問。（外部 skill，不在本 repo） |
-| 比對已完成畫面和參考圖 | `$ui-compare-to-reference` | 找出 spacing、typography、color、layout 的偏差並修正。 |
-| 產出 pixel-level 設計 QA 報告 | `$ui-pixel-align-report` | 產出有截圖證據、差異標記、歸屬層級的 HTML 報告。 |
+| 把畫面修成跟參考來源一致 | `$ui-compare-to-reference` | 參考來源可以是 Figma、設計圖，或另一個平台的原始碼（網頁 ↔ App 互為標準）。修在 token 或共用元件上，不是修在單一畫面。 |
+| 產出設計落差稽核報告 | `$ui-pixel-align-report` | 兩邊都抽成同一份規格再比對，產出截圖證據、嚴重度、歸屬層級的離線 HTML 報告與 `findings.json`。 |
 | 把重複性流程變成自動化 | `$agent-automation-orchestrate` | 自動化的起始點：建立專案契約，之後用它執行、續跑、查狀態。 |
 | 在 Storybook 專案安裝元件覆蓋率工具 | `$component-coverage-install` | 帶入「UI 圖片/PRD → 覆蓋率報告 → 審查 → 實作」的工具和配套 skills。 |
 | 在其他專案安裝 Figma 清理自動化 | `$design-automation-hub-install` | 安裝 Figma plugin、本機 coordinator 和 figma-cleanup task。 |
@@ -217,42 +217,55 @@ Use $frontend-product-implementation and follow $design-system-governance. If re
 
 ### `$ui-compare-to-reference`
 
-用途：比對已經實作好的 UI 和參考圖，並修正偏差。
+用途：比對已經實作好的 UI 和參考來源，並修正偏差。
+
+參考來源可以是三種，不只截圖：
+
+- Figma 檔案或 frame（優先用 Figma MCP 讀出實際數值與變數名稱）
+- 設計匯出圖或截圖（沒有 Figma 權限時的備案，數值是估算）
+- 另一個平台的原始碼 — 拿網頁版當標準修 App，或拿 App 當標準修網頁
 
 適合情境：
 
-- 畫面已經做出來了。
-- 想確認和設計稿或截圖是否一致。
-- 想修正 spacing、typography、color、layout。
+- 畫面已經做出來了，但和設計稿不一致。
+- 要把某個畫面從網頁移植到 React Native / Flutter / iOS / Android，或反過來。
+- 要修正 spacing、typography、color、layout 的偏差。
+
+修的順序是 token → 共用元件 → 組裝 → 這個畫面。它也會區分「該修的落差」和「本來就該不一樣的平台適配」，不會把合理差異當成 bug 修掉。
 
 範例：
 
 ```text
+Use $ui-compare-to-reference on https://www.figma.com/design/...?node-id=1-234 and src/screens/WalletHome.tsx.
+Use $ui-compare-to-reference with apps/web/src/pages/Wallet.tsx as the reference for apps/mobile/src/screens/WalletHome.tsx.
 Use $ui-compare-to-reference on reference/dashboard.png and http://localhost:3000/dashboard.
 ```
 
 ### `$ui-pixel-align-report`
 
-用途：產出設計 QA 報告，不一定直接修正 UI。
+用途：產出設計 QA 報告，不直接修正 UI。參考來源與上一個 skill 相同（Figma / 設計圖 / 另一個平台的原始碼）。
+
+作法是把參考與實作兩邊都抽成同一份平台中立的 UI Spec 再做結構化比對，截圖是證據而不是量測工具。
 
 適合情境：
 
-- 需要給設計師或工程師看 pixel-level 差異。
-- 想保留每個問題的截圖證據。
+- 需要給設計師或工程師看逐項差異。
+- 想保留每個問題的截圖證據和原始設計連結。
 - 想先產出報告，再決定修哪些問題。
+- 需要跨平台的一致性稽核（Figma ↔ 網頁 ↔ App，或 iOS ↔ Android）。
 
 會產出：
 
-- static HTML report
-- reference screenshot
-- implementation screenshot
-- per-finding crops
-- finding metadata
+- 可離線開啟的 static HTML report
+- `findings.json`（可直接餵給 `$ui-compare-to-reference` 修復）
+- `spec/reference.json` 與 `spec/implementation.json`
+- 參考與實作的完整截圖，以及每一項問題的並排截圖
 
 範例：
 
 ```text
-Use $ui-pixel-align-report on reference/dashboard.png and http://localhost:3000/dashboard.
+Use $ui-pixel-align-report on https://www.figma.com/design/...?node-id=1-234 and http://localhost:3000/dashboard.
+Use $ui-pixel-align-report on reference/dashboard.png and Dashboard.stories.tsx.
 ```
 
 ### `$agent-automation-orchestrate`

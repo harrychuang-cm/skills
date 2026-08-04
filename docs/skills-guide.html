@@ -3,1898 +3,1667 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>CM Skills Guide</title>
+    <title>CM Skills — 我該用哪一個？</title>
     <style>
       :root {
-        --color-page: #f6f7f9;
-        --color-surface: #ffffff;
-        --color-surface-soft: #eef3f5;
-        --color-surface-strong: #17211f;
-        --color-text: #17211f;
-        --color-muted: #5d6a67;
-        --color-line: #d9e0df;
-        --color-line-strong: #bbc8c5;
-        --color-accent: #0f766e;
-        --color-accent-strong: #064e49;
-        --color-accent-soft: #d9f0ed;
-        --color-indigo: #4338ca;
-        --color-indigo-soft: #e5e7ff;
-        --color-rose: #be3455;
-        --color-rose-soft: #fde3ea;
-        --color-amber: #a15c08;
-        --color-amber-soft: #faecd1;
-        --color-code: #111c1a;
-        --color-code-text: #effaf7;
-        --color-code-muted: #d5e3df;
-        --color-code-overlay-line: rgba(239, 250, 247, 0.18);
-        --color-code-overlay-soft: rgba(239, 250, 247, 0.08);
-        --color-notice-line: #efc56f;
-        --color-topbar-line: rgba(217, 224, 223, 0.86);
-        --color-topbar-surface: rgba(246, 247, 249, 0.94);
-        --shadow-card: 0 12px 30px rgba(23, 33, 31, 0.08);
-        --shadow-hero: 0 24px 60px rgba(23, 33, 31, 0.13);
-        --space-1: 4px;
-        --space-2: 8px;
-        --space-3: 12px;
-        --space-4: 16px;
-        --space-5: 20px;
-        --space-6: 24px;
-        --space-7: 32px;
-        --space-8: 40px;
-        --radius-card: 8px;
-        --radius-control: 8px;
-        --font-body: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        --font-code: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+        --bg: #0a0e14;
+        --panel: #111823;
+        --panel-2: #16202d;
+        --panel-3: #1c2836;
+        --line: #24313f;
+        --line-soft: #1a2431;
+        --text: #e8eff7;
+        --text-2: #b3c2d3;
+        --muted: #7e90a6;
+        --dim: #566579;
+
+        --cyan: #38bdf8;
+        --teal: #2dd4bf;
+        --violet: #a78bfa;
+        --amber: #fbbf24;
+        --rose: #fb7185;
+        --lime: #a3e635;
+        --ok: #34d399;
+
+        --accent: var(--cyan);
+
+        --r-sm: 6px;
+        --r-md: 10px;
+        --r-lg: 14px;
+
+        --sidebar: 232px;
+        --topbar: 56px;
+
+        --font: "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", ui-sans-serif,
+          system-ui, -apple-system, "Segoe UI", sans-serif;
+        --mono: ui-monospace, "SF Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+
+        --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
       }
 
-      * {
-        box-sizing: border-box;
-      }
+      * { box-sizing: border-box; }
 
-      html {
-        scroll-behavior: smooth;
-      }
+      html { scroll-behavior: smooth; }
 
       body {
         margin: 0;
-        background: var(--color-page);
-        color: var(--color-text);
-        font-family: var(--font-body);
-        line-height: 1.62;
+        background: var(--bg);
+        color: var(--text);
+        font-family: var(--font);
+        font-size: 15px;
+        line-height: 1.7;
+        -webkit-font-smoothing: antialiased;
       }
 
-      a {
-        color: var(--color-accent-strong);
-        text-decoration-thickness: 1px;
-        text-underline-offset: 3px;
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        z-index: 0;
+        background:
+          radial-gradient(900px 500px at 78% -8%, rgba(56, 189, 248, 0.09), transparent 62%),
+          radial-gradient(700px 420px at 8% 4%, rgba(167, 139, 250, 0.07), transparent 60%);
       }
 
-      button:focus-visible,
-      a:focus-visible {
-        outline: 3px solid var(--color-indigo);
-        outline-offset: 3px;
-      }
+      /* ---------------------------------------------------------- app shell */
 
-      code {
-        border: 1px solid var(--color-line);
-        border-radius: 6px;
-        padding: 1px 5px;
-        background: var(--color-surface-soft);
-        color: var(--color-accent-strong);
-        font-family: var(--font-code);
-        font-size: 0.9em;
-      }
-
-      .page {
-        max-width: 1220px;
-        margin: 0 auto;
-        padding: var(--space-4) var(--space-6) 72px;
-      }
-
-      .topbar {
-        position: sticky;
-        z-index: 10;
-        top: 0;
+      .app {
+        position: relative;
+        z-index: 1;
         display: grid;
-        grid-template-columns: auto 1fr auto;
-        gap: var(--space-4);
-        align-items: center;
-        margin: 0 calc(var(--space-6) * -1) var(--space-5);
-        padding: var(--space-3) var(--space-6);
-        border-bottom: 1px solid var(--color-topbar-line);
-        background: var(--color-topbar-surface);
-        backdrop-filter: blur(16px);
+        grid-template-columns: var(--sidebar) minmax(0, 1fr);
+        min-height: 100vh;
+      }
+
+      .sidebar {
+        position: sticky;
+        top: 0;
+        height: 100vh;
+        border-right: 1px solid var(--line);
+        background: linear-gradient(180deg, #0d131c, #0a0e14);
+        display: flex;
+        flex-direction: column;
+        overflow-y: auto;
       }
 
       .brand {
-        display: inline-flex;
+        height: var(--topbar);
+        display: flex;
         align-items: center;
-        gap: var(--space-2);
-        color: var(--color-text);
-        font-size: 14px;
-        font-weight: 800;
-        text-decoration: none;
-        white-space: nowrap;
+        gap: 10px;
+        padding: 0 18px;
+        border-bottom: 1px solid var(--line);
+        flex: none;
       }
 
       .brand-mark {
-        display: inline-grid;
-        width: 34px;
-        height: 34px;
-        place-items: center;
-        border-radius: 8px;
-        background: var(--color-surface-strong);
-        color: var(--color-code-text);
-        font-size: 12px;
-      }
-
-      .section-nav {
-        display: flex;
-        gap: var(--space-1);
-        justify-content: center;
-        overflow-x: auto;
-        scrollbar-width: none;
-      }
-
-      .section-nav::-webkit-scrollbar {
-        display: none;
-      }
-
-      .section-nav a {
-        border-radius: var(--radius-control);
-        padding: 8px 10px;
-        color: var(--color-muted);
-        font-size: 13px;
-        font-weight: 750;
-        text-decoration: none;
-        white-space: nowrap;
-      }
-
-      .section-nav a:hover {
-        background: var(--color-accent-soft);
-        color: var(--color-accent-strong);
-      }
-
-      .language-switcher {
-        display: inline-flex;
-        gap: var(--space-1);
-        padding: var(--space-1);
-        border: 1px solid var(--color-line);
-        border-radius: var(--radius-control);
-        background: var(--color-surface);
-        box-shadow: var(--shadow-card);
-      }
-
-      .language-switcher button {
-        min-width: 50px;
-        border: 0;
+        width: 22px;
+        height: 22px;
         border-radius: 6px;
-        padding: 7px 10px;
-        background: transparent;
-        color: var(--color-muted);
-        cursor: pointer;
-        font: inherit;
+        background: linear-gradient(135deg, var(--cyan), var(--violet));
+        box-shadow: 0 0 18px rgba(56, 189, 248, 0.45);
+        flex: none;
+      }
+
+      .brand-name {
         font-size: 13px;
-        font-weight: 800;
-      }
-
-      .language-switcher button:hover {
-        background: var(--color-surface-soft);
-        color: var(--color-text);
-      }
-
-      .language-switcher button[aria-pressed="true"] {
-        background: var(--color-accent);
-        color: var(--color-surface);
-      }
-
-      .hero {
-        display: grid;
-        grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.65fr);
-        gap: var(--space-7);
-        align-items: stretch;
-        padding: var(--space-8);
-        border: 1px solid var(--color-line);
-        border-radius: var(--radius-card);
-        background: var(--color-surface);
-        box-shadow: var(--shadow-hero);
-      }
-
-      .hero-copy {
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-      }
-
-      .hero-card {
-        display: flex;
-        flex-direction: column;
-        gap: var(--space-4);
-        padding: var(--space-6);
-        border: 1px solid var(--color-line-strong);
-        border-radius: var(--radius-card);
-        background: var(--color-surface-strong);
-        color: var(--color-code-text);
-      }
-
-      .hero-card p,
-      .hero-card li {
-        color: var(--color-code-muted);
-      }
-
-      .hero-card code {
-        border-color: var(--color-code-overlay-line);
-        background: var(--color-code-overlay-soft);
-        color: var(--color-code-text);
-      }
-
-      .eyebrow,
-      .card-label {
-        margin: 0;
-        color: var(--color-accent);
-        font-size: 13px;
-        font-weight: 850;
-        letter-spacing: 0;
+        font-weight: 700;
+        letter-spacing: 0.14em;
         text-transform: uppercase;
       }
 
-      .card-label {
-        color: var(--color-amber-soft);
+      .side-nav { padding: 14px 10px; display: grid; gap: 2px; }
+
+      .side-label {
+        font-size: 10px;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: var(--dim);
+        padding: 14px 10px 6px;
       }
 
-      h1,
-      h2,
-      h3 {
-        margin: 0;
-        line-height: 1.18;
-        letter-spacing: 0;
-      }
-
-      h1 {
-        max-width: 820px;
-        margin-top: var(--space-2);
-        font-size: 58px;
-      }
-
-      h2 {
-        font-size: 30px;
-      }
-
-      h3 {
-        font-size: 19px;
-      }
-
-      p {
-        margin: 0;
-      }
-
-      .lead {
-        max-width: 780px;
-        margin-top: var(--space-5);
-        color: var(--color-muted);
-        font-size: 18px;
-      }
-
-      .meta {
+      .side-nav a {
         display: flex;
-        flex-wrap: wrap;
-        gap: var(--space-2);
-        margin-top: var(--space-6);
+        align-items: center;
+        gap: 9px;
+        padding: 8px 10px;
+        border-radius: var(--r-sm);
+        color: var(--text-2);
+        text-decoration: none;
+        font-size: 13.5px;
+        border: 1px solid transparent;
+        transition: background 0.18s var(--ease), color 0.18s var(--ease),
+          border-color 0.18s var(--ease);
       }
 
-      .pill {
-        border: 1px solid var(--color-line);
-        border-radius: 999px;
-        padding: 7px 11px;
-        background: var(--color-surface-soft);
-        color: var(--color-text);
-        font-size: 13px;
-        font-weight: 750;
-      }
-
-      .section {
-        scroll-margin-top: 96px;
-        padding: 46px 0 0;
-      }
-
-      .section-header {
-        display: flex;
-        align-items: end;
-        justify-content: space-between;
-        gap: var(--space-5);
-        margin-bottom: var(--space-5);
-      }
-
-      .section-header::after {
-        display: block;
-        flex: 1;
-        min-width: 80px;
-        height: 1px;
-        background: var(--color-line);
+      .side-nav a::before {
         content: "";
+        width: 5px;
+        height: 5px;
+        border-radius: 50%;
+        background: var(--dim);
+        flex: none;
+        transition: background 0.18s var(--ease), box-shadow 0.18s var(--ease);
       }
 
-      .grid {
-        display: grid;
-        gap: var(--space-4);
+      .side-nav a:hover {
+        background: var(--panel-2);
+        color: var(--text);
+        border-color: var(--line);
       }
 
-      .grid.two {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+      .side-nav a.active { background: var(--panel-2); color: var(--text); border-color: var(--line); }
+      .side-nav a.active::before { background: var(--cyan); box-shadow: 0 0 10px var(--cyan); }
+
+      .side-foot {
+        margin-top: auto;
+        padding: 14px 18px 18px;
+        border-top: 1px solid var(--line);
+        color: var(--dim);
+        font-size: 11.5px;
+        line-height: 1.6;
       }
 
-      .grid.four {
-        grid-template-columns: repeat(4, minmax(0, 1fr));
+      .main { min-width: 0; }
+
+      .topbar {
+        position: sticky;
+        top: 0;
+        z-index: 20;
+        height: var(--topbar);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 0 26px;
+        border-bottom: 1px solid var(--line);
+        background: rgba(10, 14, 20, 0.86);
+        backdrop-filter: blur(12px);
       }
 
-      .panel,
-      .skill,
-      .step,
-      .prompt {
-        border: 1px solid var(--color-line);
-        border-radius: var(--radius-card);
-        background: var(--color-surface);
-        box-shadow: var(--shadow-card);
+      .topbar h1 { margin: 0; font-size: 14px; font-weight: 600; letter-spacing: 0.01em; }
+      .topbar .crumb { color: var(--dim); font-weight: 400; }
+
+      .status {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 11.5px;
+        color: var(--muted);
+        font-family: var(--mono);
       }
+
+      .dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--ok);
+        box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.5);
+        animation: pulse 2.6s infinite;
+      }
+
+      @keyframes pulse {
+        0% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.5); }
+        70% { box-shadow: 0 0 0 7px rgba(52, 211, 153, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0); }
+      }
+
+      .canvas { padding: 30px 26px 90px; max-width: 1180px; }
+
+      /* ------------------------------------------------------------ blocks */
+
+      .section { margin-bottom: 54px; scroll-margin-top: 76px; }
+
+      .section-head { margin-bottom: 18px; }
+
+      .kicker {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        font-size: 10.5px;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: var(--dim);
+        font-family: var(--mono);
+        margin-bottom: 8px;
+      }
+
+      .kicker::before {
+        content: "";
+        width: 16px;
+        height: 1px;
+        background: var(--line);
+      }
+
+      .section h2 {
+        margin: 0 0 6px;
+        font-size: 22px;
+        line-height: 1.4;
+        font-weight: 650;
+        letter-spacing: -0.01em;
+      }
+
+      .section h2 .q { color: var(--cyan); }
+
+      .section .sub { margin: 0; color: var(--muted); font-size: 14px; max-width: 74ch; }
 
       .panel {
-        display: flex;
-        flex-direction: column;
-        gap: var(--space-4);
-        padding: var(--space-6);
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: var(--r-lg);
+        padding: 20px;
       }
 
-      .panel p,
-      .skill p,
-      .step p {
-        color: var(--color-muted);
+      /* --------------------------------------------------------------- hero */
+
+      .hero {
+        display: grid;
+        grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+        gap: 18px;
+        margin-bottom: 46px;
       }
 
-      .panel ul,
-      .skill ul,
-      .hero-card ul {
-        margin: 0;
-        padding-left: 20px;
-        color: var(--color-muted);
+      .hero-main {
+        background:
+          linear-gradient(135deg, rgba(56, 189, 248, 0.07), transparent 55%),
+          var(--panel);
+        border: 1px solid var(--line);
+        border-radius: var(--r-lg);
+        padding: 26px 24px;
       }
 
-      .panel li + li,
-      .skill li + li,
-      .hero-card li + li {
-        margin-top: var(--space-2);
+      .hero-main h2 {
+        margin: 0 0 12px;
+        font-size: 27px;
+        line-height: 1.35;
+        font-weight: 680;
+        letter-spacing: -0.02em;
       }
 
-      .skill {
+      .hero-main p { margin: 0 0 16px; color: var(--text-2); font-size: 15px; }
+      .hero-main p:last-of-type { margin-bottom: 20px; }
+
+      .pills { display: flex; flex-wrap: wrap; gap: 7px; }
+
+      .pill {
+        font-size: 11.5px;
+        padding: 4px 11px;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        background: var(--panel-2);
+        color: var(--text-2);
+      }
+
+      .hero-side { display: grid; gap: 12px; align-content: start; }
+
+      .fact {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: var(--r-md);
+        padding: 14px 16px;
+      }
+
+      .fact .n {
+        font-size: 25px;
+        font-weight: 700;
+        font-family: var(--mono);
+        letter-spacing: -0.02em;
+        color: var(--cyan);
+        line-height: 1.2;
+      }
+
+      .fact .t { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+
+      /* --------------------------------------------------- situation picker */
+
+      .situations {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(232px, 1fr));
+        gap: 11px;
+      }
+
+      .situation {
         position: relative;
-        display: flex;
-        min-height: 100%;
-        flex-direction: column;
-        gap: var(--space-4);
+        text-align: left;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: var(--r-md);
+        padding: 15px 16px 14px;
+        color: inherit;
+        font: inherit;
+        cursor: pointer;
         overflow: hidden;
-        padding: var(--space-5);
+        transition: transform 0.22s var(--ease), border-color 0.22s var(--ease),
+          background 0.22s var(--ease);
       }
 
-      .skill::before {
-        position: absolute;
-        inset: 0 0 auto;
-        height: 4px;
-        background: var(--color-accent);
+      .situation::after {
         content: "";
+        position: absolute;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        width: 2px;
+        background: var(--tone, var(--cyan));
+        transform: scaleY(0);
+        transform-origin: top;
+        transition: transform 0.28s var(--ease);
       }
 
-      .skill:nth-child(2n)::before {
-        background: var(--color-indigo);
+      .situation:hover { transform: translateY(-2px); border-color: var(--line); background: var(--panel-2); }
+      .situation:hover::after { transform: scaleY(1); }
+
+      .situation[aria-pressed="true"] {
+        background: var(--panel-2);
+        border-color: color-mix(in srgb, var(--tone) 45%, var(--line));
       }
 
-      .skill:nth-child(3n)::before {
-        background: var(--color-rose);
+      .situation[aria-pressed="true"]::after { transform: scaleY(1); }
+
+      .situation .say {
+        font-size: 14.5px;
+        font-weight: 600;
+        line-height: 1.55;
+        margin-bottom: 5px;
+        padding-right: 26px;
       }
 
-      .skill:nth-child(4n)::before {
-        background: var(--color-amber);
+      .situation .then { font-size: 12.5px; color: var(--muted); line-height: 1.6; }
+
+      .situation .idx {
+        position: absolute;
+        top: 12px;
+        right: 13px;
+        font-family: var(--mono);
+        font-size: 10px;
+        color: var(--dim);
       }
 
-      .skill .tag,
-      .step .number {
-        display: inline-flex;
-        width: fit-content;
+      /* ----------------------------------------------------------- flow map */
+
+      .flow-shell {
+        border: 1px solid var(--line);
+        border-radius: var(--r-lg);
+        background: var(--panel);
+        overflow: hidden;
+      }
+
+      .flow-head {
+        display: flex;
         align-items: center;
-        border-radius: 6px;
-        font-size: 12px;
-        font-weight: 800;
+        justify-content: space-between;
+        gap: 14px;
+        flex-wrap: wrap;
+        padding: 14px 18px;
+        border-bottom: 1px solid var(--line);
+        background: var(--panel-2);
       }
 
-      .skill .tag {
-        padding: 4px 8px;
-        background: var(--color-accent-soft);
-        color: var(--color-accent-strong);
+      .flow-title { font-size: 14.5px; font-weight: 650; }
+      .flow-goal { font-size: 12.5px; color: var(--muted); }
+
+      .flow-body { position: relative; }
+
+      /* fade the right edge so it reads as "there is more, scroll" */
+      .flow-body::after {
+        content: "";
+        position: absolute;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        width: 48px;
+        pointer-events: none;
+        background: linear-gradient(90deg, transparent, var(--panel));
+        opacity: 0;
+        transition: opacity 0.25s var(--ease);
+      }
+
+      .flow-body.more::after { opacity: 1; }
+
+      .flow-scroll { overflow-x: auto; padding: 26px 18px 20px; scrollbar-width: thin; }
+
+      .flow-track {
+        display: flex;
+        align-items: stretch;
+        gap: 0;
+        min-width: min-content;
+      }
+
+      .stage {
+        position: relative;
+        flex: 0 0 210px;
+        background: var(--panel-2);
+        border: 1px solid var(--line);
+        border-radius: var(--r-md);
+        padding: 14px 15px;
+        opacity: 0;
+        transform: translateY(10px);
+        animation: stage-in 0.5s var(--ease) forwards;
+        transition: border-color 0.2s var(--ease), background 0.2s var(--ease);
+      }
+
+      .stage:hover { border-color: color-mix(in srgb, var(--tone) 55%, var(--line)); background: var(--panel-3); }
+
+      @keyframes stage-in {
+        to { opacity: 1; transform: translateY(0); }
+      }
+
+      .link {
+        flex: 0 0 46px;
+        position: relative;
+        align-self: center;
+        height: 2px;
+        background: var(--line);
+        overflow: hidden;
+      }
+
+      .link::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(
+          90deg,
+          transparent,
+          var(--tone, var(--cyan)),
+          transparent
+        );
+        transform: translateX(-100%);
+        animation: flow 2.4s linear infinite;
+        animation-delay: var(--delay, 0s);
+      }
+
+      @keyframes flow {
+        to { transform: translateX(100%); }
+      }
+
+      .stage .num {
+        font-family: var(--mono);
+        font-size: 10px;
+        color: var(--tone, var(--cyan));
+        letter-spacing: 0.1em;
+        margin-bottom: 7px;
+      }
+
+      .stage .name { font-size: 14px; font-weight: 640; margin-bottom: 6px; line-height: 1.45; }
+      .stage .desc { font-size: 12.5px; color: var(--muted); line-height: 1.65; }
+
+      .stage .who {
+        margin-top: 10px;
+        padding-top: 9px;
+        border-top: 1px dashed var(--line);
+        font-family: var(--mono);
+        font-size: 11px;
+        color: var(--text-2);
+        word-break: break-all;
+      }
+
+      .flow-io {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 12px;
+        padding: 0 18px 18px;
+      }
+
+      .io {
+        border: 1px solid var(--line);
+        border-left: 2px solid var(--tone, var(--cyan));
+        border-radius: var(--r-sm);
+        background: var(--panel-2);
+        padding: 12px 14px;
+      }
+
+      .io .lbl {
+        font-size: 10.5px;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: var(--dim);
+        font-family: var(--mono);
+        margin-bottom: 6px;
+      }
+
+      .io ul { margin: 0; padding-left: 17px; color: var(--text-2); font-size: 13px; }
+      .io li { margin-bottom: 3px; }
+
+      /* ------------------------------------------------------------ matcher */
+
+      .matcher { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: 16px; }
+
+      .picker-group { margin-bottom: 18px; }
+      .picker-group:last-child { margin-bottom: 0; }
+
+      .picker-label {
+        font-size: 11px;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: var(--dim);
+        font-family: var(--mono);
+        margin-bottom: 9px;
+      }
+
+      .opts { display: grid; gap: 7px; }
+
+      .opt {
+        display: flex;
+        align-items: center;
+        gap: 11px;
+        padding: 11px 13px;
+        border: 1px solid var(--line);
+        border-radius: var(--r-sm);
+        background: var(--panel-2);
+        color: var(--text-2);
+        font: inherit;
+        font-size: 13.5px;
+        text-align: left;
+        cursor: pointer;
+        transition: border-color 0.18s var(--ease), background 0.18s var(--ease),
+          color 0.18s var(--ease), transform 0.18s var(--ease);
+      }
+
+      .opt:hover { background: var(--panel-3); color: var(--text); transform: translateX(2px); }
+
+      .opt[aria-pressed="true"] {
+        border-color: var(--cyan);
+        background: color-mix(in srgb, var(--cyan) 12%, var(--panel-2));
+        color: var(--text);
+      }
+
+      .opt .mark {
+        width: 15px;
+        height: 15px;
+        border-radius: 50%;
+        border: 1.5px solid var(--line);
+        flex: none;
+        position: relative;
+        transition: border-color 0.18s var(--ease);
+      }
+
+      .opt[aria-pressed="true"] .mark { border-color: var(--cyan); }
+
+      .opt .mark::after {
+        content: "";
+        position: absolute;
+        inset: 3px;
+        border-radius: 50%;
+        background: var(--cyan);
+        transform: scale(0);
+        transition: transform 0.22s var(--ease);
+      }
+
+      .opt[aria-pressed="true"] .mark::after { transform: scale(1); }
+
+      .result { display: flex; flex-direction: column; gap: 12px; }
+
+      .verdict {
+        border: 1px solid var(--line);
+        border-radius: var(--r-md);
+        background: linear-gradient(135deg, rgba(56, 189, 248, 0.08), transparent 60%), var(--panel-2);
+        padding: 16px 17px;
+      }
+
+      .verdict .say {
+        font-size: 15.5px;
+        font-weight: 640;
+        line-height: 1.6;
+        margin-bottom: 8px;
+      }
+
+      .verdict .note { font-size: 13px; color: var(--muted); line-height: 1.7; }
+
+      .verdict.swap { animation: swap-in 0.34s var(--ease); }
+
+      @keyframes swap-in {
+        from { opacity: 0.3; transform: translateY(6px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+
+      .chain { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+      .chain-node {
+        font-family: var(--mono);
+        font-size: 11.5px;
+        padding: 5px 10px;
+        border-radius: 999px;
+        border: 1px solid color-mix(in srgb, var(--cyan) 40%, var(--line));
+        background: color-mix(in srgb, var(--cyan) 10%, var(--panel-2));
+        color: var(--text);
+      }
+
+      .chain-arrow { color: var(--dim); font-size: 12px; }
+
+      /* -------------------------------------------------------------- code */
+
+      .code {
+        position: relative;
+        background: #0c1219;
+        border: 1px solid var(--line);
+        border-radius: var(--r-md);
+        padding: 14px 46px 14px 15px;
+        font-family: var(--mono);
+        font-size: 12.5px;
+        line-height: 1.75;
+        color: #cfe3f5;
+        white-space: pre-wrap;
         word-break: break-word;
       }
 
-      .skill h3 {
-        min-height: 46px;
-      }
+      .code .tok { color: var(--teal); }
 
-      .flow {
+      .copy {
+        position: absolute;
+        top: 9px;
+        right: 9px;
+        width: 27px;
+        height: 27px;
+        border-radius: var(--r-sm);
+        border: 1px solid var(--line);
+        background: var(--panel-2);
+        color: var(--muted);
+        cursor: pointer;
         display: grid;
-        grid-template-columns: repeat(7, minmax(0, 1fr));
-        gap: var(--space-3);
-      }
-
-      .step {
-        position: relative;
-        display: flex;
-        min-height: 196px;
-        flex-direction: column;
-        gap: var(--space-3);
-        padding: var(--space-5);
-      }
-
-      .step .number {
-        padding: 3px 8px;
-        background: var(--color-indigo-soft);
-        color: var(--color-indigo);
-      }
-
-      .chain {
-        display: grid;
-        gap: var(--space-2);
-        margin: 0;
-        padding: 0;
-        list-style: none;
-      }
-
-      .chain li {
-        display: flex;
-        align-items: center;
-        gap: var(--space-2);
-      }
-
-      .chain li + li::before {
-        display: inline-grid;
-        width: 22px;
-        height: 22px;
         place-items: center;
+        transition: color 0.18s var(--ease), border-color 0.18s var(--ease),
+          background 0.18s var(--ease);
+      }
+
+      .copy:hover { color: var(--text); border-color: var(--muted); background: var(--panel-3); }
+      .copy.done { color: var(--ok); border-color: var(--ok); }
+      .copy svg { width: 13px; height: 13px; }
+      .copy .tick { display: none; }
+      .copy.done .clip { display: none; }
+      .copy.done .tick { display: block; animation: pop 0.3s var(--ease); }
+
+      @keyframes pop {
+        from { transform: scale(0.4); opacity: 0; }
+        to { transform: scale(1); opacity: 1; }
+      }
+
+      /* ------------------------------------------------------------- skills */
+
+      .skill-filter { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 16px; }
+
+      .chip {
+        font: inherit;
+        font-size: 12.5px;
+        padding: 5px 13px;
         border-radius: 999px;
-        background: var(--color-accent-soft);
-        color: var(--color-accent-strong);
-        content: "↓";
-        font-size: 13px;
-        font-weight: 900;
+        border: 1px solid var(--line);
+        background: var(--panel);
+        color: var(--text-2);
+        cursor: pointer;
+        transition: all 0.18s var(--ease);
       }
 
-      .pairing-route {
-        display: flex;
-        flex-wrap: wrap;
-        gap: var(--space-2);
-        align-items: center;
+      .chip:hover { background: var(--panel-2); color: var(--text); }
+
+      .chip[aria-pressed="true"] {
+        border-color: var(--cyan);
+        background: color-mix(in srgb, var(--cyan) 14%, var(--panel));
+        color: var(--text);
       }
 
-      .pairing-arrow {
-        color: var(--color-muted);
-        font-weight: 900;
-      }
-
-      .prompt-list {
+      .skill-grid {
         display: grid;
-        gap: var(--space-3);
+        grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
+        align-items: start;
+        gap: 12px;
       }
 
-      .prompt {
-        margin: 0;
-        padding: var(--space-4);
-        overflow: auto;
-        background: var(--color-code);
-        color: var(--color-code-text);
-        font-family: var(--font-code);
-        font-size: 13px;
-        line-height: 1.55;
-        white-space: pre-wrap;
+      .skill {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: var(--r-md);
+        overflow: hidden;
+        transition: border-color 0.2s var(--ease), transform 0.2s var(--ease);
       }
 
-      .prompt code {
-        border-color: var(--color-code-overlay-line);
-        background: var(--color-code-overlay-soft);
-        color: var(--color-code-text);
+      .skill.hide { display: none; }
+      .skill:hover { border-color: color-mix(in srgb, var(--tone) 45%, var(--line)); transform: translateY(-2px); }
+
+      .skill-top {
+        width: 100%;
+        text-align: left;
+        background: none;
+        border: 0;
+        color: inherit;
+        font: inherit;
+        padding: 15px 16px;
+        cursor: pointer;
+        display: grid;
+        gap: 6px;
       }
 
-      .notice {
-        border-color: var(--color-notice-line);
-        background: var(--color-amber-soft);
+      .skill-when { font-size: 14.5px; font-weight: 640; line-height: 1.55; padding-right: 22px; position: relative; }
+
+      .skill-when::after {
+        content: "";
+        position: absolute;
+        right: 2px;
+        top: 8px;
+        width: 7px;
+        height: 7px;
+        border-right: 1.5px solid var(--muted);
+        border-bottom: 1.5px solid var(--muted);
+        transform: rotate(45deg);
+        transition: transform 0.26s var(--ease);
       }
 
-      .notice strong {
-        color: var(--color-amber);
+      .skill.open .skill-when::after { transform: rotate(-135deg); }
+
+      .skill-tag {
+        font-family: var(--mono);
+        font-size: 11.5px;
+        color: var(--tone, var(--cyan));
+        word-break: break-all;
       }
 
-      .output-grid {
-        align-items: stretch;
+      .skill-body {
+        display: grid;
+        grid-template-rows: 0fr;
+        transition: grid-template-rows 0.34s var(--ease);
       }
+
+      .skill.open .skill-body { grid-template-rows: 1fr; }
+
+      .skill-body > div { overflow: hidden; }
+
+      .skill-inner { padding: 0 16px 16px; display: grid; gap: 12px; border-top: 1px solid var(--line-soft); padding-top: 13px; margin-top: 2px; }
+
+      .kv { display: grid; grid-template-columns: 62px minmax(0, 1fr); gap: 10px; font-size: 13px; }
+      .kv .k { color: var(--dim); font-size: 11.5px; font-family: var(--mono); padding-top: 2px; }
+      .kv .v { color: var(--text-2); line-height: 1.65; }
+
+      .badge {
+        display: inline-block;
+        font-size: 10.5px;
+        font-family: var(--mono);
+        padding: 2px 8px;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        color: var(--muted);
+        margin-left: 6px;
+        vertical-align: middle;
+      }
+
+      /* ------------------------------------------------------------ outputs */
+
+      .out-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 12px; }
+
+      .out h3 { margin: 0 0 4px; font-size: 14.5px; font-weight: 640; }
+      .out .hint { margin: 0 0 11px; font-size: 12.5px; color: var(--muted); }
+
+      .files { display: grid; gap: 4px; }
+
+      .file {
+        font-family: var(--mono);
+        font-size: 11.5px;
+        color: var(--text-2);
+        padding: 5px 9px;
+        border-radius: var(--r-sm);
+        background: var(--panel-2);
+        border: 1px solid var(--line-soft);
+        word-break: break-all;
+      }
+
+      /* -------------------------------------------------------------- misc */
+
+      .rule {
+        border: 1px solid var(--line);
+        border-left: 2px solid var(--amber);
+        border-radius: var(--r-md);
+        background: linear-gradient(135deg, rgba(251, 191, 36, 0.06), transparent 55%), var(--panel);
+        padding: 17px 19px;
+      }
+
+      .rule h3 { margin: 0 0 6px; font-size: 15px; font-weight: 650; }
+      .rule p { margin: 0; color: var(--text-2); font-size: 13.5px; }
+
+      .prompt-list { display: grid; gap: 9px; }
+
+      .reveal {
+        opacity: 0;
+        transform: translateY(14px);
+        transition: opacity 0.6s var(--ease), transform 0.6s var(--ease);
+      }
+
+      .reveal.seen { opacity: 1; transform: none; }
 
       footer {
-        margin-top: var(--space-8);
-        padding: var(--space-5) 0 0;
-        color: var(--color-muted);
-        font-size: 14px;
+        border-top: 1px solid var(--line);
+        margin-top: 20px;
+        padding-top: 18px;
+        color: var(--dim);
+        font-size: 12.5px;
       }
 
-      @media (max-width: 1120px) {
-        .topbar {
-          grid-template-columns: 1fr auto;
-        }
+      /* ------------------------------------------------------- responsive */
 
-        .section-nav {
-          grid-column: 1 / -1;
-          justify-content: flex-start;
-          order: 3;
-        }
-
-        .hero {
-          grid-template-columns: 1fr;
-        }
-
-        .grid.four,
-        .flow {
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-        }
+      @media (max-width: 940px) {
+        .hero { grid-template-columns: 1fr; }
+        .hero-side { grid-template-columns: repeat(3, 1fr); display: grid; }
+        .matcher { grid-template-columns: 1fr; }
       }
 
-      @media (max-width: 720px) {
-        .page {
-          padding: var(--space-3) var(--space-4) 52px;
-        }
+      @media (max-width: 760px) {
+        :root { --sidebar: 0px; }
+        .app { grid-template-columns: 1fr; }
+        .sidebar { display: none; }
+        .canvas { padding: 22px 16px 70px; }
+        .topbar { padding: 0 16px; }
+        .hero-side { grid-template-columns: 1fr; }
+      }
 
-        .topbar {
-          margin: 0 calc(var(--space-4) * -1) var(--space-4);
-          padding: var(--space-3) var(--space-4);
+      @media (prefers-reduced-motion: reduce) {
+        html { scroll-behavior: auto; }
+        *, *::before, *::after {
+          animation-duration: 0.001ms !important;
+          animation-iteration-count: 1 !important;
+          transition-duration: 0.001ms !important;
         }
-
-        .brand span:last-child {
-          display: none;
-        }
-
-        .language-switcher button {
-          min-width: 44px;
-          padding: 7px 8px;
-        }
-
-        .hero {
-          gap: var(--space-5);
-          padding: var(--space-5);
-        }
-
-        h1 {
-          font-size: 38px;
-        }
-
-        h2 {
-          font-size: 24px;
-        }
-
-        .lead {
-          font-size: 16px;
-        }
-
-        .grid.two,
-        .grid.four,
-        .flow {
-          grid-template-columns: 1fr;
-        }
-
-        .section {
-          padding-top: var(--space-8);
-        }
-
-        .section-header {
-          align-items: start;
-          flex-direction: column;
-        }
-
-        .section-header::after {
-          width: 100%;
-        }
-
-        .step {
-          min-height: auto;
-        }
+        .reveal { opacity: 1; transform: none; }
       }
     </style>
   </head>
   <body>
-    <main class="page">
-      <div class="topbar">
-        <a class="brand" href="#agent-usage" aria-label="CM Skills Guide">
-          <span class="brand-mark">CM</span>
-          <span>Skills Guide</span>
-        </a>
-        <nav id="section-nav" class="section-nav" aria-label="Sections"></nav>
-        <nav class="language-switcher" aria-label="Language">
-          <button type="button" data-lang="en">EN</button>
-          <button type="button" data-lang="ja">JP</button>
-          <button type="button" data-lang="zh-Hant">繁中</button>
-        </nav>
-      </div>
-      <div id="content" aria-live="polite"></div>
-    </main>
+    <div class="app">
+      <aside class="sidebar">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true"></span>
+          <span class="brand-name">CM Skills</span>
+        </div>
+        <nav class="side-nav" id="side-nav" aria-label="頁面導覽"></nav>
+        <div class="side-foot">
+          這頁是入口，不是規格書。<br />
+          每個 skill 的完整規則以它資料夾裡的 <code>SKILL.md</code> 為準。
+        </div>
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <h1><span class="crumb">CM Skills ／</span> 我該用哪一個？</h1>
+          <div class="status"><span class="dot" aria-hidden="true"></span><span id="skill-count"></span></div>
+        </header>
+
+        <div class="canvas" id="canvas"></div>
+      </main>
+    </div>
 
     <script>
-      const skillData = [
+      /* =====================================================  content model */
+
+      const facts = [
+        { n: "13", t: "個可重複使用的 skill" },
+        { n: "7", t: "條常見的工作旅程" },
+        { n: "0", t: "需要安裝的外掛或伺服器" },
+      ];
+
+      const journeys = [
         {
-          tag: "$agent-automation-orchestrate",
-          key: "automation",
-          bullets: {
-            en: [
-              "Write one project automation contract",
-              "Run tasks with ordered runner fallback",
-              "Verify artifacts, then resume or report",
-            ],
-            ja: [
-              "project automation contract を作成",
-              "runner fallback の順に task を実行",
-              "成果物を検証し resume / status で確認",
-            ],
-            "zh-Hant": [
-              "建立專案自動化契約",
-              "依序 fallback 執行 task",
-              "驗證產物後續跑或回報",
-            ],
-          },
+          id: "from-design",
+          tone: "var(--cyan)",
+          say: "我有設計稿，準備開始做",
+          then: "先把設計稿變成有規則的設計系統，再開始寫畫面",
+          goal: "讓 token 與元件先站穩，之後每個畫面都會長得一致",
+          stages: [
+            { name: "萃取", desc: "把設計稿讀成設計原則、色彩與間距規則、元件清單", who: "$design-system-extractor" },
+            { name: "審查", desc: "打開產出的 review 頁，確認有沒有重複的元件或太接近的色票", who: "你自己看" },
+            { name: "落地", desc: "依照文件建立 Storybook 的基礎樣式、共用元件與範例", who: "$design-system-to-storybook" },
+            { name: "比對", desc: "做出來之後跟設計稿對一次，把落差修在正確的地方", who: "$ui-compare-to-reference" },
+          ],
+          give: ["設計稿截圖、Figma 連結，或是既有產品的網址"],
+          get: ["設計原則與元件清單文件", "三層 token 檔案", "可瀏覽的設計系統網頁"],
         },
         {
-          tag: "$design-system-extractor",
-          key: "extractor",
-          bullets: {
-            en: [
-              "Create design principles",
-              "Create ref / sys / comp tokens",
-              "Review similar components and near tokens",
-            ],
-            ja: [
-              "デザイン原則を作成",
-              "ref / sys / comp トークンを作成",
-              "類似コンポーネントと近似トークンをレビュー",
-            ],
-            "zh-Hant": [
-              "建立設計原則",
-              "建立 ref / sys / comp tokens",
-              "檢查相似元件與 token 重複",
-            ],
-          },
+          id: "from-legacy",
+          tone: "var(--violet)",
+          say: "我有既有產品，想把設計整理成系統",
+          then: "從現成的程式碼反推出設計系統，而不是重畫一遍",
+          goal: "把散落在專案裡的樣式收斂成一套可維護的規則",
+          stages: [
+            { name: "反推", desc: "讀既有專案的樣式與元件，整理出實際在用的規則", who: "$design-system-extractor" },
+            { name: "審查", desc: "找出重複、衝突、近似但不同的值，決定要留哪一個", who: "你自己看" },
+            { name: "收斂", desc: "把確定的規則寫成 token 與共用元件", who: "$design-system-to-storybook" },
+            { name: "把關", desc: "之後每次改 UI 都先檢查 token 與元件，不讓樣式再散開", who: "$design-system-governance" },
+          ],
+          give: ["既有專案的資料夾路徑"],
+          get: ["目前實際在用的設計規則文件", "收斂後的 token 檔", "後續開發的把關規則"],
         },
         {
-          tag: "$design-system-to-storybook",
-          key: "storybook",
-          bullets: {
-            en: [
-              "Read extracted specs",
-              "Install the Figma export addon",
-              "Build components and stories in batches",
-            ],
-            ja: [
-              "抽出済み specs を読む",
-              "Figma export addon を導入",
-              "コンポーネントと stories を分割して作成",
-            ],
-            "zh-Hant": [
-              "讀取已萃取的 specs",
-              "安裝 Figma export addon",
-              "分批建立元件與 stories",
-            ],
-          },
+          id: "one-screen",
+          tone: "var(--teal)",
+          say: "我只有一張畫面圖",
+          then: "先拆成可重複用的積木，再組成畫面",
+          goal: "避免一張圖做出一堆只能用一次的樣式",
+          stages: [
+            { name: "拆解", desc: "把畫面拆成一塊一塊的 UI 積木，看看哪些其實是同一種", who: "$ui-screenshot-to-storybook-product" },
+            { name: "建積木", desc: "先把共用元件補齊，放進元件目錄", who: "$ui-screenshot-to-storybook-product" },
+            { name: "組畫面", desc: "用剛剛的積木組出真正的產品畫面", who: "$frontend-product-implementation" },
+            { name: "比對", desc: "跟原圖對一次，確認沒有走樣", who: "$ui-compare-to-reference" },
+          ],
+          give: ["一張畫面截圖或 Figma 匯出圖"],
+          get: ["可重複使用的元件", "元件的使用範例", "組好的產品畫面"],
         },
         {
-          tag: "$ui-screenshot-to-storybook-product",
-          key: "screenshot",
-          bullets: {
-            en: [
-              "Parse visual blocks",
-              "Build shared components first",
-              "Compose the product page last",
-            ],
-            ja: [
-              "画面ブロックを解析",
-              "先に共通コンポーネントを作成",
-              "最後にプロダクト画面を構成",
-            ],
-            "zh-Hant": [
-              "分析畫面區塊",
-              "先建共用元件",
-              "最後組裝頁面",
-            ],
-          },
+          id: "idea-to-proto",
+          tone: "var(--lime)",
+          say: "我有產品想法，想先做個可以點的",
+          then: "先把流程講清楚，做出可點的原型，再進到真的實作",
+          goal: "在寫正式程式碼之前，先讓大家點過一遍、對齊想法",
+          stages: [
+            { name: "寫清楚", desc: "把想法整理成產品需求、畫面流程、需要哪些資料", who: "$storybook-product-prototype" },
+            { name: "做原型", desc: "產出可以點擊、有假資料的原型", who: "$storybook-product-prototype" },
+            { name: "交接", desc: "把原型變成工程可以照著做的交接文件", who: "$storybook-product-prototype" },
+            { name: "實作", desc: "在真正的專案裡實作路由、畫面與狀態", who: "$frontend-product-implementation" },
+          ],
+          give: ["一段產品想法的描述"],
+          get: ["需求與流程文件", "可點擊的原型", "工程交接文件"],
         },
         {
-          tag: "$storybook-product-prototype",
-          key: "prototype",
-          bullets: {
-            en: [
-              "Create PRD-led prototype docs",
-              "Model routes, states, and fixtures",
-              "Prepare frontend handoff",
-            ],
-            ja: [
-              "PRD 起点の prototype 文書を作成",
-              "routes、states、fixtures を設計",
-              "frontend handoff を準備",
-            ],
-            "zh-Hant": [
-              "建立 PRD-led prototype 文件",
-              "定義 routes、states 和 fixtures",
-              "準備 frontend handoff",
-            ],
-          },
+          id: "fix-drift",
+          tone: "var(--rose)",
+          say: "做出來的跟設計稿不一樣",
+          then: "找出差在哪，然後修在對的地方",
+          goal: "不是把畫面硬改對，而是修在 token 或元件上，讓其他畫面一起變對",
+          highlight: true,
+          stages: [
+            { name: "選參考", desc: "決定誰是標準：Figma 設計稿、網頁版程式碼，或 App 版程式碼", who: "你決定" },
+            { name: "抽規格", desc: "把參考與實作兩邊都讀成同一份規格，換算成同一個單位", who: "$ui-pixel-align-report" },
+            { name: "找落差", desc: "比出差異，並分成「該修的」與「本來就該不一樣的」", who: "$ui-pixel-align-report" },
+            { name: "分層修", desc: "先修 token，再修共用元件，最後才動這個畫面", who: "$ui-compare-to-reference" },
+            { name: "再量一次", desc: "改完重新量測，確認真的對上了", who: "$ui-compare-to-reference" },
+          ],
+          give: ["Figma 連結、設計圖，或另一個平台的程式碼", "要修的畫面：網址、路由、或檔案路徑"],
+          get: ["逐項落差清單與截圖證據", "修好的畫面", "哪些差異是刻意保留的說明"],
         },
         {
-          tag: "$frontend-product-implementation",
-          key: "implementation",
-          bullets: {
-            en: [
-              "Read handoff docs",
-              "Inspect tokens and component library",
-              "Implement frontend routes or screens",
-            ],
-            ja: [
-              "handoff 文書を読む",
-              "tokens と component library を確認",
-              "frontend routes / screens を実装",
-            ],
-            "zh-Hant": [
-              "讀取 handoff 文件",
-              "檢查 tokens 與元件庫",
-              "實作 frontend routes 或 screens",
-            ],
-          },
+          id: "evidence",
+          tone: "var(--amber)",
+          say: "我要留證據給團隊或客戶看",
+          then: "產出一份可以直接寄出去的視覺健檢報告",
+          goal: "讓討論建立在證據上，而不是「我覺得有點怪」",
+          stages: [
+            { name: "抽規格", desc: "把設計與實作兩邊讀成可比較的規格", who: "$ui-pixel-align-report" },
+            { name: "分類", desc: "每個差異標上嚴重程度、該誰負責、屬於哪一層", who: "$ui-pixel-align-report" },
+            { name: "留證據", desc: "逐項截圖，設計與實作並排，附上原始設計連結", who: "$ui-pixel-align-report" },
+            { name: "出報告", desc: "產出一份離線也能開的 HTML 報告", who: "$ui-pixel-align-report" },
+          ],
+          give: ["設計參考與實作畫面各一份"],
+          get: ["靜態 HTML 報告", "逐項對照截圖", "可交給工程的修正建議清單"],
         },
         {
-          tag: "$design-system-governance",
-          key: "governance",
-          bullets: {
-            en: [
-              "Discover tokens and components first",
-              "Block hardcoded visual values",
-              "Ask before missing tokens or components",
-            ],
-            ja: [
-              "先に tokens と components を確認",
-              "ハードコードされた見た目を防ぐ",
-              "不足 token / component は先に確認",
-            ],
-            "zh-Hant": [
-              "先檢查 tokens 和元件",
-              "避免硬寫視覺樣式",
-              "缺 token 或元件時先詢問",
-            ],
-          },
-        },
-        {
-          tag: "$ui-compare-to-reference",
-          key: "compare",
-          bullets: {
-            en: [
-              "Check visual parity",
-              "Trace fixes to tokens or shared components",
-              "Avoid one-off CSS patches",
-            ],
-            ja: [
-              "ビジュアル差分を確認",
-              "修正を token または共通コンポーネントへ戻す",
-              "一回限りの CSS 修正を避ける",
-            ],
-            "zh-Hant": [
-              "檢查 visual parity",
-              "追到 token 或 shared component",
-              "避免一次性 CSS 補丁",
-            ],
-          },
-        },
-        {
-          tag: "$ui-pixel-align-report",
-          key: "pixelReport",
-          bullets: {
-            en: [
-              "Capture per-issue evidence",
-              "Classify token or component ownership",
-              "Generate static HTML and CSS reports",
-            ],
-            ja: [
-              "課題ごとの証拠をキャプチャ",
-              "token または component の責任範囲を分類",
-              "静的 HTML / CSS レポートを生成",
-            ],
-            "zh-Hant": [
-              "逐項截圖保留證據",
-              "標記 token 或元件歸屬",
-              "產出靜態 HTML / CSS 報告",
-            ],
-          },
-        },
-        {
-          tag: "$component-coverage-install",
-          key: "coverageInstall",
-          bullets: {
-            en: [
-              "Install the Storybook coverage tool",
-              "Generate a project component catalog",
-              "Verify checks, dev API, and skill mirrors",
-            ],
-            ja: [
-              "Storybook coverage tool を導入",
-              "プロジェクト固有の component catalog を生成",
-              "checks、dev API、skill mirror を検証",
-            ],
-            "zh-Hant": [
-              "安裝 Storybook 覆蓋率工具",
-              "產生專案專屬的元件目錄",
-              "驗證檢查腳本、dev API 與 skill 鏡像",
-            ],
-          },
-        },
-        {
-          tag: "$design-automation-hub-install",
-          key: "designHubInstall",
-          bullets: {
-            en: [
-              "Preview a zero-write install plan",
-              "Install the Figma plugin and coordinator",
-              "Add only the figma-cleanup task",
-            ],
-            ja: [
-              "書き込みなしの install plan を確認",
-              "Figma plugin と coordinator を導入",
-              "figma-cleanup task のみを追加",
-            ],
-            "zh-Hant": [
-              "先預覽不寫入的安裝計畫",
-              "安裝 Figma plugin 與 coordinator",
-              "只加入 figma-cleanup task",
-            ],
-          },
+          id: "repeatable",
+          tone: "var(--ok)",
+          say: "這件事我每週都要做一次",
+          then: "把流程寫成契約，之後一句話就能重跑",
+          goal: "重複的工作不該每次都重新交代一遍",
+          stages: [
+            { name: "白話描述", desc: "用一般講話的方式描述這件事要做什麼", who: "$agent-automation-orchestrate" },
+            { name: "寫成契約", desc: "把指令、驗證方式、必要產物存成專案設定檔", who: "$agent-automation-orchestrate" },
+            { name: "執行", desc: "之後每次執行、續跑、查狀態都用同一份契約", who: "$agent-automation-orchestrate" },
+            { name: "追蹤", desc: "在看板上看目前跑到哪、卡在哪、輪到誰", who: "$pipeline-board" },
+          ],
+          give: ["專案路徑，以及你想自動化的事情"],
+          get: ["專案自動化契約", "每次執行的紀錄", "可分享的進度看板"],
         },
       ];
 
-      const copy = {
-        en: {
-          title: "Design System and UI Implementation Skill Guide",
-          eyebrow: "CM Skills",
-          lead:
-            "This project provides reusable, tool-agnostic AI coding skills that connect design references, design-system documentation, Storybook components, and visual comparison into a clear workflow for Cursor, Claude Code, Codex, or another capable coding agent.",
-          pills: [
-            "Works across AI coding agents",
-            "Extract the design system first",
-            "Component-first",
-            "Token-first",
-          ],
-          agentTitle: "Use with Cursor, Claude Code, Codex, or another AI coding agent",
-          agentBody:
-            "The durable contract is the skill folder and its SKILL.md. If your tool supports installed skills, invoke the skill by name. If it does not, point the agent to the matching SKILL.md and ask it to follow that workflow.",
-          agentSteps: [
-            "Name the skill and the goal.",
-            "Provide exact paths for the repo, design-system docs, Storybook, reference images, or handoff docs.",
-            "For UI implementation, include $design-system-governance.",
-            "If $skill-name is not recognized, ask the agent to read <skill folder>/SKILL.md first.",
-          ],
-          navItems: [
-            { href: "#agent-usage", label: "Use" },
-            { href: "#quick-choice", label: "Choose" },
-            { href: "#recommended-flow", label: "Flow" },
-            { href: "#workflow-combinations", label: "Combos" },
-            { href: "#examples", label: "Requests" },
-            { href: "#outputs", label: "Outputs" },
-          ],
-          quickChoice: "Which skill should I use?",
-          skills: {
-            automation: {
-              title: "Run a repeatable automation across agents",
-              body:
-                "Use this to turn a repeatable workflow into one project contract, then run, resume, or inspect it with ordered fallback across Claude Code, Codex, Cursor, or another headless CLI. Designers can set it up through a plain-language guided interview.",
-            },
-            extractor: {
-              title: "Extract a design system from references",
-              body:
-                "Use this before implementation to turn screenshots, Figma, prototypes, or existing apps into design-system docs, tokens, component inventory, and review HTML.",
-            },
-            storybook: {
-              title: "Implement the design system in Storybook",
-              body:
-                "Use this after design-system docs exist. It builds Storybook foundations, shared components, and stories. Large inventories are queued and implemented in batches.",
-            },
-            screenshot: {
-              title: "Implement one screen through reusable components",
-              body:
-                "Use this when you have a screenshot or Figma export and want to split it into reusable UI blocks before composing the product screen.",
-            },
-            prototype: {
-              title: "Prototype a product flow and handoff",
-              body:
-                "Use this to create PRD-led Storybook prototypes with route metadata, deterministic fixtures, UI Flow, and frontend implementation handoff docs.",
-            },
-            implementation: {
-              title: "Build frontend product code from handoff docs",
-              body:
-                "Use this after prototype or handoff docs exist. It inspects the target repo and design system, then implements greenfield or existing-product frontend features with governed tokens and components.",
-            },
-            governance: {
-              title: "Keep UI work under design-system rules",
-              body:
-                "Use this with any UI implementation skill. It discovers tokens, grids, motion, i18n, and shared components before coding, then stops for approval when tokens or components are missing. External skill: it is installed separately and does not live in the cm-skills repository.",
-            },
-            compare: {
-              title: "Compare implementation with a reference",
-              body:
-                "Use this after a screen exists to compare the current UI with a reference screenshot and fix spacing, typography, color, and layout drift.",
-            },
-            pixelReport: {
-              title: "Document pixel alignment drift",
-              body:
-                "Use this when the team needs screenshot-backed design QA evidence, original design links, measured drift, and a static HTML report before or alongside fixes.",
-            },
-            coverageInstall: {
-              title: "Install the Storybook coverage analyzer",
-              body:
-                "Use this to bring the UI-image or PRD, coverage report, review, and implementation workflow into a React and Vite Storybook project, including the tool page, dev API, check scripts, and companion skills.",
-            },
-            designHubInstall: {
-              title: "Install the Design Automation Hub",
-              body:
-                "Use this when another repository needs the same Figma cleanup, AI plan, and human confirmation workflow. It installs the Figma plugin, local coordinator, and the figma-cleanup task on top of the automation contract.",
-            },
+      const matcher = {
+        sources: [
+          { id: "figma", label: "Figma 設計稿", note: "最準的來源。會直接讀出實際數值與變數名稱，不是用眼睛估。" },
+          { id: "web", label: "網頁版的程式碼", note: "拿已經做對的網頁當標準。" },
+          { id: "app", label: "App 版的程式碼", note: "拿已經做對的 App 當標準。" },
+          { id: "image", label: "只有一張圖", note: "沒有 Figma 權限時的備案。數值是估的，報告會標明精準度較低。" },
+        ],
+        targets: [
+          { id: "web", label: "網頁", note: "" },
+          { id: "app", label: "App（React Native／Flutter／iOS／Android）", note: "" },
+        ],
+        cases: {
+          "figma|web": {
+            say: "拿 Figma 設計稿去修網頁",
+            note: "最常見的情況。會從 Figma 讀出實際的間距、字級與變數名稱，跟網頁的實際渲染值比對，然後把落差修在 token 或共用元件上。",
           },
-          recommendedFlow: "Recommended flow",
-          flow: [
-            {
-              title: "Extract",
-              body:
-                "Use $design-system-extractor to create design-system docs and tokens from references or an existing product.",
-            },
-            {
-              title: "Review",
-              body:
-                "Open the generated review HTML and resolve duplicate sources, similar components, near tokens, and blocked decisions.",
-            },
-            {
-              title: "Implement",
-              body:
-                "Use $design-system-to-storybook to build Storybook foundations, components, and stories from the docs.",
-            },
-            {
-              title: "Prototype",
-              body:
-                "Use $storybook-product-prototype to turn product scope into PRD, UI Flow, deterministic fixtures, and frontend handoff docs.",
-            },
-            {
-              title: "Build",
-              body:
-                "Use $frontend-product-implementation to implement routes, screens, states, and mock data adapters in the product repo while following design-system governance.",
-            },
-            {
-              title: "Compare",
-              body:
-                "Use $ui-compare-to-reference to inspect the final UI and fix drift at the token, component, or composition layer.",
-            },
-            {
-              title: "Document",
-              body:
-                "Use $ui-pixel-align-report when review or handoff requires cropped evidence, source links, ownership, and recommended fixes.",
-            },
-            {
-              title: "Automate",
-              body:
-                "Use $agent-automation-orchestrate once the flow is repeatable, so the same task runs, resumes, and reports through one project contract.",
-            },
-          ],
-          workflowTitle: "Common ways to combine skills",
-          workflows: [
-            {
-              title: "Design reference to component library",
-              steps: [
-                "$design-system-extractor",
-                "$design-system-to-storybook",
-                "$ui-compare-to-reference",
-              ],
-              body:
-                "Start from screenshots, Figma, or an existing app; extract tokens and components; build Storybook; then compare the implementation with references.",
-            },
-            {
-              title: "Product idea to frontend feature",
-              steps: [
-                "$storybook-product-prototype",
-                "$frontend-product-implementation",
-                "$ui-compare-to-reference",
-              ],
-              body:
-                "Turn a feature idea into PRD, flow, data, and handoff docs; implement it in the product repo; then visually check the result.",
-            },
-            {
-              title: "One screenshot to product screen",
-              steps: [
-                "$ui-screenshot-to-storybook-product",
-                "$frontend-product-implementation",
-                "$ui-compare-to-reference",
-              ],
-              body:
-                "Split one screenshot into reusable UI blocks, wire it into a product route or screen, and verify visual parity.",
-            },
-            {
-              title: "Existing product feature",
-              steps: [
-                "$frontend-product-implementation",
-                "$design-system-governance",
-                "$ui-compare-to-reference",
-              ],
-              body:
-                "Inspect the existing repo, reuse tokens and shared components, add the feature, and compare it with the reference.",
-            },
-            {
-              title: "Repeatable design-to-engineering automation",
-              steps: [
-                "$agent-automation-orchestrate",
-                "$design-system-to-storybook",
-                "$ui-compare-to-reference",
-              ],
-              body:
-                "Describe the automation in plain language, let the project contract hold the runners and verification, then have each run build components and check the result.",
-            },
-          ],
-          pairingsTitle: "Skills that continue or pair well together",
-          pairings: [
-            {
-              from: "$design-system-extractor",
-              to: "$design-system-to-storybook",
-              body:
-                "Use extracted docs and tokens as the source for the Storybook component library.",
-            },
-            {
-              from: "$design-system-to-storybook",
-              to: "$storybook-product-prototype",
-              body:
-                "Use the component catalog when building clickable product prototypes.",
-            },
-            {
-              from: "$storybook-product-prototype",
-              to: "$frontend-product-implementation",
-              body:
-                "Use prototype docs as the input for real frontend routes, screens, states, and mock adapters.",
-            },
-            {
-              from: "$design-system-governance",
-              to: "All UI implementation skills",
-              body:
-                "Apply token-first and component-first gates whenever building UI.",
-            },
-            {
-              from: "$ui-pixel-align-report",
-              to: "$ui-compare-to-reference",
-              body:
-                "Use the report to document drift, then apply targeted visual fixes.",
-            },
-            {
-              from: "$agent-automation-orchestrate",
-              to: "Any companion skill",
-              body:
-                "Keep the runner generic, and put the project's instructions, verification, and required artifacts in the task contract.",
-            },
-            {
-              from: "$design-automation-hub-install",
-              to: "$agent-automation-orchestrate",
-              body:
-                "Add the figma-cleanup task on top of the existing automation contract instead of installing a second runner.",
-            },
-          ],
-          examples: "Reusable AI coding agent request examples",
-          prompts: [
-            "Use $design-system-extractor to extract a reusable design-system package from ./reference screenshots.",
-            "Use $design-system-to-storybook with design system at ./design-system and product repo at ./apps/web.",
-            "Use $storybook-product-prototype to create a checkout flow prototype and frontend handoff docs.",
-            "Use $frontend-product-implementation to implement the checkout flow from ./src/pages/prototypes/checkout/docs into ./apps/web.",
-            "Use $ui-screenshot-to-storybook-product on reference/dashboard.png and implement it through reusable Storybook components.",
-            "Use $ui-compare-to-reference on reference/dashboard.png and http://localhost:3000/dashboard.",
-            "Use $ui-pixel-align-report on reference/dashboard.png and http://localhost:3000/dashboard.",
-            "Use $agent-automation-orchestrate to set up automation for ./apps/web. I want ready-for-dev Figma components built into Storybook.",
-            "Use $agent-automation-orchestrate to run the build-components task in ./apps/web, with a dry run first.",
-            "Use $component-coverage-install to install the component coverage analyzer into ./apps/web.",
-            "Use $design-automation-hub-install to preview a Design Automation Hub installation for ./apps/web.",
-            "If $frontend-product-implementation is not recognized, read ./frontend-product-implementation/SKILL.md and follow that workflow. For UI governance, also read the SKILL.md of the separately installed design-system-governance skill; it is not part of this repository.",
-          ],
-          principleTitle: "Usage principle",
-          principleStrong: "Do not skip the design-system layer.",
-          principleBody:
-            "If tokens or shared components exist, use or extend them before changing the page itself. This keeps the UI consistent across screens.",
-          outputs: "What does each skill produce?",
-          extractOutputTitle: "Design-system extraction",
-          storybookOutputTitle: "Storybook implementation",
-          pixelReportOutputTitle: "Pixel alignment report",
-          extractOutputs: [
-            "design-system/DESIGN_PRINCIPLES.md",
-            "design-system/COMPONENT_INVENTORY.md",
-            "design-system/components/*.md",
-            "tokens/tokens-ref.css",
-            "tokens/tokens-sys.css",
-            "tokens/tokens-comp.css",
-            "docs/design-system/index.html",
-            "docs/design-system/review.html",
-          ],
-          storybookOutputs: [
-            "Storybook foundations docs",
-            "shared UI components",
-            "component stories and states",
-            "large component queue",
-            "Figma export addon setup",
-            "batch verification log",
-          ],
-          pixelReportOutputs: [
-            "reports/design-pixel-align/<target>/index.html",
-            "reports/design-pixel-align/<target>/styles.css",
-            "full reference and implementation screenshots",
-            "per-finding reference, implementation, and diff crops",
-            "findings.json with ownership and recommended fixes",
-          ],
-          footer:
-            "This guide is a quick entry point for choosing the right skill. The detailed rules still live in each skill folder's SKILL.md.",
-        },
-        ja: {
-          title: "デザインシステムと UI 実装の Skill ガイド",
-          eyebrow: "CM Skills",
-          lead:
-            "このプロジェクトは、デザイン参照、デザインシステム文書、Storybook コンポーネント、ビジュアル比較を一つの流れにつなぐ、Cursor、Claude Code、Codex、その他の AI coding agent 向けの汎用 skills を提供します。",
-          pills: [
-            "AI coding agent 共通",
-            "先にデザインシステムを抽出",
-            "コンポーネント優先",
-            "Token 優先",
-          ],
-          agentTitle: "Cursor、Claude Code、Codex、その他の AI coding agent で使う",
-          agentBody:
-            "安定した契約は skill フォルダとその SKILL.md です。tool が installed skills をサポートしている場合は skill 名で呼び出し、対応していない場合は対象の SKILL.md を読ませて、その workflow に従うよう依頼します。",
-          agentSteps: [
-            "使う skill と目的を明確に伝えます。",
-            "repo、design-system docs、Storybook、reference images、handoff docs の正確な path を渡します。",
-            "UI 実装では $design-system-governance も含めます。",
-            "$skill-name が認識されない場合は、先に <skill folder>/SKILL.md を読むよう依頼します。",
-          ],
-          navItems: [
-            { href: "#agent-usage", label: "使い方" },
-            { href: "#quick-choice", label: "選ぶ" },
-            { href: "#recommended-flow", label: "Flow" },
-            { href: "#workflow-combinations", label: "組み合わせ" },
-            { href: "#examples", label: "依頼例" },
-            { href: "#outputs", label: "成果物" },
-          ],
-          quickChoice: "どの skill を使うべき？",
-          skills: {
-            automation: {
-              title: "繰り返す automation を agent 横断で実行",
-              body:
-                "繰り返し使う workflow を 1 つの project contract にまとめ、Claude Code、Codex、Cursor などの headless CLI を順に fallback しながら run / resume / status で扱う時に使います。デザイナーは平易な言葉の guided setup から作成できます。",
-            },
-            extractor: {
-              title: "参照からデザインシステムを抽出",
-              body:
-                "実装前に使います。スクリーンショット、Figma、prototype、既存アプリから design-system 文書、tokens、component inventory、review HTML を作成します。",
-            },
-            storybook: {
-              title: "デザインシステムを Storybook に実装",
-              body:
-                "design-system 文書がある状態で使います。Storybook foundations、共通コンポーネント、stories を作成します。大量のコンポーネントは queue に入れて分割実装します。",
-            },
-            screenshot: {
-              title: "1 画面を再利用可能なコンポーネントで実装",
-              body:
-                "スクリーンショットや Figma export があり、プロダクト画面を作る前に再利用可能な UI ブロックへ分解したい時に使います。",
-            },
-            prototype: {
-              title: "Product flow と handoff を prototype 化",
-              body:
-                "PRD 起点の Storybook prototype、route metadata、deterministic fixtures、UI Flow、frontend handoff 文書を作成する時に使います。",
-            },
-            implementation: {
-              title: "Handoff 文書から frontend product code を実装",
-              body:
-                "prototype または handoff 文書がある状態で使います。target repo と design system を確認し、greenfield または既存 product の frontend feature を token/component governance に沿って実装します。",
-            },
-            governance: {
-              title: "UI 実装をデザインシステムのルールに沿わせる",
-              body:
-                "UI 実装系 skill と一緒に使います。coding 前に tokens、grid、motion、i18n、共通コンポーネントを確認し、不足 token や component がある場合は先に確認します。外部 skill：cm-skills repository には含まれず、別途インストールが必要です。",
-            },
-            compare: {
-              title: "実装と参照画像を比較",
-              body:
-                "画面実装後に使います。現在の UI と参照スクリーンショットを比較し、spacing、typography、color、layout のずれを修正します。",
-            },
-            pixelReport: {
-              title: "Pixel alignment のずれを文書化",
-              body:
-                "修正前または修正と同時に、スクリーンショット証拠、元デザインリンク、測定したずれ、静的 HTML レポートが必要な時に使います。",
-            },
-            coverageInstall: {
-              title: "Storybook coverage analyzer を導入",
-              body:
-                "UI 画像や PRD から coverage report、レビュー、実装までの workflow を React + Vite の Storybook プロジェクトへ導入します。tool page、dev API、check scripts、companion skills を含みます。",
-            },
-            designHubInstall: {
-              title: "Design Automation Hub を導入",
-              body:
-                "別のリポジトリで同じ Figma cleanup、AI plan、人による確認の workflow が必要な時に使います。Figma plugin、ローカル coordinator、figma-cleanup task を automation contract の上に導入します。",
-            },
+          "figma|app": {
+            say: "拿 Figma 設計稿去修 App",
+            note: "會把 Figma 的數值換算成 App 的單位再比對，並且自動放過該不一樣的地方 — 例如系統字型替換；同時抓出該不一樣卻照抄的地方 — 例如按鈕小於 iOS 的 44pt 觸控範圍。",
           },
-          recommendedFlow: "おすすめの流れ",
-          flow: [
-            {
-              title: "抽出",
-              body:
-                "$design-system-extractor で参照や既存プロダクトから design-system 文書と tokens を作成します。",
-            },
-            {
-              title: "レビュー",
-              body:
-                "生成された review HTML を開き、重複ソース、類似コンポーネント、近似 tokens、blocked decisions を確認します。",
-            },
-            {
-              title: "実装",
-              body:
-                "$design-system-to-storybook で文書をもとに Storybook foundations、components、stories を作成します。",
-            },
-            {
-              title: "Prototype",
-              body:
-                "$storybook-product-prototype で product scope を PRD、UI Flow、deterministic fixtures、frontend handoff 文書に変換します。",
-            },
-            {
-              title: "Build",
-              body:
-                "$frontend-product-implementation で product repo に routes、screens、states、mock data adapters を design-system governance に沿って実装します。",
-            },
-            {
-              title: "比較",
-              body:
-                "$ui-compare-to-reference で最終 UI を確認し、token、component、composition の層で差分を修正します。",
-            },
-            {
-              title: "文書化",
-              body:
-                "$ui-pixel-align-report で crop 証拠、source link、責任範囲、推奨修正をレビュー用に残します。",
-            },
-            {
-              title: "自動化",
-              body:
-                "流れが繰り返し使える段階になったら $agent-automation-orchestrate で 1 つの project contract にまとめ、同じ task を run / resume / status で扱えるようにします。",
-            },
-          ],
-          workflowTitle: "よく使う skill の組み合わせ",
-          workflows: [
-            {
-              title: "デザイン参照から component library へ",
-              steps: [
-                "$design-system-extractor",
-                "$design-system-to-storybook",
-                "$ui-compare-to-reference",
-              ],
-              body:
-                "スクリーンショット、Figma、既存アプリから始め、tokens と components を抽出し、Storybook に実装してから参照と比較します。",
-            },
-            {
-              title: "Product idea から frontend feature へ",
-              steps: [
-                "$storybook-product-prototype",
-                "$frontend-product-implementation",
-                "$ui-compare-to-reference",
-              ],
-              body:
-                "機能アイデアを PRD、flow、data、handoff 文書に整理し、product repo に実装して、最後に見た目を確認します。",
-            },
-            {
-              title: "1 枚の screenshot から product screen へ",
-              steps: [
-                "$ui-screenshot-to-storybook-product",
-                "$frontend-product-implementation",
-                "$ui-compare-to-reference",
-              ],
-              body:
-                "1 枚の画面を再利用可能な UI ブロックへ分解し、product route や screen に組み込み、visual parity を確認します。",
-            },
-            {
-              title: "既存 product への機能追加",
-              steps: [
-                "$frontend-product-implementation",
-                "$design-system-governance",
-                "$ui-compare-to-reference",
-              ],
-              body:
-                "既存 repo を確認し、tokens と shared components を再利用して機能を追加し、参照との差分を確認します。",
-            },
-            {
-              title: "デザインからエンジニアリングまでの自動化",
-              steps: [
-                "$agent-automation-orchestrate",
-                "$design-system-to-storybook",
-                "$ui-compare-to-reference",
-              ],
-              body:
-                "自動化したい内容を平易な言葉で伝え、runner と検証は project contract に持たせ、各 run でコンポーネントを作成して結果を確認します。",
-            },
-          ],
-          pairingsTitle: "続けて使える、または相性のよい skills",
-          pairings: [
-            {
-              from: "$design-system-extractor",
-              to: "$design-system-to-storybook",
-              body:
-                "抽出された docs と tokens を Storybook component library の source として使います。",
-            },
-            {
-              from: "$design-system-to-storybook",
-              to: "$storybook-product-prototype",
-              body:
-                "component catalog を使って clickable product prototype を作ります。",
-            },
-            {
-              from: "$storybook-product-prototype",
-              to: "$frontend-product-implementation",
-              body:
-                "prototype docs を real frontend routes、screens、states、mock adapters の入力として使います。",
-            },
-            {
-              from: "$design-system-governance",
-              to: "すべての UI 実装系 skills",
-              body:
-                "UI を作る時は token-first、component-first の gate として一緒に使います。",
-            },
-            {
-              from: "$ui-pixel-align-report",
-              to: "$ui-compare-to-reference",
-              body:
-                "report で drift を記録し、その後に絞り込んだ visual fix を適用します。",
-            },
-            {
-              from: "$agent-automation-orchestrate",
-              to: "任意の companion skill",
-              body:
-                "runner は汎用のまま保ち、プロジェクト固有の指示、検証、必要な成果物は task contract に置きます。",
-            },
-            {
-              from: "$design-automation-hub-install",
-              to: "$agent-automation-orchestrate",
-              body:
-                "2 つ目の runner を追加せず、既存の automation contract の上に figma-cleanup task を追加します。",
-            },
-          ],
-          examples: "AI coding agent への依頼例",
-          prompts: [
-            "Use $design-system-extractor to extract a reusable design-system package from ./reference screenshots.",
-            "Use $design-system-to-storybook with design system at ./design-system and product repo at ./apps/web.",
-            "Use $storybook-product-prototype to create a checkout flow prototype and frontend handoff docs.",
-            "Use $frontend-product-implementation to implement the checkout flow from ./src/pages/prototypes/checkout/docs into ./apps/web.",
-            "Use $ui-screenshot-to-storybook-product on reference/dashboard.png and implement it through reusable Storybook components.",
-            "Use $ui-compare-to-reference on reference/dashboard.png and http://localhost:3000/dashboard.",
-            "Use $ui-pixel-align-report on reference/dashboard.png and http://localhost:3000/dashboard.",
-            "Use $agent-automation-orchestrate to set up automation for ./apps/web. I want ready-for-dev Figma components built into Storybook.",
-            "Use $agent-automation-orchestrate to run the build-components task in ./apps/web, with a dry run first.",
-            "Use $component-coverage-install to install the component coverage analyzer into ./apps/web.",
-            "Use $design-automation-hub-install to preview a Design Automation Hub installation for ./apps/web.",
-            "$frontend-product-implementation が認識されない場合は、./frontend-product-implementation/SKILL.md を読み、その workflow に従ってください。UI governance は、別途インストールされた design-system-governance skill の SKILL.md を読んでください（このリポジトリには含まれません）。",
-          ],
-          principleTitle: "使用原則",
-          principleStrong: "デザインシステム層を飛ばさない。",
-          principleBody:
-            "tokens や共通コンポーネントがある場合は、ページを直接修正する前にそれらを使うか拡張します。これにより画面間の一貫性を保てます。",
-          outputs: "各 skill の成果物",
-          extractOutputTitle: "デザインシステム抽出",
-          storybookOutputTitle: "Storybook 実装",
-          pixelReportOutputTitle: "Pixel alignment レポート",
-          extractOutputs: [
-            "design-system/DESIGN_PRINCIPLES.md",
-            "design-system/COMPONENT_INVENTORY.md",
-            "design-system/components/*.md",
-            "tokens/tokens-ref.css",
-            "tokens/tokens-sys.css",
-            "tokens/tokens-comp.css",
-            "docs/design-system/index.html",
-            "docs/design-system/review.html",
-          ],
-          storybookOutputs: [
-            "Storybook foundations docs",
-            "shared UI components",
-            "component stories and states",
-            "large component queue",
-            "Figma export addon setup",
-            "batch verification log",
-          ],
-          pixelReportOutputs: [
-            "reports/design-pixel-align/<target>/index.html",
-            "reports/design-pixel-align/<target>/styles.css",
-            "full reference and implementation screenshots",
-            "per-finding reference, implementation, and diff crops",
-            "findings.json with ownership and recommended fixes",
-          ],
-          footer:
-            "このガイドは、適切な skill をすばやく選ぶための入口です。詳細なルールは各 skill フォルダの SKILL.md を確認してください。",
-        },
-        "zh-Hant": {
-          title: "設計系統與 UI 實作工作流指南",
-          eyebrow: "CM Skills",
-          lead:
-            "這個專案提供一組可重複使用、工具中立的 AI coding skills，目標是讓 Cursor、Claude Code、Codex 或其他 AI coding agent 都能把設計稿、設計系統文件、Storybook 元件和畫面比對串成清楚的開發流程。",
-          pills: ["跨 AI coding agent 使用", "先萃取設計系統", "元件優先", "Token 優先"],
-          agentTitle: "在 Cursor、Claude Code、Codex 或其他 AI coding agent 中使用",
-          agentBody:
-            "最穩定的規格是 skill 資料夾和裡面的 SKILL.md。如果工具支援 installed skills，可以直接用 skill 名稱；如果不支援，就明確請 AI 先讀對應的 SKILL.md，再依照該 workflow 執行。",
-          agentSteps: [
-            "說清楚要用哪個 skill，以及要完成什麼目標。",
-            "提供 repo、design-system docs、Storybook、reference images 或 handoff docs 的明確路徑。",
-            "如果是 UI 實作，請同時要求遵循 $design-system-governance。",
-            "如果工具不認得 $skill-name，請改成要求它先讀 <skill folder>/SKILL.md。",
-          ],
-          navItems: [
-            { href: "#agent-usage", label: "使用方式" },
-            { href: "#quick-choice", label: "快速選擇" },
-            { href: "#recommended-flow", label: "流程" },
-            { href: "#workflow-combinations", label: "搭配" },
-            { href: "#examples", label: "請求範例" },
-            { href: "#outputs", label: "成果物" },
-          ],
-          quickChoice: "我該用哪個 skill？",
-          skills: {
-            automation: {
-              title: "跨 agent 執行可重複的自動化",
-              body:
-                "適合把重複性的流程收斂成一份專案契約，再用 Claude Code、Codex、Cursor 等 headless CLI 依序 fallback 執行、續跑或查看狀態。設計師也可以用白話的引導式設定建立。",
-            },
-            extractor: {
-              title: "從設計稿萃取設計系統",
-              body:
-                "適合在開始實作前，把 screenshots、Figma、prototype 或既有專案整理成 design-system 文件、tokens、component inventory 和 review HTML。",
-            },
-            storybook: {
-              title: "把設計系統落地到 Storybook",
-              body:
-                "適合在已經有 design-system 文件後，建立 Storybook foundations、shared components 和 stories。大量元件會先排 queue 分批處理。",
-            },
-            screenshot: {
-              title: "從單張畫面做元件化實作",
-              body:
-                "適合你有一張 screenshot 或 Figma export，希望先拆出可重用元件，再用 Storybook 或專案的元件目錄組成產品畫面。",
-            },
-            prototype: {
-              title: "建立產品流程 prototype 與 handoff",
-              body:
-                "適合把產品想法整理成 PRD-led Storybook prototype、route metadata、deterministic fixtures、UI Flow 和 frontend handoff 文件。",
-            },
-            implementation: {
-              title: "從 handoff 文件實作前端產品功能",
-              body:
-                "適合已經有 prototype 或 handoff 文件後，讀取 target repo 與設計系統，依照 design-system governance 實作 0 到 1 或既有產品的新功能。",
-            },
-            governance: {
-              title: "讓 UI 實作遵循設計系統規範",
-              body:
-                "適合搭配任何 UI 實作 skill 使用。它會先檢查 tokens、grid、motion、i18n 和 shared components，缺少 token 或元件時先停下來確認。外部 skill：不在 cm-skills repo 裡，需要另外安裝。",
-            },
-            compare: {
-              title: "比對實作與參考圖",
-              body:
-                "適合畫面已經做出來後，拿 reference screenshot 跟目前 UI 比對，找出 spacing、typography、color、layout 的偏差並修正。",
-            },
-            pixelReport: {
-              title: "產出 pixel align 稽核文件",
-              body:
-                "適合需要設計 QA 證據、原始設計稿連結、逐項截圖、量測偏差和靜態 HTML 報告，再交付修正或審查時使用。",
-            },
-            coverageInstall: {
-              title: "安裝 Storybook 元件覆蓋率工具",
-              body:
-                "適合把「UI 圖片或 PRD → 覆蓋率報告 → 開發者審查 → 實作」的流程帶進 React + Vite 的 Storybook 專案，包含工具頁、dev API、檢查腳本和配套 skills。",
-            },
-            designHubInstall: {
-              title: "安裝 Design Automation Hub",
-              body:
-                "適合其他專案需要同一套「Figma 清理 → AI 計畫 → 人工確認」流程時使用。它會在自動化契約之上安裝 Figma plugin、本機 coordinator 和 figma-cleanup task。",
-            },
+          "web|app": {
+            say: "拿網頁版當標準去修 App",
+            note: "會逐項換算單位，並注意排版預設值的差異。同時會提醒你哪些地方不能照抄：觸控範圍、安全區、字級放大時的行為。",
           },
-          recommendedFlow: "推薦流程",
-          flow: [
-            {
-              title: "萃取",
-              body:
-                "用 $design-system-extractor 從設計稿或既有產品建立 design-system 文件與 tokens。",
-            },
-            {
-              title: "審查",
-              body:
-                "查看產出的 review HTML，確認重複來源、相似元件、near tokens 和 blocked decisions。",
-            },
-            {
-              title: "落地",
-              body:
-                "用 $design-system-to-storybook 依照文件建立 Storybook foundations、components 和 stories。",
-            },
-            {
-              title: "Prototype",
-              body:
-                "用 $storybook-product-prototype 把產品範圍整理成 PRD、UI Flow、deterministic fixtures 和 frontend handoff 文件。",
-            },
-            {
-              title: "Build",
-              body:
-                "用 $frontend-product-implementation 在產品 repo 中實作 routes、screens、states 和 mock data adapters，並遵循 design-system governance。",
-            },
-            {
-              title: "比對",
-              body:
-                "用 $ui-compare-to-reference 檢查實作結果，把偏差修在 token、元件或組裝層。",
-            },
-            {
-              title: "文件化",
-              body:
-                "用 $ui-pixel-align-report 保留 crop 證據、來源連結、歸屬層級和建議修正，方便設計審查與交接。",
-            },
-            {
-              title: "自動化",
-              body:
-                "流程穩定可重複後，用 $agent-automation-orchestrate 收斂成一份專案契約，讓同一個 task 可以執行、續跑並回報狀態。",
-            },
-          ],
-          workflowTitle: "常見的 skill 搭配方式",
-          workflows: [
-            {
-              title: "從設計參考到元件庫",
-              steps: [
-                "$design-system-extractor",
-                "$design-system-to-storybook",
-                "$ui-compare-to-reference",
-              ],
-              body:
-                "從 screenshots、Figma 或既有 app 開始，先萃取 tokens 和元件，再落地到 Storybook，最後跟參考畫面比對。",
-            },
-            {
-              title: "從產品想法到前端功能",
-              steps: [
-                "$storybook-product-prototype",
-                "$frontend-product-implementation",
-                "$ui-compare-to-reference",
-              ],
-              body:
-                "把功能想法整理成 PRD、流程、資料與 handoff 文件，接著實作到 product repo，最後確認畫面品質。",
-            },
-            {
-              title: "從單張截圖到產品畫面",
-              steps: [
-                "$ui-screenshot-to-storybook-product",
-                "$frontend-product-implementation",
-                "$ui-compare-to-reference",
-              ],
-              body:
-                "先把單張畫面拆成可重用 UI blocks，再接到產品 route 或 screen，最後檢查 visual parity。",
-            },
-            {
-              title: "既有產品新增功能",
-              steps: [
-                "$frontend-product-implementation",
-                "$design-system-governance",
-                "$ui-compare-to-reference",
-              ],
-              body:
-                "先理解既有 repo，重用 tokens 與 shared components，新增功能後再和 reference 比對。",
-            },
-            {
-              title: "可重複的設計到工程自動化",
-              steps: [
-                "$agent-automation-orchestrate",
-                "$design-system-to-storybook",
-                "$ui-compare-to-reference",
-              ],
-              body:
-                "用白話描述要自動化的事，把 runner 和驗證方式交給專案契約保存，之後每次執行都會建立元件並檢查結果。",
-            },
-          ],
-          pairingsTitle: "可以延續或搭配使用的 skills",
-          pairings: [
-            {
-              from: "$design-system-extractor",
-              to: "$design-system-to-storybook",
-              body:
-                "用萃取出的 docs 和 tokens 作為 Storybook 元件庫的來源。",
-            },
-            {
-              from: "$design-system-to-storybook",
-              to: "$storybook-product-prototype",
-              body:
-                "用 Storybook component catalog 建立可點擊的產品 prototype。",
-            },
-            {
-              from: "$storybook-product-prototype",
-              to: "$frontend-product-implementation",
-              body:
-                "用 prototype docs 作為真實前端 routes、screens、states 和 mock adapters 的輸入。",
-            },
-            {
-              from: "$design-system-governance",
-              to: "所有 UI 實作類 skills",
-              body:
-                "每次做 UI 時都作為 token-first、component-first 的檢查 gate。",
-            },
-            {
-              from: "$ui-pixel-align-report",
-              to: "$ui-compare-to-reference",
-              body:
-                "先用 report 記錄偏差，再用比對 skill 進行聚焦修正。",
-            },
-            {
-              from: "$agent-automation-orchestrate",
-              to: "任何 companion skill",
-              body:
-                "runner 保持通用，專案自己的指示、驗證指令和必要產物寫在 task 契約裡。",
-            },
-            {
-              from: "$design-automation-hub-install",
-              to: "$agent-automation-orchestrate",
-              body:
-                "在既有的自動化契約上加入 figma-cleanup task，而不是再裝第二套 runner。",
-            },
-          ],
-          examples: "給 AI coding agent 的請求範例",
-          prompts: [
-            "Use $design-system-extractor to extract a reusable design-system package from ./reference screenshots.",
-            "Use $design-system-to-storybook with design system at ./design-system and product repo at ./apps/web.",
-            "Use $storybook-product-prototype to create a checkout flow prototype and frontend handoff docs.",
-            "Use $frontend-product-implementation to implement the checkout flow from ./src/pages/prototypes/checkout/docs into ./apps/web.",
-            "Use $ui-screenshot-to-storybook-product on reference/dashboard.png and implement it through reusable Storybook components.",
-            "Use $ui-compare-to-reference on reference/dashboard.png and http://localhost:3000/dashboard.",
-            "Use $ui-pixel-align-report on reference/dashboard.png and http://localhost:3000/dashboard.",
-            "Use $agent-automation-orchestrate to set up automation for ./apps/web. I want ready-for-dev Figma components built into Storybook.",
-            "Use $agent-automation-orchestrate to run the build-components task in ./apps/web, with a dry run first.",
-            "Use $component-coverage-install to install the component coverage analyzer into ./apps/web.",
-            "Use $design-automation-hub-install to preview a Design Automation Hub installation for ./apps/web.",
-            "如果 $frontend-product-implementation 沒有被辨識，請先閱讀 ./frontend-product-implementation/SKILL.md 並依照該 workflow 執行。UI governance 請閱讀另外安裝的 design-system-governance skill 的 SKILL.md（它不在這個 repo 裡）。",
-          ],
-          principleTitle: "使用原則",
-          principleStrong: "不要跳過設計系統層。",
-          principleBody:
-            "如果有 tokens 或共用元件，應先使用或擴充它們，再處理頁面本身。這樣可以避免畫面做得快，但後續每個頁面都長得不一致。",
-          outputs: "各 skill 會產出什麼？",
-          extractOutputTitle: "設計系統萃取",
-          storybookOutputTitle: "Storybook 落地",
-          pixelReportOutputTitle: "Pixel align 報告",
-          extractOutputs: [
-            "design-system/DESIGN_PRINCIPLES.md",
-            "design-system/COMPONENT_INVENTORY.md",
-            "design-system/components/*.md",
-            "tokens/tokens-ref.css",
-            "tokens/tokens-sys.css",
-            "tokens/tokens-comp.css",
-            "docs/design-system/index.html",
-            "docs/design-system/review.html",
-          ],
-          storybookOutputs: [
-            "Storybook foundations docs",
-            "shared UI components",
-            "component stories and states",
-            "large component queue",
-            "Figma export addon setup",
-            "batch verification log",
-          ],
-          pixelReportOutputs: [
-            "reports/design-pixel-align/<target>/index.html",
-            "reports/design-pixel-align/<target>/styles.css",
-            "full reference and implementation screenshots",
-            "per-finding reference, implementation, and diff crops",
-            "findings.json with ownership and recommended fixes",
-          ],
-          footer:
-            "這份指南是給使用者快速選擇 skill 用途的入口。詳細規則仍以各 skill 目錄中的 SKILL.md 為準。",
+          "app|web": {
+            say: "拿 App 版當標準去修網頁",
+            note: "會把 App 的排版換算回網頁寫法，並補上 App 上沒有、但網頁一定要有的東西：滑鼠移過去的狀態、鍵盤操作時的外框。",
+          },
+          "web|web": {
+            say: "拿另一個網頁當標準去修這個網頁",
+            note: "同一個平台，所以間距、字級、顏色全部嚴格比對，沒有「平台不同所以可以不一樣」的空間。適合把新畫面對齊既有的標準畫面。",
+          },
+          "app|app": {
+            say: "拿一個 App 畫面當標準去修另一個",
+            note: "常見於 iOS 和 Android 要長得一致。數值會嚴格比對，但放過各自系統本來就該不同的地方：Android 觸控範圍要 48dp、iOS 要 44pt。",
+          },
+          "image|web": {
+            say: "拿一張圖去修網頁",
+            note: "沒有 Figma 時的備案。會先找一個已知尺寸的元素定出比例再量，數值是估的，1～2px 的差異不會拿來當證據。",
+          },
+          "image|app": {
+            say: "拿一張圖去修 App",
+            note: "沒有 Figma 時的備案。會先定出比例再量，並把估算的精準度標在報告上，避免拿估出來的數字當定論。",
+          },
         },
       };
 
-      function escapeHtml(value) {
-        return String(value)
-          .replace(/&/g, "&amp;")
-          .replace(/</g, "&lt;")
-          .replace(/>/g, "&gt;")
-          .replace(/"/g, "&quot;");
-      }
+      const skills = [
+        {
+          tag: "$design-system-extractor",
+          tone: "var(--cyan)",
+          group: "建立設計系統",
+          when: "我想把設計稿或既有產品整理成一套規則",
+          give: "設計稿截圖、Figma 連結、既有專案資料夾，或原型程式碼",
+          get: "設計原則、三層 token、元件清單、可瀏覽的設計系統網頁",
+          note: "在動手寫畫面之前做。它會逼你先決定規則，而不是邊做邊決定。",
+        },
+        {
+          tag: "$design-system-to-storybook",
+          tone: "var(--cyan)",
+          group: "建立設計系統",
+          when: "設計系統文件寫好了，我要把它變成真的元件",
+          give: "已萃取的設計系統資料夾，加上目標專案路徑",
+          get: "Storybook 基礎樣式、共用元件、每個元件的使用範例",
+          note: "元件很多時會自動排隊分批做，不會一次塞爆。",
+        },
+        {
+          tag: "$design-system-governance",
+          tone: "var(--violet)",
+          group: "建立設計系統",
+          when: "我想確保之後每次改 UI 都不會又散掉",
+          give: "不用給什麼，搭配其他 UI skill 一起用",
+          get: "動手前先檢查 token 與元件的把關流程",
+          note: "缺 token 或元件時它會停下來問你，而不是自己硬寫一個。",
+          external: true,
+        },
+        {
+          tag: "$ui-screenshot-to-storybook-product",
+          tone: "var(--teal)",
+          group: "把畫面做出來",
+          when: "我有一張畫面圖，想拆成可重複用的積木",
+          give: "一張截圖或 Figma 匯出圖",
+          get: "拆解後的 UI 積木、補齊的共用元件、組好的畫面",
+          note: "重點是先建積木再組畫面，不是照著圖把樣式硬刻一遍。",
+        },
+        {
+          tag: "$storybook-product-prototype",
+          tone: "var(--lime)",
+          group: "把畫面做出來",
+          when: "我有想法，想先做個可以點的原型給大家看",
+          give: "一段產品想法的描述",
+          get: "需求與流程文件、可點擊的原型、工程交接文件",
+          note: "原型裡的資料是固定的假資料，每次打開都長一樣，方便討論。",
+        },
+        {
+          tag: "$frontend-product-implementation",
+          tone: "var(--lime)",
+          group: "把畫面做出來",
+          when: "文件都齊了，該做成真的功能了",
+          give: "交接文件路徑，加上要寫進去的專案路徑",
+          get: "真正的路由、畫面、狀態處理與假資料接口",
+          note: "會先讀專案現有的 token 與元件再動手，不會另起爐灶。",
+        },
+        {
+          tag: "$ui-pixel-align-report",
+          tone: "var(--rose)",
+          group: "檢查與修正",
+          when: "我要知道差在哪，而且要留下可以給別人看的證據",
+          give: "參考來源（Figma／設計圖／另一個平台的程式碼）＋ 要檢查的畫面",
+          get: "逐項落差清單、並排截圖、可離線開啟的 HTML 報告",
+          note: "只做健檢不動程式碼。差異會分成「該修」與「本來就該不一樣」兩類。",
+        },
+        {
+          tag: "$ui-compare-to-reference",
+          tone: "var(--rose)",
+          group: "檢查與修正",
+          when: "我要直接把畫面修對",
+          give: "參考來源 ＋ 要修的畫面，或是上一步產出的落差清單",
+          get: "修好的畫面，加上哪些差異是刻意保留的說明",
+          note: "修的順序是 token → 共用元件 → 組裝 → 這個畫面，不會直接貼一段只能用一次的樣式。",
+        },
+        {
+          tag: "$component-coverage-install",
+          tone: "var(--amber)",
+          group: "裝工具進專案",
+          when: "我想知道這個專案的元件被用得夠不夠",
+          give: "目標專案路徑（React + Vite 的 Storybook 專案）",
+          get: "Storybook 裡的覆蓋率工具頁、檢查腳本、配套 skill",
+          note: "裝好之後，走「UI 圖或需求 → 覆蓋率報告 → 審查 → 實作」這條流程。",
+        },
+        {
+          tag: "$design-automation-hub-install",
+          tone: "var(--amber)",
+          group: "裝工具進專案",
+          when: "我想把 Figma 清理的自動化搬到另一個專案",
+          give: "目標專案路徑",
+          get: "Figma 外掛、本機協調程式、figma-cleanup 任務",
+          note: "會先給你一份不寫入任何檔案的安裝預覽，確認後才真的裝。",
+        },
+        {
+          tag: "$agent-automation-orchestrate",
+          tone: "var(--ok)",
+          group: "自動化與追蹤",
+          when: "同一件事我要重複做很多次",
+          give: "專案路徑，加上白話描述你想自動化什麼",
+          get: "一份專案自動化契約，可以執行、續跑、查狀態",
+          note: "有引導式的白話問答可以用，不必自己寫設定檔。",
+        },
+        {
+          tag: "$pipeline-board",
+          tone: "var(--ok)",
+          group: "自動化與追蹤",
+          when: "我想看這個專案的自動化現在跑到哪",
+          give: "專案路徑",
+          get: "一個單檔 HTML 看板，顯示目前階段、卡在哪、輪到誰",
+          note: "純唯讀的快照，不會啟動任何東西，也不需要開伺服器。",
+        },
+        {
+          tag: "$portfolio-dashboard",
+          tone: "var(--ok)",
+          group: "自動化與追蹤",
+          when: "我同時顧好幾個專案，想一頁看完",
+          give: "要追蹤的專案清單",
+          get: "一頁總覽，每個專案一張卡，寫明它現在卡在什麼事情上",
+          note: "每張卡只講一件最需要你注意的事，不會把所有細節倒出來。",
+        },
+      ];
 
-      function detectLanguage() {
-        const stored = window.localStorage.getItem("cm-skills-language");
-        if (stored && copy[stored]) return stored;
-        const languages = navigator.languages?.length
-          ? navigator.languages
-          : [navigator.language || "en"];
-        for (const language of languages) {
-          const normalized = language.toLowerCase();
-          if (normalized.startsWith("ja") || normalized.startsWith("jp")) return "ja";
-          if (normalized.startsWith("zh")) return "zh-Hant";
-          if (normalized.startsWith("en")) return "en";
-        }
-        return "en";
-      }
+      const prompts = [
+        "用 $design-system-extractor 從 ./reference 的截圖萃取一份設計系統。",
+        "用 $design-system-to-storybook，設計系統在 ./design-system，產品專案在 ./apps/web。",
+        "用 $storybook-product-prototype 做一個結帳流程的原型和交接文件。",
+        "用 $ui-screenshot-to-storybook-product 處理 reference/dashboard.png，用可重用元件實作出來。",
+        "用 $ui-pixel-align-report 比對 https://www.figma.com/design/…?node-id=1-234 和 http://localhost:3000/dashboard。",
+        "用 $ui-compare-to-reference 比對 https://www.figma.com/design/…?node-id=1-234 和 src/screens/WalletHome.tsx，把落差修掉。",
+        "用 $ui-compare-to-reference，以 apps/web/src/pages/Wallet.tsx 為標準，修 apps/mobile/src/screens/WalletHome.tsx。",
+        "用 $agent-automation-orchestrate 幫 ./apps/web 設定自動化，我要把 Figma 上標記完成的元件做進 Storybook。",
+        "用 $pipeline-board 產生 ./apps/web 的進度看板。",
+      ];
 
-      function renderList(items, code = false) {
-        return `<ul>${items
-          .map((item) => `<li>${code ? `<code>${escapeHtml(item)}</code>` : escapeHtml(item)}</li>`)
-          .join("")}</ul>`;
-      }
+      const outputs = [
+        {
+          title: "設計系統萃取",
+          hint: "$design-system-extractor 會在專案裡留下這些",
+          files: [
+            "design-system/DESIGN_PRINCIPLES.md",
+            "design-system/COMPONENT_INVENTORY.md",
+            "tokens/tokens-ref.css",
+            "tokens/tokens-sys.css",
+            "tokens/tokens-comp.css",
+            "docs/design-system/index.html",
+          ],
+        },
+        {
+          title: "視覺健檢報告",
+          hint: "$ui-pixel-align-report 會在專案裡留下這些",
+          files: [
+            "reports/design-pixel-align/<畫面>/index.html",
+            "reports/design-pixel-align/<畫面>/findings.json",
+            "reports/design-pixel-align/<畫面>/spec/reference.json",
+            "reports/design-pixel-align/<畫面>/spec/implementation.json",
+            "設計與實作的完整截圖",
+            "每一項落差的並排截圖",
+          ],
+        },
+        {
+          title: "Storybook 元件庫",
+          hint: "$design-system-to-storybook 會在專案裡留下這些",
+          files: [
+            "Storybook 基礎樣式文件",
+            "共用 UI 元件",
+            "每個元件的使用範例與狀態",
+            "大量元件時的分批清單",
+            "每批的驗證紀錄",
+          ],
+        },
+      ];
 
-      function renderNav(lang) {
-        return copy[lang].navItems
-          .map((item) => `<a href="${escapeHtml(item.href)}">${escapeHtml(item.label)}</a>`)
+      const navItems = [
+        { href: "#start", label: "從你的處境開始" },
+        { href: "#journey", label: "旅程地圖" },
+        { href: "#matcher", label: "修圖配對器" },
+        { href: "#skills", label: "13 個 skill" },
+        { href: "#prompts", label: "怎麼開口" },
+        { href: "#outputs", label: "會產出什麼" },
+      ];
+
+      /* ===========================================================  helpers */
+
+      const esc = (v) =>
+        String(v).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+      const highlight = (v) =>
+        esc(v).replace(/(\$[a-z-]+)/g, '<span class="tok">$1</span>');
+
+      const copyIcon = `
+        <svg class="clip" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+          <rect x="5.5" y="5.5" width="8" height="9" rx="1.5" />
+          <path d="M10.5 3.5v-1h-8v9h1" />
+        </svg>
+        <svg class="tick" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <path d="M3 8.5l3.5 3.5L13 5" />
+        </svg>`;
+
+      const codeBlock = (text) =>
+        `<div class="code">${highlight(text)}<button class="copy" type="button" data-copy="${esc(text)}" aria-label="複製">${copyIcon}</button></div>`;
+
+      /* =========================================================== renderers */
+
+      function renderNav() {
+        return navItems
+          .map((item) => `<a href="${item.href}">${esc(item.label)}</a>`)
           .join("");
       }
 
-      function renderChain(items) {
-        return `<ol class="chain">${items
-          .map((item) => `<li><code>${escapeHtml(item)}</code></li>`)
-          .join("")}</ol>`;
+      function renderHero() {
+        return `
+          <section class="hero">
+            <div class="hero-main">
+              <h2>把設計稿變成畫面，<br />再把畫面修回設計稿。</h2>
+              <p>這裡是一組給 AI 用的工作說明書。你不用學指令，只要說清楚你現在在哪一步、手上有什麼，AI 就會照著同一套流程做事 — 先建立規則，再做畫面，最後檢查有沒有走樣。</p>
+              <p>Cursor、Claude Code、Codex 都能用。往下滑，從「你現在的處境」開始選就好。</p>
+              <div class="pills">
+                <span class="pill">先有規則，再做畫面</span>
+                <span class="pill">修在元件上，不是修在單一畫面</span>
+                <span class="pill">網頁與 App 可以互為標準</span>
+                <span class="pill">產出的報告可離線開啟</span>
+              </div>
+            </div>
+            <div class="hero-side">
+              ${facts.map((f) => `<div class="fact"><div class="n">${esc(f.n)}</div><div class="t">${esc(f.t)}</div></div>`).join("")}
+            </div>
+          </section>`;
       }
 
-      function renderSkillCards(lang) {
-        return skillData
-          .map((skill) => {
-            const localized = copy[lang].skills[skill.key];
-            return `
-              <article class="skill">
-                <span class="tag">${escapeHtml(skill.tag)}</span>
-                <h3>${escapeHtml(localized.title)}</h3>
-                <p>${escapeHtml(localized.body)}</p>
-                ${renderList(skill.bullets[lang])}
-              </article>
-            `;
-          })
-          .join("");
+      function renderSituations() {
+        return `
+          <section class="section reveal" id="start">
+            <div class="section-head">
+              <div class="kicker">Step 01</div>
+              <h2>你現在的處境是<span class="q">？</span></h2>
+              <p class="sub">選一個最接近的。下面的旅程地圖會跟著換成那條路線 — 你會知道要做幾步、每一步交給誰、以及你要準備什麼。</p>
+            </div>
+            <div class="situations" id="situations" role="group" aria-label="選擇你的處境">
+              ${journeys
+                .map(
+                  (j, i) => `
+                <button class="situation" type="button" data-journey="${j.id}" aria-pressed="false" style="--tone:${j.tone}">
+                  <span class="idx">${String(i + 1).padStart(2, "0")}</span>
+                  <div class="say">${esc(j.say)}</div>
+                  <div class="then">${esc(j.then)}</div>
+                </button>`,
+                )
+                .join("")}
+            </div>
+          </section>`;
       }
 
-      function renderFlow(lang) {
-        return copy[lang].flow
+      function renderJourney(journey) {
+        const stages = journey.stages
           .map(
-            (item, index) => `
-              <article class="step">
-                <span class="number">${String(index + 1).padStart(2, "0")}</span>
-                <h3>${escapeHtml(item.title)}</h3>
-                <p>${escapeHtml(item.body)}</p>
-              </article>
-            `,
+            (stage, index) => `
+            ${index > 0 ? `<div class="link" style="--delay:${index * 0.28}s"></div>` : ""}
+            <div class="stage" style="animation-delay:${index * 90}ms">
+              <div class="num">STEP ${index + 1}</div>
+              <div class="name">${esc(stage.name)}</div>
+              <div class="desc">${esc(stage.desc)}</div>
+              <div class="who">${highlight(stage.who)}</div>
+            </div>`,
           )
           .join("");
+
+        return `
+          <div class="flow-shell" style="--tone:${journey.tone}">
+            <div class="flow-head">
+              <div>
+                <div class="flow-title">${esc(journey.say)}</div>
+                <div class="flow-goal">${esc(journey.goal)}</div>
+              </div>
+            </div>
+            <div class="flow-body"><div class="flow-scroll"><div class="flow-track">${stages}</div></div></div>
+            <div class="flow-io">
+              <div class="io">
+                <div class="lbl">你要準備</div>
+                <ul>${journey.give.map((g) => `<li>${esc(g)}</li>`).join("")}</ul>
+              </div>
+              <div class="io">
+                <div class="lbl">你會拿到</div>
+                <ul>${journey.get.map((g) => `<li>${esc(g)}</li>`).join("")}</ul>
+              </div>
+            </div>
+          </div>`;
       }
 
-      function renderWorkflows(lang) {
-        return copy[lang].workflows
-          .map(
-            (item) => `
-              <article class="panel">
-                <h3>${escapeHtml(item.title)}</h3>
-                <p>${escapeHtml(item.body)}</p>
-                ${renderChain(item.steps)}
-              </article>
-            `,
-          )
-          .join("");
+      function renderJourneySection() {
+        return `
+          <section class="section reveal" id="journey">
+            <div class="section-head">
+              <div class="kicker">Step 02</div>
+              <h2>這條路要走幾步</h2>
+              <p class="sub">左到右就是時間順序。每一格底下標的是負責那一步的 skill；標「你自己看」「你決定」的那幾格，是需要你判斷、AI 不該替你決定的地方。</p>
+            </div>
+            <div id="journey-slot"></div>
+          </section>`;
       }
 
-      function renderPairings(lang) {
-        return copy[lang].pairings
-          .map(
-            (item) => `
-              <article class="panel">
-                <h3 class="pairing-route">
-                  <code>${escapeHtml(item.from)}</code>
-                  <span class="pairing-arrow" aria-hidden="true">&rarr;</span>
-                  <code>${escapeHtml(item.to)}</code>
-                </h3>
-                <p>${escapeHtml(item.body)}</p>
-              </article>
-            `,
-          )
-          .join("");
+      function renderMatcher() {
+        return `
+          <section class="section reveal" id="matcher">
+            <div class="section-head">
+              <div class="kicker">Step 03</div>
+              <h2>「做出來跟設計稿不一樣」該怎麼講</h2>
+              <p class="sub">這是最常遇到的情況，也是最容易講不清楚的。選一下你手上有什麼、要修哪一邊，下面會生出可以直接複製的一句話。</p>
+            </div>
+            <div class="matcher">
+              <div class="panel">
+                <div class="picker-group">
+                  <div class="picker-label">誰是標準</div>
+                  <div class="opts" id="opt-source">
+                    ${matcher.sources
+                      .map(
+                        (s, i) => `
+                      <button class="opt" type="button" data-source="${s.id}" aria-pressed="${i === 0}">
+                        <span class="mark" aria-hidden="true"></span><span>${esc(s.label)}</span>
+                      </button>`,
+                      )
+                      .join("")}
+                  </div>
+                </div>
+                <div class="picker-group">
+                  <div class="picker-label">要修哪一邊</div>
+                  <div class="opts" id="opt-target">
+                    ${matcher.targets
+                      .map(
+                        (t, i) => `
+                      <button class="opt" type="button" data-target="${t.id}" aria-pressed="${i === 0}">
+                        <span class="mark" aria-hidden="true"></span><span>${esc(t.label)}</span>
+                      </button>`,
+                      )
+                      .join("")}
+                  </div>
+                </div>
+              </div>
+              <div class="result" id="matcher-result"></div>
+            </div>
+          </section>`;
       }
 
-      function renderPrompts(lang) {
-        return copy[lang].prompts
-          .map((prompt) => `<pre class="prompt">${escapeHtml(prompt)}</pre>`)
-          .join("");
+      function renderMatcherResult(sourceId, targetId) {
+        const source = matcher.sources.find((s) => s.id === sourceId);
+        const target = matcher.targets.find((t) => t.id === targetId);
+        const info = matcher.cases[`${sourceId}|${targetId}`] || {
+          say: `拿${source.label}當標準去修${target.label.split("（")[0]}`,
+          note: "兩邊都會先讀成同一份規格再比對，並區分出該修的落差與該保留的平台差異。",
+        };
+
+        const examples = {
+          "figma|web": "用 $ui-compare-to-reference 比對 https://www.figma.com/design/…?node-id=1-234 和 http://localhost:3000/wallet，把落差修掉。",
+          "figma|app": "用 $ui-compare-to-reference 比對 https://www.figma.com/design/…?node-id=1-234 和 src/screens/WalletHome.tsx，把落差修掉。",
+          "web|web": "用 $ui-compare-to-reference，以 src/pages/Dashboard.tsx 為標準，修 http://localhost:3000/wallet。",
+          "web|app": "用 $ui-compare-to-reference，以 apps/web/src/pages/Wallet.tsx 為標準，修 apps/mobile/src/screens/WalletHome.tsx。",
+          "app|web": "用 $ui-compare-to-reference，以 apps/mobile/src/screens/WalletHome.tsx 為標準，修 http://localhost:3000/wallet。",
+          "app|app": "用 $ui-compare-to-reference，以 ios/WalletHome.swift 為標準，修 android/WalletHome.kt。",
+          "image|web": "用 $ui-compare-to-reference 比對 reference/wallet.png 和 http://localhost:3000/wallet。",
+          "image|app": "用 $ui-compare-to-reference 比對 reference/wallet.png 和 src/screens/WalletHome.tsx，把落差修掉。",
+        };
+        const example = examples[`${sourceId}|${targetId}`];
+
+        return `
+          <div class="verdict swap">
+            <div class="say">${esc(info.say)}</div>
+            <div class="note">${esc(info.note)}</div>
+          </div>
+          <div class="chain">
+            <span class="chain-node">${esc(source.label)}</span>
+            <span class="chain-arrow">→</span>
+            <span class="chain-node">抽成同一份規格</span>
+            <span class="chain-arrow">→</span>
+            <span class="chain-node">分出該修／該留</span>
+            <span class="chain-arrow">→</span>
+            <span class="chain-node">${esc(target.label.split("（")[0])}</span>
+          </div>
+          <div>
+            <div class="picker-label">直接複製這句</div>
+            ${codeBlock(example)}
+          </div>
+          <div class="verdict" style="background:var(--panel-2)">
+            <div class="note">想先看報告不要動程式碼，就把 <span style="font-family:var(--mono);color:var(--teal)">$ui-compare-to-reference</span> 換成 <span style="font-family:var(--mono);color:var(--teal)">$ui-pixel-align-report</span>。${esc(source.note)}</div>
+          </div>`;
       }
 
-      function render(lang) {
-        const text = copy[lang];
-        document.documentElement.lang = lang;
-        document.title = text.title;
-        document.querySelectorAll("[data-lang]").forEach((button) => {
-          button.setAttribute("aria-pressed", String(button.dataset.lang === lang));
+      function renderSkills() {
+        const groups = [...new Set(skills.map((s) => s.group))];
+        return `
+          <section class="section reveal" id="skills">
+            <div class="section-head">
+              <div class="kicker">Step 04</div>
+              <h2>13 個 skill，分成四類</h2>
+              <p class="sub">點一張卡看細節：你要給它什麼、它會回你什麼。不用背名字，用上面的旅程地圖找就好。</p>
+            </div>
+            <div class="skill-filter" id="skill-filter">
+              <button class="chip" type="button" data-group="all" aria-pressed="true">全部</button>
+              ${groups.map((g) => `<button class="chip" type="button" data-group="${esc(g)}" aria-pressed="false">${esc(g)}</button>`).join("")}
+            </div>
+            <div class="skill-grid" id="skill-grid">
+              ${skills
+                .map(
+                  (skill) => `
+                <article class="skill" data-group="${esc(skill.group)}" style="--tone:${skill.tone}">
+                  <button class="skill-top" type="button" aria-expanded="false">
+                    <div class="skill-when">${esc(skill.when)}</div>
+                    <div class="skill-tag">${esc(skill.tag)}${skill.external ? '<span class="badge">需另外安裝</span>' : ""}</div>
+                  </button>
+                  <div class="skill-body"><div><div class="skill-inner">
+                    <div class="kv"><div class="k">你給</div><div class="v">${esc(skill.give)}</div></div>
+                    <div class="kv"><div class="k">你拿到</div><div class="v">${esc(skill.get)}</div></div>
+                    <div class="kv"><div class="k">要知道</div><div class="v">${esc(skill.note)}</div></div>
+                  </div></div></div>
+                </article>`,
+                )
+                .join("")}
+            </div>
+          </section>`;
+      }
+
+      function renderPrompts() {
+        return `
+          <section class="section reveal" id="prompts">
+            <div class="section-head">
+              <div class="kicker">Step 05</div>
+              <h2>怎麼跟 AI 開口</h2>
+              <p class="sub">照抄下面任何一句，把路徑換成你自己的就行。如果 AI 說不認得這個名字，就請它先讀那個資料夾裡的 SKILL.md 再照做。</p>
+            </div>
+            <div class="prompt-list">${prompts.map((p) => codeBlock(p)).join("")}</div>
+            <div class="rule" style="margin-top:16px">
+              <h3>唯一一條原則：不要跳過設計系統那層</h3>
+              <p>有 token 或共用元件就先用它、先改它，再處理單一畫面。跳過這層當下會快一點，但之後每個畫面都會愈長愈不一樣，最後誰都不敢改。</p>
+            </div>
+          </section>`;
+      }
+
+      function renderOutputs() {
+        return `
+          <section class="section reveal" id="outputs">
+            <div class="section-head">
+              <div class="kicker">Step 06</div>
+              <h2>做完會留下什麼</h2>
+              <p class="sub">這些檔案會留在專案裡，不會只存在對話紀錄。報告類的產出都是靜態檔案，直接用瀏覽器開就能看。</p>
+            </div>
+            <div class="out-grid">
+              ${outputs
+                .map(
+                  (out) => `
+                <div class="panel out">
+                  <h3>${esc(out.title)}</h3>
+                  <p class="hint">${esc(out.hint)}</p>
+                  <div class="files">${out.files.map((f) => `<div class="file">${esc(f)}</div>`).join("")}</div>
+                </div>`,
+                )
+                .join("")}
+            </div>
+            <footer>這頁是入口。每個 skill 的完整規則、參數與邊界條件，以各自資料夾裡的 SKILL.md 為準。</footer>
+          </section>`;
+      }
+
+      /* ================================================================ boot */
+
+      document.getElementById("side-nav").innerHTML = renderNav();
+      document.getElementById("skill-count").textContent = `${skills.length} skills 已載入`;
+      document.getElementById("canvas").innerHTML = [
+        renderHero(),
+        renderSituations(),
+        renderJourneySection(),
+        renderMatcher(),
+        renderSkills(),
+        renderPrompts(),
+        renderOutputs(),
+      ].join("");
+
+      /* --------------------------------------------------- situation → flow */
+
+      const journeySlot = document.getElementById("journey-slot");
+
+      function wireScrollHint() {
+        const body = journeySlot.querySelector(".flow-body");
+        const scroller = journeySlot.querySelector(".flow-scroll");
+        if (!body || !scroller) return;
+        const update = () => {
+          const more = scroller.scrollWidth - scroller.clientWidth - scroller.scrollLeft > 8;
+          body.classList.toggle("more", more);
+        };
+        scroller.addEventListener("scroll", update, { passive: true });
+        window.addEventListener("resize", update, { passive: true });
+        update();
+      }
+
+      function selectJourney(id, scroll) {
+        const journey = journeys.find((j) => j.id === id) || journeys[0];
+        document.querySelectorAll("[data-journey]").forEach((button) => {
+          button.setAttribute("aria-pressed", String(button.dataset.journey === journey.id));
         });
-        document.getElementById("section-nav").innerHTML = renderNav(lang);
-        document.getElementById("content").innerHTML = `
-          <header id="agent-usage" class="hero">
-            <div class="hero-copy">
-              <p class="eyebrow">${escapeHtml(text.eyebrow)}</p>
-              <h1>${escapeHtml(text.title)}</h1>
-              <p class="lead">${escapeHtml(text.lead)}</p>
-              <div class="meta" aria-label="Highlights">
-                ${text.pills.map((pill) => `<span class="pill">${escapeHtml(pill)}</span>`).join("")}
-              </div>
-            </div>
-            <aside class="hero-card" aria-labelledby="agent-usage-card">
-              <p id="agent-usage-card" class="card-label">${escapeHtml(text.agentTitle)}</p>
-              <p>${escapeHtml(text.agentBody)}</p>
-              ${renderList(text.agentSteps)}
-            </aside>
-          </header>
-
-          <section class="section" aria-labelledby="quick-choice">
-            <div class="section-header">
-              <h2 id="quick-choice">${escapeHtml(text.quickChoice)}</h2>
-            </div>
-            <div class="grid four">${renderSkillCards(lang)}</div>
-          </section>
-
-          <section class="section" aria-labelledby="recommended-flow">
-            <div class="section-header">
-              <h2 id="recommended-flow">${escapeHtml(text.recommendedFlow)}</h2>
-            </div>
-            <div class="flow">${renderFlow(lang)}</div>
-          </section>
-
-          <section class="section" aria-labelledby="workflow-combinations">
-            <div class="section-header">
-              <h2 id="workflow-combinations">${escapeHtml(text.workflowTitle)}</h2>
-            </div>
-            <div class="grid two">${renderWorkflows(lang)}</div>
-          </section>
-
-          <section class="section" aria-labelledby="skill-pairings">
-            <div class="section-header">
-              <h2 id="skill-pairings">${escapeHtml(text.pairingsTitle)}</h2>
-            </div>
-            <div class="grid two">${renderPairings(lang)}</div>
-          </section>
-
-          <section class="section" aria-labelledby="examples">
-            <div class="section-header">
-              <h2 id="examples">${escapeHtml(text.examples)}</h2>
-            </div>
-            <div class="grid two">
-              <div class="prompt-list" aria-label="Prompt examples">
-                ${renderPrompts(lang)}
-              </div>
-              <aside class="panel notice">
-                <h3>${escapeHtml(text.principleTitle)}</h3>
-                <p><strong>${escapeHtml(text.principleStrong)}</strong> ${escapeHtml(text.principleBody)}</p>
-              </aside>
-            </div>
-          </section>
-
-          <section class="section" aria-labelledby="outputs">
-            <div class="section-header">
-              <h2 id="outputs">${escapeHtml(text.outputs)}</h2>
-            </div>
-            <div class="grid two output-grid">
-              <article class="panel">
-                <h3>${escapeHtml(text.extractOutputTitle)}</h3>
-                ${renderList(text.extractOutputs, true)}
-              </article>
-              <article class="panel">
-                <h3>${escapeHtml(text.storybookOutputTitle)}</h3>
-                ${renderList(text.storybookOutputs)}
-              </article>
-              <article class="panel">
-                <h3>${escapeHtml(text.pixelReportOutputTitle)}</h3>
-                ${renderList(text.pixelReportOutputs, true)}
-              </article>
-            </div>
-          </section>
-
-          <footer>
-            <p>${escapeHtml(text.footer)}</p>
-          </footer>
-        `;
+        journeySlot.innerHTML = renderJourney(journey);
+        wireScrollHint();
+        if (scroll) {
+          document.getElementById("journey").scrollIntoView({ behavior: "smooth", block: "start" });
+        }
       }
 
-      document.querySelectorAll("[data-lang]").forEach((button) => {
-        button.addEventListener("click", () => {
-          const lang = button.dataset.lang;
-          window.localStorage.setItem("cm-skills-language", lang);
-          render(lang);
+      document.getElementById("situations").addEventListener("click", (event) => {
+        const button = event.target.closest("[data-journey]");
+        if (button) selectJourney(button.dataset.journey, true);
+      });
+
+      selectJourney("from-design", false);
+
+      /* ------------------------------------------------------------ matcher */
+
+      const matcherState = { source: "figma", target: "web" };
+      const matcherResult = document.getElementById("matcher-result");
+
+      function paintMatcher() {
+        matcherResult.innerHTML = renderMatcherResult(matcherState.source, matcherState.target);
+      }
+
+      document.getElementById("opt-source").addEventListener("click", (event) => {
+        const button = event.target.closest("[data-source]");
+        if (!button) return;
+        matcherState.source = button.dataset.source;
+        document.querySelectorAll("[data-source]").forEach((other) => {
+          other.setAttribute("aria-pressed", String(other === button));
+        });
+        paintMatcher();
+      });
+
+      document.getElementById("opt-target").addEventListener("click", (event) => {
+        const button = event.target.closest("[data-target]");
+        if (!button) return;
+        matcherState.target = button.dataset.target;
+        document.querySelectorAll("[data-target]").forEach((other) => {
+          other.setAttribute("aria-pressed", String(other === button));
+        });
+        paintMatcher();
+      });
+
+      paintMatcher();
+
+      /* ------------------------------------------------------------- skills */
+
+      document.getElementById("skill-grid").addEventListener("click", (event) => {
+        const top = event.target.closest(".skill-top");
+        if (!top) return;
+        const card = top.closest(".skill");
+        const open = card.classList.toggle("open");
+        top.setAttribute("aria-expanded", String(open));
+      });
+
+      document.getElementById("skill-filter").addEventListener("click", (event) => {
+        const chip = event.target.closest("[data-group]");
+        if (!chip) return;
+        const group = chip.dataset.group;
+        document.querySelectorAll("#skill-filter [data-group]").forEach((other) => {
+          other.setAttribute("aria-pressed", String(other === chip));
+        });
+        document.querySelectorAll("#skill-grid .skill").forEach((card) => {
+          card.classList.toggle("hide", group !== "all" && card.dataset.group !== group);
         });
       });
 
-      render(detectLanguage());
+      /* --------------------------------------------------------------- copy */
+
+      document.addEventListener("click", async (event) => {
+        const button = event.target.closest("[data-copy]");
+        if (!button) return;
+        try {
+          await navigator.clipboard.writeText(button.dataset.copy);
+        } catch {
+          const area = document.createElement("textarea");
+          area.value = button.dataset.copy;
+          document.body.appendChild(area);
+          area.select();
+          document.execCommand("copy");
+          area.remove();
+        }
+        button.classList.add("done");
+        setTimeout(() => button.classList.remove("done"), 1400);
+      });
+
+      /* ------------------------------------------------- reveal + nav state */
+
+      const revealer = new IntersectionObserver(
+        (entries) => {
+          entries.forEach((entry) => {
+            if (entry.isIntersecting) {
+              entry.target.classList.add("seen");
+              revealer.unobserve(entry.target);
+            }
+          });
+        },
+        { rootMargin: "0px 0px -12% 0px" },
+      );
+
+      document.querySelectorAll(".reveal").forEach((node) => revealer.observe(node));
+
+      const navLinks = [...document.querySelectorAll("#side-nav a")];
+      const spy = new IntersectionObserver(
+        (entries) => {
+          entries.forEach((entry) => {
+            if (!entry.isIntersecting) return;
+            navLinks.forEach((link) => {
+              link.classList.toggle("active", link.getAttribute("href") === `#${entry.target.id}`);
+            });
+          });
+        },
+        { rootMargin: "-20% 0px -70% 0px" },
+      );
+
+      document.querySelectorAll(".section[id]").forEach((node) => spy.observe(node));
     </script>
   </body>
 </html>
