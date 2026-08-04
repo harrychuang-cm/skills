@@ -27,6 +27,9 @@ for (const expected of [
   "onReferenceImageSelect",
   "referenceImages",
   'event.key === "Escape"',
+  "cm-coverage__composition-slot-skip",
+  "已排除，點擊可重新覆核",
+  "resolution.skipped",
 ]) {
   requireText(preview, expected, "Composition preview contract");
 }
@@ -52,6 +55,12 @@ for (const expected of [
   "componentCoverageStaticBase}/requests/${requestId}/${region.image}",
   "onOpen={onOpenImage}",
   'variant="inspector"',
+  "buildComponentPickerGroups",
+  'aria-label="搜尋元件"',
+  "分析候選",
+  "沒有符合的元件",
+  "請先選擇處理方式",
+  "cm-coverage__picker-list",
 ]) {
   requireText(report, expected, "Report view contract");
 }
@@ -76,6 +85,10 @@ for (const expected of [
   "padding: 10px 10px 10px 8px;",
   ".cm-coverage__crop--inspector",
   ".cm-coverage__crop-unavailable",
+  ".cm-coverage__picker-list",
+  ".cm-coverage__picker-option",
+  ".cm-coverage__composition-slot-skip",
+  '.cm-coverage__composition-slot[data-skipped="true"] .cm-coverage__composition-slot-label',
 ]) {
   requireText(styles, expected, "Preview styles contract");
 }
@@ -83,6 +96,11 @@ for (const expected of [
 requireText(
   story,
   "右側 inspector 同步顯示所選元件在 UI Reference 中的原圖裁切",
+  "Analyzer story contract",
+);
+requireText(
+  story,
+  "標記不實作的區塊會在組裝預覽收合為排除列",
   "Analyzer story contract",
 );
 

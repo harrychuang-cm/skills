@@ -1099,8 +1099,35 @@
   border-color: var(--cca-accent);
 }
 
-.cm-coverage__composition-slot[data-skipped="true"] {
-  opacity: 0.52;
+/* Skip-decided blocks collapse to an excluded row: no component preview,
+   same grid cell, still selectable for re-review. */
+.cm-coverage__composition-slot-skip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--cca-neutral-bg);
+  border-radius: var(--cca-radius-md);
+  color: var(--cca-text-3);
+  font-size: 12px;
+}
+
+.cm-coverage__composition-slot-skip-label {
+  color: var(--cca-text-2);
+  font-weight: 600;
+}
+
+.cm-coverage__composition-slot-skip-hint {
+  margin-inline-start: auto;
+  font-size: 11px;
+}
+
+/* The collapsed skip row already shows its own chip, label, and hint at the
+   overlay's height — keep the select overlay as a plain hit area so hovering
+   or selecting the row never stacks duplicate text on top of it. */
+.cm-coverage__composition-slot[data-skipped="true"] .cm-coverage__composition-slot-label,
+.cm-coverage__composition-slot[data-skipped="true"] .cm-coverage__composition-slot-select .cm-coverage__chip {
+  display: none;
 }
 
 .cm-coverage__composition-slot-select {
@@ -1852,7 +1879,6 @@
   background: var(--cca-accent-bg);
 }
 
-.cm-coverage__review-select,
 .cm-coverage__review-input {
   max-width: 420px;
   padding: 5px 9px;
@@ -1860,6 +1886,112 @@
   border-radius: var(--cca-radius-md);
   background: var(--cca-surface);
   color: var(--cca-text);
+  font-size: 12px;
+}
+
+.cm-coverage__review-form-hint {
+  color: var(--cca-text-3);
+  font-size: 11.5px;
+}
+
+.cm-coverage__review-override {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  color: var(--cca-text-2);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* ─── use-existing searchable picker (inline list, no popover) ─── */
+
+.cm-coverage__picker {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  max-width: 420px;
+}
+
+.cm-coverage__picker-search {
+  width: 100%;
+  padding: 5px 9px;
+  border: 1px solid var(--cca-border);
+  border-radius: var(--cca-radius-md);
+  background: var(--cca-surface);
+  color: var(--cca-text);
+  font-size: 12px;
+}
+
+.cm-coverage__picker-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 220px;
+  padding: 4px;
+  overflow-y: auto;
+  border: 1px solid var(--cca-border);
+  border-radius: var(--cca-radius-md);
+  background: var(--cca-surface);
+}
+
+.cm-coverage__picker-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cm-coverage__picker-group-label {
+  padding: 6px 8px 2px;
+  color: var(--cca-text-3);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.cm-coverage__picker-option {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  width: 100%;
+  padding: 6px 8px;
+  border: none;
+  border-radius: var(--cca-radius-sm);
+  background: transparent;
+  color: var(--cca-text-2);
+  font-size: 12px;
+  text-align: start;
+  cursor: pointer;
+  transition: color 0.12s ease, background-color 0.12s ease;
+}
+
+.cm-coverage__picker-option:hover,
+.cm-coverage__picker-option[data-active="true"] {
+  color: var(--cca-text);
+  background: var(--cca-neutral-bg);
+}
+
+.cm-coverage__picker-option[aria-selected="true"] {
+  color: var(--cca-accent);
+  background: var(--cca-accent-bg);
+}
+
+.cm-coverage__picker-option-name {
+  font-weight: 600;
+}
+
+.cm-coverage__picker-option-meta {
+  margin-inline-start: auto;
+  color: var(--cca-text-3);
+  font-size: 11px;
+}
+
+.cm-coverage__picker-empty {
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--cca-border);
+  border-radius: var(--cca-radius-md);
+  background: var(--cca-surface);
+  color: var(--cca-text-3);
   font-size: 12px;
 }
 
@@ -2024,7 +2156,8 @@
 
 /* Overlay controls draw the ring inside their canvas/cell bounds. */
 .cca-shell .cm-coverage__composition-slot-select:focus-visible,
-.cca-shell .cm-coverage__stat--link:focus-visible {
+.cca-shell .cm-coverage__stat--link:focus-visible,
+.cca-shell .cm-coverage__picker-option:focus-visible {
   outline-offset: -2px;
 }
 

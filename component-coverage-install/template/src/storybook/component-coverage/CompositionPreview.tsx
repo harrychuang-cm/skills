@@ -251,6 +251,27 @@ function UnavailableSlotBody({
   return <PreviewUnavailable copy={resolution.reason} />;
 }
 
+/**
+ * Skip-decided blocks collapse to an excluded row: the component preview is
+ * not rendered, but the row keeps the block's grid cell and stays selectable
+ * so the reviewer can reopen the decision in the inspector.
+ */
+function SkippedSlotBody({ blockLabel }: { blockLabel: string }) {
+  return (
+    <div className="cm-coverage__composition-slot-skip" role="status">
+      <span className="cm-coverage__chip cm-coverage__chip--composition-skip">
+        不實作
+      </span>
+      <span className="cm-coverage__composition-slot-skip-label">
+        {blockLabel}
+      </span>
+      <span className="cm-coverage__composition-slot-skip-hint">
+        已排除，點擊可重新覆核
+      </span>
+    </div>
+  );
+}
+
 function CompositionBlockSlot({
   block,
   node,
@@ -273,7 +294,9 @@ function CompositionBlockSlot({
     : undefined;
   let body: ReactNode;
 
-  if (resolution.kind === "component") {
+  if (resolution.skipped) {
+    body = <SkippedSlotBody blockLabel={block.label} />;
+  } else if (resolution.kind === "component") {
     body = <ComponentSlotBody resolution={resolution} storyIndex={storyIndex} />;
   } else if (resolution.kind === "placeholder") {
     body = <PlaceholderSlotBody resolution={resolution} />;

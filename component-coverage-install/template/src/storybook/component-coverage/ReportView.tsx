@@ -9,6 +9,7 @@ import {
 import {
   componentCatalog,
   componentCatalogEntries,
+  type ComponentCatalogEntry,
   type ComponentCatalogId,
 } from "../componentCatalog";
 import {
@@ -47,8 +48,14 @@ import {
 const sectionOrder = ["reusable", "extend", "missing"] as const;
 
 const sectionCopy = {
-  reusable: { heading: "可直接使用", hint: "覆核選填：確認可用／改用現有" },
-  extend: { heading: "需擴充 variant", hint: "請決定：擴充／不擴充／不實作" },
+  reusable: {
+    heading: "可直接使用",
+    hint: "覆核選填：確認可用／改用現有／不實作",
+  },
+  extend: {
+    heading: "需擴充 variant",
+    hint: "請決定：擴充／不擴充／改用現有／不實作",
+  },
   missing: { heading: "缺少需新建", hint: "請決定：新建／改用現有／不實作" },
 } as const satisfies Record<CoverageSection, { heading: string; hint: string }>;
 
@@ -336,8 +343,12 @@ function storyDocsManagerUrl(storyTitle: string) {
   }
 }
 
+function componentDisplayName(componentId: string) {
+  return componentCatalog[componentId as ComponentCatalogId]?.name ?? componentId;
+}
+
 function matchDisplayName(match: CoverageMatch) {
-  return componentCatalog[match.componentId as ComponentCatalogId]?.name ?? match.componentId;
+  return componentDisplayName(match.componentId);
 }
 
 function CoverageBar({ summary }: { summary: CoverageSummary }) {
@@ -512,6 +523,212 @@ function MatchCard({
   );
 }
 
+export type ComponentPickerGroup = {
+  key: string;
+  label: string;
+  entries: readonly ComponentCatalogEntry[];
+};
+
+/**
+ * Filter + grouping model for the use-existing component picker: the query
+ * matches name, id, category, and keywords case-insensitively; the block's
+ * analyzer candidates lead the list and the remaining catalog follows,
+ * grouped by category in catalog order. Selection stays list-only — free
+ * text never becomes an overrideComponentId.
+ */
+export function buildComponentPickerGroups(
+  query: string,
+  candidateIds: readonly string[],
+  entries: readonly ComponentCatalogEntry[] = componentCatalogEntries,
+): readonly ComponentPickerGroup[] {
+  const normalized = query.trim().toLowerCase();
+  const matchesQuery = (entry: ComponentCatalogEntry) =>
+    normalized === "" ||
+    [entry.name, entry.id, entry.category, ...entry.keywords].some((field) =>
+      field.toLowerCase().includes(normalized),
+    );
+
+  const candidateIdSet = new Set(candidateIds);
+  const groups: ComponentPickerGroup[] = [];
+  const candidates = entries.filter(
+    (entry) => candidateIdSet.has(entry.id) && matchesQuery(entry),
+  );
+
+  if (candidates.length > 0) {
+    groups.push({ key: "candidates", label: "分析候選", entries: candidates });
+  }
+
+  const remainderByCategory = new Map<string, ComponentCatalogEntry[]>();
+
+  for (const entry of entries) {
+    if (candidateIdSet.has(entry.id) || !matchesQuery(entry)) {
+      continue;
+    }
+
+    const bucket = remainderByCategory.get(entry.category);
+
+    if (bucket) {
+      bucket.push(entry);
+    } else {
+      remainderByCategory.set(entry.category, [entry]);
+    }
+  }
+
+  for (const [category, categoryEntries] of remainderByCategory) {
+    groups.push({
+      key: `category:${category}`,
+      label: category,
+      entries: categoryEntries,
+    });
+  }
+
+  return groups;
+}
+
+function ComponentPicker({
+  blockId,
+  candidateIds,
+  onPick,
+  selectedId,
+}: {
+  blockId: string;
+  candidateIds: readonly string[];
+  onPick: (componentId: string) => void;
+  selectedId: string;
+}) {
+  const [query, setQuery] = useState("");
+  const [activeIndex, setActiveIndex] = useState(-1);
+  const groups = useMemo(
+    () => buildComponentPickerGroups(query, candidateIds),
+    [query, candidateIds],
+  );
+  const flatEntries = useMemo(
+    () => groups.flatMap((group) => group.entries),
+    [groups],
+  );
+  const activeEntry = activeIndex >= 0 ? flatEntries[activeIndex] : undefined;
+  const listboxId = `${blockId}-picker-listbox`;
+  const optionDomId = (componentId: string) =>
+    `${blockId}-picker-option-${componentId}`;
+  const activeOptionId = activeEntry ? optionDomId(activeEntry.id) : undefined;
+
+  // aria-activedescendant never scrolls by itself; keep the keyboard-active
+  // option visible inside the 220px scrollable listbox.
+  useEffect(() => {
+    if (activeOptionId) {
+      document.getElementById(activeOptionId)?.scrollIntoView?.({
+        block: "nearest",
+      });
+    }
+  }, [activeOptionId]);
+
+  const moveActive = (delta: number) => {
+    if (flatEntries.length === 0) {
+      return;
+    }
+
+    setActiveIndex((current) =>
+      current < 0
+        ? delta > 0
+          ? 0
+          : flatEntries.length - 1
+        : (current + delta + flatEntries.length) % flatEntries.length,
+    );
+  };
+
+  return (
+    <div className="cm-coverage__picker">
+      <input
+        aria-activedescendant={activeOptionId}
+        aria-autocomplete="list"
+        aria-controls={flatEntries.length > 0 ? listboxId : undefined}
+        aria-expanded={flatEntries.length > 0}
+        aria-label="搜尋元件"
+        autoComplete="off"
+        className="cm-coverage__picker-search"
+        onChange={(event) => {
+          setQuery(event.target.value);
+          setActiveIndex(-1);
+        }}
+        onKeyDown={(event) => {
+          // IME composition (zh-TW input) owns arrow/Enter keys while the
+          // candidate window is open — never treat them as list navigation.
+          if (event.nativeEvent.isComposing || event.keyCode === 229) {
+            return;
+          }
+
+          if (event.key === "ArrowDown") {
+            event.preventDefault();
+            moveActive(1);
+          } else if (event.key === "ArrowUp") {
+            event.preventDefault();
+            moveActive(-1);
+          } else if (event.key === "Enter") {
+            if (activeEntry) {
+              event.preventDefault();
+              onPick(activeEntry.id);
+            }
+          } else if (event.key === "Escape" && query !== "") {
+            event.preventDefault();
+            event.stopPropagation();
+            setQuery("");
+            setActiveIndex(-1);
+          }
+        }}
+        placeholder="搜尋名稱、id、分類或關鍵字…"
+        role="combobox"
+        type="text"
+        value={query}
+      />
+      {flatEntries.length === 0 ? (
+        <p className="cm-coverage__picker-empty" role="status">
+          沒有符合的元件
+        </p>
+      ) : (
+        <div
+          aria-label="選擇現有元件"
+          className="cm-coverage__picker-list"
+          id={listboxId}
+          role="listbox"
+        >
+          {groups.map((group) => (
+            <div
+              aria-label={group.label}
+              className="cm-coverage__picker-group"
+              key={group.key}
+              role="group"
+            >
+              <span className="cm-coverage__picker-group-label">
+                {group.label}
+              </span>
+              {group.entries.map((entry) => (
+                <button
+                  aria-selected={entry.id === selectedId}
+                  className="cm-coverage__picker-option"
+                  data-active={activeEntry?.id === entry.id ? "true" : "false"}
+                  id={optionDomId(entry.id)}
+                  key={entry.id}
+                  onClick={() => onPick(entry.id)}
+                  role="option"
+                  tabIndex={-1}
+                  type="button"
+                >
+                  <span className="cm-coverage__picker-option-name">
+                    {entry.name}
+                  </span>
+                  <span className="cm-coverage__picker-option-meta">
+                    {entry.category}・{entry.id}
+                  </span>
+                </button>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function BlockReviewPanel({
   block,
   editable,
@@ -595,7 +812,12 @@ export function BlockReviewPanel({
             {reviewDecisionCopy[review.decision]}
           </span>
           {review.decision === "use-existing" && review.overrideComponentId ? (
-            <code className="cm-coverage__code">{review.overrideComponentId}</code>
+            <span className="cm-coverage__review-override">
+              {componentDisplayName(review.overrideComponentId)}
+              <code className="cm-coverage__code">
+                {review.overrideComponentId}
+              </code>
+            </span>
           ) : null}
           {review.note ? (
             <span className="cm-coverage__review-note">{review.note}</span>
@@ -638,71 +860,73 @@ export function BlockReviewPanel({
               </button>
             ))}
           </div>
-          {decision === "use-existing" ? (
-            <select
-              aria-label="選擇現有元件"
-              className="cm-coverage__review-select"
-              onChange={(event) => {
-                const nextOverrideId = event.target.value;
-                setOverrideId(nextOverrideId);
-                updateDraftOverride(decision, nextOverrideId);
-              }}
-              value={overrideId}
-            >
-              <option value="">選擇現有元件…</option>
-              {componentCatalogEntries.map((entry) => (
-                <option key={entry.id} value={entry.id}>
-                  {entry.name}（{entry.id}）
-                </option>
-              ))}
-            </select>
-          ) : null}
-          <input
-            aria-label="覆核備註"
-            className="cm-coverage__review-input"
-            maxLength={300}
-            onChange={(event) => setNote(event.target.value)}
-            placeholder="備註（選填）"
-            type="text"
-            value={note}
-          />
-          <div className="cm-coverage__review-actions">
-            <button
-              className="cm-coverage__review-save"
-              disabled={!canSave || saving}
-              onClick={() => void handleSave()}
-              type="button"
-            >
-              {saving ? "儲存中…" : "儲存覆核"}
-            </button>
-            {review || (decision === "use-existing" && overrideId !== "") ? (
-              <button
-                className="cm-coverage__review-cancel"
-                onClick={() => {
-                  setEditing(false);
-                  setDecision(review?.decision ?? "");
-                  setNote(review?.note ?? "");
-                  setOverrideId(review?.overrideComponentId ?? "");
-                  onCancel?.();
-                }}
-                type="button"
-              >
-                取消
-              </button>
-            ) : null}
-          </div>
-          {onDraftOverrideChange &&
-          decision === "use-existing" &&
-          overrideId !== "" &&
-          !(
-            review?.decision === "use-existing" &&
-            review.overrideComponentId === overrideId
-          ) ? (
-            <span className="cm-coverage__review-draft-hint">
-              正在試用，尚未儲存
+          {decision !== "" ? (
+            <>
+              {decision === "use-existing" ? (
+                <ComponentPicker
+                  blockId={block.id}
+                  candidateIds={block.matches.map((match) => match.componentId)}
+                  onPick={(componentId) => {
+                    setOverrideId(componentId);
+                    updateDraftOverride(decision, componentId);
+                  }}
+                  selectedId={overrideId}
+                />
+              ) : null}
+              <input
+                aria-label="覆核備註"
+                className="cm-coverage__review-input"
+                maxLength={300}
+                onChange={(event) => setNote(event.target.value)}
+                placeholder="備註（選填）"
+                type="text"
+                value={note}
+              />
+              <div className="cm-coverage__review-actions">
+                <button
+                  className="cm-coverage__review-save"
+                  disabled={!canSave || saving}
+                  onClick={() => void handleSave()}
+                  type="button"
+                >
+                  {saving ? "儲存中…" : "儲存覆核"}
+                </button>
+                {review || (decision === "use-existing" && overrideId !== "") ? (
+                  <button
+                    className="cm-coverage__review-cancel"
+                    onClick={() => {
+                      setEditing(false);
+                      setDecision(review?.decision ?? "");
+                      setNote(review?.note ?? "");
+                      setOverrideId(review?.overrideComponentId ?? "");
+                      onCancel?.();
+                    }}
+                    type="button"
+                  >
+                    取消
+                  </button>
+                ) : null}
+              </div>
+              {onDraftOverrideChange &&
+              decision === "use-existing" &&
+              overrideId !== "" &&
+              !(
+                review?.decision === "use-existing" &&
+                review.overrideComponentId === overrideId
+              ) ? (
+                <span className="cm-coverage__review-draft-hint">
+                  正在試用，尚未儲存
+                </span>
+              ) : null}
+              {error ? (
+                <span className="cm-coverage__review-error">{error}</span>
+              ) : null}
+            </>
+          ) : (
+            <span className="cm-coverage__review-form-hint">
+              請先選擇處理方式
             </span>
-          ) : null}
-          {error ? <span className="cm-coverage__review-error">{error}</span> : null}
+          )}
         </div>
       ) : null}
     </div>

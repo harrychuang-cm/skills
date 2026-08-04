@@ -77,13 +77,15 @@ export type CoverageReviewStatus = (typeof coverageReviewStatuses)[number];
  * Allowed review decisions are scoped by the block's coverage classification
  * (see classifyCoverageBlock): reviewing a missing block answers "build it or
  * not", an extend block answers "extend it or not", a reusable block carries
- * an optional approval or a component override (`use-existing`) when the
- * analyzer's matched pick is wrong.
+ * an optional approval. Because the analyzer can be wrong, every section also
+ * allows overriding to an existing catalog component (`use-existing`, carried
+ * by `overrideComponentId`) and excluding the block from implementation
+ * (`skip`).
  */
 export const coverageReviewDecisionsBySection = {
   missing: ["build-new", "use-existing", "skip"],
-  extend: ["extend", "no-extend", "skip"],
-  reusable: ["approve", "use-existing"],
+  extend: ["extend", "no-extend", "use-existing", "skip"],
+  reusable: ["approve", "use-existing", "skip"],
 } as const;
 
 export type CoverageReviewDecision =

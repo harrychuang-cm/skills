@@ -77,8 +77,8 @@ function readJsonBody(req) {
 const reviewStatuses = new Set(["draft", "confirmed"]);
 const reviewDecisionsBySection = {
   missing: new Set(["build-new", "use-existing", "skip"]),
-  extend: new Set(["extend", "no-extend", "skip"]),
-  reusable: new Set(["approve", "use-existing"]),
+  extend: new Set(["extend", "no-extend", "use-existing", "skip"]),
+  reusable: new Set(["approve", "use-existing", "skip"]),
 };
 
 function isNonEmptyString(value) {

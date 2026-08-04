@@ -33,8 +33,9 @@ tool names.
 
    | Block state | Work item |
    | ----------- | --------- |
-   | `review.decision: "skip"` | Excluded — no work, do not compose this block |
+   | `review.decision: "skip"` | Excluded — no work, do not compose this block. Applies in every section, including reusable blocks |
    | `review.decision: "use-existing"` on a missing block | Compose with the component named by `review.overrideComponentId`; no new component or variant |
+   | `review.decision: "use-existing"` on an extend block | Compose with the component named by `review.overrideComponentId` as-is — no variant work; the developer override replaces the analyzer's variant proposal |
    | `review.decision: "use-existing"` on a reusable block | Compose with the component named by `review.overrideComponentId` instead of the analyzer's matched `exact` component — the developer override replaces the analyzer's pick |
    | `review.decision: "no-extend"` | Compose with the block's matched component as-is; no variant work |
    | classified reusable without an override (no review or `approve` review) | Compose with the matched `exact` component |
