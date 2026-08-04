@@ -19,3 +19,19 @@ export function getCompositionPreviewRenderer(
 ): CompositionPreviewRenderer | undefined {
   return compositionPreviewRegistry[componentId as ComponentCatalogId];
 }
+
+/**
+ * Optional exact Storybook story id for a trusted renderer's preview variant.
+ * The verbatim preview code depends only on this accessor pair, so a project
+ * may evolve the registry into richer entries (renderer + story id) as long
+ * as both accessors keep their signatures. The scaffold declares no variants:
+ * trusted renderers fall back to the component's documentation link, and
+ * catalog components without a trusted renderer resolve through the story
+ * title index.
+ */
+export function getCompositionPreviewStoryId(
+  componentId: string,
+): string | undefined {
+  void componentId;
+  return undefined;
+}

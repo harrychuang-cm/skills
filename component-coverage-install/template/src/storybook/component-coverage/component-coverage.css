@@ -48,7 +48,6 @@
   --cca-blue-bg: rgb(91 155 240 / 13%);
   --cca-accent-bg: color-mix(in srgb, var(--cca-accent) 13%, transparent);
   --cca-neutral-bg: rgb(255 255 255 / 5%);
-  /* Install binding: use the target product surface token when available. */
   --cca-preview-bg: var(--cca-bg);
   --cca-surface-3: #262b34;
   --cca-radius-xl: 16px;
@@ -1216,19 +1215,6 @@
   background: var(--cca-preview-bg);
 }
 
-.cm-coverage__composition-story-label {
-  position: absolute;
-  z-index: 1;
-  inset-block-start: 6px;
-  inset-inline-end: 6px;
-  padding: 2px 6px;
-  color: var(--cca-text-2);
-  background: var(--cca-surface);
-  border-radius: var(--cca-radius-sm);
-  font-size: 10.5px;
-  pointer-events: none;
-}
-
 .cm-coverage__composition-story-frame,
 .cm-coverage__composition-story-iframe {
   inline-size: 100%;
@@ -1784,6 +1770,32 @@
   padding: 24px;
   background: rgb(0 0 0 / 78%);
   cursor: zoom-out;
+}
+
+.cm-coverage__lightbox-close {
+  position: absolute;
+  inset-block-start: 18px;
+  inset-inline-end: 18px;
+  display: grid;
+  place-items: center;
+  inline-size: 36px;
+  block-size: 36px;
+  padding: 0;
+  color: var(--cca-surface);
+  background: var(--cca-text);
+  border: 1px solid var(--cca-border-strong);
+  border-radius: var(--cca-radius-sm);
+  cursor: pointer;
+  font: inherit;
+  font-size: 24px;
+  line-height: 1;
+}
+
+.cm-coverage__lightbox-close:hover,
+.cm-coverage__lightbox-close:focus-visible {
+  background: var(--cca-text-2);
+  outline: 2px solid var(--cca-surface);
+  outline-offset: 2px;
 }
 
 .cm-coverage__lightbox-image {

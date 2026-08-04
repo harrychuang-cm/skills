@@ -85,12 +85,11 @@ function buildPipelineRows(state: CoverageToolState): PipelineRow[] {
     datedRows.push({
       compositionIssues: reportEntry?.compositionIssues,
       createdAt: entry.request.createdAt,
-      key: entry.requestStorageId,
+      key: entry.request.id,
       kind: "request",
       report: reportEntry?.report,
       reportFileName: reportEntry?.fileName,
       request: entry.request,
-      requestStorageId: entry.requestStorageId,
     });
   }
 
@@ -298,7 +297,7 @@ export function ComponentCoverageAnalyzer() {
           ) : (
             <ReportView
               isDevMode={isDevMode}
-              onDelete={async ({ reportFileName, requestStorageId }) => {
+              onDelete={async ({ reportFileName, requestId }) => {
                 // Delete the report before the request so a partial failure
                 // (report gone, request removal fails) degrades the row to the
                 // report-missing stage rather than stranding an orphan report.
@@ -308,8 +307,8 @@ export function ComponentCoverageAnalyzer() {
                   if (reportFileName) {
                     await deleteCoverageReport(reportFileName);
                   }
-                  if (requestStorageId) {
-                    await deleteCoverageRequest(requestStorageId);
+                  if (requestId) {
+                    await deleteCoverageRequest(requestId);
                   }
                 } finally {
                   await refreshState();

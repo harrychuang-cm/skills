@@ -35,11 +35,11 @@ for (const expected of [
 }
 
 for (const expected of [
-  "storyDocsManagerUrl",
+  "storyManagerPath",
   'target="_blank"',
   "尚未選取任何元件",
   "onDraftOverrideChange",
-  "requestStorageId",
+  "activeReferenceImageName",
   "cm-coverage__report-open-state",
   "cm-coverage__report-disclosure",
   "aria-controls={detailId}",

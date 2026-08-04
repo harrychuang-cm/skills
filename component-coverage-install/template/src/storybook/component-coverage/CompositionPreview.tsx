@@ -5,7 +5,10 @@ import {
   type ReactNode,
 } from "react";
 
-import { getCompositionPreviewRenderer } from "./compositionPreviewRegistry";
+import {
+  getCompositionPreviewRenderer,
+  getCompositionPreviewStoryId,
+} from "./compositionPreviewRegistry";
 import {
   resolveCompositionSlot,
   type CompositionPreviewOverride,
@@ -132,7 +135,7 @@ function ComponentSlotBody({
   const renderComponent = getCompositionPreviewRenderer(resolution.componentId);
 
   if (!renderComponent) {
-    const storyId = storyIndex.get(resolution.storyTitle);
+    const storyId = resolveCompositionPreviewStoryId(resolution, storyIndex);
 
     if (storyId) {
       return (
@@ -176,6 +179,21 @@ function ComponentSlotBody({
   );
 }
 
+export function resolveCompositionPreviewStoryId(
+  resolution: Extract<CompositionSlotResolution, { kind: "component" }>,
+  storyIndex: ReadonlyMap<string, string>,
+): string | undefined {
+  const registryStoryId = getCompositionPreviewStoryId(resolution.componentId);
+
+  if (registryStoryId) {
+    return registryStoryId;
+  }
+
+  return getCompositionPreviewRenderer(resolution.componentId)
+    ? undefined
+    : storyIndex.get(resolution.storyTitle);
+}
+
 function StorybookFallback({
   componentName,
   storyId,
@@ -201,7 +219,6 @@ function StorybookFallback({
       className="cm-coverage__composition-story-fallback"
       data-story-id={storyId}
     >
-      <span className="cm-coverage__composition-story-label">Story 預覽</span>
       <div
         aria-hidden="true"
         className="cm-coverage__composition-story-frame"
@@ -322,12 +339,18 @@ function CompositionBlockSlot({
         onClick={() => onSelectBlock(block.id)}
         type="button"
       >
-        <span className="cm-coverage__composition-slot-label">{block.label}</span>
-        <span
-          className={`cm-coverage__chip cm-coverage__chip--composition-${resolution.state}`}
-        >
-          {resolution.badgeLabel}
-        </span>
+        {resolution.kind === "component" ? null : (
+          <>
+            <span className="cm-coverage__composition-slot-label">
+              {block.label}
+            </span>
+            <span
+              className={`cm-coverage__chip cm-coverage__chip--composition-${resolution.state}`}
+            >
+              {resolution.badgeLabel}
+            </span>
+          </>
+        )}
       </button>
     </article>
   );

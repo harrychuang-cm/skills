@@ -1,10 +1,10 @@
 import {
   validateCoverageComposition,
-  type CoverageBlockReview,
   type CoverageCompositionIssue,
-  type CoverageReport,
-  type CoverageRequest,
-  type CoverageReviewStatus,
+  CoverageBlockReview,
+  CoverageReport,
+  CoverageRequest,
+  CoverageReviewStatus,
 } from "./coverageTypes";
 
 // Must stay equal to componentCoverageApiPath in
@@ -15,11 +15,7 @@ export const componentCoverageApiPath = "/__component-coverage";
 export const componentCoverageStaticBase = "/component-coverage";
 
 export type CoverageRequestListEntry =
-  | {
-      kind: "request";
-      request: CoverageRequest;
-      requestStorageId: string;
-    }
+  | { kind: "request"; request: CoverageRequest }
   | { kind: "invalid"; id: string; error: string };
 
 export type CoverageReportListEntry =
@@ -121,10 +117,7 @@ export function parseCoverageReportEntry(
 }
 
 type DevStatePayload = {
-  requests?: readonly (Partial<CoverageRequest> & {
-    parseError?: string;
-    storageId?: string;
-  })[];
+  requests?: readonly (Partial<CoverageRequest> & { parseError?: string })[];
   reports?: readonly { fileName?: string; raw?: string }[];
 };
 
@@ -132,40 +125,15 @@ function toRequestListEntries(
   requests: DevStatePayload["requests"],
 ): CoverageRequestListEntry[] {
   return (requests ?? []).map((entry) => {
-    const requestStorageId =
-      typeof entry.storageId === "string"
-        ? entry.storageId
-        : typeof entry.id === "string"
-          ? entry.id
-          : "";
-    const idDoesNotMatchStorage =
-      typeof entry.id === "string" && entry.id !== requestStorageId;
-
-    if (
-      entry.parseError ||
-      !requestStorageId ||
-      typeof entry.id !== "string" ||
-      idDoesNotMatchStorage ||
-      !entry.status
-    ) {
+    if (entry.parseError || typeof entry.id !== "string" || !entry.status) {
       return {
         kind: "invalid",
-        id: requestStorageId || "unknown-request",
-        error:
-          entry.parseError ??
-          (idDoesNotMatchStorage
-            ? "request.json id 與資料夾名稱不一致"
-            : "request.json 不符合請求契約"),
+        id: entry.id ?? "unknown-request",
+        error: entry.parseError ?? "request.json 不符合請求契約",
       };
     }
 
-    const { parseError: _parseError, storageId: _storageId, ...request } = entry;
-
-    return {
-      kind: "request",
-      request: request as CoverageRequest,
-      requestStorageId,
-    };
+    return { kind: "request", request: entry as CoverageRequest };
   });
 }
 
@@ -289,9 +257,9 @@ export async function deleteCoverageReport(fileName: string): Promise<void> {
   }
 }
 
-export async function deleteCoverageRequest(storageId: string): Promise<void> {
+export async function deleteCoverageRequest(requestId: string): Promise<void> {
   const response = await fetch(
-    `${componentCoverageApiPath}/requests/${encodeURIComponent(storageId)}`,
+    `${componentCoverageApiPath}/requests/${encodeURIComponent(requestId)}`,
     { method: "DELETE" },
   );
   const body = (await response.json().catch(() => ({}))) as {

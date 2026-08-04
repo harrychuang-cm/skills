@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -18,6 +19,7 @@ import {
 } from "./coverageApi";
 import {
   CompositionPreview,
+  resolveCompositionPreviewStoryId,
   type CompositionCanvasMode,
   type CompositionReferenceImage,
 } from "./CompositionPreview";
@@ -150,7 +152,6 @@ export type PipelineRow =
       kind: "request";
       key: string;
       request: CoverageRequest;
-      requestStorageId: string;
       report?: CoverageReport;
       reportFileName?: string;
       compositionIssues?: readonly CoverageCompositionIssue[];
@@ -171,7 +172,7 @@ export type PipelineRow =
  * `reportFileName`. The container deletes the report before the request.
  */
 export type DeleteTarget = {
-  requestStorageId?: string;
+  requestId?: string;
   reportFileName?: string;
 };
 
@@ -315,8 +316,15 @@ function openStoryDocs(storyTitle: string) {
   window.location.href = search;
 }
 
-function storyDocsManagerUrl(storyTitle: string) {
-  const search = `?path=${storyDocsPath(storyTitle)}`;
+export function storyManagerPath(storyTitle: string, storyId?: string) {
+  return storyId
+    ? `/story/${encodeURIComponent(storyId)}`
+    : storyDocsPath(storyTitle);
+}
+
+function storyManagerUrl(storyTitle: string, storyId?: string) {
+  const path = storyManagerPath(storyTitle, storyId);
+  const search = `?path=${path}`;
 
   if (typeof window === "undefined") {
     return search;
@@ -338,7 +346,7 @@ function storyDocsManagerUrl(storyTitle: string) {
     url.hash = "";
     url.search = "";
     url.pathname = url.pathname.replace(/\/iframe\.html$/, "/");
-    url.searchParams.set("path", storyDocsPath(storyTitle));
+    url.searchParams.set("path", path);
     return url.toString();
   } catch {
     return search;
@@ -1135,9 +1143,22 @@ function Lightbox({ onClose, src }: { onClose: () => void; src: string }) {
     <div
       aria-modal="true"
       className="cm-coverage__lightbox"
-      onClick={onClose}
+      data-component-coverage-lightbox=""
+      onClick={(event) => {
+        if (event.target === event.currentTarget) {
+          onClose();
+        }
+      }}
       role="dialog"
     >
+      <button
+        aria-label="關閉放大檢視"
+        className="cm-coverage__lightbox-close"
+        onClick={onClose}
+        type="button"
+      >
+        ×
+      </button>
       <img alt="放大檢視" className="cm-coverage__lightbox-image" src={src} />
     </div>
   );
@@ -1362,6 +1383,7 @@ function ReportDetail({
   const [previewOverride, setPreviewOverride] = useState<
     CompositionPreviewOverride | undefined
   >();
+  const compositionWorkspaceRef = useRef<HTMLDivElement | null>(null);
   const modeTabRefs = useRef<
     Record<"preview" | "analysis", HTMLButtonElement | null>
   >({ analysis: null, preview: null });
@@ -1387,6 +1409,13 @@ function ReportDetail({
           previewOverride,
         )
       : undefined;
+  const selectedStoryId =
+    selectedResolution?.kind === "component"
+      ? resolveCompositionPreviewStoryId(
+          selectedResolution,
+          preview.storyIndex,
+        )
+      : undefined;
   const selectedEvidenceRegion = findInspectorEvidenceRegion(
     selectedBlock,
     request?.images,
@@ -1407,6 +1436,23 @@ function ReportDetail({
     (image) => image.name === activeReferenceImageName,
   );
   const reviewEditable = isDevMode && !isReportConfirmed(report);
+  const clearCompositionSelection = useCallback(() => {
+    setPreviewOverride((current) =>
+      updateCompositionPreviewOverride(current, { type: "block-change" }),
+    );
+    setSelectedBlockId(undefined);
+
+    if (typeof document !== "undefined") {
+      const activeElement = document.activeElement;
+
+      if (
+        activeElement instanceof HTMLElement &&
+        activeElement.matches(".cm-coverage__composition-slot-select")
+      ) {
+        activeElement.blur();
+      }
+    }
+  }, []);
 
   useEffect(() => {
     setCompositionCanvasMode("assembled");
@@ -1453,6 +1499,39 @@ function ReportDetail({
       setPreviewOverride(undefined);
     }
   }, [activeMode, compositionBlockIds, report, selectedBlockId]);
+
+  useEffect(() => {
+    if (activeMode !== "preview" || selectedBlockId === undefined) {
+      return;
+    }
+
+    const handleOutsidePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+
+      if (!(target instanceof Node)) {
+        return;
+      }
+
+      if (compositionWorkspaceRef.current?.contains(target)) {
+        return;
+      }
+
+      if (
+        target instanceof Element &&
+        target.closest("[data-component-coverage-lightbox]")
+      ) {
+        return;
+      }
+
+      clearCompositionSelection();
+    };
+
+    document.addEventListener("pointerdown", handleOutsidePointerDown, true);
+
+    return () => {
+      document.removeEventListener("pointerdown", handleOutsidePointerDown, true);
+    };
+  }, [activeMode, clearCompositionSelection, selectedBlockId]);
 
   const scrollToSection = (section: CoverageSection) => {
     setActiveMode("analysis");
@@ -1590,6 +1669,7 @@ function ReportDetail({
           aria-labelledby={`${compositionNoticeId}-preview-tab`}
           className="cm-coverage__composition-workspace"
           id={`${compositionNoticeId}-preview-panel`}
+          ref={compositionWorkspaceRef}
           role="tabpanel"
         >
           <CompositionPreview
@@ -1598,10 +1678,7 @@ function ReportDetail({
             canvasMode={compositionCanvasMode}
             composition={report.composition}
             onCanvasModeChange={setCompositionCanvasMode}
-            onClearSelection={() => {
-              updatePreviewOverride({ type: "block-change" });
-              setSelectedBlockId(undefined);
-            }}
+            onClearSelection={clearCompositionSelection}
             onReferenceImageError={(name) =>
               setFailedReferenceImageNames((current) =>
                 current.includes(name) ? current : [...current, name],
@@ -1674,11 +1751,14 @@ function ReportDetail({
                     </code>
                     <a
                       className="cm-coverage__story-link"
-                      href={storyDocsManagerUrl(selectedResolution.storyTitle)}
+                      href={storyManagerUrl(
+                        selectedResolution.storyTitle,
+                        selectedStoryId,
+                      )}
                       rel="noopener noreferrer"
                       target="_blank"
                     >
-                      另開元件文件
+                      {selectedStoryId ? "另開元件變體" : "另開元件文件"}
                     </a>
                   </div>
                 ) : null}
@@ -1928,7 +2008,7 @@ function PipelineRowView({
           <DeleteReportControl
             label={row.id}
             onDelete={onDelete}
-            target={{ requestStorageId: row.id }}
+            target={{ requestId: row.id }}
           />
         ) : null}
       </div>
@@ -1973,10 +2053,7 @@ function PipelineRowView({
   const detailId = reportFileName ? reportDetailDomId(reportFileName) : undefined;
   const deleteTarget: DeleteTarget =
     row.kind === "request"
-      ? {
-          reportFileName: row.reportFileName,
-          requestStorageId: row.requestStorageId,
-        }
+      ? { reportFileName: row.reportFileName, requestId: row.request.id }
       : { reportFileName: row.fileName };
 
   const rowBody = (
