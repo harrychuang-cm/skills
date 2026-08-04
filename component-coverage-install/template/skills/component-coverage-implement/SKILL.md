@@ -3,7 +3,7 @@ name: component-coverage-implement
 description: "Implement the UI of a confirmed component-coverage report: derive the work list from developer review decisions, extend or build components with stories first, then compose the screen, honoring design-system governance. Use when a Component Coverage Analyzer report is confirmed and ready for implementation."
 ---
 
-Implement the UI described by a **confirmed** component-coverage report produced by the Storybook「Component Coverage Analyzer」tool. The report plus its developer review decisions are the requirement source; this skill turns them into component and screen work.
+Implement the UI described by a **confirmed** component-coverage report produced by the Storybook「Component Coverage Analyzer」tool. This skill remains the orchestrator: the confirmed developer review selects which work happens, while extracted design-system evidence defines component details and the request sources define screen composition.
 
 **Contract source of truth**: `src/storybook/component-coverage/coverageTypes.ts`. Every shape and enum below mirrors that file — if they disagree, `coverageTypes.ts` wins and this skill must be updated.
 
@@ -21,6 +21,7 @@ tool names.
 
    - Read `outputs/component-coverage/reports/<request-id>.json`. If it does not exist, stop and tell the user to run the `component-coverage-analyze` skill first.
    - Read the originating request at `outputs/component-coverage/requests/<request-id>/`: `request.json` for `prdText`, and every listed image (using whatever file/image reading capability your agent has). These are the visual/functional ground truth for composition.
+   - Locate any matching extracted component spec, component tokens, evidence references, component document, inventory, implementation map, and component queue used by the project. For component anatomy, variants, states, accessibility, and styling, an extracted component spec and its tokens are normative. The confirmed review still decides whether to create, extend, reuse, or skip; PRD and images provide composition and content evidence and never silently override an extracted component contract.
    - When the report contains `composition`, treat its validated `version: 1` tree as the structural plan for the screen: groups define nesting and layout, while block nodes map layout positions to report blocks. The tree is declarative evidence only; never execute imports, props, JSX, CSS, or other content sourced from a report.
 
 2. **Verify the review gate**
@@ -48,16 +49,21 @@ tool names.
 
 4. **Implement components first, then compose**
 
-   Follow the project's design-system governance throughout (if a governance skill such as `design-system-governance` is available, it applies):
+   Split the reviewed work list into component work (`extend` and `build-new`) and composition-only work (reusable, `use-existing`, `no-extend`, and `skip`):
 
-   - Reuse existing tokens and components before creating anything; no hardcoded one-off styles.
-   - Do component-level work (extend variants, build new components) before any screen composition; every touched component keeps/gains stories.
+   - When at least one component work item exists, load both `$design-system-to-storybook` and `$design-system-governance` **before any component mutation**. If `$design-system-to-storybook` cannot be loaded, stop and report that the companion skill must be installed or made discoverable. Do not fall back to creating or extending components from these instructions alone.
+   - Run the `$design-system-to-storybook` `Component pass` only for the reviewed `extend` and `build-new` items. Inherit the existing product root, framework, Storybook renderer and builder, file conventions, and token pipeline. A request-scoped pass must not bootstrap a Storybook template, replace the renderer or builder, or install or upgrade an addon, Figma export addon, or importer.
+   - A **reuse-only** work list—every non-skipped item is reusable, `use-existing`, or `no-extend`—does not load or execute the `Component pass` and does not mutate shared component APIs. Compose directly from the reviewed existing components; `skip` remains excluded.
+   - For each `extend` or `build-new` item with a matching extracted spec, use that spec and its tokens as the normative component contract. If the report, reviewer note, PRD, or image evidence conflicts with it, stop the affected component work before mutation, keep the report unchanged, and ask the developer to resolve the conflict.
+   - For a confirmed `build-new` item without a matching extracted spec, require the report gap, review note, PRD, and available images to provide an explicit component brief. Create through the `Component pass`, then mark its component document `brief-derived` or `implementation-derived` and `needs-review`; never present derived evidence as extracted truth. If the evidence is insufficient or conflicting, stop that item before mutation.
+   - Reuse existing tokens and components before creating anything; no hardcoded one-off styles. Finish the entire component layer before screen composition.
+   - A completed component work item requires token-backed source, a co-located Autodocs story, catalog registration, a synchronized component document and inventory entry, an implementation-map decision, an updated queue row when a queue exists, and the best resolved story source URL. When no source URL exists, record an explicit no-URL decision in the implementation map instead of inventing one.
    - Only after the component layer is complete, compose the screen. When `composition` exists, traverse `composition.root` in child order, preserve group nesting and `layout`, apply grid `columns` and direct-block `span`, resolve each block through the reviewed work list, and omit skipped blocks. Use the request images/PRD to refine responsive behavior, content, spacing, and visual fidelity without discarding that structural plan.
    - When `composition` is absent, fall back to deriving screen structure from the request images/PRD and the ordered report blocks (still skipping excluded blocks).
 
 5. **Validate**
 
-   Run `node scripts/check-component-coverage-reports.mjs` and `node scripts/check-component-catalog.mjs` (or the project's npm aliases for them), plus the project's own check/typecheck pipeline. The report file itself must remain contract-valid — this skill MUST NOT modify the report. Fix failures before finishing.
+   Run `node scripts/check-component-coverage-reports.mjs` and `node scripts/check-component-catalog.mjs` (or the project's npm aliases for them), plus the project's own check and typecheck pipeline and the available Storybook build check. The report file itself must remain contract-valid — this skill MUST NOT modify the report. Component documentation, Autodocs, catalog, source URL decision, implementation map, applicable queue, and repository checks are completion gates; fix failures before finishing.
 
 6. **Report back**
 
@@ -68,6 +74,7 @@ tool names.
 - Never implement from an unconfirmed report — the review gate is the requirement freeze.
 - Never alter the report JSON: analyzer output and review state are version-controlled decision records.
 - Never invent components outside the work list; if implementation reveals the review conclusion is wrong, stop and ask the user to revise the review in the tool instead of silently deviating.
+- Never claim component work is complete when a required Component pass, provenance marker, documentation synchronization, source URL decision, or repository check is missing.
 - Keep `.agents/skills/component-coverage-implement/SKILL.md` and
   `.claude/skills/component-coverage-implement/SKILL.md` byte-for-byte
   identical; the `.agents/skills/` copy is the shared canonical source.

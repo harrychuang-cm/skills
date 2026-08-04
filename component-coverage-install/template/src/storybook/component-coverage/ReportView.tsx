@@ -231,9 +231,11 @@ function buildImplementationPrompt(requestId: string): string {
     "完成條件：",
     `1. 讀取 ${reportPath}、${requestPath}request.json 與其中列出的圖片。`,
     `2. 確認 ${reportPath} 的 reviewStatus 為 confirmed；否則停止實作。`,
-    "3. 依每個區塊的覆核決定先完成元件與 stories，再組合界面。",
-    "4. 保持報告 JSON 不變，並遵循專案既有的 design-system governance。",
-    "5. 執行 component coverage 檢查與專案 check/typecheck，全部通過後回報結果。",
+    "3. component-coverage-implement 是報告與覆核流程的 orchestrator；請從報告取得每個區塊的決定，不要由這段提示推測或覆寫決定。",
+    "4. 工作清單若含 extend 或 build-new，先載入 design-system-to-storybook 與 design-system-governance，僅對這些元件執行 design-system-to-storybook 的 Component pass；元件與 stories 完成後才組合界面。",
+    "5. 若工作清單是 reuse-only（只有 reusable、use-existing、no-extend 或 skip），不要執行 Component pass，也不要修改 shared component API。",
+    "6. 單次元件工作沿用既有 Storybook；不得執行 Storybook template bootstrap、addon 或 importer 的安裝／升級。",
+    "7. 保持報告 JSON 不變；執行 component coverage、component catalog、專案 check/typecheck 與可用的 Storybook build，全部通過後回報結果。",
   ].join("\n");
 }
 

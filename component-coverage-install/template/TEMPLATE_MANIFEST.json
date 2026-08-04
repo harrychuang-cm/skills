@@ -1,6 +1,6 @@
 {
   "name": "component-coverage-tool",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "Storybook Component Coverage Analyzer — template manifest. The installer copies this file to outputs/component-coverage/TEMPLATE_MANIFEST.json in the target project so update runs can compare versions.",
   "files": {
     "verbatim": [
@@ -42,7 +42,7 @@
   },
   "skillContentSha256": {
     "skills/component-coverage-analyze/SKILL.md": "7ab007e10e354d8544fd266e575de46734acc7ee577cb34b7b2616d23d74a210",
-    "skills/component-coverage-implement/SKILL.md": "2fc5feb16b5db67be223765faa5b0e14ffb963ef37766f21f4e06ac37b82344f"
+    "skills/component-coverage-implement/SKILL.md": "c9eeafa33ee777049fb296e1be90e22f295725e1b456ee5ee941d72433b4b71c"
   },
   "pathContracts": {
     "apiPath": "/__component-coverage",

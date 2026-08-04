@@ -36,6 +36,65 @@ function sha256(contents) {
   return createHash("sha256").update(normalizedContents).digest("hex");
 }
 
+function collectImplementSkillContractIssues(contents, pathLabel) {
+  const skill = contents.toString("utf8").replace(/\r\n/g, "\n");
+  const requiredPhrases = [
+    ["component-coverage-implement remains the orchestrator", "This skill remains the orchestrator"],
+    ["design-system-to-storybook companion", "$design-system-to-storybook"],
+    ["design-system governance companion", "$design-system-governance"],
+    ["scoped Component pass", "`Component pass` only for the reviewed `extend` and `build-new` items"],
+    ["reuse-only bypass", "A **reuse-only** work list"],
+    ["reuse-only avoids Component pass", "does not load or execute the `Component pass`"],
+    ["reuse-only preserves component APIs", "does not mutate shared component APIs"],
+    ["companion gate precedes mutation", "before any component mutation"],
+    ["missing companion is actionable", "must be installed or made discoverable"],
+    ["extracted component spec precedence", "extracted component spec and its tokens are normative"],
+    ["derived brief provenance", "`brief-derived` or `implementation-derived`"],
+    ["derived review marker", "`needs-review`"],
+    ["token-backed source completion", "token-backed source"],
+    ["Autodocs completion", "co-located Autodocs story"],
+    ["catalog completion", "catalog registration"],
+    ["component document completion", "component document"],
+    ["inventory completion", "inventory entry"],
+    ["implementation map completion", "implementation-map decision"],
+    ["queue completion", "updated queue row when a queue exists"],
+    ["source URL completion", "best resolved story source URL"],
+    ["explicit no-URL decision", "explicit no-URL decision"],
+    ["immutable report", "MUST NOT modify the report"],
+    ["Storybook build check", "available Storybook build check"],
+  ];
+  const drift = [];
+
+  for (const [contract, phrase] of requiredPhrases) {
+    if (!skill.includes(phrase)) {
+      drift.push(`${pathLabel}: implement skill contract drift - missing ${contract}.`);
+    }
+  }
+
+  if (!/conflicts with it,[\s\S]*stop the affected component work before mutation[\s\S]*keep the report unchanged/i.test(skill)) {
+    drift.push(`${pathLabel}: implement skill contract drift - missing extracted-contract conflict gate.`);
+  }
+  if (!/must not bootstrap a Storybook template[\s\S]*replace the renderer or builder[\s\S]*install or upgrade[\s\S]*addon[\s\S]*importer/i.test(skill)) {
+    drift.push(`${pathLabel}: implement skill contract drift - missing per-request setup prohibition.`);
+  }
+
+  return drift;
+}
+
+if (process.argv.includes("--fixture-missing-implement-contract")) {
+  const fixtureIssues = collectImplementSkillContractIssues(
+    "A confirmed report can directly create a component.",
+    "in-memory/component-coverage-implement",
+  );
+  if (fixtureIssues.length === 0) {
+    console.error("Component coverage agent skill check failed:\n- Semantic drift fixture unexpectedly passed.");
+    process.exit(2);
+  }
+  console.error("Component coverage agent skill check failed:");
+  for (const issue of fixtureIssues) console.error(`- ${issue}`);
+  process.exit(1);
+}
+
 if (
   !installTargets ||
   typeof installTargets !== "object" ||
@@ -110,6 +169,10 @@ if (issues.length === 0) {
         canonicalContents = contents;
         canonicalPath = target;
       }
+    }
+
+    if (source === "skills/component-coverage-implement/SKILL.md" && canonicalContents) {
+      issues.push(...collectImplementSkillContractIssues(canonicalContents, canonicalPath));
     }
   }
 
