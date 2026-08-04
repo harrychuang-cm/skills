@@ -1,6 +1,9 @@
 {
   "includeGitInstructions": false,
   "permissions": {
+    "additionalDirectories": [
+      "/dev"
+    ],
     "allow": [
       "Bash(md5 assets/figma-export-addon/src/visualComment.ts storybook-template/vendor/figma-export/src/visualComment.ts storybook-template/.storybook/vendor/figma-export-addon/src/visualComment.ts)",
       "Bash(awk '{print $6, $7, $8, $9, $NF}')",
@@ -33,10 +36,45 @@
       "Bash(sed -i '' 's/\"version\": \"1.5.0\"/\"version\": \"1.6.0\"/' package.json)",
       "Bash(sed -i '' 's/assert.equal\\(packageJson.version, \"1.5.0\", \"canonical package uses release version 1.5.0\"\\);/assert.equal\\(packageJson.version, \"1.6.0\", \"canonical package uses release version 1.6.0\"\\);/' test/verify-manifest.mjs)",
       "Bash(sed -i '' 's/\"version\": \"1.6.0\"/\"version\": \"1.6.1\"/' package.json)",
-      "Bash(sed -i '' 's/assert.equal\\(packageJson.version, \"1.6.0\", \"canonical package uses release version 1.6.0\"\\);/assert.equal\\(packageJson.version, \"1.6.1\", \"canonical package uses release version 1.6.1\"\\);/' test/verify-manifest.mjs)"
-    ],
-    "additionalDirectories": [
-      "/dev"
+      "Bash(sed -i '' 's/assert.equal\\(packageJson.version, \"1.6.0\", \"canonical package uses release version 1.6.0\"\\);/assert.equal\\(packageJson.version, \"1.6.1\", \"canonical package uses release version 1.6.1\"\\);/' test/verify-manifest.mjs)",
+      "mcp__figma__get_design_context",
+      "Bash(curl -s \"http://localhost:6006/iframe.html?id=components-actions-text-link--inline&viewMode=story\" -o /private/tmp/claude-501/-Users-a04-0214-0320-Public-works-cm-skills/4bea26c9-90b1-4eea-a7e7-f8eaa7c50a46/scratchpad/story.html)",
+      "Bash(lsof -iTCP:6006 -sTCP:LISTEN -P)",
+      "Bash(xargs -I{} ps -p {} -o command=)",
+      "Bash(cd /Users/a04-0214-0214-0320 2>/dev/null; find /Users/a04-0214-0320/Public/works/cm-ds-extractor-lab/80sJP-Grok -type d -name \"*text-link*\" -not -path \"*/node_modules/*\" 2>/dev/null; find /Users/a04-0214-0320/Public/works/cm-ds-extractor-lab/80sJP-Grok -type f -name \"*ext-link*\" -not -path \"*/node_modules/*\" 2>/dev/null | head)",
+      "Read(//Users/**)",
+      "Bash(npx --no-install playwright --version)",
+      "Bash('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' --headless --disable-gpu --screenshot=/private/tmp/claude-501/-Users-a04-0214-0320-Public-works-cm-skills/4bea26c9-90b1-4eea-a7e7-f8eaa7c50a46/scratchpad/story-truth.png --window-size=480,320 --hide-scrollbars --virtual-time-budget=8000 'http://localhost:6006/iframe.html?id=components-actions-text-link--inline&viewMode=story')",
+      "Bash(curl -sI \"http://localhost:6006/node_modules/.cache/storybook/10.4.1/1c3385a5d25e538d10b518b310c74d3ca2690b6aaffeadccd74da79736171f86/sb-vite/deps/storybook_internal_preview_runtime.js?v=153c1c05\")",
+      "Bash(curl -s \"http://localhost:6006/node_modules/.cache/storybook/10.4.1/1c3385a5d25e538d10b518b310c74d3ca2690b6aaffeadccd74da79736171f86/sb-vite/deps/storybook_internal_preview_runtime.js?v=153c1c05\")",
+      "Bash(sed -i '' 's/await send\\(\"Page.reload\", { ignoreCache: false }\\);/await send\\(\"Page.reload\", { ignoreCache: true }\\);/' cdp-capture.mjs)",
+      "Bash(node cdp-capture.mjs \"http://localhost:6006/iframe.html?id=components-actions-text-link--inline&viewMode=story\" story-truth.png 30000)",
+      "Bash(curl -sI http://localhost:6100/iframe.html)",
+      "Bash(git -C /Users/a04-0214-0320/Public/works/cm-skills show --stat 5afa21d)",
+      "Bash(git -C /Users/a04-0214-0320/Public/works/cm-skills status --short)",
+      "Bash(git -C /Users/a04-0214-0320/Public/works/cm-skills status --short -- design-system-to-storybook/storybook-template/.storybook/vendor/figma-export-addon)",
+      "Bash(git -C /Users/a04-0214-0320/Public/works/cm-skills log --oneline -1 -- design-system-to-storybook/storybook-template/.storybook/vendor/figma-export-addon/dist)",
+      "Bash(git -C /Users/a04-0214-0320/Public/works/cm-skills show HEAD:design-system-to-storybook/storybook-template/.storybook/vendor/figma-export-addon/src/domExport.ts)",
+      "Bash(rsync -a --delete /Users/a04-0214-0320/Public/works/cm-skills/design-system-to-storybook/assets/figma-export-addon/src/ /Users/a04-0214-0320/Public/works/cm-skills/design-system-to-storybook/storybook-template/.storybook/vendor/figma-export-addon/src/)",
+      "Bash(rsync -a --delete /Users/a04-0214-0320/Public/works/cm-skills/design-system-to-storybook/assets/figma-export-addon/src/ /Users/a04-0214-0320/Public/works/cm-skills/design-system-to-storybook/storybook-template/vendor/figma-export/src/)",
+      "Bash(rsync -a --delete /Users/a04-0214-0320/Public/works/cm-skills/design-system-to-storybook/assets/figma-export-addon/dist/ /Users/a04-0214-0320/Public/works/cm-skills/design-system-to-storybook/storybook-template/.storybook/vendor/figma-export-addon/dist/)",
+      "Bash(rsync -a --delete /Users/a04-0214-0320/Public/works/cm-skills/design-system-to-storybook/assets/figma-export-addon/dist/ /Users/a04-0214-0320/Public/works/cm-skills/design-system-to-storybook/storybook-template/vendor/figma-export/dist/)",
+      "Bash(echo \"build-exit=$?\")",
+      "Bash(echo \"manifest-exit=$?\")",
+      "Bash(md5 -q /Users/a04-0214-0320/Public/works/cm-skills/design-system-to-storybook/assets/figma-plugin-code-to-design/code.js /Users/a04-0214-0320/Public/works/cm-skills/design-system-to-storybook/storybook-template/figma/storybook-code-to-design/code.js)",
+      "Bash(cp /Users/a04-0214-0320/Public/works/cm-skills/design-system-to-storybook/assets/figma-plugin-code-to-design/code.ts /Users/a04-0214-0320/Public/works/cm-skills/design-system-to-storybook/assets/figma-plugin-code-to-design/code.js /Users/a04-0214-0320/Public/works/cm-skills/design-system-to-storybook/assets/figma-plugin-code-to-design/ui.html /Users/a04-0214-0320/Public/works/cm-skills/design-system-to-storybook/assets/figma-plugin-code-to-design/manifest.json /Users/a04-0214-0320/Public/works/cm-skills/design-system-to-storybook/assets/figma-plugin-code-to-design/package.json /Users/a04-0214-0320/Public/works/cm-skills/design-system-to-storybook/assets/figma-plugin-code-to-design/package-lock.json /Users/a04-0214-0320/Public/works/cm-ds-extractor-lab/80sJP-Grok/figma/storybook-code-to-design/)",
+      "Bash(cp /Users/a04-0214-0320/Public/works/cm-skills/design-system-to-storybook/assets/figma-plugin-code-to-design/test/verify-pure-functions.cjs /Users/a04-0214-0320/Public/works/cm-skills/design-system-to-storybook/assets/figma-plugin-code-to-design/test/verify-manifest.mjs /Users/a04-0214-0320/Public/works/cm-skills/design-system-to-storybook/assets/figma-plugin-code-to-design/test/verify-bridge-helpers.cjs /Users/a04-0214-0320/Public/works/cm-ds-extractor-lab/80sJP-Grok/figma/storybook-code-to-design/test/)",
+      "Bash(cp /Users/a04-0214-0320/Public/works/cm-skills/design-system-to-storybook/assets/figma-plugin-code-to-design/scripts/stamp-version.mjs /Users/a04-0214-0320/Public/works/cm-ds-extractor-lab/80sJP-Grok/figma/storybook-code-to-design/scripts/)",
+      "Bash(md5 -q /Users/a04-0214-0320/Public/works/cm-skills/design-system-to-storybook/assets/figma-plugin-code-to-design/code.js /Users/a04-0214-0320/Public/works/cm-ds-extractor-lab/80sJP-Grok/figma/storybook-code-to-design/code.js)",
+      "Bash(md5 -q /Users/a04-0214-0320/Public/works/cm-skills/design-system-to-storybook/assets/figma-plugin-code-to-design/code.ts /Users/a04-0214-0320/Public/works/cm-ds-extractor-lab/80sJP-Grok/figma/storybook-code-to-design/code.ts)",
+      "Bash(npm pack *)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:6006/iframe.html)",
+      "Bash(curl -s \"http://localhost:6006/node_modules/@harrychuang/storybook-addon-figma-export/dist/preview.js\")",
+      "Bash(kill %1)",
+      "Bash(pkill -f \"http.server 6100\")",
+      "Bash(git -C . branch --show-current)",
+      "Bash(git stash *)",
+      "Bash(grep -oE '>[A-Z][^<>]{3,60}<' template/figma/design-automation-hub/ui.html)"
     ]
   }
 }
