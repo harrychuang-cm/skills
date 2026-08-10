@@ -34,9 +34,10 @@ node --test test/*.test.mjs   # worker 測試（零依賴）
 
 ## 部署到 Zeabur
 
-1. **建服務**：Zeabur 專案內新增 PostgreSQL 服務，再從 Git 部署 `task-board/control-plane`
-   （Node.js 服務；build：`npm run build`，start：`npm run start`；首次部署前執行
-   `npm run migrate:deploy` 或設為 predeploy command）。
+1. **建服務**：Zeabur 專案內新增 PostgreSQL 服務，再從 Git 部署（Root Directory 設
+   `task-board/control-plane`）。Start Command 設 `npm run deploy:start`（單一命令；
+   它在 npm script 內先跑 prisma migrate deploy 再啟動伺服器——**不要**在平台的
+   start command 直接寫 A && B，多數平台不經 shell 解析，`&&` 會被當成參數）。
 2. **Google OAuth 憑證**：Google Cloud Console → APIs & Services → Credentials →
    OAuth client ID（Web application），Authorized redirect URI 填
    `https://<你的網域>/api/auth/callback/google`。
