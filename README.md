@@ -244,6 +244,17 @@ node pipeline-board/scripts/build-pipeline-status.mjs --project-root <absolute-r
 node pipeline-board/scripts/render-pipeline-board.mjs --status <absolute-repo>/.pipeline-board/status.json --out <absolute-repo>/.pipeline-board/board.html
 ```
 
+### Running the team task board
+
+`task-board/` is a team-shared Trello-style board for the automation above: a cloud
+control plane (Next.js + PostgreSQL, deployable to Zeabur) plus a zero-dependency
+worker daemon that runs on each designer's machine, polls for claimable cards, and
+wraps `agent-automation-orchestrate/scripts/run-task.mjs` with that machine's own AI
+accounts. Card columns are event-driven (claimable / running / needs attention /
+awaiting review / done); humans intervene only via commands (rerun with a note,
+approve). See `task-board/README.md` for local development, Zeabur deployment,
+worker installation, and the end-to-end acceptance script.
+
 ### Viewing the portfolio dashboard
 
 Aggregate every tracked project into one overview (all output lands in a `dashboard/` directory next to the portfolio definition), then open the overview HTML directly:
@@ -356,6 +367,10 @@ The generated report is a static HTML + CSS artifact, usually under `reports/des
 │   ├── assets/
 │   ├── references/
 │   └── scripts/
+├── task-board/
+│   ├── README.md
+│   ├── control-plane/
+│   └── worker/
 ├── scripts/
 │   └── install_agent_skills.mjs
 ├── ui-compare-to-reference/

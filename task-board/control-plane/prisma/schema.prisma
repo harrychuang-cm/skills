@@ -1,0 +1,197 @@
+// 任務看板控制平面資料模型。
+// 佇列語意：Card 帶 revision 供 CAS claim；Lease 帶 heartbeat 與 TTL。
+// phase 詞彙沿用 agent-automation-orchestrate 的 run summary（字串，不另立 enum）。
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum CardColumn {
+  CLAIMABLE
+  RUNNING
+  NEEDS_ATTENTION
+  AWAITING_REVIEW
+  DONE
+}
+
+enum CardOrigin {
+  MEMBER
+  PIPELINE_CHAIN
+}
+
+model Member {
+  id           String        @id @default(cuid())
+  email        String        @unique
+  name         String
+  createdAt    DateTime      @default(now())
+  machines     Machine[]
+  cards        Card[]        @relation("CardCreator")
+  approvals    Card[]        @relation("CardApprover")
+  leases       Lease[]
+  runs         Run[]
+  workerTokens WorkerToken[]
+
+  @@map("members")
+}
+
+// worker 認證用 token：只存 sha256 雜湊，明文僅在簽發當下回傳一次
+model WorkerToken {
+  id         String    @id @default(cuid())
+  tokenHash  String    @unique
+  label      String
+  memberId   String
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+  member     Member    @relation(fields: [memberId], references: [id])
+
+  @@map("worker_tokens")
+}
+
+model Machine {
+  id         String   @id @default(cuid())
+  machineId  String   @unique // worker 端產生的穩定識別碼
+  memberId   String
+  label      String?
+  runners    String[] // 該機器上可用的 runner id（如 claude、codex）
+  lastSeenAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+  member     Member   @relation(fields: [memberId], references: [id])
+  leases     Lease[]
+  runs       Run[]
+
+  @@map("machines")
+}
+
+model Project {
+  id          String           @id @default(cuid())
+  slug        String           @unique
+  displayName String
+  createdAt   DateTime         @default(now())
+  chain       TaskChainEntry[]
+  cards       Card[]
+
+  @@map("projects")
+}
+
+// 流水線接棒設定：有序 task id 列表；position 相鄰即為前後繼關係。
+// 刻意放在控制平面自己的表，不寫入 .agent-automation/config.json（封閉 schema）。
+model TaskChainEntry {
+  id             String  @id @default(cuid())
+  projectId      String
+  position       Int
+  taskId         String
+  requiresReview Boolean @default(true) // 完成後是否進待確認（review gate）
+  project        Project @relation(fields: [projectId], references: [id])
+
+  @@unique([projectId, position])
+  @@unique([projectId, taskId])
+  @@map("task_chain_entries")
+}
+
+model Card {
+  id                  String     @id @default(cuid())
+  projectId           String
+  taskId              String // 對應專案 .agent-automation/config.json 的 task id
+  column              CardColumn @default(CLAIMABLE)
+  origin              CardOrigin
+  autoRun             Boolean    @default(false)
+  reviewGate          Boolean    @default(true)
+  note                String? // 建卡時的指示說明
+  attentionReason     String? // 進入需要處理欄的原因（possibly-stopped 等）
+  resumePreviousRunId String? // 人工拖回時帶的前次 runId
+  resumeNote          String? // 人工拖回時附的調整說明
+  revision            Int        @default(0) // CAS claim 用
+  createdById         String?
+  approvedById        String? // auto-run 未啟用時的放行者
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
+  project             Project    @relation(fields: [projectId], references: [id])
+  createdBy           Member?    @relation("CardCreator", fields: [createdById], references: [id])
+  approvedBy          Member?    @relation("CardApprover", fields: [approvedById], references: [id])
+  leases              Lease[]
+  runs                Run[]
+  logChunks           LogChunk[]
+  events              CardEvent[]
+
+  @@index([column])
+  @@index([projectId, taskId])
+  @@map("cards")
+}
+
+// 卡片歷史：每次欄位轉移一筆，含事件、觸發者、時間戳
+model CardEvent {
+  id         String     @id @default(cuid())
+  cardId     String
+  event      String // card-state.ts 封閉事件集合
+  fromColumn CardColumn
+  toColumn   CardColumn
+  actorType  String // system | member | worker
+  actorId    String? // memberId 或 machineId
+  note       String?
+  createdAt  DateTime   @default(now())
+  card       Card       @relation(fields: [cardId], references: [id])
+
+  @@index([cardId, createdAt])
+  @@map("card_events")
+}
+
+model Lease {
+  id              String    @id @default(cuid())
+  cardId          String
+  machineId       String
+  memberId        String
+  runnerId        String? // run-task fallback 選定後回填
+  active          Boolean   @default(true)
+  lastHeartbeatAt DateTime  @default(now())
+  expiresAt       DateTime
+  createdAt       DateTime  @default(now())
+  releasedAt      DateTime?
+  card            Card      @relation(fields: [cardId], references: [id])
+  machine         Machine   @relation(fields: [machineId], references: [id])
+  member          Member    @relation(fields: [memberId], references: [id])
+
+  @@index([cardId, active])
+  @@index([active, expiresAt])
+  @@map("leases")
+}
+
+model Run {
+  id           String     @id @default(cuid())
+  runId        String     @unique // orchestrate run summary 的 runId，report 冪等鍵
+  cardId       String
+  phase        String // running | completed | verification-failed | exhausted | possibly-stopped
+  verification Json? // { configured, passed, failed, notRun }
+  memberId     String
+  machineId    String
+  runnerId     String?
+  resumedFrom  String? // 前次 runId
+  startedAt    DateTime   @default(now())
+  finishedAt   DateTime?
+  card         Card       @relation(fields: [cardId], references: [id])
+  member       Member     @relation(fields: [memberId], references: [id])
+  machine      Machine    @relation(fields: [machineId], references: [id])
+  logChunks    LogChunk[]
+
+  @@map("runs")
+}
+
+model LogChunk {
+  id        String   @id @default(cuid())
+  runId     String
+  cardId    String
+  seq       Int
+  content   String // worker 端已遮罩
+  createdAt DateTime @default(now())
+  run       Run      @relation(fields: [runId], references: [runId])
+  card      Card     @relation(fields: [cardId], references: [id])
+
+  @@unique([runId, seq])
+  @@index([createdAt]) // 保留期限清理用
+  @@map("log_chunks")
+}
