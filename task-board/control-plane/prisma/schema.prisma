@@ -75,8 +75,41 @@ model Project {
   createdAt   DateTime         @default(now())
   chain       TaskChainEntry[]
   cards       Card[]
+  snapshot    ProjectSnapshot?
+  externalRuns ExternalRun[]
 
   @@map("projects")
+}
+
+// 磁碟證據快照：worker 執行 pipeline-board build 腳本的產物，每專案只留最新一份
+model ProjectSnapshot {
+  id            String   @id @default(cuid())
+  projectId     String   @unique
+  hasDefinition Boolean // 專案是否有 .pipeline-board/pipeline.json
+  generatedAt   DateTime // 快照產生時間（較舊的上報被忽略）
+  payload       Json? // pipeline-board status JSON 原文（schemaVersion 1）
+  updatedAt     DateTime @updatedAt
+  project       Project  @relation(fields: [projectId], references: [id])
+
+  @@map("project_snapshots")
+}
+
+// 外部執行：看板以外發起、由 worker 掃 stateDir 上報的 run summary（sanitized、唯讀）
+model ExternalRun {
+  id                  String    @id @default(cuid())
+  runId               String    @unique
+  projectId           String
+  taskId              String
+  phase               String
+  runnerId            String?
+  startedAt           DateTime?
+  finishedAt          DateTime?
+  reportedByMachineId String?
+  updatedAt           DateTime  @updatedAt
+  project             Project   @relation(fields: [projectId], references: [id])
+
+  @@index([projectId, updatedAt])
+  @@map("external_runs")
 }
 
 // 流水線接棒設定：有序 task id 列表；position 相鄰即為前後繼關係。

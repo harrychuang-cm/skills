@@ -74,12 +74,20 @@ export async function getBoardState(db: PrismaClient): Promise<BoardState> {
   };
 }
 
-/** 看板變更水位：卡片與歷史的最新時間戳，SSE 以此判斷是否推播 refresh。 */
+/** 看板變更水位：卡片、歷史、log、快照、外部執行的最新時間戳，SSE 以此判斷是否推播 refresh。 */
 export async function boardWatermark(db: PrismaClient): Promise<string> {
-  const [card, event, chunk] = await Promise.all([
+  const [card, event, chunk, snapshot, externalRun] = await Promise.all([
     db.card.findFirst({ orderBy: { updatedAt: "desc" }, select: { updatedAt: true } }),
     db.cardEvent.findFirst({ orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
     db.logChunk.findFirst({ orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
+    db.projectSnapshot.findFirst({ orderBy: { updatedAt: "desc" }, select: { updatedAt: true } }),
+    db.externalRun.findFirst({ orderBy: { updatedAt: "desc" }, select: { updatedAt: true } }),
   ]);
-  return [card?.updatedAt.getTime() ?? 0, event?.createdAt.getTime() ?? 0, chunk?.createdAt.getTime() ?? 0].join("-");
+  return [
+    card?.updatedAt.getTime() ?? 0,
+    event?.createdAt.getTime() ?? 0,
+    chunk?.createdAt.getTime() ?? 0,
+    snapshot?.updatedAt.getTime() ?? 0,
+    externalRun?.updatedAt.getTime() ?? 0,
+  ].join("-");
 }

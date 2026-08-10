@@ -75,6 +75,25 @@ node --test test/*.test.mjs   # worker 測試（零依賴）
    worker 只做 outbound 連線；領卡 → 心跳 → spawn run-task → 依 stateDir 的 run summary 回報。
    同一台機器同時最多執行一個任務。
 
+## 導入既有專案
+
+已經有自動化流程（`.agent-automation/config.json`）的專案，導入後看板第一天就能顯示現況：
+
+1. **worker 設定**：把專案根加進 `worker.config.json` 的 `projectRoots`，啟動 worker——註冊
+   成功後會立刻做一次「現況同步」。
+2. **任務鏈設定**：`PUT /api/projects/<slug>/chain` 依 pipeline 順序排好 task id，之後建卡
+   與接棒都以此為準。
+3. **專案頁會顯示什麼**（看板卡片點專案名稱進入 `/projects/<slug>`）：
+   - **磁碟現況**：worker 以子程序執行 `pipeline-board` 的 build 腳本產生證據快照——每個
+     階段的「尚未開始／已產出／已驗證」來自檔案存在性與 audit 結果，不是看板推測。專案
+     沒有 `.pipeline-board/pipeline.json` 時會明說「無定義」（加上定義即可，見
+     `pipeline-board/references/pipeline-definition.md`）。
+   - **外部執行**：worker 掃描專案 `stateDir` 的 run summary，看板以外發起的執行（含導入
+     前的歷史）會出現在活動列表——**唯讀**，只帶 runId、taskId、phase、runner 與時間戳，
+     不含任何指令內容；看板發起的執行自動去重不重複顯示。
+4. **同步時機**：註冊後立即、每 `statusSyncIntervalMs`（預設 10 分鐘）、每次看板發起的執行
+   結束後。注意快照產生會實際執行專案設定的 audit 指令，間隔勿設過短。
+
 ## 任務鏈（流水線接棒）
 
 `PUT /api/projects/<slug>/chain` 設定有序任務清單（`requiresReview` 控制完成後是否進待確認）。

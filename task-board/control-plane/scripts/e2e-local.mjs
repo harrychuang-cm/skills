@@ -138,6 +138,33 @@ process.exit(existsSync("out.txt") ? 0 : 1);
       { taskId: "next-task", requiresReview: true },
     ],
   });
+
+  // 現況同步的驗收素材：pipeline 定義（真 build 腳本會推導）+ 一筆導入前的外部執行歷史
+  await writeFile(path.join(fixtureRoot, "README.md"), "e2e fixture\n");
+  await mkdir(path.join(fixtureRoot, ".pipeline-board"), { recursive: true });
+  await writeFile(
+    path.join(fixtureRoot, ".pipeline-board", "pipeline.json"),
+    JSON.stringify({
+      schemaVersion: 1,
+      sources: [{ id: "task-brief", title: "任務指示", evidence: ["README.md"] }],
+      stages: [{ id: "demo-task", title: "示範任務", taskId: "demo-task", produces: ["out.txt"] }],
+    }),
+  );
+  const stateDir = path.join(fixtureRoot, ".agent-automation", "runs");
+  await mkdir(stateDir, { recursive: true });
+  await writeFile(
+    path.join(stateDir, "external-history-1.json"),
+    JSON.stringify({
+      schemaVersion: 1,
+      runId: "external-history-1",
+      taskId: "demo-task",
+      phase: "completed",
+      selectedRunner: { id: "codex", label: "Codex" },
+      startedAt: "2026-08-01T03:00:00.000Z",
+      updatedAt: "2026-08-01T03:20:00.000Z",
+      finishedAt: "2026-08-01T03:20:00.000Z",
+    }),
+  );
   ok(`fixture 專案就緒：${fixtureRoot}`);
 
   // 4) 建卡（手動來源，autoRun 預設 true）
@@ -161,7 +188,30 @@ process.exit(existsSync("out.txt") ? 0 : 1);
   workerProcess = spawn(process.execPath, [workerScript, "--config", workerConfigPath], {
     stdio: ["ignore", "inherit", "inherit"],
   });
-  ok("worker 已啟動，等待自動領取…");
+  ok("worker 已啟動，等待現況同步與自動領取…");
+
+  // 現況同步：註冊後外部執行歷史與磁碟快照應出現在控制平面
+  {
+    const deadline = Date.now() + 60_000;
+    let externalSeen = false;
+    let snapshotSeen = false;
+    while (Date.now() < deadline && (!externalSeen || !snapshotSeen)) {
+      const [external, snapshot] = await Promise.all([
+        db.externalRun.findUnique({ where: { runId: "external-history-1" } }),
+        db.projectSnapshot.findFirst({ where: { project: { slug: SLUG } } }),
+      ]);
+      externalSeen = external !== null && external.phase === "completed";
+      snapshotSeen =
+        snapshot !== null &&
+        snapshot.hasDefinition === true &&
+        Array.isArray(snapshot.payload?.stages) &&
+        snapshot.payload.stages.length > 0;
+      if (!externalSeen || !snapshotSeen) await sleep(1000);
+    }
+    if (!externalSeen) fail("導入前的外部執行歷史未出現在控制平面");
+    if (!snapshotSeen) fail("磁碟快照未同步（hasDefinition=true 且 stages 非空）");
+    ok("現況同步通過：外部執行歷史與磁碟快照都已上傳");
+  }
 
   // 6) 第一輪：驗證失敗 → 需要處理
   let state = await waitForColumn(card.id, "NEEDS_ATTENTION");

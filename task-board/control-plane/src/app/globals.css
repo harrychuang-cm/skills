@@ -340,6 +340,54 @@ a {
   font-size: 0.75rem;
   color: var(--text-dim);
   text-transform: none;
+  text-decoration: none;
+}
+
+a.card-project:hover {
+  color: var(--text);
+  text-decoration: underline;
+}
+
+/* 專案頁：階段流程 */
+.stage-flow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+}
+
+.stage-node {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  background: var(--surface);
+  border-radius: 999px;
+  padding: var(--s2) var(--s3);
+}
+
+.stage-node .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--idle);
+}
+
+.stage-node.tone-warn .dot { background: var(--warn); }
+.stage-node.tone-ok .dot { background: var(--ok); }
+
+.stage-node-title {
+  font-size: 0.85rem;
+  font-weight: 650;
+}
+
+.stage-node-state {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+}
+
+.snapshot-time {
+  margin: var(--s3) 0 0;
+  font-size: 0.75rem;
+  color: var(--text-dim);
 }
 
 .card-title {

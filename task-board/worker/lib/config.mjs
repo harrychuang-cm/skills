@@ -81,6 +81,7 @@ export async function loadConfig(configPath) {
     runTaskScript,
     pollIntervalMs: Number.isInteger(parsed.pollIntervalMs) ? parsed.pollIntervalMs : 5000,
     heartbeatIntervalMs: Number.isInteger(parsed.heartbeatIntervalMs) ? parsed.heartbeatIntervalMs : 20000,
+    statusSyncIntervalMs: Number.isInteger(parsed.statusSyncIntervalMs) ? parsed.statusSyncIntervalMs : 600000,
     workerStateDir: path.join(path.dirname(absPath), ".worker-state"),
   };
 }

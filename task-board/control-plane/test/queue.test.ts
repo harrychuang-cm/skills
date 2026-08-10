@@ -19,6 +19,8 @@ async function resetDb() {
   await db.lease.deleteMany();
   await db.card.deleteMany();
   await db.taskChainEntry.deleteMany();
+  await db.externalRun.deleteMany();
+  await db.projectSnapshot.deleteMany();
   await db.project.deleteMany();
   await db.machine.deleteMany();
   await db.workerToken.deleteMany();

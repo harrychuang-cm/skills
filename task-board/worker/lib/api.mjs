@@ -47,5 +47,7 @@ export function createApi(config, { maxRetries = 5, baseDelayMs = 500 } = {}) {
     heartbeat: (payload) => post("/api/worker/heartbeat", payload, { retries: 1 }),
     report: (payload) => post("/api/worker/report", payload),
     logs: (payload) => post("/api/worker/logs", payload, { retries: 2 }),
+    projectStatus: (payload) => post("/api/worker/project-status", payload, { retries: 1 }),
+    externalRuns: (payload) => post("/api/worker/external-runs", payload, { retries: 1 }),
   };
 }

@@ -4,6 +4,7 @@ import { createApi } from "./api.mjs";
 import { executeClaimedCard } from "./exec.mjs";
 import { flushPendingReports } from "./pending.mjs";
 import { validateProjects } from "./projects.mjs";
+import { createSyncScheduler } from "./status-sync.mjs";
 
 /**
  * 可測試的迴圈核心：busy 時不領卡（Poll and claim within capacity）。
@@ -58,6 +59,11 @@ export async function runWorker(config) {
   }
   process.stdout.write(`已註冊 ${valid.length} 個專案，開始輪詢 ${config.controlPlaneUrl}\n`);
 
+  const workerLog = (message) => process.stdout.write(`${message}\n`);
+  const scheduler = createSyncScheduler({ config, api, projects: valid, log: workerLog });
+  // 同步時機 1：註冊成功後立即（導入既有專案第一天就有畫面）
+  void scheduler.onRegistered();
+
   const loop = createWorkerLoop({
     config,
     api,
@@ -69,9 +75,11 @@ export async function runWorker(config) {
         api,
         card,
         projects: valid,
-        log: (message) => process.stdout.write(`${message}\n`),
+        log: workerLog,
       }).then((result) => {
         process.stdout.write(`卡片 ${card.cardId} 結束：${result.phase}\n`);
+        // 同步時機 3：執行結束後（階段最可能剛變化）
+        void scheduler.onRunFinished(card.projectSlug);
       });
     },
   });
@@ -84,6 +92,8 @@ export async function runWorker(config) {
   process.on("SIGTERM", stop);
   while (!stopped) {
     await loop.tick();
+    // 同步時機 2：固定間隔（statusSyncIntervalMs，預設 10 分鐘）；失敗不中斷輪詢
+    void scheduler.maybeInterval();
     await sleep(config.pollIntervalMs);
   }
   process.stdout.write("worker 停止輪詢。\n");

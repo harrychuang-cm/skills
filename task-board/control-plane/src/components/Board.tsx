@@ -310,7 +310,9 @@ function Card({
       }}
       onDragEnd={() => onDragState(null)}
     >
-      <div className="card-project">{card.projectName}</div>
+      <a className="card-project" href={`/projects/${encodeURIComponent(card.projectSlug)}`}>
+        {card.projectName}
+      </a>
       <a className="card-title" href={`/cards/${card.id}`}>
         {card.taskId}
       </a>
