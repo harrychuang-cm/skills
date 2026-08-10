@@ -17,8 +17,10 @@ export default auth((req) => {
   if (pathname.startsWith("/api/")) {
     return Response.json({ error: "unauthenticated" }, { status: 401 });
   }
+  // callbackUrl 用相對路徑：反向代理後面 req.nextUrl 的 host 可能是容器內部位址，
+  // 絕對網址會把使用者導去 localhost；相對路徑由 NextAuth 以正確的 base 解析
   const signInUrl = new URL("/api/auth/signin", req.nextUrl);
-  signInUrl.searchParams.set("callbackUrl", req.nextUrl.href);
+  signInUrl.searchParams.set("callbackUrl", `${req.nextUrl.pathname}${req.nextUrl.search}`);
   return Response.redirect(signInUrl);
 });
 
