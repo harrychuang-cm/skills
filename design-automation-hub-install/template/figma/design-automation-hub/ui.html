@@ -395,6 +395,24 @@
         cleanupScopeReady: "已選取 {{name}}，共 {{count}} 個圖層。",
         cleanupScopeCompact: "{{name}} · {{count}} 個圖層",
         cleanupScopeRequired: "請先在畫布選取一個 Section、Frame、Component 或 Component Set。",
+        cleanupBatchReady: "已選取 {{count}} 個範圍，開始分析後會各自建立一筆整理任務。",
+        cleanupBatchTooLarge: "一次最多整理 {{max}} 個範圍，請減少選取數量。",
+        cleanupScopeOverlapping: "選取的範圍互相包含，請改選彼此獨立的範圍。",
+        cleanupRejectedSummary: "有 {{count}} 個選取項目無法整理，其餘照常進行。",
+        cleanupScanReadyForDev: "掃描 Ready for dev",
+        cleanupScanningReadyForDev: "正在掃描目前頁面的 Ready for dev 範圍…",
+        cleanupReadyForDevTitle: "Ready for dev 範圍",
+        cleanupReadyForDevFound: "找到 {{count}} 個 Ready for dev 範圍。",
+        cleanupNoReadyForDev: "目前頁面沒有標記為 Ready for dev 的範圍，仍可在畫布手動選取。",
+        cleanupReadyForDevScanFailed: "目前無法掃描 Ready for dev 範圍，請改用手動選取。",
+        cleanupReadyForDevTruncated: "候選數量已達上限，僅顯示前 {{max}} 個。",
+        cleanupQueueSelected: "排入選取範圍",
+        cleanupBatchListTitle: "這批整理任務",
+        cleanupBatchProgress: "已建立 {{done}} / {{total}} 筆任務。",
+        cleanupBatchOpen: "查看",
+        cleanupBatchRetry: "重試",
+        cleanupBatchCreateFailed: "尚未建立",
+        cleanupBackToBatch: "返回任務清單",
         cleanupScopeUnsupported: "目前選取的圖層不支援整理，請改選 Section、Frame、Component 或 Component Set。",
         cleanupScopeTooLarge: "這個範圍超過 500 個圖層或資料量過大，請縮小選取範圍。",
         cleanupScopeInvalid: "目前無法讀取這個範圍，請重新選取後再試一次。",
@@ -560,13 +578,21 @@
       var selectedDecision = null;
       var submissionInFlight = false;
       var reviewLoaded = false;
+      var CLEANUP_BATCH_MAX = 10;
+      var READY_FOR_DEV_SCAN_MAX = 50;
       var cleanupSession = {
         task: null,
+        activeTaskId: null,
+        tasks: [],
+        captures: [],
+        rejected: [],
         scopeSummary: null,
-        capture: null,
         captureState: "idle",
         captureError: null,
-        idempotencyKey: null,
+        scanState: "idle",
+        scanCandidates: [],
+        scanSelectedIds: [],
+        scanTruncated: false,
         submissionInFlight: false,
         detailInFlight: false,
         applyInFlight: false,
@@ -717,6 +743,8 @@
 
       function cleanupSelectionError(errorCode) {
         if (errorCode === "cleanup-scope-required") return COPY.cleanupScopeRequired;
+        if (errorCode === "overlapping-cleanup-scope") return COPY.cleanupScopeOverlapping;
+        if (errorCode === "cleanup-batch-too-large") return copy("cleanupBatchTooLarge", { max: CLEANUP_BATCH_MAX });
         if (errorCode === "unsupported-cleanup-scope") return COPY.cleanupScopeUnsupported;
         if (errorCode === "cleanup-scope-too-large") return COPY.cleanupScopeTooLarge;
         return COPY.cleanupScopeInvalid;
@@ -800,28 +828,88 @@
           + '</div>' + renderCleanupOperations(operations) + confirmation + '</section>';
       }
 
+      function renderReadyForDevCandidates() {
+        if (cleanupSession.scanState === "idle") return "";
+        if (cleanupSession.scanState === "scanning") {
+          return '<div class="scope-card"><strong>' + escapeHtml(COPY.cleanupScanningReadyForDev) + '</strong></div>';
+        }
+        if (cleanupSession.scanState === "error") {
+          return '<div class="scope-card"><strong>' + escapeHtml(COPY.cleanupReadyForDevScanFailed) + '</strong></div>';
+        }
+        if (cleanupSession.scanCandidates.length === 0) {
+          return '<div class="scope-card"><strong>' + escapeHtml(COPY.cleanupNoReadyForDev) + '</strong></div>';
+        }
+        var truncated = cleanupSession.scanTruncated
+          ? '<p>' + escapeHtml(copy("cleanupReadyForDevTruncated", { max: READY_FOR_DEV_SCAN_MAX })) + '</p>'
+          : "";
+        var items = cleanupSession.scanCandidates.map(function (candidate, index) {
+          var checked = cleanupSession.scanSelectedIds.indexOf(candidate.nodeId) !== -1;
+          return '<li><label><input type="checkbox" id="readyForDevCandidate' + index + '" data-node-id="'
+            + escapeHtml(candidate.nodeId) + '"' + (checked ? ' checked' : '') + ' /> '
+            + escapeHtml(candidate.name || COPY.unnamedLayer) + '</label></li>';
+        }).join("");
+        return '<div class="scope-card"><strong>' + escapeHtml(COPY.cleanupReadyForDevTitle) + '</strong>' + truncated
+          + '<ul id="readyForDevCandidateList">' + items + '</ul></div>'
+          + '<div class="cleanup-actions"><button id="queueReadyForDevButton" type="button"'
+          + (cleanupSession.scanSelectedIds.length === 0 || cleanupSession.captureState === "capturing" ? ' disabled' : '')
+          + '>' + escapeHtml(COPY.cleanupQueueSelected) + '</button></div>';
+      }
+
       function renderCleanupIdle() {
-        var captureReady = cleanupSession.captureState === "ready" && cleanupSession.capture;
+        var captureReady = cleanupSession.captureState === "ready" && cleanupSession.captures.length > 0;
         var body = COPY.cleanupViewBody;
         if (cleanupSession.captureState === "capturing") body = COPY.cleanupReadingSelection;
         else if (captureReady) {
-          body = copy("cleanupScopeReady", {
-            name: cleanupSession.scopeSummary.name,
-            count: cleanupSession.scopeSummary.nodeCount,
-          });
+          body = cleanupSession.captures.length === 1
+            ? copy("cleanupScopeReady", {
+              name: cleanupSession.captures[0].scope.name,
+              count: cleanupSession.captures[0].nodeCount,
+            })
+            : copy("cleanupBatchReady", { count: cleanupSession.captures.length });
         } else if (cleanupSession.captureError) body = cleanupSelectionError(cleanupSession.captureError);
-        return '<section class="cleanup-panel"><div class="scope-card"><strong>' + escapeHtml(body) + '</strong><p>'
-          + escapeHtml(COPY.cleanupScanHelper) + '</p></div><div class="cleanup-actions">'
+        var scopeList = captureReady && cleanupSession.captures.length > 1
+          ? '<ul>' + cleanupSession.captures.map(function (entry) {
+            return '<li>' + escapeHtml(copy("cleanupScopeCompact", {
+              name: entry.scope.name || COPY.unnamedLayer,
+              count: entry.nodeCount,
+            })) + '</li>';
+          }).join("") + '</ul>'
+          : "";
+        var rejectedNote = cleanupSession.rejected.length > 0
+          ? '<p>' + escapeHtml(copy("cleanupRejectedSummary", { count: cleanupSession.rejected.length })) + '</p>'
+          : "";
+        return '<section class="cleanup-panel"><div class="scope-card"><strong>' + escapeHtml(body) + '</strong>'
+          + scopeList + rejectedNote + '<p>'
+          + escapeHtml(COPY.cleanupScanHelper) + '</p></div>' + renderReadyForDevCandidates() + '<div class="cleanup-actions">'
           + '<button class="secondary" id="refreshCleanupScopeButton" type="button"'
           + (cleanupSession.captureState === "capturing" ? ' disabled' : '') + '>' + escapeHtml(COPY.cleanupRefreshScope) + '</button>'
+          + '<button class="secondary" id="scanReadyForDevButton" type="button"'
+          + (cleanupSession.scanState === "scanning" ? ' disabled' : '') + '>' + escapeHtml(COPY.cleanupScanReadyForDev) + '</button>'
           + '<button id="startCleanupAnalysisButton" type="button" data-primary-action="true"'
           + (!captureReady || cleanupSession.submissionInFlight ? ' disabled' : '') + '>'
           + escapeHtml(cleanupSession.submissionInFlight ? COPY.cleanupSubmitting : COPY.cleanupStartAnalysis) + '</button></div></section>';
       }
 
+      function renderCleanupBatchList() {
+        var created = cleanupSession.tasks.filter(function (entry) { return entry.created; });
+        var rows = cleanupSession.tasks.map(function (entry, index) {
+          var label = escapeHtml(entry.scopeName || COPY.unnamedLayer);
+          if (!entry.created) {
+            return '<li><span class="task-status">' + escapeHtml(COPY.cleanupBatchCreateFailed) + '</span><strong>' + label
+              + '</strong><button class="secondary" id="retryBatchTask' + index + '" type="button"'
+              + (cleanupSession.submissionInFlight ? ' disabled' : '') + '>' + escapeHtml(COPY.cleanupBatchRetry) + '</button></li>';
+          }
+          return '<li><span class="task-status">' + escapeHtml(cleanupStatusLabel(entry.task.status)) + '</span><strong>' + label
+            + '</strong><button id="openBatchTask' + index + '" type="button">' + escapeHtml(COPY.cleanupBatchOpen) + '</button></li>';
+        }).join("");
+        return '<section class="cleanup-panel"><div class="scope-card"><strong>' + escapeHtml(COPY.cleanupBatchListTitle) + '</strong><p>'
+          + escapeHtml(copy("cleanupBatchProgress", { done: created.length, total: cleanupSession.tasks.length }))
+          + '</p></div><ul id="cleanupBatchList">' + rows + '</ul></section>';
+      }
+
       function renderCleanupTask() {
         var task = cleanupSession.task;
-        if (!task) return renderCleanupIdle();
+        if (!task) return cleanupSession.tasks.length > 0 ? renderCleanupBatchList() : renderCleanupIdle();
         if (task.status === "plan-ready" && task.plan) return renderCleanupPlan();
         var action = task.status === "plan-ready"
           ? '<button id="loadCleanupPlanButton" type="button" data-primary-action="true">' + escapeHtml(COPY.cleanupViewPlan) + '</button>'
@@ -844,11 +932,54 @@
           + completion + (action ? '<div class="cleanup-actions">' + action + '</div>' : '') + '</section>';
       }
 
+      function bindReadyForDevCandidates() {
+        if (cleanupSession.scanState !== "ready" || cleanupSession.scanCandidates.length === 0) return;
+        cleanupSession.scanCandidates.forEach(function (candidate, index) {
+          var checkbox = document.getElementById("readyForDevCandidate" + index);
+          if (!checkbox) return;
+          checkbox.addEventListener("change", function (event) {
+            var currentIndex = cleanupSession.scanSelectedIds.indexOf(candidate.nodeId);
+            if (event.target.checked && currentIndex === -1) cleanupSession.scanSelectedIds.push(candidate.nodeId);
+            if (!event.target.checked && currentIndex !== -1) cleanupSession.scanSelectedIds.splice(currentIndex, 1);
+            renderCleanupView();
+          });
+        });
+        var queueButton = document.getElementById("queueReadyForDevButton");
+        if (queueButton) {
+          queueButton.addEventListener("click", function () {
+            if (cleanupSession.scanSelectedIds.length === 0) return;
+            requestCleanupScope(cleanupSession.scanSelectedIds.slice());
+          });
+        }
+      }
+
+      function bindCleanupBatchList() {
+        cleanupSession.tasks.forEach(function (entry, index) {
+          if (entry.created) {
+            var openButton = document.getElementById("openBatchTask" + index);
+            if (openButton) {
+              openButton.addEventListener("click", function () { return openBatchTask(entry.taskId); });
+            }
+            return;
+          }
+          var retryButton = document.getElementById("retryBatchTask" + index);
+          if (retryButton) retryButton.addEventListener("click", function () { return retryBatchTask(index); });
+        });
+      }
+
       function bindCleanupControls() {
         var task = cleanupSession.task;
+        if (!task && cleanupSession.tasks.length > 0) {
+          bindCleanupBatchList();
+          return;
+        }
         if (!task) {
-          document.getElementById("refreshCleanupScopeButton").addEventListener("click", requestCleanupScope);
-          if (cleanupSession.captureState === "ready" && cleanupSession.capture) {
+          document.getElementById("refreshCleanupScopeButton").addEventListener("click", function () {
+            return requestCleanupScope();
+          });
+          document.getElementById("scanReadyForDevButton").addEventListener("click", requestReadyForDevScan);
+          bindReadyForDevCandidates();
+          if (cleanupSession.captureState === "ready" && cleanupSession.captures.length > 0) {
             document.getElementById("startCleanupAnalysisButton").addEventListener("click", startCleanupAnalysis);
           }
           return;
@@ -910,8 +1041,15 @@
         }
       }
 
+      function syncActiveBatchEntry() {
+        if (!cleanupSession.activeTaskId || !cleanupSession.task) return;
+        var entry = findBatchEntry(cleanupSession.activeTaskId);
+        if (entry && entry.created) entry.task = cleanupSession.task;
+      }
+
       function renderCleanupView() {
         activeView = "cleanup";
+        syncActiveBatchEntry();
         var scopeText = cleanupSession.scopeSummary && cleanupSession.scopeSummary.name
           ? (Number.isInteger(cleanupSession.scopeSummary.nodeCount)
             ? copy("cleanupScopeCompact", {
@@ -920,10 +1058,16 @@
             })
             : cleanupSession.scopeSummary.name)
           : COPY.cleanupViewBody;
+        var backToBatch = cleanupSession.task && cleanupSession.tasks.length > 1
+          ? '<div class="cleanup-actions"><button class="secondary" id="backToBatchButton" type="button"'
+            + (cleanupSession.applyInFlight ? ' disabled' : '') + '>' + escapeHtml(COPY.cleanupBackToBatch) + '</button></div>'
+          : '';
         appState.innerHTML = '<section class="feature-view" data-view="cleanup">'
           + renderFeatureHeader(COPY.cleanupTitle, scopeText)
-          + renderCleanupTask() + '</section>';
+          + backToBatch + renderCleanupTask() + '</section>';
         bindBackHome();
+        var backButton = document.getElementById("backToBatchButton");
+        if (backButton) backButton.addEventListener("click", closeBatchTask);
         bindCleanupControls();
       }
 
@@ -970,7 +1114,11 @@
         if (!featureEnabled(view)) return;
         if (view === "cleanup") {
           renderCleanupView();
-          if (!cleanupSession.task && cleanupSession.captureState === "idle") requestCleanupScope();
+          if (
+            !cleanupSession.task
+            && cleanupSession.tasks.length === 0
+            && cleanupSession.captureState === "idle"
+          ) requestCleanupScope();
           return;
         }
         if (view === "workflow") {
@@ -988,66 +1136,147 @@
         }
       }
 
-      function requestCleanupScope() {
+      function requestCleanupScope(nodeIds) {
         if (cleanupSession.submissionInFlight || cleanupSession.captureState === "capturing") return;
         cleanupSession.captureState = "capturing";
         cleanupSession.captureError = null;
-        cleanupSession.capture = null;
+        cleanupSession.captures = [];
+        cleanupSession.rejected = [];
         cleanupSession.scopeSummary = null;
-        cleanupSession.idempotencyKey = null;
         cleanupSession.confirmationOpen = false;
         if (activeView === "cleanup") renderCleanupView();
         setStatus(COPY.cleanupReadingSelection);
-        postToMain({ type: "capture-cleanup-scope" });
+        postToMain({
+          type: "capture-cleanup-scopes",
+          nodeIds: Array.isArray(nodeIds) ? nodeIds : [],
+        });
       }
 
-      function handleCleanupScopeResult(message) {
-        if (
-          message.ok === true
-          && message.scope
-          && typeof message.scope.nodeId === "string"
-          && typeof message.scope.type === "string"
-          && typeof message.scope.name === "string"
-          && Number.isInteger(message.scope.nodeCount)
-          && message.scope.nodeCount > 0
-          && message.snapshot
-          && typeof message.inputSnapshotHash === "string"
-          && /^sha256:[a-f0-9]{64}$/.test(message.inputSnapshotHash)
-        ) {
+      function requestReadyForDevScan() {
+        if (cleanupSession.scanState === "scanning" || cleanupSession.submissionInFlight) return;
+        cleanupSession.scanState = "scanning";
+        cleanupSession.scanCandidates = [];
+        cleanupSession.scanSelectedIds = [];
+        cleanupSession.scanTruncated = false;
+        if (activeView === "cleanup") renderCleanupView();
+        setStatus(COPY.cleanupScanningReadyForDev);
+        postToMain({ type: "scan-ready-for-dev" });
+      }
+
+      function handleReadyForDevScanResult(message) {
+        var candidates = message.ok === true && Array.isArray(message.candidates)
+          ? message.candidates.filter(function (candidate) {
+            return candidate
+              && typeof candidate.nodeId === "string"
+              && candidate.nodeId
+              && typeof candidate.name === "string";
+          })
+          : [];
+        if (message.ok !== true) {
+          cleanupSession.scanState = "error";
+          cleanupSession.scanCandidates = [];
+          cleanupSession.scanSelectedIds = [];
+          cleanupSession.scanTruncated = false;
+          setStatus(COPY.cleanupReadyForDevScanFailed, "error");
+        } else {
+          cleanupSession.scanState = "ready";
+          cleanupSession.scanCandidates = candidates;
+          cleanupSession.scanSelectedIds = candidates.map(function (candidate) { return candidate.nodeId; });
+          cleanupSession.scanTruncated = message.truncated === true;
+          setStatus(candidates.length === 0
+            ? COPY.cleanupNoReadyForDev
+            : copy("cleanupReadyForDevFound", { count: candidates.length }));
+        }
+        if (activeView === "cleanup") renderCleanupView();
+      }
+
+      function validCapturedScope(entry) {
+        return Boolean(
+          entry
+          && entry.scope
+          && typeof entry.scope.nodeId === "string"
+          && typeof entry.scope.type === "string"
+          && typeof entry.scope.name === "string"
+          && Number.isInteger(entry.scope.nodeCount)
+          && entry.scope.nodeCount > 0
+          && entry.snapshot
+          && typeof entry.inputSnapshotHash === "string"
+          && /^sha256:[a-f0-9]{64}$/.test(entry.inputSnapshotHash)
+        );
+      }
+
+      function handleCleanupScopesResult(message) {
+        var captured = message.ok === true && Array.isArray(message.scopes)
+          ? message.scopes.filter(validCapturedScope).map(function (entry) {
+            return {
+              scope: { nodeId: entry.scope.nodeId, type: entry.scope.type, name: entry.scope.name },
+              nodeCount: entry.scope.nodeCount,
+              snapshot: entry.snapshot,
+              inputSnapshotHash: entry.inputSnapshotHash,
+            };
+          })
+          : [];
+        cleanupSession.rejected = Array.isArray(message.rejected)
+          ? message.rejected.filter(function (entry) {
+            return entry && typeof entry.errorCode === "string";
+          })
+          : [];
+        if (captured.length > 0) {
           cleanupSession.captureState = "ready";
           cleanupSession.captureError = null;
-          cleanupSession.scopeSummary = { name: message.scope.name, nodeCount: message.scope.nodeCount };
-          cleanupSession.capture = {
-            scope: { nodeId: message.scope.nodeId, type: message.scope.type, name: message.scope.name },
-            snapshot: message.snapshot,
-            inputSnapshotHash: message.inputSnapshotHash,
-          };
-          cleanupSession.idempotencyKey = "figma-cleanup:" + sessionId + ":"
-            + cleanupSession.analysisGeneration + ":" + message.inputSnapshotHash;
-          setStatus(copy("cleanupScopeReady", { name: message.scope.name, count: message.scope.nodeCount }));
+          cleanupSession.captures = captured;
+          cleanupSession.scopeSummary = { name: captured[0].scope.name, nodeCount: captured[0].nodeCount };
+          setStatus(captured.length === 1
+            ? copy("cleanupScopeReady", { name: captured[0].scope.name, count: captured[0].nodeCount })
+            : copy("cleanupBatchReady", { count: captured.length }));
         } else {
           cleanupSession.captureState = "error";
           cleanupSession.captureError = typeof message.errorCode === "string" ? message.errorCode : "invalid-cleanup-snapshot";
-          cleanupSession.capture = null;
+          cleanupSession.captures = [];
           cleanupSession.scopeSummary = null;
-          cleanupSession.idempotencyKey = null;
           setStatus(cleanupSelectionError(cleanupSession.captureError), "error");
         }
         if (activeView === "cleanup") renderCleanupView();
       }
 
-      async function startCleanupAnalysis() {
-        if (
-          cleanupSession.submissionInFlight
-          || cleanupSession.task
-          || cleanupSession.captureState !== "ready"
-          || !cleanupSession.capture
-          || !reviewerKey
-          || !pluginContext
-        ) return;
-        cleanupSession.submissionInFlight = true;
+      function cleanupIdempotencyKey(capture) {
+        return "figma-cleanup:" + sessionId + ":" + cleanupSession.analysisGeneration + ":" + capture.inputSnapshotHash;
+      }
+
+      function findBatchEntry(taskId) {
+        for (var index = 0; index < cleanupSession.tasks.length; index += 1) {
+          if (cleanupSession.tasks[index].taskId === taskId) return cleanupSession.tasks[index];
+        }
+        return null;
+      }
+
+      function openBatchTask(taskId) {
+        var entry = findBatchEntry(taskId);
+        if (!entry || !entry.created) return;
+        cleanupSession.activeTaskId = taskId;
+        cleanupSession.task = entry.task;
+        cleanupSession.scopeSummary = { name: entry.scopeName, nodeCount: entry.nodeCount };
+        cleanupSession.failureContext = null;
+        cleanupSession.completionSummary = null;
+        cleanupSession.detailsExpanded = false;
+        cleanupSession.confirmationOpen = false;
+        cleanupSession.selectedOperationIds = [];
+        cleanupSession.selectionRevision = null;
+        clearFailure();
         renderCleanupView();
-        setStatus(COPY.cleanupSubmitting);
+        setStatus(cleanupStatusMessage(entry.task.status));
+      }
+
+      function closeBatchTask() {
+        if (cleanupSession.applyInFlight) return;
+        cleanupSession.activeTaskId = null;
+        cleanupSession.task = null;
+        cleanupSession.confirmationOpen = false;
+        renderCleanupView();
+        setStatus("");
+      }
+
+      async function createCleanupTask(capture) {
         var response;
         try {
           response = await fetch(coordinatorUrl + "/v1/automation/tasks", {
@@ -1060,62 +1289,142 @@
             body: JSON.stringify({
               fileKey: pluginContext.fileKey,
               taskType: "figma-cleanup",
-              scope: cleanupSession.capture.scope,
-              snapshot: cleanupSession.capture.snapshot,
-              inputSnapshotHash: cleanupSession.capture.inputSnapshotHash,
-              idempotencyKey: cleanupSession.idempotencyKey,
+              scope: capture.scope,
+              snapshot: capture.snapshot,
+              inputSnapshotHash: capture.inputSnapshotHash,
+              idempotencyKey: cleanupIdempotencyKey(capture),
             }),
           });
         } catch (error) {
-          cleanupSession.submissionInFlight = false;
-          renderCleanupView();
-          setFailure("cleanup-create", COPY.cleanupRequestFailure, "cleanup-create", COPY.diagnosticNetwork);
-          setStatus(COPY.cleanupRequestFailure, "error");
-          return;
+          return { ok: false, diagnostic: COPY.diagnosticNetwork };
         }
-        if (response.status === 401) {
-          reviewerKey = "";
-          cleanupSession.submissionInFlight = false;
-          renderLogin(COPY.invalidAccessCode);
-          return;
-        }
+        if (response.status === 401) return { ok: false, unauthorized: true };
         if (!response.ok) {
-          cleanupSession.submissionInFlight = false;
-          renderCleanupView();
-          setFailure("cleanup-create", COPY.cleanupRequestFailure, "cleanup-create", copy("diagnosticHttp", { status: response.status }));
-          setStatus(COPY.cleanupRequestFailure, "error");
-          return;
+          return { ok: false, diagnostic: copy("diagnosticHttp", { status: response.status }) };
         }
         var result = await response.json();
         if (!result || !result.task || typeof result.task.id !== "string" || typeof result.task.status !== "string") {
-          cleanupSession.submissionInFlight = false;
+          return { ok: false, diagnostic: "invalid-automation-task-response" };
+        }
+        return { ok: true, task: result.task };
+      }
+
+      async function retryBatchTask(index) {
+        var entry = cleanupSession.tasks[index];
+        if (!entry || entry.created || cleanupSession.submissionInFlight || !reviewerKey || !pluginContext) return;
+        cleanupSession.submissionInFlight = true;
+        renderCleanupView();
+        setStatus(COPY.cleanupSubmitting);
+        var outcome = await createCleanupTask(entry.capture);
+        cleanupSession.submissionInFlight = false;
+        if (outcome.unauthorized) {
+          reviewerKey = "";
+          renderLogin(COPY.invalidAccessCode);
+          return;
+        }
+        if (!outcome.ok) {
+          entry.diagnostic = outcome.diagnostic;
           renderCleanupView();
-          setFailure("cleanup-create", COPY.cleanupRequestFailure, "cleanup-create", "invalid-automation-task-response");
+          setFailure("cleanup-create", COPY.cleanupRequestFailure, "cleanup-create", outcome.diagnostic);
           setStatus(COPY.cleanupRequestFailure, "error");
           return;
         }
+        entry.taskId = outcome.task.id;
+        entry.task = outcome.task;
+        entry.created = true;
+        entry.diagnostic = null;
+        clearFailure();
+        renderCleanupView();
+        setStatus(copy("cleanupBatchProgress", {
+          done: cleanupSession.tasks.filter(function (item) { return item.created; }).length,
+          total: cleanupSession.tasks.length,
+        }));
+      }
+
+      async function startCleanupAnalysis() {
+        if (
+          cleanupSession.submissionInFlight
+          || cleanupSession.task
+          || cleanupSession.tasks.length > 0
+          || cleanupSession.captureState !== "ready"
+          || cleanupSession.captures.length === 0
+          || !reviewerKey
+          || !pluginContext
+        ) return;
+        cleanupSession.submissionInFlight = true;
+        cleanupSession.tasks = cleanupSession.captures.map(function (capture) {
+          return {
+            scopeNodeId: capture.scope.nodeId,
+            scopeName: capture.scope.name,
+            nodeCount: capture.nodeCount,
+            capture: capture,
+            taskId: null,
+            task: null,
+            created: false,
+            diagnostic: null,
+          };
+        });
+        renderCleanupView();
+        setStatus(COPY.cleanupSubmitting);
+        var lastDiagnostic = null;
+        for (var index = 0; index < cleanupSession.tasks.length; index += 1) {
+          var entry = cleanupSession.tasks[index];
+          var outcome = await createCleanupTask(entry.capture);
+          if (outcome.unauthorized) {
+            reviewerKey = "";
+            cleanupSession.submissionInFlight = false;
+            renderLogin(COPY.invalidAccessCode);
+            return;
+          }
+          if (outcome.ok) {
+            entry.taskId = outcome.task.id;
+            entry.task = outcome.task;
+            entry.created = true;
+            entry.diagnostic = null;
+          } else {
+            entry.created = false;
+            entry.diagnostic = outcome.diagnostic;
+            lastDiagnostic = outcome.diagnostic;
+          }
+          renderCleanupView();
+          setStatus(copy("cleanupBatchProgress", { done: index + 1, total: cleanupSession.tasks.length }));
+        }
         cleanupSession.submissionInFlight = false;
-        cleanupSession.task = result.task;
+        var created = cleanupSession.tasks.filter(function (item) { return item.created; });
+        if (created.length === 0) {
+          renderCleanupView();
+          setFailure("cleanup-create", COPY.cleanupRequestFailure, "cleanup-create", lastDiagnostic || "cleanup-create-failed");
+          setStatus(COPY.cleanupRequestFailure, "error");
+          return;
+        }
         cleanupSession.failureContext = null;
         cleanupSession.completionSummary = null;
         cleanupSession.detailsExpanded = false;
         cleanupSession.confirmationOpen = false;
         cleanupSession.selectedOperationIds = [];
         cleanupSession.selectionRevision = null;
-        clearFailure();
+        if (lastDiagnostic) {
+          setFailure("cleanup-create", COPY.cleanupRequestFailure, "cleanup-create", lastDiagnostic);
+        } else clearFailure();
+        if (cleanupSession.tasks.length === 1) {
+          openBatchTask(created[0].taskId);
+          return;
+        }
         renderCleanupView();
-        setStatus(cleanupStatusMessage(result.task.status));
+        setStatus(copy("cleanupBatchProgress", { done: created.length, total: cleanupSession.tasks.length }));
       }
 
       function restartCleanupAnalysis() {
         if (cleanupSession.applyInFlight) return;
         cleanupSession.analysisGeneration += 1;
         cleanupSession.task = null;
+        cleanupSession.activeTaskId = null;
+        cleanupSession.tasks = [];
+        cleanupSession.captures = [];
+        cleanupSession.rejected = [];
         cleanupSession.scopeSummary = null;
-        cleanupSession.capture = null;
         cleanupSession.captureState = "idle";
         cleanupSession.captureError = null;
-        cleanupSession.idempotencyKey = null;
         cleanupSession.submissionInFlight = false;
         cleanupSession.detailInFlight = false;
         cleanupSession.applyAttempt = null;
@@ -1787,11 +2096,17 @@
       function resetAutomationState() {
         cleanupSession = {
           task: null,
+          activeTaskId: null,
+          tasks: [],
+          captures: [],
+          rejected: [],
           scopeSummary: null,
-          capture: null,
           captureState: "idle",
           captureError: null,
-          idempotencyKey: null,
+          scanState: "idle",
+          scanCandidates: [],
+          scanSelectedIds: [],
+          scanTruncated: false,
           submissionInFlight: false,
           detailInFlight: false,
           applyInFlight: false,
@@ -2349,8 +2664,12 @@
           handleFocusResult(message);
           return;
         }
-        if (message.type === "cleanup-scope-result") {
-          handleCleanupScopeResult(message);
+        if (message.type === "cleanup-scopes-result") {
+          handleCleanupScopesResult(message);
+          return;
+        }
+        if (message.type === "ready-for-dev-scan-result") {
+          handleReadyForDevScanResult(message);
           return;
         }
         if (message.type === "cleanup-validation-result") {

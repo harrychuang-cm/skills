@@ -213,33 +213,140 @@ function captureCleanupSnapshot(root) {
   };
 }
 
-function captureSelectedCleanupScope() {
-  var selection = figma.currentPage && figma.currentPage.selection;
-  if (!selection || selection.length !== 1) {
-    postPluginMessage({ type: "cleanup-scope-result", ok: false, errorCode: "cleanup-scope-required" });
+var CLEANUP_BATCH_MAX = 10;
+var CLEANUP_ERROR_SCOPE_REQUIRED = "cleanup-scope-required";
+var CLEANUP_ERROR_OVERLAPPING_SCOPE = "overlapping-cleanup-scope";
+var CLEANUP_ERROR_BATCH_TOO_LARGE = "cleanup-batch-too-large";
+var CLEANUP_ERROR_UNSUPPORTED_SCOPE = "unsupported-cleanup-scope";
+var CLEANUP_ERROR_UNRESOLVED_SCOPE = "stale-plan";
+
+function cleanupScopeName(node) {
+  return node && typeof node.name === "string" ? node.name : "";
+}
+
+function cleanupAncestorIds(node) {
+  var ids = Object.create(null);
+  var visited = Object.create(null);
+  var current = node.parent;
+  while (current && current.type !== "DOCUMENT" && current.type !== "PAGE") {
+    if (visited[current.id]) break;
+    visited[current.id] = true;
+    ids[current.id] = true;
+    current = current.parent;
+  }
+  return ids;
+}
+
+function cleanupScopesOverlap(nodes) {
+  var seen = Object.create(null);
+  var index;
+  for (index = 0; index < nodes.length; index += 1) {
+    if (seen[nodes[index].id]) return true;
+    seen[nodes[index].id] = true;
+  }
+  for (index = 0; index < nodes.length; index += 1) {
+    var ancestors = cleanupAncestorIds(nodes[index]);
+    for (var otherIndex = 0; otherIndex < nodes.length; otherIndex += 1) {
+      if (otherIndex !== index && ancestors[nodes[otherIndex].id]) return true;
+    }
+  }
+  return false;
+}
+
+async function cleanupSourceEntries(nodeIds) {
+  var entries = [];
+  var index;
+  if (!Array.isArray(nodeIds) || nodeIds.length === 0) {
+    var selection = figma.currentPage && figma.currentPage.selection;
+    var selected = selection ? Array.prototype.slice.call(selection) : [];
+    for (index = 0; index < selected.length; index += 1) {
+      entries.push({ nodeId: selected[index].id, node: selected[index] });
+    }
+    return entries;
+  }
+  for (index = 0; index < nodeIds.length; index += 1) {
+    var nodeId = nodeIds[index];
+    if (typeof nodeId !== "string" || !nodeId) continue;
+    var node = null;
+    try {
+      node = await figma.getNodeByIdAsync(nodeId);
+    } catch (error) {
+      node = null;
+    }
+    if (node && (node.removed === true || node.type === "DOCUMENT" || node.type === "PAGE")) node = null;
+    entries.push({ nodeId: nodeId, node: node });
+  }
+  return entries;
+}
+
+function postCleanupScopesFailure(errorCode, rejected) {
+  postPluginMessage({
+    type: "cleanup-scopes-result",
+    ok: false,
+    errorCode: errorCode,
+    scopes: [],
+    rejected: rejected || [],
+  });
+}
+
+async function captureCleanupScopes(message) {
+  var requestedIds = message && Array.isArray(message.nodeIds) ? message.nodeIds : null;
+  var entries = await cleanupSourceEntries(requestedIds);
+  var index;
+  if (entries.length === 0) {
+    postCleanupScopesFailure(CLEANUP_ERROR_SCOPE_REQUIRED);
     return;
   }
-  var root = selection[0];
-  if (CLEANUP_SCOPE_TYPES.indexOf(root.type) === -1) {
-    postPluginMessage({ type: "cleanup-scope-result", ok: false, errorCode: "unsupported-cleanup-scope" });
+  if (entries.length > CLEANUP_BATCH_MAX) {
+    postCleanupScopesFailure(CLEANUP_ERROR_BATCH_TOO_LARGE);
     return;
   }
-  try {
-    var captured = captureCleanupSnapshot(root);
-    postPluginMessage({
-      type: "cleanup-scope-result",
-      ok: true,
-      scope: captured.scope,
-      snapshot: captured.snapshot,
-      inputSnapshotHash: captured.inputSnapshotHash,
-    });
-  } catch (error) {
-    postPluginMessage({
-      type: "cleanup-scope-result",
-      ok: false,
-      errorCode: error && error.code ? error.code : "invalid-cleanup-snapshot",
-    });
+  var resolved = [];
+  for (index = 0; index < entries.length; index += 1) {
+    if (entries[index].node) resolved.push(entries[index].node);
   }
+  if (cleanupScopesOverlap(resolved)) {
+    postCleanupScopesFailure(CLEANUP_ERROR_OVERLAPPING_SCOPE);
+    return;
+  }
+  var scopes = [];
+  var rejected = [];
+  for (index = 0; index < entries.length; index += 1) {
+    var nodeId = entries[index].nodeId;
+    var node = entries[index].node;
+    if (!node) {
+      rejected.push({ nodeId: nodeId, name: "", errorCode: CLEANUP_ERROR_UNRESOLVED_SCOPE });
+      continue;
+    }
+    if (CLEANUP_SCOPE_TYPES.indexOf(node.type) === -1) {
+      rejected.push({ nodeId: nodeId, name: cleanupScopeName(node), errorCode: CLEANUP_ERROR_UNSUPPORTED_SCOPE });
+      continue;
+    }
+    try {
+      var captured = captureCleanupSnapshot(node);
+      scopes.push({
+        scope: captured.scope,
+        snapshot: captured.snapshot,
+        inputSnapshotHash: captured.inputSnapshotHash,
+      });
+    } catch (error) {
+      rejected.push({
+        nodeId: nodeId,
+        name: cleanupScopeName(node),
+        errorCode: error && error.code ? error.code : "invalid-cleanup-snapshot",
+      });
+    }
+  }
+  if (scopes.length === 0) {
+    postCleanupScopesFailure(rejected[0].errorCode, rejected);
+    return;
+  }
+  postPluginMessage({
+    type: "cleanup-scopes-result",
+    ok: true,
+    scopes: scopes,
+    rejected: rejected,
+  });
 }
 
 var CLEANUP_OPERATION_MAX = 100;
@@ -936,6 +1043,63 @@ async function applyCleanupPlan(message) {
   }
 }
 
+var READY_FOR_DEV_SCAN_MAX = 50;
+var READY_FOR_DEV_STATUS = "READY_FOR_DEV";
+
+function readyForDevStatusType(node) {
+  var status = node ? node.devStatus : null;
+  if (!status || typeof status !== "object") return null;
+  return typeof status.type === "string" ? status.type : null;
+}
+
+function collectReadyForDevCandidates(root, result) {
+  if (result.truncated) return;
+  var children = root && root.children && typeof root.children.length === "number"
+    ? Array.prototype.slice.call(root.children)
+    : [];
+  for (var index = 0; index < children.length; index += 1) {
+    if (result.truncated) return;
+    var child = children[index];
+    if (
+      CLEANUP_SCOPE_TYPES.indexOf(child.type) !== -1
+      && readyForDevStatusType(child) === READY_FOR_DEV_STATUS
+    ) {
+      if (result.candidates.length >= READY_FOR_DEV_SCAN_MAX) {
+        result.truncated = true;
+        return;
+      }
+      result.candidates.push({ nodeId: child.id, type: child.type, name: cleanupScopeName(child) });
+      continue;
+    }
+    collectReadyForDevCandidates(child, result);
+  }
+}
+
+function scanReadyForDevCandidates() {
+  var page = figma.currentPage;
+  var result = { candidates: [], truncated: false };
+  try {
+    collectReadyForDevCandidates(page, result);
+  } catch (error) {
+    postPluginMessage({
+      type: "ready-for-dev-scan-result",
+      ok: false,
+      errorCode: "ready-for-dev-scan-failed",
+      pageName: "",
+      candidates: [],
+      truncated: false,
+    });
+    return;
+  }
+  postPluginMessage({
+    type: "ready-for-dev-scan-result",
+    ok: true,
+    pageName: page && typeof page.name === "string" ? page.name : "",
+    candidates: result.candidates,
+    truncated: result.truncated,
+  });
+}
+
 async function focusNode(nodeId) {
   var node;
   try {
@@ -973,8 +1137,12 @@ async function focusNode(nodeId) {
 
 figma.ui.onmessage = async function (message) {
   if (!message || typeof message.type !== "string") return;
-  if (message.type === "capture-cleanup-scope") {
-    captureSelectedCleanupScope();
+  if (message.type === "capture-cleanup-scopes") {
+    await captureCleanupScopes(message);
+    return;
+  }
+  if (message.type === "scan-ready-for-dev") {
+    scanReadyForDevCandidates();
     return;
   }
   if (message.type === "revalidate-cleanup-scope") {

@@ -13,7 +13,7 @@
       "source": "figma/design-automation-hub/main.js",
       "target": "figma/design-automation-hub/main.js",
       "ownership": "managed",
-      "sha256": "13fc066cf3aedfa18a33b2265cc74044bf545cb1924e5b18df4dd2ad6eb3e59a"
+      "sha256": "311106d725fffe50fb8eb48733af46f78533e3cffd88e0a336f9860b44b62a5c"
     },
     {
       "source": "figma/design-automation-hub/manifest.json",
@@ -25,7 +25,7 @@
       "source": "figma/design-automation-hub/ui.html",
       "target": "figma/design-automation-hub/ui.html",
       "ownership": "managed",
-      "sha256": "0c3059056e6a5f3a95c95844ce13356113e10e2691d382f8a1a97c3e8a3a8ea1"
+      "sha256": "a6999cc0a9662dda8d1f0f69ab3fdb93d520e7ddb64e85c7268408abd4ead287"
     },
     {
       "source": "gitignore.fragment",
@@ -143,12 +143,12 @@
       {
         "templatePath": "figma/design-automation-hub/main.js",
         "productPath": "figma/design-automation-hub/main.js",
-        "sha256": "13fc066cf3aedfa18a33b2265cc74044bf545cb1924e5b18df4dd2ad6eb3e59a"
+        "sha256": "311106d725fffe50fb8eb48733af46f78533e3cffd88e0a336f9860b44b62a5c"
       },
       {
         "templatePath": "figma/design-automation-hub/ui.html",
         "productPath": "figma/design-automation-hub/ui.html",
-        "sha256": "0c3059056e6a5f3a95c95844ce13356113e10e2691d382f8a1a97c3e8a3a8ea1"
+        "sha256": "a6999cc0a9662dda8d1f0f69ab3fdb93d520e7ddb64e85c7268408abd4ead287"
       }
     ]
   }

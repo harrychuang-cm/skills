@@ -468,6 +468,24 @@ function checkPluginTemplate() {
   assert.ok(ui.includes("確認前不會修改畫布"));
   record("review-feature-gating");
   record("confirmation-zero-mutation");
+  assert.equal(main.includes("selection.length !== 1"), false, "Figma main still gates on a single selected node");
+  assert.ok(main.includes("var CLEANUP_BATCH_MAX = 10;"));
+  assert.ok(main.includes('type: "cleanup-scopes-result"'));
+  assert.ok(main.includes("cleanupScopesOverlap"));
+  assert.ok(main.includes('var CLEANUP_ERROR_OVERLAPPING_SCOPE = "overlapping-cleanup-scope";'));
+  assert.ok(main.includes('var CLEANUP_ERROR_BATCH_TOO_LARGE = "cleanup-batch-too-large";'));
+  record("plugin-batch-scope-capture");
+  assert.ok(main.includes("var READY_FOR_DEV_SCAN_MAX = 50;"));
+  assert.ok(main.includes('type: "ready-for-dev-scan-result"'));
+  assert.ok(main.includes("collectReadyForDevCandidates"));
+  assert.equal(main.includes("loadAllPagesAsync"), false, "Ready for dev scan must stay on the current page");
+  const outermostMatch = main.match(/result\.candidates\.push\([\s\S]{0,160}?\n\s*continue;/);
+  assert.ok(outermostMatch, "Ready for dev scan must stop descending once a node matches");
+  record("plugin-ready-for-dev-scan");
+  assert.ok(ui.includes('type: "capture-cleanup-scopes"'));
+  assert.ok(ui.includes('message.type === "ready-for-dev-scan-result"'));
+  for (const label of ["這批整理任務", "Ready for dev 範圍", "排入選取範圍"]) assert.ok(ui.includes(label));
+  record("plugin-batch-ui-copy");
   for (const forbidden of ["?.", "??", "class #", "import(", "=>"]) {
     assert.equal(main.includes(forbidden), false, `Figma main contains non-ES2018 syntax: ${forbidden}`);
   }
