@@ -68,7 +68,7 @@ worker 對 claimed 卡的執行方式是 spawn 既有的 run-task.mjs 子程序�
 - POST /api/worker/report — body: { cardId, leaseId, runId, phase, verification?, finishedAt }；以 runId 冪等
 - POST /api/worker/logs — body: { cardId, runId, seq, chunk }；chunk 已遮罩，seq 保序
 
-**卡片狀態機（事件 → 欄位）**：lease granted → 執行中；completed 且有 review gate → 待確認；completed 無 gate → 完成；verification-failed / exhausted / lease 逾時 → 需要處理；人工拖出需要處理／待確認（重跑）→ 待領取（帶 resume 指令）；人工批准待確認 → 完成。所有轉移寫入卡片歷史（事件、時間戳、觸發者）。此表為封閉集合，未列事件不得移動卡片。
+**卡片狀態機（事件 → 欄位）**：lease granted → 執行中；completed 且有 review gate → 待確認；completed 無 gate → 完成；verification-failed / exhausted / lease 逾時 → 需要處理；人工拖出需要處理／待確認（重跑）→ 待領取（帶 resume 指令）；人工批准待確認 → 完成；人工復原誤拖的重跑（限復原寬限期內，UNDO_GRACE_SECONDS 預設 10 秒；期間 claim 不發放該卡、看板顯示倒數，走 revision CAS 防撞車）→ 回重跑前的欄位並清掉 resume 指令。所有轉移寫入卡片歷史（事件、時間戳、觸發者）。此表為封閉集合，未列事件不得移動卡片。
 
 **驗收條件**：
 

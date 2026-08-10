@@ -64,7 +64,7 @@ Active leases SHALL require periodic worker heartbeats. When no heartbeat arrive
 
 ### Requirement: Human intervention as commands
 
-Human actions on cards SHALL be interpreted as commands, not state edits, and SHALL be limited to two: rerun and approve. Rerun — dragging a card out of Needs Attention or Awaiting Review — SHALL create a new run directive for the card carrying the member's optional adjustment note, and the card SHALL re-enter Claimable; the directive SHALL be delivered to the executing worker as a resume request referencing the previous run id. Approve — accepting a card in Awaiting Review — SHALL move the card to Done. Every intervention SHALL be recorded with the acting member's identity and note.
+Human actions on cards SHALL be interpreted as commands, not state edits, and SHALL be limited to three: rerun, approve, and undo-rerun. Rerun — dragging a card out of Needs Attention or Awaiting Review — SHALL create a new run directive for the card carrying the member's optional adjustment note, and the card SHALL re-enter Claimable; the directive SHALL be delivered to the executing worker as a resume request referencing the previous run id. Approve — accepting a card in Awaiting Review — SHALL move the card to Done. Undo-rerun SHALL revoke a rerun within an undo grace window (configurable, default 10 seconds) that starts when the rerun is issued: during the window the card SHALL NOT be offered to workers and the board SHALL display a countdown on the card; a successful undo SHALL return the card to the column it was rerun from with the resume directive cleared. After the window elapses — or once the card has been claimed — undo-rerun SHALL be rejected without moving the card. Every intervention SHALL be recorded with the acting member's identity and note.
 
 #### Scenario: Approve rework with an adjustment note
 
@@ -75,6 +75,21 @@ Human actions on cards SHALL be interpreted as commands, not state edits, and SH
 
 - **WHEN** a member approves a card in Awaiting Review
 - **THEN** the card moves to Done and the card history records the approving member
+
+#### Scenario: Accidental rerun is undone within the grace window
+
+- **WHEN** a member reruns a card by mistake and invokes undo-rerun while the grace countdown is still running
+- **THEN** the card returns to the column it was rerun from with its resume directive cleared, and the undo is recorded in the card history
+
+#### Scenario: Workers cannot claim during the grace window
+
+- **WHEN** a worker polls for work while a rerun card's grace countdown is still running
+- **THEN** that card is excluded from the poll response, so an undo within the window always succeeds
+
+#### Scenario: Undo after the window or after claim is rejected
+
+- **WHEN** a member invokes undo-rerun after the grace window has elapsed or after a worker has claimed the card
+- **THEN** the command is rejected and the card stays where it is
 
 ### Requirement: Authenticated access
 

@@ -11,7 +11,9 @@ export type CardEventName =
   | "RUN_EXHAUSTED" // 所有 runner 都失敗
   | "LEASE_EXPIRED" // 心跳逾時（possibly-stopped）
   | "HUMAN_RERUN" // 人工拖出收件匣：附說明重跑
-  | "HUMAN_APPROVE"; // 人工批准待確認的卡：結案
+  | "HUMAN_APPROVE" // 人工批准待確認的卡：結案
+  | "HUMAN_UNDO_TO_ATTENTION" // 復原誤拖的重跑：回需要處理（僅限卡仍待領取且未被領走）
+  | "HUMAN_UNDO_TO_REVIEW"; // 復原誤拖的重跑：回待確認（同上）
 
 /** 封閉轉移表：事件 → { 合法起點欄位, 目的欄位 } */
 export const TRANSITIONS: Record<CardEventName, { from: readonly CardColumn[]; to: CardColumn }> = {
@@ -23,6 +25,8 @@ export const TRANSITIONS: Record<CardEventName, { from: readonly CardColumn[]; t
   LEASE_EXPIRED: { from: ["RUNNING"], to: "NEEDS_ATTENTION" },
   HUMAN_RERUN: { from: ["NEEDS_ATTENTION", "AWAITING_REVIEW"], to: "CLAIMABLE" },
   HUMAN_APPROVE: { from: ["AWAITING_REVIEW"], to: "DONE" },
+  HUMAN_UNDO_TO_ATTENTION: { from: ["CLAIMABLE"], to: "NEEDS_ATTENTION" },
+  HUMAN_UNDO_TO_REVIEW: { from: ["CLAIMABLE"], to: "AWAITING_REVIEW" },
 };
 
 /** 事件套用到目前欄位；非法轉移回 null（呼叫端必須拒絕，不得移動卡片）。 */

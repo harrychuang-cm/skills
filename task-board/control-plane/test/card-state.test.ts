@@ -23,6 +23,8 @@ test("轉移表全部合法轉移", () => {
     ["NEEDS_ATTENTION", "HUMAN_RERUN", "CLAIMABLE"],
     ["AWAITING_REVIEW", "HUMAN_RERUN", "CLAIMABLE"],
     ["AWAITING_REVIEW", "HUMAN_APPROVE", "DONE"],
+    ["CLAIMABLE", "HUMAN_UNDO_TO_ATTENTION", "NEEDS_ATTENTION"],
+    ["CLAIMABLE", "HUMAN_UNDO_TO_REVIEW", "AWAITING_REVIEW"],
   ];
   // 轉移表是封閉集合：上面列的 case 必須恰好覆蓋整張表
   const tableSize = Object.values(TRANSITIONS).reduce((n, rule) => n + rule.from.length, 0);

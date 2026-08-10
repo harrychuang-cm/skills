@@ -64,6 +64,8 @@ export async function claimCard(
       column: "CLAIMABLE",
       project: { slug: { in: input.projects } },
       OR: [{ autoRun: true }, { approvedById: { not: null } }],
+      // 復原寬限期內的卡不發放：倒數期間 member 的復原保證成功
+      AND: [{ OR: [{ undoUntil: null }, { undoUntil: { lte: new Date() } }] }],
     },
     include: { project: true },
     orderBy: { createdAt: "asc" },

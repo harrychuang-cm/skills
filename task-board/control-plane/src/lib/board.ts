@@ -11,6 +11,8 @@ export type BoardCard = {
   autoRun: boolean;
   approved: boolean;
   reviewGate: boolean;
+  undoable: boolean; // 待領取且帶 resume 指令且仍在寬限期內：可復原誤拖的重跑
+  undoUntil: string | null; // 復原倒數截止（ISO）
   note: string | null;
   attentionReason: string | null;
   stage: { index: number; total: number } | null;
@@ -53,6 +55,12 @@ export async function getBoardState(db: PrismaClient): Promise<BoardState> {
         autoRun: card.autoRun,
         approved: card.autoRun || card.approvedById !== null,
         reviewGate: card.reviewGate,
+        undoable:
+          card.column === "CLAIMABLE" &&
+          (card.resumePreviousRunId !== null || card.resumeNote !== null) &&
+          card.undoUntil !== null &&
+          card.undoUntil.getTime() > Date.now(),
+        undoUntil: card.undoUntil?.toISOString() ?? null,
         note: card.note,
         attentionReason: card.attentionReason,
         stage: chainIndex >= 0 ? { index: chainIndex + 1, total: card.project.chain.length } : null,

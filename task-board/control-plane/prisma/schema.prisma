@@ -106,6 +106,7 @@ model Card {
   attentionReason     String? // 進入需要處理欄的原因（possibly-stopped 等）
   resumePreviousRunId String? // 人工拖回時帶的前次 runId
   resumeNote          String? // 人工拖回時附的調整說明
+  undoUntil           DateTime? // 重跑的復原寬限期：期限內 worker 不領卡、期限後不可復原
   revision            Int        @default(0) // CAS claim 用
   createdById         String?
   approvedById        String? // auto-run 未啟用時的放行者
