@@ -77,7 +77,12 @@ Design-system packages produced by `design-system-extractor` record accessibilit
 ]
 ```
 
-The script then classifies an expected-authored vs actual-accessible color difference as `required-adaptation` (`low`) automatically. A remap without a design-system record is not sanctioned — treat it as drift until the record exists.
+The script then applies the records in both directions:
+
+- **expected ≈ authored, actual ≈ accessible** — the sanctioned state. Classified `required-adaptation` at `low`, recommended fix says no fix is needed.
+- **expected ≈ authored, actual ≈ authored (equal)** — the implementation copied the value the remap exists to replace. Equal is the defect here: classified `required-adaptation` at `high` with the accessible value as the fix, and the field does **not** count toward convergence. Review the node's scope before fixing — the authored value may be legitimate in uses the remap does not cover.
+
+A remap without a design-system record is not sanctioned — treat it as drift until the record exists.
 
 ### `ignored`
 

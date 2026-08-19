@@ -79,6 +79,11 @@ console.log(
 console.log(
   `  matched ${stats.matchedNodes} nodes · missing ${stats.missingNodes} · extra ${stats.extraNodes} · skipped ${stats.skippedNodes}`,
 );
+if (stats.convergence !== null) {
+  console.log(
+    `  field convergence ${stats.convergence}% (${stats.fieldsPassed} passed + ${stats.fieldsSanctioned} sanctioned of ${stats.fieldsCompared} compared)`,
+  );
+}
 console.log(
   `  form factor: ${context.sameFormFactor ? "same" : "cross"} (${context.referenceWidth ?? "?"} vs ${context.implementationWidth ?? "?"})`,
 );
@@ -246,6 +251,10 @@ function diffSpecs(ref, impl, pol, context) {
     drift: 0,
     adaptation: 0,
     requiredAdaptation: 0,
+    fieldsCompared: 0,
+    fieldsPassed: 0,
+    fieldsSanctioned: 0,
+    convergence: null,
     lowFidelity:
       ref.surface?.fidelity === "estimated" || impl.surface?.fidelity === "estimated",
   };
@@ -292,7 +301,7 @@ function diffSpecs(ref, impl, pol, context) {
 
   for (const [refNode, implNode] of pairs) {
     if (refNode.platformOnly || implNode.platformOnly) continue;
-    findings.push(...diffNode(refNode, implNode, pol, context));
+    findings.push(...diffNode(refNode, implNode, pol, context, stats));
     findings.push(...checkTouchTarget(implNode, refNode, pol, context));
     findings.push(...checkStates(refNode, implNode, pol, context));
   }
@@ -303,6 +312,16 @@ function diffSpecs(ref, impl, pol, context) {
     if (finding.intent === "drift") stats.drift += 1;
     else if (finding.intent === "required-adaptation") stats.requiredAdaptation += 1;
     else stats.adaptation += 1;
+  }
+
+  // Field convergence: how much of what was actually compared is already the way
+  // it should be. "Sanctioned" differences (adaptations, recorded a11y remaps)
+  // count toward convergence — they are the intended end state, not open work.
+  // Node presence, touch targets, and states are tracked separately above.
+  if (stats.fieldsCompared > 0) {
+    stats.convergence = Math.round(
+      ((stats.fieldsPassed + stats.fieldsSanctioned) / stats.fieldsCompared) * 100,
+    );
   }
 
   return { findings: sortAndNumber(collapsed), stats };
@@ -410,7 +429,7 @@ function nodeLabel(node) {
 
 /* -------------------------------------------------------------- field diff */
 
-function diffNode(refNode, implNode, pol, context) {
+function diffNode(refNode, implNode, pol, context, stats) {
   const findings = [];
 
   for (const [field, declaredClass] of Object.entries(pol.fields || {})) {
@@ -423,10 +442,41 @@ function diffNode(refNode, implNode, pol, context) {
     if (actual === undefined || actual === null) continue;
 
     const comparison = compareValues(field, expected, actual, pol, context);
-    if (!comparison || comparison.equal) continue;
+    if (!comparison) continue;
+    stats.fieldsCompared += 1;
+    if (comparison.equal) {
+      // Equal is not automatically correct: when the reference shows an authored
+      // value that carries a recorded accessibility remap, an implementation that
+      // matches it verbatim copied the value the remap exists to replace.
+      const copied = matchCopiedAuthoredValue(field, expected, actual, pol, context);
+      if (copied) {
+        const finding = makeFinding({
+          node: refNode,
+          counterpart: implNode,
+          field,
+          intent: "required-adaptation",
+          parityClass: "required-adaptation",
+          severity: pol.severity?.requiredAdaptation || "high",
+          expected: `${describeField(field)} in the reference is the authored value ${formatValue(expected)}, which carries a recorded accessibility remap${copied.record ? ` (${copied.record})` : ""}.`,
+          actual: `Implementation copied the authored value verbatim instead of applying the accessible value ${copied.accessible}.`,
+          delta: [`authored value shipped — accessible remap ${copied.accessible} not applied`],
+          recommendedFix: `Apply the accessible value ${copied.accessible}${copied.token ? ` via ${copied.token}` : ""} per the remap record. Matching the reference is the defect here — the reference shows the pre-remap authored value.`,
+          context,
+        });
+        finding.notes.push(
+          "Review scope: the authored value may still be legitimate on nodes the remap does not cover (for example decorative, non-text use). Confirm before fixing.",
+        );
+        findings.push(finding);
+        continue;
+      }
+      stats.fieldsPassed += 1;
+      continue;
+    }
+    if (parityClass === "adaptive") stats.fieldsSanctioned += 1;
 
     const remap = matchAccessibilityRemap(field, expected, actual, pol, context);
     if (remap) {
+      if (parityClass !== "adaptive") stats.fieldsSanctioned += 1;
       findings.push(
         makeFinding({
           node: refNode,
@@ -492,6 +542,25 @@ function matchAccessibilityRemap(field, expected, actual, pol, context) {
     const fields = Array.isArray(remap.fields) && remap.fields.length ? remap.fields : null;
     if (fields && !fields.includes(field)) continue;
     if (colorsRoughlyEqual(expected, remap.authored, pol) && colorsRoughlyEqual(actual, remap.accessible, pol)) {
+      return remap;
+    }
+  }
+  return null;
+}
+
+/**
+ * The inverse defect: reference and implementation agree on the authored value,
+ * meaning the implementation copied the value the remap exists to replace.
+ * Skips degenerate remaps whose authored and accessible values are within
+ * color tolerance of each other — those cannot be told apart.
+ */
+function matchCopiedAuthoredValue(field, expected, actual, pol, context) {
+  if (!context.remaps.length || !isColorField(field)) return null;
+  for (const remap of context.remaps) {
+    const fields = Array.isArray(remap.fields) && remap.fields.length ? remap.fields : null;
+    if (fields && !fields.includes(field)) continue;
+    if (colorsRoughlyEqual(remap.authored, remap.accessible, pol)) continue;
+    if (colorsRoughlyEqual(expected, remap.authored, pol) && colorsRoughlyEqual(actual, remap.authored, pol)) {
       return remap;
     }
   }

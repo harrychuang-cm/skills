@@ -87,6 +87,8 @@ An explicit reference + implementation pair is authoritative. Do not replace it 
 
    The script matches nodes, compares fields with unit-aware tolerances, applies `assets/parity-policy.json`, and proposes severity. Pass `--policy` to use a project-specific policy. When the design system records accessibility remaps, put them in `accessibilityRemaps` (in either spec, or via `--remaps`) so the authored-vs-accessible differences classify as `required-adaptation` automatically.
 
+   The output's `candidateStats` includes a **field convergence** percentage — passed plus sanctioned (adaptations, recorded remaps) over all compared fields. `ui-compare-to-reference` uses it as the per-cycle progress meter of its fix loop; in a report it quantifies how close the implementation is.
+
 7. **Review every candidate.** The script handles arithmetic; you handle judgement. For each candidate decide:
    - Is it real, or an artifact of a bad node match, a wrong capture scale, or a mismatched font environment?
    - Is it drift, a sanctioned platform adaptation, an adaptation the implementation failed to make, or a recorded accessibility remap (`required-adaptation`, never drift)?
