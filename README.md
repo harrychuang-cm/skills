@@ -4,6 +4,8 @@ Reusable Cursor / Claude Code skills for UI implementation workflows.
 
 Open the visual guide at [`docs/skills-guide.html`](docs/skills-guide.html) for a simple overview of each skill, when to use it, and common prompts.
 
+For designers, [`docs/designer-guide-storybook-to-production.html`](docs/designer-guide-storybook-to-production.html)（「從 Storybook 到上線」, Traditional Chinese）is an interactive walkthrough of how a Storybook prototype or the component library becomes production code: a scenario wizard that picks the route and the exact prompt to say, a six-station user journey, and simulated approval-gate dialogues. It is also published online at <https://claude.ai/code/artifact/392505bf-6e24-4299-9d4a-1e536a329a4b> (private to the owner until shared from the artifact's share menu).
+
 ## Skills
 
 `agent-automation-orchestrate` is the automation entry point. Every other skill describes work to be done; that skill is what schedules it, runs it, and proves it finished.
