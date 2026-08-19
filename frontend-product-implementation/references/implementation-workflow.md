@@ -66,6 +66,8 @@ Before any UI implementation:
 3. Attempt composition from existing shared components.
 4. Stop and ask if a required token or shared component is missing.
 
+When discovery finds no token system in the target root and the user approves establishing one, read `token-bootstrap.md` and follow its procedure before continuing UI implementation. When a token system exists, this gate proceeds unchanged.
+
 Do not add fallback hardcoded color, spacing, radius, typography, motion, or display text values.
 
 ## Existing Product Mode
@@ -89,7 +91,7 @@ Use this when the target has no product app yet.
 
 1. Propose the complete runtime architecture decision record; use explicit current-request choices as confirmation and ask only for unresolved fields, even when a default template is available.
 2. Do not scaffold, install dependencies, or generate app code before confirmation.
-3. Confirm the design system source. If none exists, stop and ask whether to establish one first.
+3. Confirm the design system source. If none exists, stop and ask whether to establish one first; when the user approves establishing tokens, follow `token-bootstrap.md` to port a minimal token subset from the prototype design-system source.
 4. Set up framework-native token, i18n, routing, component, fixture, and test structure before pages.
 5. Build the first route/screen with typed contracts and deterministic fixtures.
 6. Add documented branch states and route transitions.

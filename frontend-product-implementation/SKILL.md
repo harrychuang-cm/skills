@@ -1,6 +1,6 @@
 ---
 name: frontend-product-implementation
-description: "Implement framework-agnostic frontend products and production features from PRD, UI Flow, UI Spec, Data Spec, Acceptance, Implementation Guide, and PRODUCTION_HANDOFF docs. Use when building a web or app frontend from 0 to 1, adding a route, screen, interface, or feature to an existing product, translating Storybook prototype handoff docs into production code, creating typed route/component/data-adapter work, or continuing after storybook-product-prototype. Resolve the target root and runtime architecture before greenfield scaffolding, inherit a clear existing stack without re-asking, ask when targets conflict or a migration is implied, and follow framework-native conventions rather than assuming React. Always follow design-system-governance: discover tokens, grid, motion, i18n, and shared components first; reuse existing components; stop for approval before creating missing tokens or shared components."
+description: "Implement framework-agnostic frontend products and production features from PRD, UI Flow, UI Spec, Data Spec, Acceptance, Implementation Guide, and PRODUCTION_HANDOFF docs. Use when building a web or app frontend from 0 to 1, adding a route, screen, interface, or feature to an existing product, translating Storybook prototype handoff docs into production code, creating typed route/component/data-adapter work, or continuing after storybook-product-prototype. Resolve the target root and runtime architecture before greenfield scaffolding, inherit a clear existing stack without re-asking, ask when targets conflict or a migration is implied, and follow framework-native conventions rather than assuming React. Always follow design-system-governance: discover tokens, grid, motion, i18n, and shared components first; reuse existing components; stop for approval before creating missing tokens or shared components. When the target has no token system and the user approves establishing one, follow the token-bootstrap reference to port a minimal token subset from the prototype design-system source."
 ---
 
 # Frontend Product Implementation
@@ -19,7 +19,7 @@ Before implementing UI, load and follow `$design-system-governance`.
 Apply its Phase 0 discovery and gates as mandatory:
 
 - Discover token naming, token layers, grid/layout, motion tokens, shared components, Storybook, and i18n before writing UI.
-- If the project has no token system, stop and ask whether to establish one first.
+- If the project has no token system, stop and ask whether to establish one first; if the user approves establishing one, follow `references/token-bootstrap.md`.
 - If a required token is missing, ask: `找不到對應的 design token（sys/comp 層）。是否要先建立這組 token，再繼續元件開發？`
 - If a required shared component is missing, ask: `目前既有元件無法完整組裝此組件。是否要先建立新的共用子元件，再繼續？`
 - Do not add hardcoded visual values, one-off inline child components, or display text outside the project i18n source.
@@ -31,6 +31,7 @@ Read only the reference needed for the current step:
 - Runtime architecture resolution and migration gates: `references/runtime-architecture.md` (always read first)
 - Handoff docs and input contract: `references/handoff-ingestion.md`
 - Greenfield and existing-product implementation flow: `references/implementation-workflow.md`
+- Token bootstrap for a target with no token system: `references/token-bootstrap.md` (read only when governance discovery finds no token system and the user approves establishing one)
 - Verification and final reporting: `references/verification-reporting.md`
 
 ## First Actions
