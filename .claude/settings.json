@@ -1,9 +1,6 @@
 {
   "includeGitInstructions": false,
   "permissions": {
-    "additionalDirectories": [
-      "/dev"
-    ],
     "allow": [
       "Bash(md5 assets/figma-export-addon/src/visualComment.ts storybook-template/vendor/figma-export/src/visualComment.ts storybook-template/.storybook/vendor/figma-export-addon/src/visualComment.ts)",
       "Bash(awk '{print $6, $7, $8, $9, $NF}')",
@@ -74,7 +71,11 @@
       "Bash(pkill -f \"http.server 6100\")",
       "Bash(git -C . branch --show-current)",
       "Bash(git stash *)",
-      "Bash(grep -oE '>[A-Z][^<>]{3,60}<' template/figma/design-automation-hub/ui.html)"
+      "Bash(grep -oE '>[A-Z][^<>]{3,60}<' template/figma/design-automation-hub/ui.html)",
+      "Bash(echo \"grep exit: $?\")"
+    ],
+    "additionalDirectories": [
+      "/dev"
     ]
   }
 }
