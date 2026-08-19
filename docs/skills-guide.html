@@ -284,6 +284,25 @@
         transform: translateY(-3px);
       }
 
+      .hero-cta {
+        display: inline-flex;
+        align-items: baseline;
+        gap: 10px;
+        margin-top: 22px;
+        padding: 11px 16px;
+        background: var(--panel-2);
+        border: 1px solid var(--line);
+        border-radius: var(--r-sm);
+        color: var(--text);
+        text-decoration: none;
+        font-size: 14.5px;
+        transition: border-color 0.2s var(--ease), color 0.2s var(--ease);
+      }
+
+      .hero-cta .tag { color: var(--dim); font-size: 12.5px; letter-spacing: 0.06em; }
+
+      .hero-cta:hover { border-color: var(--accent); color: var(--accent-bright); }
+
       .hero-side { display: grid; gap: 12px; align-content: start; }
 
       .fact { display: flex; align-items: baseline; gap: 14px; }
@@ -1169,6 +1188,10 @@
                 <div class="point">網頁與 App 可以互為標準</div>
                 <div class="point">產出的報告可離線開啟</div>
               </div>
+              <a class="hero-cta" href="designer-guide-storybook-to-production.html">
+                <span class="tag">設計師指南</span>
+                從 Storybook 到上線 — 互動版旅程與情境嚮導 →
+              </a>
             </div>
             <div class="card hero-side">
               ${facts.map((f) => `<div class="fact"><span class="n">${esc(f.n)}</span><span class="t">${esc(f.t)}</span></div>`).join("")}
