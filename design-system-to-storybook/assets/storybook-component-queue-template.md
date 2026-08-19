@@ -47,10 +47,12 @@
 | Source inspected |  |
 | Existing component review |  |
 | Token decision |  |
+| State coverage confirmed |  |
 | Product files |  |
 | Story files |  |
 | Target layout |  |
 | Verification |  |
+| Parity report |  |
 | Blocker / next action |  |
 
 ## Dependency Plan
@@ -70,6 +72,18 @@
 | Batch | Components | Shared dependencies | Design sources | Dependency exit criteria | Validation | Status |
 |---|---|---|---|---|---|---|
 | `B01` |  |  |  | all listed dependencies are done, reused, or accepted blocked decisions |  | queued |
+
+## State Coverage
+
+One row per component/state pair, filled in and confirmed with the user **before** the batch starts. Coverage is `evidenced` (a source proves it), `inferred` (a proposed extrapolation that needs confirmation), or `out-of-scope` (deliberately not built — must stay visible in stories/docs, never silently missing).
+
+| Component | State | Coverage | Evidence / reason | Confirmed by |
+|---|---|---|---|---|
+|  | default |  |  |  |
+|  | loading |  |  |  |
+|  | empty |  |  |  |
+|  | error |  |  |  |
+|  | disabled |  |  |  |
 
 ## Decisions
 

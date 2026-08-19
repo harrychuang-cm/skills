@@ -321,6 +321,9 @@ Also record:
 - Figma export readiness decisions: root `data-component` / `data-variant` naming, `componentClassPrefixes`, `absoluteFidelityComponents`, embedded SVG mappings, export payload validation results, and any accepted validator warnings
 - source trace path and per-component source IDs
 - component dependency plan path, recommended order, and current dependency decisions
+- per-component state coverage list (`evidenced` / `inferred` / `out-of-scope`) and the user confirmation that approved it
+- per-component design parity report path (`reports/design-pixel-align/<component>/`), its open/adjudicated `strict` drift count, the capture's font environment status, and the fidelity mode captured when the toolbar exists
+- fidelity toolbar decision when the package records accessibility remaps: installed, declined, or not applicable
 - component documentation provenance: extracted, brief-derived, implementation-derived, or needs-review
 - original Figma nodes, local images, frontend folders, and rendered routes used for implementation
 - token import strategy
@@ -342,9 +345,11 @@ Plan before implementation:
 3. Build a dependency order: tokens first, primitives and typographic lockups before composites, lower-level slots before containers, common variants before rare variants.
 4. Rank by dependency depth, reuse/dependent count, source confidence, implementation risk, token readiness, and whether an existing product component can be extended.
 5. Mark blocked items explicitly: `needs-extraction`, `needs-source`, `needs-token`, `needs-api-decision`, `needs-existing-component-review`, or `out-of-scope`.
-6. Pick the next batch from adjacent dependencies. Default to 3-5 simple components, 1-2 complex composites, or one cross-cutting foundation pass.
-7. Read only the selected batch specs and their direct dependencies. Do not load every component spec into context unless generating or repairing the queue.
-8. Finish token integration, co-located component/page code, co-located stories, source URL parameters, queue updates, and verification for each component before starting the next component.
+6. Build a **state coverage list** for every component and page in the candidate batch before implementation: enumerate the plausible states (`default`, `loading`, `empty`, `error`, `disabled`, `selected`, plus spec-specific ones — or display modes for display-only components) and mark each one `evidenced` (a source proves it), `inferred` (proposed extrapolation), or `out-of-scope` (will not be built). Record it in the queue's `State Coverage` table.
+7. Confirm the state coverage list with the user **before the batch starts**. The scope decision — especially which states will *not* exist — belongs to the user up front, not to the implementation pass after the fact. "No evidence, so not built" is correct behavior, but it must be an agreed decision, not a surprise discovered in the shipped UI.
+8. Pick the next batch from adjacent dependencies. Default to 3-5 simple components, 1-2 complex composites, or one cross-cutting foundation pass.
+9. Read only the selected batch specs and their direct dependencies. Do not load every component spec into context unless generating or repairing the queue.
+10. Finish token integration, co-located component/page code, co-located stories, source URL parameters, queue updates, and verification for each component before starting the next component.
 
 Each batch should produce a clean resumable state:
 
@@ -359,7 +364,7 @@ Use this protocol for every multi-component implementation pass and every resume
 1. Re-read `STORYBOOK_COMPONENT_PLAN.md`, `STORYBOOK_COMPONENT_QUEUE.md`, `STORYBOOK_IMPLEMENTATION_MAP.md`, and `git status --short` before editing.
 2. Select exactly one next component: the earliest unfinished queue row whose dependencies are `done`, `reused`, or accepted blocked decisions.
 3. Mark that component `in-progress` in the queue before code edits.
-4. Complete the component through the full sequence: source inspection, existing-component review, token decision, co-located component/page implementation, story coverage, story source URL parameters, design-system documentation sync, verification, and documentation updates.
+4. Complete the component through the full sequence: source inspection, existing-component review, state coverage confirmation, token decision, co-located component/page implementation, story coverage, story source URL parameters, design-system documentation sync, verification (including the parity report when the component has Figma evidence), and documentation updates.
 5. Update the queue, dependency plan status, implementation map, and verification log immediately after that component.
 6. Only then select the next component. Do not keep building from memory after a component is complete.
 
@@ -400,6 +405,43 @@ Create or update foundations stories/docs for the token groups touched by this p
 Use the project's existing docs style. If none exists, create the smallest useful Storybook docs page that displays token names, rendered examples, and usage notes.
 
 Foundation guides may use the product's Storybook docs folder, normally `stories/` or `src/stories/`. Keep these docs separate from component folders because they describe token systems rather than a single reusable component.
+
+#### Fidelity mode for accessibility remaps
+
+When `TOKEN_ARCHITECTURE.md` contains `Accessibility Remap Decisions` (authored values replaced by WCAG-compliant values at the `sys` layer), add an optional Storybook global toolbar so designers can review both renderings instead of concluding "the colors were changed":
+
+- `fidelity: accessible` (default, the shipped state) — sys tokens resolve to the accessible values.
+- `fidelity: authored` — only the remapped sys tokens are overridden back to their authored ref tokens, producing the Figma-faithful rendering for design review.
+
+Recommended shape (adapt to the repo's renderer and preview conventions):
+
+```ts
+// .storybook/preview.ts
+export const globalTypes = {
+  fidelity: {
+    description: "Token fidelity mode",
+    toolbar: {
+      title: "Fidelity",
+      items: [
+        { value: "accessible", title: "Accessible (shipped)" },
+        { value: "authored", title: "Authored (Figma)" },
+      ],
+    },
+  },
+};
+export const initialGlobals = { fidelity: "accessible" };
+// decorator: set document.documentElement.dataset.fidelity = context.globals.fidelity
+```
+
+```css
+/* tokens/tokens-fidelity-authored.css — one override per a11y-remap record, nothing else */
+[data-fidelity="authored"] {
+  /* a11y-remap D-56: authored #f14f2b -> accessible #e21e28 */
+  --lp-sys-color-warning-text: var(--lp-ref-color-orange-55);
+}
+```
+
+Rules: the override file contains only the remapped sys tokens, generated from the `a11y-remap` records; production builds never load it; every capture or parity report records which fidelity mode was active. Ship accessible, review either.
 
 ### 13. Component Implementation
 
@@ -457,6 +499,8 @@ Every new or changed shared component needs Storybook coverage:
 - loading, empty, error, selected, expanded, or validation states when the spec defines them
 - responsive or density stories when layout changes by viewport
 - theme stories when the product supports multiple themes
+
+Stories must mirror the component's confirmed state coverage list from the queue: every `evidenced` state gets a story, every `inferred` state gets a story only after the user confirmed it, and every `out-of-scope` state leaves a **visible** trace — a note in the story description, Autodocs page, or component doc saying the state was deliberately not built and why (for example "only the loaded state is granted by the source evidence"). Out-of-scope states must never just silently not exist; the next reader has to be able to tell "decided against" from "forgotten".
 
 Display-only typographic components need stories for the documented modes instead of interaction states:
 
@@ -519,13 +563,14 @@ Run the cheapest reliable checks available:
 - component documentation check with `scripts/check_component_docs.mjs`; use `--strict` for CI-style failure when missing docs or inventory entries should block completion
 - lint and typecheck
 - unit or interaction tests for changed components
-- visual screenshot checks for high-risk components against the best resolved original source
+- **design parity report** for every component or page whose source trace resolves Figma or image evidence: invoke `ui-pixel-align-report` against the best resolved source, write the report to `reports/design-pixel-align/<component>/`, and record the report path in the implementation map. Feed it the package's `a11y-remap` records (as `accessibilityRemaps`) so sanctioned accessibility replacements classify as `required-adaptation`, and note which fidelity mode was captured when the toolbar exists. Use `ui-compare-to-reference` afterwards only when the user wants the drift fixed, not just documented.
+- **font environment preflight before any screenshot comparison**: confirm the rendering environment loads the same fonts as the source platform and record what actually loaded. A fallback font can shift ink height ~30% and fabricate size drift; if fonts cannot be aligned, mark the comparison `fontEnvironment: mismatched`, treat type-related size deltas as untrusted, and never "fix" tokens from them.
 - text layout checks for typographic components, including overflow, wrapping, line breaks, slot gaps, and responsive width behavior
 - token audit or CSS variable scan when available
 - Figma export payload validation for changed component stories when JSON can be copied from the addon:
   `node <skill-root>/scripts/validate_figma_export_payload.mjs <payload.sbfx.json>`
 
-If Storybook is runnable, open the relevant stories and inspect rendered states or display modes before calling the pass done. When the selected component has Figma evidence, compare against a Figma MCP screenshot or exported frame when available. When the Figma export addon is installed, confirm the Storybook toolbar loads without console errors, the `figmaExport` toolbar can be toggled on, the review overlay appears, and Open source is available for at least one component story with a resolved source URL.
+If Storybook is runnable, open the relevant stories and inspect rendered states or display modes before calling the pass done. When the selected component has Figma evidence, do not stop at an eyeball comparison: produce the `ui-pixel-align-report` parity report and review its `strict` drift findings — each one ends the pass as fixed or as an adjudicated, recorded decision (see the Design Parity Gate). When the Figma export addon is installed, confirm the Storybook toolbar loads without console errors, the `figmaExport` toolbar can be toggled on, the review overlay appears, and Open source is available for at least one component story with a resolved source URL.
 
 When the Figma export JSON can be captured, validate it before marking the component done. Fix missing token bindings, generic node names, unstable bounds, and accidental absolute-layout output in component code/CSS first; record any accepted warnings in the implementation map.
 
@@ -550,6 +595,8 @@ Report:
 - Figma export readiness checks run, payload validator warnings, and accepted less-editable export decisions
 - components reused, extended, or created
 - stories added or updated
+- state coverage outcome per component: which states shipped, which were confirmed out-of-scope, and where the visible out-of-scope note lives
+- design parity reports produced, their paths, and any `strict` drift findings that remain open or were adjudicated
 - batch completed and next queued batch, when applicable
 - capability matrix outcome: core Storybook status, bundled exporter compatibility, compatible importer payload/manifest status, and whether the template-only Prototype Inspector, `prototypeFlowLayout.ts`, and Static Flow contract are available for `storybook-product-prototype`
 - checks run and any failures
@@ -649,6 +696,16 @@ Do not overwrite extracted component specs with implementation-derived details w
 
 Do not mark a component story complete until the best resolved source URL from `STORYBOOK_SOURCE_TRACE.md` is written to story parameters, or until the implementation map records that no URL source exists. Prefer `parameters.figmaSourceUrl` for Figma; use `parameters.design.url` for other web sources. Local screenshots and frontend folders are implementation evidence, but they are not Open source URLs unless the product serves them through a stable URL.
 
+### Design Parity Gate
+
+Do not mark a component or page `done` when its source trace resolves Figma or image evidence but no `ui-pixel-align-report` parity report exists for it, and do not mark it `done` while that report contains findings with `parityClass: "strict"` and `status: "open"`. Every strict drift finding ends the pass in exactly one of two states: fixed and re-measured, or adjudicated — `accepted` with a recorded reason in the report and the implementation map.
+
+The gate makes differences visible and adjudicated; it does not mandate blind Figma copying. Recorded accessibility remaps classify as `required-adaptation` and never block. A `mismatched` font environment invalidates type-metric findings rather than the component — record the mismatch, align the fonts, and re-run before treating those findings as real. If the report cannot be produced (source unavailable, capture blocked), record the blocker in the implementation map instead of skipping silently.
+
+### State Coverage Gate
+
+Do not start implementing a component or page before its state coverage list exists and the user confirmed it — every plausible state marked `evidenced`, `inferred`, or `out-of-scope`. Do not mark it `done` until its stories match that list and every `out-of-scope` state has a visible note in the story description, Autodocs page, or component doc explaining the scope decision. "Not evidenced, so not built" is correct only when it was agreed up front and stays visible afterwards.
+
 ### Adoption Gate
 
 Do not rewrite product screens to use the new library until the relevant shared components are implemented and documented, unless the user explicitly requests route adoption as the current pass.
@@ -674,3 +731,5 @@ Do not rewrite product screens to use the new library until the relevant shared 
 - `assets/figma-export-addon/`: vendored `@harrychuang/storybook-addon-figma-export` package, sourced from `https://github.com/harrychuang/storybook-addons/tree/main/packages/figma-export`.
 - `assets/figma-plugin-code-to-design/`: bundled Figma Desktop development plugin that imports Storybook export JSON into editable Figma nodes; copy it with `scripts/install_figma_import_plugin.mjs`.
 - `storybook-template/`: optional React + Vite + Storybook 10 bootstrap template with token checks, foundation docs, component catalog checks, Figma export review wiring, a local Figma importer manifest, and Prototype UI Flow support.
+- `ui-pixel-align-report` (sibling skill): produces the screenshot-backed parity report this skill's Design Parity Gate requires — it documents and classifies drift without editing code. Use it during Verification for every component with Figma or image evidence; pass it the package's evidence map, source trace, and `a11y-remap` records, and record the returned report path in the implementation map.
+- `ui-compare-to-reference` (sibling skill): applies the visual fixes. Use it after (or instead of) the report when the user wants drift repaired — it consumes the `findings.json` that `ui-pixel-align-report` produces. Report = document and adjudicate; compare = fix.

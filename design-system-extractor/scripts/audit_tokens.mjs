@@ -90,7 +90,9 @@ function stripInlineComments(value) {
 
 function parseDeclarations(css) {
   const declarations = new Map();
-  const pattern = /(?:\/\*([\s\S]*?)\*\/\s*)?(--[A-Za-z0-9_-]+)\s*:\s*([^;]+);(?:\s*\/\*([\s\S]*?)\*\/)?/g;
+  // The trailing comment may only sit on the same line as the declaration;
+  // letting it cross newlines would steal the next declaration's leading comment.
+  const pattern = /(?:\/\*([\s\S]*?)\*\/\s*)?(--[A-Za-z0-9_-]+)\s*:\s*([^;]+);(?:[ \t]*\/\*([\s\S]*?)\*\/)?/g;
   let match;
   while ((match = pattern.exec(css))) {
     declarations.set(match[2], {
@@ -375,8 +377,10 @@ function reviewTextForDeclaration(declaration) {
 
 function hasCssReviewDecision(declarationA, declarationB) {
   const text = `${reviewTextForDeclaration(declarationA)}\n${reviewTextForDeclaration(declarationB)}`;
-  return /token-review\s*:\s*(?:keep|keep-distinct|merge|merge-with|approved|separate|split)/i.test(
-    text,
+  return (
+    /token-review\s*:\s*(?:keep|keep-distinct|merge|merge-with|approved|separate|split)/i.test(
+      text,
+    ) || /a11y-remap/i.test(text)
   );
 }
 
@@ -384,17 +388,18 @@ function hasArchitectureReviewDecision(architectureDoc, tokenA, tokenB) {
   if (!architectureDoc) return false;
   const first = tokenA.toLowerCase();
   const second = tokenB.toLowerCase();
-  return architectureDoc
-    .toLowerCase()
-    .split(/\r?\n/)
-    .some(
-      (line) =>
-        line.includes(first) &&
-        line.includes(second) &&
-        /merge|merged|keep|distinct|separate|split|approved|合併|保留|拆開|分開|確認/.test(
-          line,
-        ),
+  const lines = architectureDoc.toLowerCase().split(/\r?\n/);
+  let inRemapSection = false;
+  return lines.some((line) => {
+    if (/^#{1,6}\s/.test(line)) {
+      inRemapSection = /accessibility remap/.test(line);
+    }
+    if (!line.includes(first) || !line.includes(second)) return false;
+    if (inRemapSection || line.includes("a11y-remap")) return true;
+    return /merge|merged|keep|distinct|separate|split|approved|合併|保留|拆開|分開|確認/.test(
+      line,
     );
+  });
 }
 
 function hasReviewDecision(architectureDoc, declarations, tokenA, tokenB) {

@@ -13,7 +13,7 @@ Act as a Design System Architect. Extract a reusable design-system package from 
 - **Figma URL / Figma exports:** use available Figma tools or exported screenshots/metadata. Treat selected nodes, variables, and component names as evidence, but still record where each decision came from.
 - **Project / prototype folder:** inspect rendered UI, screenshots, tokens, CSS, Storybook, and components. Treat prototype code as reference-only unless the user asks to migrate code. For AI-generated or vibe-coded projects, apply the intake rules below before trusting source code patterns.
 - **Native app project folder:** inspect iOS/Android screenshots, simulator/emulator captures, SwiftUI Previews, Compose Previews, screenshot tests, native theme/token resources, component modules, and reachable screens before trusting source-only UI code.
-- **Mixed input:** rank evidence in this order unless user says otherwise: production Figma/component library, production screenshots, native simulator/emulator/device captures, rendered project UI, native preview/screenshot-test captures, prototype code, descriptive prompt.
+- **Mixed input:** rank evidence in this order unless user says otherwise: production Figma/component library, production screenshots, native simulator/emulator/device captures, rendered project UI, native preview/screenshot-test captures, prototype code, descriptive prompt. Record each source's **evidence tier** — its position in this ranking, `1` (production Figma/component library) through `7` (descriptive prompt) — in `DESIGN_EVIDENCE_MAP.md`, so a higher-tier source arriving later can be detected and trigger the Late-Arriving Authoritative Source Pass.
 
 ## Vibe Coding Project Intake
 
@@ -92,6 +92,8 @@ Before using sources as evidence, run a source duplicate review:
 5. If two sources are exact duplicates or likely duplicates, stop and ask the developer whether to `reuse existing source`, `ignore duplicate`, or `keep distinct`.
 6. Record every decision in `design-system/DESIGN_EVIDENCE_MAP.md` under `Source Duplicate Review` before using duplicate inputs to support separate design decisions.
 
+Record every source's evidence tier in the `Source Inventory` table. When a newly added source has a **higher** tier than the tiers backing existing token or component decisions — for example a production Figma file with Variables arrives after the token system was built from screenshots — do not treat it as one more candidate input. Run the Late-Arriving Authoritative Source Pass instead.
+
 ### 2. Evidence Map
 
 Fill `design-system/DESIGN_EVIDENCE_MAP.md` before writing final design decisions.
@@ -135,12 +137,14 @@ Use `references/token-architecture.md` before creating or changing token layers.
 Before finalizing token files, run a token candidate review:
 
 1. Collect raw color, spacing, radius, typography, opacity, shadow, and motion values from evidence. For vibe-coded projects, do not promote values found only in unused CSS, demo-only components, or dead code unless the user marks them intentional. For native app projects, collect values from asset catalogs, theme files, resource XML, Swift/Kotlin token wrappers, and component code only after connecting them to screenshots, previews, captures, reachable screens, or explicit user confirmation.
-2. Normalize reference colors into palette families with numeric steps where `100` is lightest and `0` is darkest.
-3. Check each palette family so higher numbers are visually lighter than lower numbers.
-4. Cluster very close reference colors and very close reference numbers in the same value family.
-5. If close candidates appear, stop and ask the developer whether to `merge` or `keep distinct`.
-6. Record every decision in `design-system/TOKEN_ARCHITECTURE.md` under `Near Token Decisions`, or add an adjacent `token-review:` CSS comment when the decision must stay next to the token.
-7. Only then write final `ref`, `sys`, and `comp` tokens.
+2. Record each candidate value's provenance: `authored` (Figma Variable/style, design-system export, source-code token) or `measured` (screenshot sampling, pixel measurement). See `references/token-architecture.md`.
+3. Normalize reference colors into palette families with numeric steps where `100` is lightest and `0` is darkest.
+4. Check each palette family so higher numbers are visually lighter than lower numbers.
+5. Cluster very close reference colors and very close reference numbers in the same value family.
+6. If close candidates appear, apply the provenance merge rules: `measured` vs `measured` may go through the normal merge review; when either side is `authored`, default to `keep distinct` and never round the authored value away; `authored` vs `authored` always stops for a developer decision. Then ask the developer whether to `merge` or `keep distinct`.
+7. If an authored value must be replaced for accessibility (for example WCAG AA contrast), record it as an accessibility remap — keep the authored value as its own `ref` token, map the `sys` role to the accessible value, and add the `a11y-remap` comment plus an `Accessibility Remap Decisions` row per `references/token-architecture.md`. Do not silently substitute the token value.
+8. Record every decision — with both provenances — in `design-system/TOKEN_ARCHITECTURE.md` under `Near Token Decisions`, or add an adjacent `token-review:` CSS comment when the decision must stay next to the token.
+9. Only then write final `ref`, `sys`, and `comp` tokens.
 
 ### 5. Component Inventory
 
@@ -225,6 +229,7 @@ Update `design-system/SESSION_STATE.md` with:
 - vibe project intake result when applicable
 - rendered UI capture result when applicable
 - native app intake and Native UI Capture Pass result when applicable
+- late-arriving authoritative source recalibration result when applicable
 - component similarity review result
 - integration review result when collaborating across branches or PRs
 - recommended next prompt
@@ -256,6 +261,20 @@ Use this pass when the user chooses to expand component tokens after the initial
 9. Run `node <skill-root>/scripts/audit_sources.mjs <target-root> --strict`, `node <skill-root>/scripts/audit_tokens.mjs <target-root> --strict`, and `node <skill-root>/scripts/audit_components.mjs <target-root> --strict`.
 10. Update `SESSION_STATE.md`, then stop and ask for the next step.
 
+### Late-Arriving Authoritative Source Pass
+
+Use this pass whenever a higher-tier evidence source appears after lower-tier evidence already produced token or component decisions — most commonly, a production Figma file (with Variables) arriving after a token system was extracted from screenshots. The failure mode this pass prevents: the authoritative source gets demoted to "one more candidate", its authored values are absorbed into an already-closed measured token system, and design intent is silently discarded.
+
+1. Do not merge the new source into the existing evidence flow yet. Register it in `DESIGN_EVIDENCE_MAP.md` with its evidence tier, then compare tiers: this pass applies when the new source outranks the tiers backing existing decisions.
+2. Extract the new source's authored values (Figma Variables, styles, exact node properties) with `authored` provenance. Do not round or cluster them against existing tokens during extraction.
+3. Build a **token recalibration table**: every existing token whose value the new source contradicts, matches approximately, or supersedes. For each row record the current value with its provenance, the authored value with its source, the delta, and a recommendation:
+   - `merge`: the measured token was an imprecise observation of the authored value — collapse it into the authored value
+   - `keep distinct`: both values are real and intentionally different
+   - `re-authorize`: replace the token's value with the authored value and update dependent `sys`/`comp` mappings
+4. Record the table in `design-system/TOKEN_ARCHITECTURE.md` under `Token Recalibration`, then stop and hand the full list to the developer for adjudication. Do not apply the recommendations unilaterally.
+5. After adjudication, apply the decisions, re-run the strict audits, regenerate docs, and record the pass result in `SESSION_STATE.md`.
+6. Repeat the same tier comparison for component evidence: components previously extracted from screenshots may need their specs re-verified against the authoritative source, using the existing component similarity review.
+
 ### Collaboration Review And Integration Pass
 
 Use this pass when multiple contributors extracted separate Figma sources, components, or token candidates on separate branches or PRs. Read `references/collaboration-review.md` before acting.
@@ -283,7 +302,13 @@ Do not count duplicate screenshots, duplicate Figma nodes, or duplicate rendered
 
 If a component needs a semantic or component token that does not exist, create or propose the token at the correct layer. Never use hardcoded fallback values in implementation guidance.
 
-Do not silently merge or split close token values. When near duplicate colors or numbers are found, ask the developer for a merge/keep-distinct decision and document it before the checkpoint.
+Do not silently merge or split close token values. When near duplicate colors or numbers are found, ask the developer for a merge/keep-distinct decision and document it — including each side's provenance — before the checkpoint. When either side is `authored`, default to keep distinct and never round the authored value away; `authored` vs `authored` pairs must never be auto-merged.
+
+Do not silently replace an authored value with an accessibility-compliant substitute. Record it as an `a11y-remap` (authored value preserved as a `ref` token, accessible value mapped at the `sys` layer) per `references/token-architecture.md`.
+
+### Authoritative Source Gate
+
+When a source whose evidence tier outranks the evidence behind existing token or component decisions arrives after those decisions were made, do not fold it in as supplementary evidence. Run the Late-Arriving Authoritative Source Pass, produce the recalibration table, and get developer adjudication before changing or reaffirming the affected tokens.
 
 ### Component Gate
 

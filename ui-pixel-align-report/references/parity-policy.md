@@ -59,6 +59,25 @@ These are the cases where matching the reference is the bug.
 | Any reference → app target, fixed pixel heights on text containers | Native text scales with the user's accessibility font setting (Dynamic Type / `sp`). A fixed-height container that clips at larger sizes is a finding. |
 | Native reference → web target, scroll-driven or bounce behavior | Do not reimplement rubber-band scrolling; use the platform default. |
 | Design font not licensed for the target platform | Substitute per the design system's stated fallback and record the substitution. |
+| Authored value recorded as an accessibility remap (`a11y-remap`) in the design system | Ship the accessible value. The reference shows the authored value (for example a color below WCAG AA contrast); the design system's `a11y-remap` record documents the sanctioned replacement. The implementation matching the *authored* value is the finding. When the implementation correctly shows the accessible value, report the difference as `required-adaptation` at `low` severity with the remap record cited — never as drift. |
+
+### Accessibility remaps
+
+Design-system packages produced by `design-system-extractor` record accessibility replacements as `a11y-remap` entries: an `a11y-remap` CSS comment next to the remapped `sys` token, plus an `Accessibility Remap Decisions` table in `TOKEN_ARCHITECTURE.md`. Before diffing, collect those records and pass them to `diff_spec.mjs` as `accessibilityRemaps` (top-level in either spec JSON, or via `--remaps`):
+
+```jsonc
+"accessibilityRemaps": [
+  {
+    "authored": "#f14f2b",              // the reference/authored value
+    "accessible": "#e21e28",            // the shipped accessible value
+    "token": "--lp-sys-color-warning-text",           // optional
+    "record": "TOKEN_ARCHITECTURE.md a11y-remap D-56", // optional, cited in the finding
+    "fields": ["fill", "background", "border.color"]   // optional, defaults to all color fields
+  }
+]
+```
+
+The script then classifies an expected-authored vs actual-accessible color difference as `required-adaptation` (`low`) automatically. A remap without a design-system record is not sanctioned — treat it as drift until the record exists.
 
 ### `ignored`
 
@@ -74,12 +93,14 @@ Never compared, never filed:
 
 ## Applying the policy
 
-`scripts/diff_spec.mjs` applies the machine-checkable part of this document from `assets/parity-policy.json` and emits candidate findings with an `intent` and a proposed severity. It handles arithmetic and classification. It cannot judge:
+`scripts/diff_spec.mjs` applies the machine-checkable part of this document from `assets/parity-policy.json` and emits candidate findings with an `intent` and a proposed severity. It also applies `accessibilityRemaps` entries and downgrades typography metrics when the capture's font environment is recorded as mismatched (see `surface.fonts` in `references/ui-spec.md`). It handles arithmetic and classification. It cannot judge:
 
 - whether a font substitution was *sanctioned* by the design system
 - whether a `platformOnly` node is genuinely platform-only or just missing
 - whether a color difference changes meaning or only shade
 - whether a cross-form-factor spacing change preserved the intended rhythm
+
+One measurement artifact is worth singling out because it destroys entire reports: a capture environment whose fonts differ from the source platform (headless Chromium without PingFang, a CI box without SF Pro) shifts every text metric — ink height differences of ~30% are normal. That is not `adaptive` font substitution in the product; it is a broken measurement. Run the font environment preflight in the skill workflow before trusting any typography or text-box finding.
 
 Review every candidate against those four questions before writing it into the final `findings.json`. Dropping a false positive is part of the job, and the report should say how many candidates were reviewed and dropped.
 

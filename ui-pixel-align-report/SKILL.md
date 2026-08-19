@@ -16,6 +16,15 @@ Compare a reference UI with an implemented UI and produce durable evidence: full
 
 This skill **documents** drift. It does not edit implementation code unless the user explicitly asks for fixes as well. To fix a screen, use `ui-compare-to-reference` — it reads the `findings.json` this skill produces.
 
+## Use as a verification stage
+
+`design-system-to-storybook` calls this skill as its **Design Parity Gate**: any component or page with Figma evidence must have a parity report before it can be marked done. When invoked that way:
+
+- Accept the design-system package's artifacts as inputs: `design-system/DESIGN_EVIDENCE_MAP.md` and `design-system/STORYBOOK_SOURCE_TRACE.md` resolve the reference side (Figma node URLs, image paths); the implementation map or component queue names the Storybook story or route for the implementation side.
+- Read the package's token files and `TOKEN_ARCHITECTURE.md`: populate `tokenRefs` from the extracted tokens, and copy every `a11y-remap` record into `accessibilityRemaps` so sanctioned accessibility replacements classify as `required-adaptation`, not drift.
+- Write the report to the default destination and hand the report path back so the caller can record it in `STORYBOOK_IMPLEMENTATION_MAP.md`.
+- The caller's gate blocks on findings with `parityClass: "strict"` and `status: "open"` — every such finding must end the pass as fixed, or adjudicated (`accepted` with a recorded reason), before the component is done.
+
 ## What this skill compares
 
 The reference and the implementation may be on different platforms. All six combinations are supported:
@@ -44,6 +53,7 @@ implement ──┘
 - **Reference:** Figma URL or node URL, Figma selection, design export, screenshot, image folder, another repo's source path, a running URL for the reference implementation, or a named frame.
 - **Implementation:** live URL, route, Storybook URL, story file, page file, component file, simulator/device screenshot, or an inferred target.
 - **Capture context:** viewport, device scale factor, theme, locale, branch, environment, auth state, test data state.
+- **Design-system package (optional):** extracted `design-system/` docs, token files, `DESIGN_EVIDENCE_MAP.md`, and `STORYBOOK_SOURCE_TRACE.md` — used to resolve sources, populate `tokenRefs`, and collect `a11y-remap` records into `accessibilityRemaps`.
 - **Report destination:** default `reports/design-pixel-align/<screen-or-component>/`.
 
 An explicit reference + implementation pair is authoritative. Do not replace it with auto-discovery unless one side cannot be loaded.
@@ -59,9 +69,14 @@ An explicit reference + implementation pair is authoritative. Do not replace it 
 
 3. **Extract the implementation UI Spec** into `spec/implementation.json` using the same reference docs. Render and measure whenever the surface can actually run; read source only when it cannot.
 
-4. **Capture full-surface images** for both sides at the same viewport, theme, and state. These become `screenshots.reference` and `screenshots.implementation`.
+4. **Align the font environment before any visual comparison.** Fallback fonts change ink height by up to ~30%, which fabricates type-size and box-height findings and drowns the diff in noise (headless Chromium without PingFang against an iOS reference is the canonical trap).
+   - Confirm the rendering environment loads the same fonts as the source platform: load the platform fonts into the Storybook/preview page, or use a CI-reproducible font bundle.
+   - Record what actually loaded — `document.fonts.check(...)`, a rendered-font inspector, or OS font tooling — into `surface.fonts` (`requested`, `loaded`, `aligned`) on each spec.
+   - If the fonts cannot be aligned, set `aligned: false`. The diff will mark the report `fontEnvironment: mismatched` and downgrade typography metrics and text-node box sizes to `low`; those findings are untrusted and must never drive token changes.
 
-5. **Diff the specs.**
+5. **Capture full-surface images** for both sides at the same viewport, theme, and state. These become `screenshots.reference` and `screenshots.implementation`.
+
+6. **Diff the specs.**
 
    ```sh
    node <skill-root>/scripts/diff_spec.mjs \
@@ -70,19 +85,19 @@ An explicit reference + implementation pair is authoritative. Do not replace it 
      --output reports/design-pixel-align/wallet/findings.candidates.json
    ```
 
-   The script matches nodes, compares fields with unit-aware tolerances, applies `assets/parity-policy.json`, and proposes severity. Pass `--policy` to use a project-specific policy.
+   The script matches nodes, compares fields with unit-aware tolerances, applies `assets/parity-policy.json`, and proposes severity. Pass `--policy` to use a project-specific policy. When the design system records accessibility remaps, put them in `accessibilityRemaps` (in either spec, or via `--remaps`) so the authored-vs-accessible differences classify as `required-adaptation` automatically.
 
-6. **Review every candidate.** The script handles arithmetic; you handle judgement. For each candidate decide:
-   - Is it real, or an artifact of a bad node match or a wrong capture scale?
-   - Is it drift, a sanctioned platform adaptation, or an adaptation the implementation failed to make?
+7. **Review every candidate.** The script handles arithmetic; you handle judgement. For each candidate decide:
+   - Is it real, or an artifact of a bad node match, a wrong capture scale, or a mismatched font environment?
+   - Is it drift, a sanctioned platform adaptation, an adaptation the implementation failed to make, or a recorded accessibility remap (`required-adaptation`, never drift)?
    - Who owns it: `token/theme`, `primitive/shared component`, `component variant/props`, `composition`, or `page-only`?
    - Which files and tokens does the fix touch?
 
    Delete false positives. Record how many candidates were reviewed and how many were dropped.
 
-7. **Add per-finding evidence.** Crop the reference and the implementation for each surviving finding. Add a diff or overlay crop when practical.
+8. **Add per-finding evidence.** Crop the reference and the implementation for each surviving finding. Add a diff or overlay crop when practical.
 
-8. **Write `findings.json`** and generate the report:
+9. **Write `findings.json`** and generate the report:
 
    ```sh
    node <skill-root>/scripts/generate_report.mjs \
@@ -90,7 +105,7 @@ An explicit reference + implementation pair is authoritative. Do not replace it 
      --output reports/design-pixel-align/wallet
    ```
 
-9. **Verify the output.** Open `index.html` and check that images resolve, links work, and the platform pair, viewports, fidelity, and parity mode are visible.
+10. **Verify the output.** Open `index.html` and check that images resolve, links work, and the platform pair, viewports, fidelity, font environment, and parity mode are visible.
 
 ## Parity Rules
 
@@ -98,7 +113,7 @@ Cross-platform comparison fails when every difference is treated as a defect. `r
 
 - **`drift`** — must match, does not. This is the fixable set.
 - **`adaptation`** — a difference the platform or form factor justifies (font substitution, cross-form-factor density). Report at `low`, never as a defect.
-- **`required-adaptation`** — the implementation copied the reference where it should have diverged: a 32pt button on iOS that needs 44pt, content ignoring safe-area insets, fixed-height text containers that clip under Dynamic Type.
+- **`required-adaptation`** — the implementation copied the reference where it should have diverged: a 32pt button on iOS that needs 44pt, content ignoring safe-area insets, fixed-height text containers that clip under Dynamic Type. Recorded accessibility remaps (`a11y-remap` in the design system) also land here: the accessible value is the sanctioned divergence, and shipping the authored value would be the defect.
 - **`ignored`** — OS chrome, scrollbars, hover states on touch targets, absolute positions.
 
 The single most important input is the **form factor relationship**. Same viewport class → spacing and typography compare strictly. Desktop reference vs phone target → compare ratio and hierarchy, not absolute pixels. The diff script decides this from the two viewports; state which mode applied in the report summary.
@@ -143,7 +158,8 @@ The single most important input is the **form factor relationship**. Same viewpo
     "formFactor": "same",
     "engines": "cross",
     "referenceFidelity": "measured",
-    "implementationFidelity": "measured"
+    "implementationFidelity": "measured",
+    "fontEnvironment": "aligned"
   },
   "screenshots": {
     "reference": "captures/reference-full.png",
@@ -192,7 +208,7 @@ Produces `index.html`, `styles.css`, and `assets/` with copied local screenshots
 ## Report Quality Bar
 
 - Both platforms and both viewports are stated, not just the implementation's.
-- The parity mode (same vs cross form factor) and both fidelity levels are visible, so a reader knows how much to trust the numbers.
+- The parity mode (same vs cross form factor), both fidelity levels, and the font environment status are visible, so a reader knows how much to trust the numbers. A `mismatched` font environment must be stated in the summary, with type-related findings visibly downgraded.
 - The original design link is present, or the report explains why there is none.
 - Every finding has a reference crop and an implementation crop unless the source could not be captured.
 - Every finding has expected, actual, delta, ownership, severity, intent, and a recommended fix.
@@ -207,7 +223,8 @@ Produces `index.html`, `styles.css`, and `assets/` with copied local screenshots
 3. Design source, implementation source, both platforms, viewport, theme, and capture date are visible.
 4. Findings are sorted high severity first, drift before adaptation.
 5. Node counts add up: matched + missing + extra covers what the specs contain, and the coverage block names what was deliberately skipped.
-6. If fixes were also applied, run the project's cheapest reliable validation and mark which findings are fixed versus open.
+6. Recorded accessibility remaps appear as `required-adaptation`, not drift, and a `mismatched` font environment is declared with type findings downgraded.
+7. If fixes were also applied, run the project's cheapest reliable validation and mark which findings are fixed versus open.
 
 ## Reference Files
 

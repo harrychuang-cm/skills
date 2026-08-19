@@ -339,6 +339,12 @@ function renderParity(parity) {
     ],
     ["Reference fidelity", parity.referenceFidelity || "unknown"],
     ["Implementation fidelity", parity.implementationFidelity || "unknown"],
+    [
+      "Font environment",
+      parity.fontEnvironment === "mismatched"
+        ? "Mismatched — typography metrics downgraded, not trustworthy for token changes"
+        : parity.fontEnvironment || "",
+    ],
     ["Parity policy", parity.policy || "default"],
   ].filter(([, value]) => value);
 

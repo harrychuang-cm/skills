@@ -28,6 +28,7 @@ const referenceArg = readFlag("--reference", "-r");
 const implementationArg = readFlag("--implementation", "-m");
 const outputArg = readFlag("--output", "-o");
 const policyArg = readFlag("--policy", "-p");
+const remapsArg = readFlag("--remaps");
 const titleArg = readFlag("--title");
 const summaryArg = readFlag("--summary");
 
@@ -43,8 +44,9 @@ const policyPath = policyArg
 const policy = await readJson(policyPath);
 const reference = await readJson(path.resolve(referenceArg));
 const implementation = await readJson(path.resolve(implementationArg));
+const remapsFile = remapsArg ? await readJson(path.resolve(remapsArg)) : null;
 
-const context = buildContext(reference, implementation, policy);
+const context = buildContext(reference, implementation, policy, remapsFile);
 const { findings, stats } = diffSpecs(reference, implementation, policy, context);
 
 const report = {
@@ -60,6 +62,7 @@ const report = {
     engines: context.sameEngine ? "same" : "cross",
     referenceFidelity: reference.surface?.fidelity || "unknown",
     implementationFidelity: implementation.surface?.fidelity || "unknown",
+    fontEnvironment: context.fontEnvironment,
   },
   findings,
   candidateStats: stats,
@@ -81,6 +84,14 @@ console.log(
 );
 if (stats.lowFidelity) {
   console.log("  note: at least one spec is estimated — treat sub-2px deltas as unreliable.");
+}
+if (context.fontEnvironment === "mismatched") {
+  console.log(
+    "  warning: font environment mismatched — typography metrics and text-node box sizes were downgraded to low. Do not change tokens based on them.",
+  );
+}
+if (context.remaps.length) {
+  console.log(`  accessibility remaps applied: ${context.remaps.length}`);
 }
 console.log("Review every candidate before writing the final findings.json.");
 
@@ -109,6 +120,8 @@ Options:
   --implementation, -m   Implementation-side UI Spec JSON (the surface being audited).
   --output, -o           Candidate findings output. Defaults to ./findings.candidates.json.
   --policy, -p           Parity policy JSON. Defaults to the skill's assets/parity-policy.json.
+  --remaps               Accessibility remap JSON (array or {accessibilityRemaps: []}); merged
+                         with accessibilityRemaps declared inside either spec.
   --title                Report title override.
   --summary              Report summary override.
 `);
@@ -127,7 +140,7 @@ async function readJson(file) {
   }
 }
 
-function buildContext(ref, impl, pol) {
+function buildContext(ref, impl, pol, remapsFromFile) {
   const referencePlatform = ref.surface?.platform || "unknown";
   const implementationPlatform = impl.surface?.platform || "unknown";
   const referenceWidth = ref.surface?.viewport?.width ?? null;
@@ -155,7 +168,32 @@ function buildContext(ref, impl, pol) {
     referenceIsTouch: touch.includes(referencePlatform),
     minTouchTarget: pol.touchTargets?.[implementationPlatform] ?? null,
     interactiveRoles: pol.touchTargets?.interactiveRoles || ["control", "input"],
+    remaps: collectRemaps(ref, impl, remapsFromFile),
+    fontEnvironment: resolveFontEnvironment(ref, impl),
   };
+}
+
+function collectRemaps(ref, impl, remapsFromFile) {
+  const fromFile = Array.isArray(remapsFromFile)
+    ? remapsFromFile
+    : remapsFromFile?.accessibilityRemaps || [];
+  return [
+    ...fromFile,
+    ...(ref.accessibilityRemaps || []),
+    ...(impl.accessibilityRemaps || []),
+  ].filter((remap) => remap && remap.authored && remap.accessible);
+}
+
+/**
+ * "aligned" only when both sides recorded their font environment and neither
+ * declared a mismatch; a single `aligned: false` poisons every text metric in
+ * the comparison, so it wins over everything else.
+ */
+function resolveFontEnvironment(ref, impl) {
+  const sides = [ref.surface?.fonts, impl.surface?.fonts];
+  if (sides.some((fonts) => fonts && fonts.aligned === false)) return "mismatched";
+  if (sides.every((fonts) => fonts && fonts.aligned !== false)) return "aligned";
+  return "unknown";
 }
 
 function buildSource(ref, impl, context) {
@@ -387,30 +425,93 @@ function diffNode(refNode, implNode, pol, context) {
     const comparison = compareValues(field, expected, actual, pol, context);
     if (!comparison || comparison.equal) continue;
 
+    const remap = matchAccessibilityRemap(field, expected, actual, pol, context);
+    if (remap) {
+      findings.push(
+        makeFinding({
+          node: refNode,
+          counterpart: implNode,
+          field,
+          intent: "required-adaptation",
+          parityClass: "required-adaptation",
+          severity: "low",
+          expected: `${describeField(field)} is ${formatValue(expected)} — the authored value under a recorded accessibility remap.`,
+          actual: `Implementation renders ${formatValue(actual)} — the sanctioned accessible value.`,
+          delta: comparison.delta,
+          recommendedFix: `No fix — this difference is the recorded accessibility remap${remap.record ? ` (${remap.record})` : ""}${remap.token ? ` on ${remap.token}` : ""}. Keep the accessible value; revisit only if the remap record is stale.`,
+          context,
+        }),
+      );
+      continue;
+    }
+
     const severity = capSeverity(
       comparison.severity || proposeSeverity(comparison, pol),
       parityClass,
       pol,
     );
 
-    findings.push(
-      makeFinding({
-        node: refNode,
-        counterpart: implNode,
-        field,
-        intent: parityClass === "adaptive" ? "adaptation" : "drift",
-        parityClass,
-        severity,
-        expected: `${describeField(field)} is ${formatValue(expected)}.`,
-        actual: `Implementation renders ${formatValue(actual)}.`,
-        delta: comparison.delta,
-        recommendedFix: recommendFix(field, refNode, implNode, comparison, context),
-        context,
-      }),
-    );
+    const fontUnreliable =
+      context.fontEnvironment === "mismatched" && isFontSensitiveField(field, refNode, implNode);
+
+    const finding = makeFinding({
+      node: refNode,
+      counterpart: implNode,
+      field,
+      intent: parityClass === "adaptive" ? "adaptation" : "drift",
+      parityClass,
+      severity: fontUnreliable ? "low" : severity,
+      expected: `${describeField(field)} is ${formatValue(expected)}.`,
+      actual: `Implementation renders ${formatValue(actual)}.`,
+      delta: comparison.delta,
+      recommendedFix: recommendFix(field, refNode, implNode, comparison, context),
+      context,
+    });
+    if (fontUnreliable) {
+      finding.notes.push(
+        "Font environment mismatched — this metric is unreliable in the current capture. Do not change tokens or sizes based on it; align the fonts and re-measure first.",
+      );
+    }
+    findings.push(finding);
   }
 
   return findings;
+}
+
+function isFontSensitiveField(field, refNode, implNode) {
+  if (field === "type.size" || field === "type.lineHeight" || field === "type.letterSpacing") {
+    return true;
+  }
+  const role = refNode?.role || implNode?.role;
+  return role === "text" && (field === "box.width" || field === "box.height");
+}
+
+function matchAccessibilityRemap(field, expected, actual, pol, context) {
+  if (!context.remaps.length || !isColorField(field)) return null;
+  for (const remap of context.remaps) {
+    const fields = Array.isArray(remap.fields) && remap.fields.length ? remap.fields : null;
+    if (fields && !fields.includes(field)) continue;
+    if (colorsRoughlyEqual(expected, remap.authored, pol) && colorsRoughlyEqual(actual, remap.accessible, pol)) {
+      return remap;
+    }
+  }
+  return null;
+}
+
+function colorsRoughlyEqual(a, b, pol) {
+  const left = parseColor(a);
+  const right = parseColor(b);
+  if (!left || !right) {
+    return String(a).trim().toLowerCase() === String(b).trim().toLowerCase();
+  }
+  const tolerance = pol.tolerance?.color ?? 2;
+  const channelDelta = Math.max(
+    Math.abs(left.r - right.r),
+    Math.abs(left.g - right.g),
+    Math.abs(left.b - right.b),
+    Math.abs(left.a - right.a) * 255,
+  );
+  return channelDelta <= tolerance;
 }
 
 function resolveClass(declaredClass, pol, context) {

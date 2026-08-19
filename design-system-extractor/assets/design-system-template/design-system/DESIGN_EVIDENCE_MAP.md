@@ -4,8 +4,10 @@ Use this file to trace design decisions back to source evidence.
 
 ## Source Inventory
 
-| Source ID | Type | Path / URL / Node | Source fingerprint | Screen or state | Notes | Confidence |
-|---|---|---|---|---|---|---|
+Evidence tier ranks the source's authority: `1` production Figma/component library, `2` production screenshots, `3` native simulator/emulator/device captures, `4` rendered project UI, `5` native preview/screenshot-test captures, `6` prototype code, `7` descriptive prompt. When a new source's tier outranks the tiers behind existing decisions, run the Late-Arriving Authoritative Source Pass instead of treating it as supplementary evidence.
+
+| Source ID | Type | Evidence tier | Path / URL / Node | Source fingerprint | Screen or state | Notes | Confidence |
+|---|---|---|---|---|---|---|---|
 
 ## Source Duplicate Review
 
