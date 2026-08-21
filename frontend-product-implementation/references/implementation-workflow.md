@@ -70,6 +70,16 @@ When discovery finds no token system in the target root and the user approves es
 
 Do not add fallback hardcoded color, spacing, radius, typography, motion, or display text values.
 
+### Approved Component Porting
+
+When the user approves creating a missing shared component that has a prototype counterpart, port it instead of reinventing it:
+
+1. Derive variants, props, and states from the reusable prototype source files listed in `PRODUCTION_HANDOFF.md` and from the prototype's stories args, not from free-text prop notes alone. Do not invent a variant that appears in no prototype source.
+2. Implement only the variants and states the in-scope handoff routes actually use; record the rest as deferred so a later feature can extend the component instead of re-deriving it.
+3. Rebuild the component with the target framework's native conventions and bind it to production tokens; do not translate prototype framework idioms verbatim.
+4. Strip the Storybook-only boundaries the handoff lists (prototype parameters, inspector hooks, static-flow scaffolding); they must not ship.
+5. Record the prototype-to-production component name mapping in the implementation map for verification and later audits.
+
 ## Existing Product Mode
 
 Use this when a repo already has app code.

@@ -39,8 +39,9 @@ For UI changes, verify:
 - focus-visible and accessibility labels are present
 - responsive or app viewport behavior matches `UI_SPEC.md`
 - Storybook stories cover changed shared components when Storybook exists
+- a newly created component with a prototype counterpart matches it: compare the implemented variants and states against the prototype component source and stories args, and record any intentional divergence (platform adaptation, production token differences) with its reason
 
-Use browser or screenshot verification when the app can be run locally and visual risk is meaningful.
+Use browser or screenshot verification when the app can be run locally and visual risk is meaningful. For prototype parity on newly created components, run a side-by-side visual comparison when the prototype Storybook can be run; the `ui-compare-to-reference` or `ui-pixel-align-report` skill can own that check.
 
 ## Final Response Contract
 
@@ -52,9 +53,9 @@ Report:
 - selected routing, state, data, i18n, styling/design-system, tests, and Storybook approach
 - architecture decision sources, confidence, unresolved/not-applicable fields, and approved deviations
 - design-system governance findings: token system, shared components, i18n, Storybook
-- existing components reused
+- existing components reused; when the handoff comes from a prototype, report them as a prototype-to-production component map covering each handoff component in scope: reused production component (with name mapping), newly created with approval, or deferred with reason
 - tokens reused or new token decisions requested
-- new components created only with approval, or missing-component blockers
+- new components created only with approval — each with its prototype source evidence and parity check result or recorded divergences when a prototype counterpart exists — or missing-component blockers
 - routes/screens/features implemented
 - data/API contracts implemented as mocks, adapters, or deferred real integrations
 - verification commands run and results

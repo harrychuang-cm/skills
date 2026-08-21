@@ -43,6 +43,7 @@ For each route or screen, map:
 - production route/screen/navigation target
 - components to reuse
 - missing child components or tokens
+- reusable prototype source files for components to port, when the handoff lists them
 - data adapter or fixture provider
 - tests and stories to add
 - owner of real API/data integration if known
