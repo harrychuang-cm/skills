@@ -3,9 +3,26 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 
-const targetRoot = path.resolve(process.argv[2] || process.cwd());
+const SUPPORTED_LOCALES = ["zh-Hant", "en", "ja"];
+
+const rawArgs = process.argv.slice(2);
+let localeArg = null;
+const positionalArgs = [];
+for (let index = 0; index < rawArgs.length; index += 1) {
+  const arg = rawArgs[index];
+  if (arg === "--locale") {
+    localeArg = rawArgs[index + 1] ?? "";
+    index += 1;
+  } else if (arg.startsWith("--locale=")) {
+    localeArg = arg.slice("--locale=".length);
+  } else {
+    positionalArgs.push(arg);
+  }
+}
+
+const targetRoot = path.resolve(positionalArgs[0] || process.cwd());
 const outputPath = path.resolve(
-  process.argv[3] || path.join(targetRoot, "docs", "design-system", "index.html"),
+  positionalArgs[1] || path.join(targetRoot, "docs", "design-system", "index.html"),
 );
 
 const designSystemDir = path.join(targetRoot, "design-system");
@@ -13,7 +30,16 @@ const componentDocsDir = path.join(designSystemDir, "components");
 const tokensDir = path.join(targetRoot, "tokens");
 const designSystemAssetsDir = path.join(designSystemDir, "assets");
 
-const DEFAULT_LOCALE = "zh-Hant";
+let DEFAULT_LOCALE = "zh-Hant";
+if (localeArg !== null) {
+  if (SUPPORTED_LOCALES.includes(localeArg)) {
+    DEFAULT_LOCALE = localeArg;
+  } else {
+    console.warn(
+      `Unsupported --locale value "${localeArg}". Supported values: ${SUPPORTED_LOCALES.join(", ")}. Falling back to "zh-Hant".`,
+    );
+  }
+}
 
 const coreDocumentFiles = [
   ["docKickstart", "DESIGN_SYSTEM_KICKSTART.md"],
@@ -818,7 +844,7 @@ function i18nScript() {
   return `<script>
 (() => {
   const STORAGE_KEY = "design-system-docs-lang";
-  const DEFAULT_LOCALE = "zh-Hant";
+  const DEFAULT_LOCALE = ${JSON.stringify(DEFAULT_LOCALE)};
   const copy = ${JSON.stringify(uiCopy)};
 
   const buttons = Array.from(document.querySelectorAll("[data-language-button]"));

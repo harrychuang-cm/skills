@@ -72,8 +72,40 @@ For runnable native app projects, capture the actual app or preview output befor
 1. Locate or create a design-system package root.
 2. Resolve this skill's folder as `<skill-root>`. Use `<skill-root>/assets/...` and `<skill-root>/scripts/...` when copying templates or running bundled scripts.
 3. If the package has no structure yet, copy `<skill-root>/assets/design-system-template/` into the target root.
-4. Read existing `AGENTS.md`, `CLAUDE.md`, `.cursorrules`, `.cursor/rules/*`, prior `design-system/SESSION_STATE.md`, and prior `design-system/INTEGRATION_REVIEW.md` when present.
+4. Read existing `AGENTS.md`, `CLAUDE.md`, `.cursorrules`, `.cursor/rules/*`, prior `design-system/SESSION_STATE.md` — including its `Report Language:` record — and prior `design-system/INTEGRATION_REVIEW.md` when present.
 5. Inspect references before writing tokens. If a source project has screenshots and code, inspect both.
+
+## Report Language Resolution
+
+Resolve the report language after First Actions and before Input Discovery:
+
+1. Look for a `Report Language:` record in `design-system/SESSION_STATE.md`. The record format is `<language-tag> (<human-readable name>)`, for example `Report Language: zh-Hant (繁體中文)`.
+2. If a recognizable record exists, write all new report content in that language and do not ask again.
+3. If `SESSION_STATE.md` is missing the record, or the record line is present but unrecognizable, treat the package as first-run: ask the user once which language to use for the extraction report. Offer exactly these options, with the first as the default recommendation:
+   - the user's current conversation language (default, recommended)
+   - English
+   - 日本語 (Japanese)
+   - a custom language named by the user
+4. Do not guess or silently reuse an unrecognizable record. Record the confirmed answer in `design-system/SESSION_STATE.md` as `Report Language: <language-tag> (<human-readable name>)` before Input Discovery begins.
+5. All post-checkpoint passes (Component Expansion, Late-Arriving Authoritative Source, Collaboration Review And Integration) reuse the recorded report language without asking again.
+6. When the user explicitly asks to switch the report language, update the `Report Language:` record, log the switch in the `Key Design Decisions` table in `SESSION_STATE.md`, and write subsequently updated sections in the new language. Do not rewrite existing sections unless the user explicitly requests a full rewrite.
+
+## Report Output Language Rules
+
+Apply these rules to every generated file under `design-system/` when the report language is not English:
+
+- Keep section headings and table headers in their English canonical form and append a report-language annotation in full-width parentheses after the English text, for example `## Source Inventory（來源清單）` or the table header `Developer Decision（開發者決定）`. The annotation is appended only — never replace, rewrite, or place it before the English canonical text. The audit scripts match English canonical text by substring, so an appended annotation keeps them parsing; a replaced or prefixed heading breaks them.
+- Keep the following in English, never translated or rewritten: status values (`extracted`, `planned`, `blocked`, `out-of-scope`, `rendered`, `demo-only`, and similar), decision keywords (`merge`, `keep distinct`, `reuse existing source`, `ignore duplicate`, `make variant`, `block pending more evidence`, `re-authorize`), confidence values (`High`, `Medium`, `Low`), token names, file names, and CSS marker comments (`token-review:`, `a11y-remap`). Table cells may append a full-width-parenthesis annotation after the English keyword, for example `keep distinct（保留區分）`.
+- Write all narrative body content — principle explanations, evidence descriptions, implementation rules, and notes — in the report language.
+
+When the report language is English, add no annotations anywhere; keep the current English-only format unchanged.
+
+| Element | English report | Non-English report (zh-Hant example) |
+| --- | --- | --- |
+| Section heading | `## Source Inventory` | `## Source Inventory（來源清單）` |
+| Table header | `Developer Decision` | `Developer Decision（開發者決定）` |
+| Decision cell | `keep distinct` | `keep distinct（保留區分）` |
+| Narrative body | English prose | 報告語言內文 |
 
 ## Workflow
 
@@ -189,9 +221,11 @@ The output must protect the observed product character. Do not add generic SaaS 
 Generate developer-facing static HTML docs after design-system Markdown and token files are updated:
 
 ```sh
-node <skill-root>/scripts/generate_docs_html.mjs <target-root>
+node <skill-root>/scripts/generate_docs_html.mjs <target-root> --locale <ui-locale>
 node <skill-root>/scripts/generate_review_html.mjs <target-root>
 ```
+
+Derive `<ui-locale>` from the recorded `Report Language`: Traditional or Simplified Chinese maps to `zh-Hant`, Japanese maps to `ja`, English and every other language map to `en`. The flag accepts only `zh-Hant`, `en`, and `ja`; when omitted the docs default to `zh-Hant`. Record the locale used in `SESSION_STATE.md` under `HTML docs UI locale`.
 
 Default outputs:
 
@@ -200,7 +234,7 @@ docs/design-system/index.html
 docs/design-system/review.html
 ```
 
-The HTML shell supports `zh-Hant` (default), `en`, and `ja` UI locales with a sidebar language switcher. Markdown body content remains in the extraction language.
+The HTML shell supports `zh-Hant` (default), `en`, and `ja` UI locales with a sidebar language switcher; `--locale` sets which one is the page default. Markdown body content remains in the report language.
 
 Use `references/html-documentation.md` when changing the HTML documentation behavior.
 
@@ -219,10 +253,12 @@ Use non-strict mode only for an empty starter package or early setup check.
 Update `design-system/SESSION_STATE.md` with:
 
 - completed outputs
+- report language in use
 - key decisions
 - open questions
 - token layers changed
 - generated HTML docs path
+- HTML docs UI locale
 - generated review queue path
 - audit result
 - source duplicate review result
@@ -248,7 +284,7 @@ Then stop and ask the user what to do next. Suggested choices:
 
 ### Component Expansion Pass
 
-Use this pass when the user chooses to expand component tokens after the initial extraction.
+Use this pass when the user chooses to expand component tokens after the initial extraction. Reuse the `Report Language` recorded in `SESSION_STATE.md`; do not ask again.
 
 1. Pick one or more `planned` components from `design-system/COMPONENT_INVENTORY.md`.
 2. Confirm the component has evidence in `design-system/DESIGN_EVIDENCE_MAP.md`.
@@ -263,7 +299,7 @@ Use this pass when the user chooses to expand component tokens after the initial
 
 ### Late-Arriving Authoritative Source Pass
 
-Use this pass whenever a higher-tier evidence source appears after lower-tier evidence already produced token or component decisions — most commonly, a production Figma file (with Variables) arriving after a token system was extracted from screenshots. The failure mode this pass prevents: the authoritative source gets demoted to "one more candidate", its authored values are absorbed into an already-closed measured token system, and design intent is silently discarded.
+Use this pass whenever a higher-tier evidence source appears after lower-tier evidence already produced token or component decisions — most commonly, a production Figma file (with Variables) arriving after a token system was extracted from screenshots. The failure mode this pass prevents: the authoritative source gets demoted to "one more candidate", its authored values are absorbed into an already-closed measured token system, and design intent is silently discarded. Reuse the `Report Language` recorded in `SESSION_STATE.md`; do not ask again.
 
 1. Do not merge the new source into the existing evidence flow yet. Register it in `DESIGN_EVIDENCE_MAP.md` with its evidence tier, then compare tiers: this pass applies when the new source outranks the tiers backing existing decisions.
 2. Extract the new source's authored values (Figma Variables, styles, exact node properties) with `authored` provenance. Do not round or cluster them against existing tokens during extraction.
@@ -277,7 +313,7 @@ Use this pass whenever a higher-tier evidence source appears after lower-tier ev
 
 ### Collaboration Review And Integration Pass
 
-Use this pass when multiple contributors extracted separate Figma sources, components, or token candidates on separate branches or PRs. Read `references/collaboration-review.md` before acting.
+Use this pass when multiple contributors extracted separate Figma sources, components, or token candidates on separate branches or PRs. Read `references/collaboration-review.md` before acting. Reuse the integration target's `Report Language` recorded in `SESSION_STATE.md`; do not ask again.
 
 1. Confirm the integration target branch and the contributor branches or PRs to review.
 2. Inspect each branch or PR diff before merging. Identify touched sources, components, token layers, generated docs, and audit output.

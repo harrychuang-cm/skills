@@ -7,6 +7,7 @@ Update this file at every checkpoint.
 - Stage: Not started
 - Last updated:
 - AI tool / model:
+- Report Language:
 
 ## Completed Outputs
 
@@ -111,6 +112,7 @@ Update this file at every checkpoint.
 ## Generated Documentation
 
 - HTML docs:
+- HTML docs UI locale:
 - Review queue:
 
 ## Recommended Next Prompt
