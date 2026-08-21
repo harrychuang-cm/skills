@@ -76,7 +76,8 @@ If the target project has no prototype inspector:
 1. Still generate `parameters.prototype`.
 2. Install the bundled runtime only when the user asks for Storybook UI Flow review:
    `node <skill-root>/scripts/install_prototype_inspector.mjs --project-root <repo-root>`.
-3. Do not replace an existing `.storybook/prototype-inspector` folder or `src/pages/prototypes/prototypeFlowLayout.ts` unless the user approves `--force`.
+3. Do not replace an existing `.storybook/prototype-inspector` folder or `src/pages/prototypes/prototypeFlowLayout.ts` unless the user approves `--force`. Re-running with `--force` is also how an existing install picks up bundled addon updates.
+4. The inspector CSS defines a `--pi-*` token layer: each token reads the `--sbt-*` design token when the project defines it and otherwise falls back to built-in neutral values (with a `prefers-color-scheme: dark` fallback set), so the panels render correctly in any React Storybook project. When the project uses another token prefix, pass `--token-prefix <prefix>` (for example `--token-prefix md`) to bind the layer to the project's tokens, or redefine `--pi-*` tokens on `.prototype-inspector` in a stylesheet loaded after the addon CSS.
 
 If the target project already has a prototype inspector, match its parameter name, preview-mode query conventions, route preview selector, and saved layout helper. For repos created from `design-system-to-storybook/storybook-template`, keep the existing `prototypeFlowLayout.ts` schema and Static Flow pattern.
 

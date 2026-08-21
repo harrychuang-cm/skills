@@ -44,11 +44,39 @@ function RoutePanel({
 }: {
   route: __FEATURE_PASCAL__RouteContent;
 }) {
+  // Replace this placeholder markup with the design-system components mapped
+  // per route in docs/UI_SPEC.md "Component Map". Local markup is allowed only
+  // for regions listed under "Component Gaps".
+  const state = route.state ?? "default";
+
   return (
     <section className="__FEATURE_CSS_CLASS____panel" aria-labelledby={`${route.id}-title`}>
       <p className="__FEATURE_CSS_CLASS____eyebrow">{route.id}</p>
       <h2 id={`${route.id}-title`}>{route.title}</h2>
-      <p>{route.description}</p>
+      {state === "loading" ? (
+        <div
+          className="__FEATURE_CSS_CLASS____state __FEATURE_CSS_CLASS____state--loading"
+          role="status"
+          aria-label={`Loading ${route.title}`}
+        >
+          <span className="__FEATURE_CSS_CLASS____skeleton" />
+          <span className="__FEATURE_CSS_CLASS____skeleton" />
+        </div>
+      ) : state === "empty" ? (
+        <div className="__FEATURE_CSS_CLASS____state __FEATURE_CSS_CLASS____state--empty">
+          <p>{route.description}</p>
+        </div>
+      ) : state === "error" ? (
+        <div
+          className="__FEATURE_CSS_CLASS____state __FEATURE_CSS_CLASS____state--error"
+          role="alert"
+        >
+          <p>{route.description}</p>
+          <button type="button">Retry</button>
+        </div>
+      ) : (
+        <p>{route.description}</p>
+      )}
     </section>
   );
 }

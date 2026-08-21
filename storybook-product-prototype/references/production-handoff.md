@@ -15,6 +15,8 @@ Use these sections:
 ```markdown
 # Production Handoff
 
+## Review Status
+
 ## Target Surfaces
 
 ## Prototype To Frontend Map
@@ -33,8 +35,21 @@ Use these sections:
 
 ## Storybook-Only Boundaries
 
+## Design System Continuity
+
 ## Open Product Decisions
 ```
+
+## Review Status
+
+The handoff flow is: Storybook demo → the team confirms the product direction → the docs go to the receiving engineer or AI. This section stamps that confirmation so the receiver knows the docs describe a confirmed direction, not a draft under discussion:
+
+- Status: `pending` or `confirmed`
+- who confirmed and when
+- which Storybook story or UI Flow demo was reviewed
+- what the confirmation covers or explicitly excludes
+
+`validate_prototype.py --handoff-ready` fails while the status is `pending`. A legacy handoff written before this section existed only gets a warning for the missing section; new handoffs must include it. Do not hand the docs to a receiving implementation before the status is `confirmed`.
 
 ## Target Surfaces
 
@@ -146,6 +161,15 @@ List what must not be treated as production code:
 - Prototype Inspector layout and Storybook toolbar behavior
 
 Also list prototype files or components that can be extracted into frontend production code with changes.
+
+## Design System Continuity
+
+Record the discovery results so the receiving implementation inherits them instead of re-deriving them. This section records facts; it does not restate governance rules.
+
+- Token namespace record: the token prefix(es) in use and the file paths that define them, from the `UI_SPEC.md` Token Binding section, or `none` when the project has no token system.
+- Component Map echo: the per-route component mapping (or a link to `UI_SPEC.md`).
+- Promotion candidates: locally created components from Component Gaps. Record each candidate's status: `promoted` — the team-confirmed component was promoted into the hub's shared component library (list its shared-component path and story id) — or `local` — it stays inside the prototype (list its prototype file path and the routes/regions that use it). Production can port `promoted` components from the hub directly and may promote remaining `local` candidates into its own design system.
+- Receiving pass: the `frontend-product-implementation` pass should run `design-system-governance` discovery and gates against this record; when no token system existed, follow its token-bootstrap reference.
 
 ## Open Product Decisions
 

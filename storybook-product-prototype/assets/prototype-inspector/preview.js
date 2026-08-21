@@ -890,27 +890,244 @@ function getOutgoingTransitions(transitions, routeId) {
     .map(getTransitionText);
 }
 
-function MarkdownInline({ value }) {
-  const segments = String(value).split(/(`[^`]+`)/g);
+const markdownHeadingPattern = /^(#{1,6})\s+(.*)$/;
+const markdownListItemPattern = /^(\s*)([-*+]|\d+[.)])\s+(.*)$/;
+const markdownTaskItemPattern = /^\[( |x|X)\]\s+(.*)$/;
+const markdownHorizontalRulePattern = /^\s*(?:-{3,}|\*{3,}|_{3,})\s*$/;
+const markdownTableDividerPattern =
+  /^\s*\|?\s*:?-{2,}:?\s*(?:\|\s*:?-{2,}:?\s*)*\|?\s*$/;
+const markdownLinkPattern = /^(!?)\[([^\]]*)\]\(([^)\s]*)(?:\s+"([^"]*)")?\)$/;
+const markdownInlineTokenPattern =
+  /(`[^`]+`)|(!?\[[^\]]*\]\([^)]*\))|(\*\*[^*]+\*\*)|(\*[^*\s][^*]*\*)|(~~[^~]+~~)/g;
 
-  return createElement(
-    Fragment,
-    null,
-    segments.map((segment, index) =>
-      segment.startsWith("`") && segment.endsWith("`")
-        ? createElement("code", { key: index }, segment.slice(1, -1))
-        : segment,
-    ),
-  );
+function renderInlineMarkdown(value, keyPrefix) {
+  const text = String(value);
+  const nodes = [];
+  const pattern = new RegExp(markdownInlineTokenPattern.source, "g");
+  let lastIndex = 0;
+  let tokenIndex = 0;
+  let match;
+
+  while ((match = pattern.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      nodes.push(text.slice(lastIndex, match.index));
+    }
+
+    const token = match[0];
+    const key = `${keyPrefix}-${tokenIndex}`;
+    tokenIndex += 1;
+
+    if (token.startsWith("`")) {
+      nodes.push(createElement("code", { key }, token.slice(1, -1)));
+    } else if (token.startsWith("![") || token.startsWith("[")) {
+      const linkMatch = markdownLinkPattern.exec(token);
+      if (!linkMatch) {
+        nodes.push(token);
+      } else if (linkMatch[1] === "!") {
+        nodes.push(
+          createElement("img", {
+            alt: linkMatch[2],
+            key,
+            src: linkMatch[3],
+            title: linkMatch[4],
+          }),
+        );
+      } else {
+        nodes.push(
+          createElement(
+            "a",
+            {
+              href: linkMatch[3],
+              key,
+              rel: "noreferrer",
+              target: "_blank",
+              title: linkMatch[4],
+            },
+            renderInlineMarkdown(linkMatch[2], key),
+          ),
+        );
+      }
+    } else if (token.startsWith("**")) {
+      nodes.push(
+        createElement("strong", { key }, renderInlineMarkdown(token.slice(2, -2), key)),
+      );
+    } else if (token.startsWith("~~")) {
+      nodes.push(
+        createElement("del", { key }, renderInlineMarkdown(token.slice(2, -2), key)),
+      );
+    } else {
+      nodes.push(
+        createElement("em", { key }, renderInlineMarkdown(token.slice(1, -1), key)),
+      );
+    }
+
+    lastIndex = pattern.lastIndex;
+  }
+
+  if (lastIndex < text.length) {
+    nodes.push(text.slice(lastIndex));
+  }
+
+  return nodes;
 }
 
-function MarkdownDocument({ value }) {
+function MarkdownInline({ value }) {
+  return createElement(Fragment, null, renderInlineMarkdown(String(value), "inline"));
+}
+
+function parseMarkdownTableRow(line) {
+  let text = line.trim();
+  if (text.startsWith("|")) {
+    text = text.slice(1);
+  }
+  if (text.endsWith("|") && !text.endsWith("\\|")) {
+    text = text.slice(0, -1);
+  }
+
+  // Split on pipes only outside backtick code spans, honoring \| escapes, so
+  // cells containing TypeScript unions like `'ok' | 'error'` stay intact.
+  const cells = [];
+  let current = "";
+  let inCode = false;
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index];
+    if (character === "\\" && text[index + 1] === "|") {
+      current += "|";
+      index += 1;
+      continue;
+    }
+    if (character === "`") {
+      inCode = !inCode;
+      current += character;
+      continue;
+    }
+    if (character === "|" && !inCode) {
+      cells.push(current.trim());
+      current = "";
+      continue;
+    }
+    current += character;
+  }
+  cells.push(current.trim());
+  return cells;
+}
+
+function parseMarkdownTableAlignments(dividerLine) {
+  return parseMarkdownTableRow(dividerLine).map((cell) => {
+    const leading = cell.startsWith(":");
+    const trailing = cell.endsWith(":");
+    if (leading && trailing) {
+      return "center";
+    }
+    if (trailing) {
+      return "right";
+    }
+    return undefined;
+  });
+}
+
+function parseMarkdownList(lines, startIndex, baseIndent, keyPrefix) {
+  const items = [];
+  let index = startIndex;
+  let ordered = false;
+  let startNumber = 1;
+
+  while (index < lines.length) {
+    const match = markdownListItemPattern.exec(lines[index]);
+    if (!match) {
+      break;
+    }
+
+    const indent = match[1].length;
+    if (indent < baseIndent) {
+      break;
+    }
+
+    if (indent > baseIndent && items.length > 0) {
+      const nested = parseMarkdownList(
+        lines,
+        index,
+        indent,
+        `${keyPrefix}-${items.length - 1}`,
+      );
+      items[items.length - 1].children.push(nested.element);
+      index = nested.nextIndex;
+      continue;
+    }
+
+    if (items.length === 0) {
+      ordered = /^\d/.test(match[2]);
+      if (ordered) {
+        startNumber = Number.parseInt(match[2], 10) || 1;
+      }
+    }
+
+    const itemKey = `${keyPrefix}-${items.length}`;
+    const taskMatch = markdownTaskItemPattern.exec(match[3]);
+    if (taskMatch) {
+      items.push({
+        children: [
+          createElement("input", {
+            checked: taskMatch[1] !== " ",
+            disabled: true,
+            key: `${itemKey}-check`,
+            readOnly: true,
+            type: "checkbox",
+          }),
+          createElement(
+            "span",
+            { key: `${itemKey}-copy` },
+            renderInlineMarkdown(taskMatch[2], itemKey),
+          ),
+        ],
+        task: true,
+      });
+    } else {
+      items.push({ children: renderInlineMarkdown(match[3], itemKey), task: false });
+    }
+
+    index += 1;
+  }
+
+  return {
+    element: createElement(
+      ordered ? "ol" : "ul",
+      {
+        key: keyPrefix,
+        start: ordered && startNumber !== 1 ? startNumber : undefined,
+      },
+      items.map((item, itemIndex) =>
+        createElement(
+          "li",
+          {
+            className: item.task ? "prototype-inspector__markdown-task" : undefined,
+            key: `${keyPrefix}-${itemIndex}`,
+          },
+          item.children,
+        ),
+      ),
+    ),
+    nextIndex: index,
+  };
+}
+
+function parseMarkdownBlocks(lines, keyPrefix) {
   const blocks = [];
-  const lines = String(value).split(/\r?\n/);
   let index = 0;
+
+  if (keyPrefix === "block" && lines[0]?.trim() === "---") {
+    let closing = 1;
+    while (closing < lines.length && lines[closing].trim() !== "---") {
+      closing += 1;
+    }
+    if (closing < lines.length) {
+      index = closing + 1;
+    }
+  }
 
   while (index < lines.length) {
     const line = lines[index];
+    const key = `${keyPrefix}-${index}`;
 
     if (!line.trim()) {
       index += 1;
@@ -928,7 +1145,7 @@ function MarkdownDocument({ value }) {
       blocks.push(
         createElement(
           "pre",
-          { className: "prototype-inspector__markdown-code", key: index },
+          { className: "prototype-inspector__markdown-code", key },
           createElement("code", { "data-language": language }, codeLines.join("\n")),
         ),
       );
@@ -936,39 +1153,76 @@ function MarkdownDocument({ value }) {
       continue;
     }
 
-    if (line.startsWith("### ")) {
-      blocks.push(createElement("h4", { key: index }, line.slice(4)));
-      index += 1;
-      continue;
-    }
-
-    if (line.startsWith("## ")) {
-      blocks.push(createElement("h3", { key: index }, line.slice(3)));
-      index += 1;
-      continue;
-    }
-
-    if (line.startsWith("# ")) {
-      blocks.push(createElement("h2", { key: index }, line.slice(2)));
-      index += 1;
-      continue;
-    }
-
-    if (line.startsWith("- ")) {
-      const items = [];
-      while (index < lines.length && lines[index].startsWith("- ")) {
-        items.push(lines[index].slice(2));
+    if (
+      line.trimStart().startsWith("|") &&
+      index + 1 < lines.length &&
+      lines[index + 1].includes("-") &&
+      markdownTableDividerPattern.test(lines[index + 1])
+    ) {
+      const headerCells = parseMarkdownTableRow(line);
+      const alignments = parseMarkdownTableAlignments(lines[index + 1]);
+      const bodyRows = [];
+      index += 2;
+      while (index < lines.length && lines[index].trimStart().startsWith("|")) {
+        bodyRows.push(parseMarkdownTableRow(lines[index]));
         index += 1;
       }
       blocks.push(
         createElement(
-          "ul",
-          { key: index },
-          items.map((item, itemIndex) =>
+          "div",
+          {
+            className:
+              "prototype-inspector__table-wrap prototype-inspector__markdown-table-wrap",
+            key,
+          },
+          createElement(
+            "table",
+            {
+              className:
+                "prototype-inspector__table prototype-inspector__markdown-table",
+            },
             createElement(
-              "li",
-              { key: itemIndex },
-              createElement(MarkdownInline, { value: item }),
+              "thead",
+              null,
+              createElement(
+                "tr",
+                null,
+                headerCells.map((cell, cellIndex) =>
+                  createElement(
+                    "th",
+                    {
+                      key: `${key}-th-${cellIndex}`,
+                      scope: "col",
+                      style: alignments[cellIndex]
+                        ? { textAlign: alignments[cellIndex] }
+                        : undefined,
+                    },
+                    renderInlineMarkdown(cell, `${key}-th-${cellIndex}`),
+                  ),
+                ),
+              ),
+            ),
+            createElement(
+              "tbody",
+              null,
+              bodyRows.map((row, rowIndex) =>
+                createElement(
+                  "tr",
+                  { key: `${key}-tr-${rowIndex}` },
+                  row.map((cell, cellIndex) =>
+                    createElement(
+                      "td",
+                      {
+                        key: `${key}-td-${rowIndex}-${cellIndex}`,
+                        style: alignments[cellIndex]
+                          ? { textAlign: alignments[cellIndex] }
+                          : undefined,
+                      },
+                      renderInlineMarkdown(cell, `${key}-td-${rowIndex}-${cellIndex}`),
+                    ),
+                  ),
+                ),
+              ),
             ),
           ),
         ),
@@ -976,25 +1230,49 @@ function MarkdownDocument({ value }) {
       continue;
     }
 
-    if (/^\d+\.\s/.test(line)) {
-      const items = [];
-      while (index < lines.length && /^\d+\.\s/.test(lines[index])) {
-        items.push(lines[index].replace(/^\d+\.\s/, ""));
+    const headingMatch = markdownHeadingPattern.exec(line);
+    if (headingMatch) {
+      const headingTag = ["h2", "h3", "h4", "h5", "h6", "h6"][
+        headingMatch[1].length - 1
+      ];
+      blocks.push(
+        createElement(
+          headingTag,
+          { key },
+          renderInlineMarkdown(headingMatch[2], key),
+        ),
+      );
+      index += 1;
+      continue;
+    }
+
+    if (markdownHorizontalRulePattern.test(line)) {
+      blocks.push(createElement("hr", { key }));
+      index += 1;
+      continue;
+    }
+
+    if (line.trimStart().startsWith(">")) {
+      const quoteLines = [];
+      while (index < lines.length && lines[index].trimStart().startsWith(">")) {
+        quoteLines.push(lines[index].replace(/^\s*>\s?/, ""));
         index += 1;
       }
       blocks.push(
         createElement(
-          "ol",
-          { key: index },
-          items.map((item, itemIndex) =>
-            createElement(
-              "li",
-              { key: itemIndex },
-              createElement(MarkdownInline, { value: item }),
-            ),
-          ),
+          "blockquote",
+          { key },
+          parseMarkdownBlocks(quoteLines, `${key}-quote`),
         ),
       );
+      continue;
+    }
+
+    const listMatch = markdownListItemPattern.exec(line);
+    if (listMatch) {
+      const list = parseMarkdownList(lines, index, listMatch[1].length, key);
+      blocks.push(list.element);
+      index = list.nextIndex;
       continue;
     }
 
@@ -1003,9 +1281,11 @@ function MarkdownDocument({ value }) {
     while (
       index < lines.length &&
       lines[index].trim() &&
-      !lines[index].startsWith("#") &&
-      !lines[index].startsWith("- ") &&
-      !/^\d+\.\s/.test(lines[index]) &&
+      !markdownHeadingPattern.test(lines[index]) &&
+      !markdownListItemPattern.test(lines[index]) &&
+      !markdownHorizontalRulePattern.test(lines[index]) &&
+      !lines[index].trimStart().startsWith("|") &&
+      !lines[index].trimStart().startsWith(">") &&
       !lines[index].startsWith("```")
     ) {
       paragraphLines.push(lines[index]);
@@ -1014,12 +1294,17 @@ function MarkdownDocument({ value }) {
     blocks.push(
       createElement(
         "p",
-        { key: index },
-        createElement(MarkdownInline, { value: paragraphLines.join(" ") }),
+        { key },
+        renderInlineMarkdown(paragraphLines.join(" "), key),
       ),
     );
   }
 
+  return blocks;
+}
+
+function MarkdownDocument({ value }) {
+  const blocks = parseMarkdownBlocks(String(value).split(/\r?\n/), "block");
   return createElement("article", { className: "prototype-inspector__markdown" }, blocks);
 }
 

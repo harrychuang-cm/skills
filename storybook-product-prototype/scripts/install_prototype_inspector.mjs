@@ -21,6 +21,7 @@ function parseArgs(argv) {
   const args = {
     force: false,
     projectRoot: process.cwd(),
+    tokenPrefix: undefined,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -34,10 +35,40 @@ function parseArgs(argv) {
       index += 1;
       continue;
     }
+    if (arg === "--token-prefix") {
+      args.tokenPrefix = argv[index + 1];
+      index += 1;
+      continue;
+    }
     throw new Error(`Unknown argument: ${arg}`);
   }
 
+  if (args.tokenPrefix !== undefined && !/^[a-z][a-z0-9-]*$/.test(args.tokenPrefix)) {
+    throw new Error(
+      `Invalid --token-prefix "${args.tokenPrefix}". Use a lowercase token prefix such as "md" or "acme".`,
+    );
+  }
+
+  if (args.tokenPrefix === "pi") {
+    throw new Error(
+      '--token-prefix "pi" would make the inspector token layer self-referential ' +
+        "(every --pi-* token reading itself). Use the project's own token prefix.",
+    );
+  }
+
   return args;
+}
+
+function bridgeTokenPrefix(targetAddonDir, tokenPrefix) {
+  const cssPath = resolve(targetAddonDir, "prototype-inspector.css");
+  const source = readFileSync(cssPath, "utf8");
+  // All design-token references live in the --pi-* token layer as
+  // var(--sbt-<name>, <fallback>). Re-pointing the sbt prefix bridges the
+  // inspector onto the project's token system while keeping the fallbacks.
+  const next = source.replace(/var\(--sbt-/g, `var(--${tokenPrefix}-`);
+  if (next !== source) {
+    writeFileSync(cssPath, next);
+  }
 }
 
 function findStorybookMain(storybookDir) {
@@ -125,6 +156,10 @@ function main() {
   mkdirSync(storybookDir, { recursive: true });
   cpSync(addonAssetDir, targetAddonDir, { force: args.force, recursive: true });
 
+  if (args.tokenPrefix && args.tokenPrefix !== "sbt") {
+    bridgeTokenPrefix(targetAddonDir, args.tokenPrefix);
+  }
+
   const source = readFileSync(mainPath, "utf8");
   const nextSource = insertAddonEntry(source, getAddonEntry(mainPath));
   if (nextSource !== source) {
@@ -134,6 +169,11 @@ function main() {
   const flowLayout = installFlowLayoutHelper(projectRoot, args.force);
 
   console.log(`Installed Prototype Inspector addon into ${targetAddonDir}`);
+  if (args.tokenPrefix && args.tokenPrefix !== "sbt") {
+    console.log(
+      `Bridged inspector design tokens onto the --${args.tokenPrefix}-* prefix (built-in fallbacks kept).`,
+    );
+  }
   console.log(
     `${flowLayout.action === "installed" ? "Installed" : "Reused"} flow layout helper: ${flowLayout.targetPath}`,
   );

@@ -1,5 +1,13 @@
 # Production Handoff
 
+## Review Status
+
+- Status: `pending` [Set to `confirmed` only after the team reviews the Storybook demo and confirms the product direction.]
+- Confirmed by: [Reviewer or team, once confirmed.]
+- Confirmed on: [Date, once confirmed.]
+- Reviewed demo: [Storybook story id or UI Flow the team reviewed.]
+- Confirmed scope: [What the confirmation covers or explicitly excludes.]
+
 ## Target Surfaces
 
 - Web: [Route, page, embedded widget, or `Not in scope`.]
@@ -68,6 +76,15 @@
 - `data-prototype-root` and `data-prototype-route-preview` are measurement hooks only.
 - `StaticFlow` is for design/review export, not product runtime.
 - Local fixtures are test data until replaced by the receiving implementation.
+
+## Design System Continuity
+
+This section records discovery results for the receiving implementation; it does not restate governance rules.
+
+- Token namespace: [Prefix and defining file paths from the UI_SPEC Token Binding record, or `none`.]
+- Component Map: [Echo the UI_SPEC Component Map, or link to it.]
+- Promotion candidates: [One line per Component Gaps candidate: name — `promoted` with its hub shared-component path and story id, or `local` with its prototype file path and the routes/regions that use it — or `none`.]
+- Receiving pass: run `design-system-governance` discovery and gates against this record before implementing; when no token system existed, follow the `frontend-product-implementation` skill's token-bootstrap reference.
 
 ## Open Product Decisions
 

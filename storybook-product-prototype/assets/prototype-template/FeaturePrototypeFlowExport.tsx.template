@@ -126,8 +126,10 @@ function getItems(layoutPositions: FlowExportLayoutPositions): FlowItem[] {
     }),
     ...__FEATURE_CAMEL__FlowNodes.map((node, index) => {
       const size = getFlowNodeSize(node);
+      // Widen node.id so an empty FlowNodeIds tuple (id type `never`) does not
+      // collapse the position chain to `never` before nodes are added.
       const position =
-        layoutPositions[node.id] ??
+        layoutPositions[node.id as __FEATURE_PASCAL__FlowTargetId] ??
         node.flowPosition ??
         getFallbackPosition(index + __FEATURE_CAMEL__Routes.length);
 
@@ -268,6 +270,7 @@ function createPolylinePoints(
   transition: __FEATURE_PASCAL__Transition,
   source: FlowItem,
   target: FlowItem,
+  laneOffset: number,
 ) {
   const start = getTransitionSourcePoint(transition, source, target);
   const end = getBoundaryPoint(target, source);
@@ -277,27 +280,41 @@ function createPolylinePoints(
     horizontal
       ? [
           start,
-          { x: start.x + (end.x - start.x) / 2, y: start.y },
-          { x: start.x + (end.x - start.x) / 2, y: end.y },
+          { x: start.x + (end.x - start.x) / 2 + laneOffset, y: start.y },
+          { x: start.x + (end.x - start.x) / 2 + laneOffset, y: end.y },
           end,
         ]
       : [
           start,
-          { x: start.x, y: start.y + (end.y - start.y) / 2 },
-          { x: end.x, y: start.y + (end.y - start.y) / 2 },
+          { x: start.x, y: start.y + (end.y - start.y) / 2 + laneOffset },
+          { x: end.x, y: start.y + (end.y - start.y) / 2 + laneOffset },
           end,
         ],
   );
 }
 
+// Distance between parallel edges that connect the same pair of items, so
+// multiple transitions (including reverse directions) stay readable.
+const flowEdgeLaneGap = 28;
+
+function getFlowEdgeLaneKey(transition: __FEATURE_PASCAL__Transition) {
+  return [transition.from, transition.to].sort().join("~");
+}
+
 function getFlowEdges(
   itemMap: Map<__FEATURE_PASCAL__FlowTargetId, FlowItem>,
 ): FlowEdge[] {
-  return __FEATURE_CAMEL__Transitions.flatMap((transition, index) => {
-    if (transition.flowLine !== "key") {
-      return [];
-    }
+  const keyTransitions = __FEATURE_CAMEL__Transitions.filter(
+    (transition) => transition.flowLine === "key",
+  );
+  const laneCounts = new Map<string, number>();
+  for (const transition of keyTransitions) {
+    const laneKey = getFlowEdgeLaneKey(transition);
+    laneCounts.set(laneKey, (laneCounts.get(laneKey) ?? 0) + 1);
+  }
+  const laneSeen = new Map<string, number>();
 
+  return keyTransitions.flatMap((transition, index) => {
     const source = itemMap.get(transition.from);
     const target = itemMap.get(transition.to);
 
@@ -305,9 +322,20 @@ function getFlowEdges(
       return [];
     }
 
-    const pointList = createPolylinePoints(transition, source, target);
-    const firstPoint = pointList[0] ?? { x: 0, y: 0 };
-    const lastPoint = pointList[pointList.length - 1] ?? firstPoint;
+    const laneKey = getFlowEdgeLaneKey(transition);
+    const laneCount = laneCounts.get(laneKey) ?? 1;
+    const laneIndex = laneSeen.get(laneKey) ?? 0;
+    laneSeen.set(laneKey, laneIndex + 1);
+    const laneOffset = (laneIndex - (laneCount - 1) / 2) * flowEdgeLaneGap;
+
+    const pointList = createPolylinePoints(transition, source, target, laneOffset);
+    // Anchor the label to the middle segment so it sits on the drawn line
+    // even when the lane offset shifts the path.
+    const midStart = pointList[Math.floor((pointList.length - 1) / 2)] ?? {
+      x: 0,
+      y: 0,
+    };
+    const midEnd = pointList[Math.ceil((pointList.length - 1) / 2)] ?? midStart;
 
     return [
       {
@@ -317,8 +345,8 @@ function getFlowEdges(
         id: `${transition.from}-${transition.to}-${index}`,
         kind: transition.kind,
         label: transition.label,
-        labelX: firstPoint.x + (lastPoint.x - firstPoint.x) / 2,
-        labelY: firstPoint.y + (lastPoint.y - firstPoint.y) / 2,
+        labelX: midStart.x + (midEnd.x - midStart.x) / 2,
+        labelY: midStart.y + (midEnd.y - midStart.y) / 2,
         points: getRoundedPointString(pointList),
         to: transition.to,
         trigger: transition.trigger,
