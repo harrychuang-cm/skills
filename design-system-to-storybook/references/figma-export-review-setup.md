@@ -94,7 +94,7 @@ Common causes:
 - `.storybook/preview.*` does not import `@harrychuang/storybook-addon-figma-export/styles.css`; this stylesheet includes both exporter and review overlay styles.
 - Storybook toolbar global `figmaExport` is still `off`; the review overlay renders only after the toolbar is toggled on.
 - `figmaExportOptions.storyTitlePrefix` excludes the current story title. When this happens with the toolbar on, the preview shows a dismissible "Figma export" notice naming the configured prefixes. Check first that the filter covers the story's top-level namespace: the correct level is `Components/`, not `Components/Examples/`. Use `false` to include all stories, or include every top-level namespace such as `Components/`, `Pages/`, and `Foundations/`.
-- The current entry is a Docs page. The export overlay mounts in Story view only; with the toolbar on, the preview shows a notice saying so.
+- The current entry is a Docs (autodocs) page. Since addon 0.9.1 the addon is intentionally absent there: the toolbar toggle, export overlay, and review panel mount in Story view only, with no notice on docs pages. Open the entry as a story.
 - `.storybook/main.*` does not include `"@harrychuang/storybook-addon-figma-export"` in `addons`, so the toolbar control is missing.
 - `.storybook/main.*` does not mount `createFigmaReviewStatusPlugin`, so the overlay may show a save/load error after it renders.
 

@@ -701,24 +701,21 @@ function unmountOverlay(): void {
   overlayState = null;
 }
 
-// When the toolbar is on but the export tools cannot mount, a silent unmount
+// When the toolbar is on but the current story is excluded, a silent unmount
 // looks like a broken addon. The notice explains why the tools are hidden for
 // the current story. It is dismissible per story+reason and never blocks the
 // story content (small fixed panel in the same corner as the exporter).
-type OverlayNoticeReason = "excluded-story" | "not-story-view";
+// Docs (autodocs) pages are the exception: the toolbar toggle is hidden there,
+// so no addon UI — overlay or notice — mounts outside Story view.
+type OverlayNoticeReason = "excluded-story";
 
 let noticeElement: HTMLElement | null = null;
 let mountedNoticeKey: string | null = null;
 let dismissedNoticeKey: string | null = null;
 
 function getNoticeMessage(
-  reason: OverlayNoticeReason,
   options: ResolvedFigmaExportAddonOptions,
 ): string {
-  if (reason === "not-story-view") {
-    return "Figma export overlay is available in Story view only. Open this entry as a story to export it.";
-  }
-
   const prefixes =
     options.storyTitlePrefix === false ? [] : options.storyTitlePrefix;
   const prefixList = prefixes.length ? ` (${prefixes.join(", ")})` : "";
@@ -769,7 +766,7 @@ function syncFigmaExportNotice(
   title.textContent = "Figma export";
   const message = document.createElement("p");
   message.className = "sbfx-exporter-notice__message";
-  message.textContent = getNoticeMessage(reason, options);
+  message.textContent = getNoticeMessage(options);
   body.append(title, message);
 
   const dismiss = document.createElement("button");
@@ -810,13 +807,17 @@ export function syncFigmaExportOverlay(
     return;
   }
 
-  if (!isStoryView || !includedStory) {
+  // Docs (autodocs) pages get no addon UI at all: the toolbar toggle is
+  // hidden there, so a notice would point at a control the user cannot see.
+  if (!isStoryView) {
     unmountOverlay();
-    syncFigmaExportNotice(
-      context,
-      resolvedOptions,
-      !isStoryView ? "not-story-view" : "excluded-story",
-    );
+    unmountNotice();
+    return;
+  }
+
+  if (!includedStory) {
+    unmountOverlay();
+    syncFigmaExportNotice(context, resolvedOptions, "excluded-story");
     return;
   }
 

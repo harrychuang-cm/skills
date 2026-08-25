@@ -4743,7 +4743,7 @@ void (async function importStorybookStory(payload) {
 
 // src/version.ts
 function getAddonVersion() {
-  return true ? "0.9.0" : "dev";
+  return true ? "0.9.1" : "dev";
 }
 
 // src/workspace.ts
@@ -5318,10 +5318,7 @@ function unmountOverlay() {
 var noticeElement = null;
 var mountedNoticeKey = null;
 var dismissedNoticeKey = null;
-function getNoticeMessage(reason, options) {
-  if (reason === "not-story-view") {
-    return "Figma export overlay is available in Story view only. Open this entry as a story to export it.";
-  }
+function getNoticeMessage(options) {
   const prefixes = options.storyTitlePrefix === false ? [] : options.storyTitlePrefix;
   const prefixList = prefixes.length ? ` (${prefixes.join(", ")})` : "";
   return `This story is excluded by storyTitlePrefix${prefixList}. Add this story's top-level namespace to storyTitlePrefix, or set it to false to include all stories.`;
@@ -5359,7 +5356,7 @@ function syncFigmaExportNotice(context, options, reason) {
   title.textContent = "Figma export";
   const message = document.createElement("p");
   message.className = "sbfx-exporter-notice__message";
-  message.textContent = getNoticeMessage(reason, options);
+  message.textContent = getNoticeMessage(options);
   body.append(title, message);
   const dismiss = document.createElement("button");
   dismiss.type = "button";
@@ -5388,13 +5385,14 @@ function syncFigmaExportOverlay(context, options) {
     dismissedNoticeKey = null;
     return;
   }
-  if (!isStoryView || !includedStory) {
+  if (!isStoryView) {
     unmountOverlay();
-    syncFigmaExportNotice(
-      context,
-      resolvedOptions,
-      !isStoryView ? "not-story-view" : "excluded-story"
-    );
+    unmountNotice();
+    return;
+  }
+  if (!includedStory) {
+    unmountOverlay();
+    syncFigmaExportNotice(context, resolvedOptions, "excluded-story");
     return;
   }
   unmountNotice();
@@ -7111,7 +7109,7 @@ function FigmaExportReview({
   const autoExportStoryRef = useRef(void 0);
   const entryRef = useRef(entry);
   const saveQueueRef = useRef(Promise.resolve());
-  const shouldShowPanel = enabled && Boolean(storyId);
+  const shouldShowPanel = enabled && Boolean(storyId) && viewMode === "story";
   useEffect(() => {
     if (!shouldShowPanel) {
       setWorkspaceSlot(null);
@@ -7410,7 +7408,7 @@ function FigmaExportReview({
       ) : null,
       errorMessage ? createElement("p", { className: "sbfx-review__error" }, errorMessage) : null
     ), workspaceSlot) : null,
-    shouldShowPanel && viewMode === "story" && typeof document !== "undefined" ? createPortal(
+    shouldShowPanel && typeof document !== "undefined" ? createPortal(
       createElement(VisualCommentsSection, {
         componentTitle,
         enabled,

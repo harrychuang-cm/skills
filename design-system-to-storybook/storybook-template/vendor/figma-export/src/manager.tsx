@@ -45,6 +45,9 @@ export function registerFigmaExportTool(options: FigmaExportToolOptions = {}) {
 
   addons.register(addonId, () => {
     addons.add(toolId, {
+      // The exporter only works in Story view; hide the toggle on docs
+      // (autodocs) pages instead of offering a control that cannot export.
+      match: ({ viewMode }) => viewMode === "story",
       render: () => createElement(FigmaExportToggle),
       title: "Figma export",
       type: types.TOOL,

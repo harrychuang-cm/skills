@@ -251,19 +251,11 @@
       check("overlay removed when global is off", overlayElement() === null);
       check("no notice when global is off", noticeElement() === null);
 
-      // Docs view mode keeps the overlay unmounted but explains why.
+      // Docs (autodocs) view mode mounts no addon UI at all: the toolbar
+      // toggle is hidden there, so neither the overlay nor a notice appears.
       decorator(() => sentinel, { ...baseContext, viewMode: "docs" });
       check("overlay absent in docs view mode", overlayElement() === null);
-      const docsNotice = noticeElement();
-      check("docs view shows story-view-only notice", Boolean(docsNotice));
-      check(
-        "docs notice explains story view requirement",
-        (docsNotice?.textContent || "").includes("Story view"),
-      );
-      docsNotice?.querySelector(".sbfx-exporter-notice__dismiss")?.click();
-      check("notice removed after dismiss", noticeElement() === null);
-      decorator(() => sentinel, { ...baseContext, viewMode: "docs" });
-      check("dismissed notice stays hidden on re-render", noticeElement() === null);
+      check("no notice in docs view mode", noticeElement() === null);
 
       // Excluded story: overlay stays unmounted, notice names storyTitlePrefix.
       const prefixedDecorator = window.FigmaOverlayFixture.createFigmaExportDecorator({
@@ -288,6 +280,10 @@
         "excluded notice lists configured prefixes",
         (excludedNotice?.textContent || "").includes("Components/"),
       );
+      excludedNotice?.querySelector(".sbfx-exporter-notice__dismiss")?.click();
+      check("notice removed after dismiss", noticeElement() === null);
+      prefixedDecorator(() => sentinel, excludedContext);
+      check("dismissed notice stays hidden on re-render", noticeElement() === null);
 
       // A story matching the prefix mounts the overlay and clears the notice.
       prefixedDecorator(() => sentinel, baseContext);

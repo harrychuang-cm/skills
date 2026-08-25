@@ -1719,7 +1719,9 @@ export function FigmaExportReview({
   const autoExportStoryRef = useRef<string | undefined>(undefined);
   const entryRef = useRef(entry);
   const saveQueueRef = useRef(Promise.resolve());
-  const shouldShowPanel = enabled && Boolean(storyId);
+  // Docs (autodocs) pages get no review UI: the manager toolbar toggle is
+  // hidden outside Story view, so the panel must not mount there either.
+  const shouldShowPanel = enabled && Boolean(storyId) && viewMode === "story";
 
   useEffect(() => {
     if (!shouldShowPanel) {
@@ -2067,7 +2069,7 @@ export function FigmaExportReview({
             : null,
         ), workspaceSlot)
       : null,
-    shouldShowPanel && viewMode === "story" && typeof document !== "undefined"
+    shouldShowPanel && typeof document !== "undefined"
       ? createPortal(
           h(VisualCommentsSection, {
             componentTitle,

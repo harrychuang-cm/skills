@@ -1,6 +1,6 @@
 {
   "name": "@harrychuang/storybook-addon-figma-export",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "description": "Export Storybook stories to Figma import payloads with configurable CSS token layers",
   "type": "module",
   "license": "MIT",

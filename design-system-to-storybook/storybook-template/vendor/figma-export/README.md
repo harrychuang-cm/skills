@@ -356,9 +356,8 @@ Projects do not need all three default layers to export. The detector chooses th
 
 ## Troubleshooting
 
-- **Toolbar shows "Figma export on" but no export tools appear.** The preview shows a small dismissible "Figma export" notice explaining why. The two causes:
-  - The current story is excluded by `storyTitlePrefix`. Check that the filter covers the story title's top-level namespace: use `Components/`, not a deeper path like `Components/Examples/` (prefixes are `startsWith` matches, so a deep prefix excludes `Components/Actions/...` and every other sibling). Set `storyTitlePrefix: false` to include all stories.
-  - You are in Docs view. The export overlay mounts in Story view only; open the entry as a story.
+- **Toolbar shows "Figma export on" but no export tools appear.** The preview shows a small dismissible "Figma export" notice explaining why: the current story is excluded by `storyTitlePrefix`. Check that the filter covers the story title's top-level namespace: use `Components/`, not a deeper path like `Components/Examples/` (prefixes are `startsWith` matches, so a deep prefix excludes `Components/Actions/...` and every other sibling). Set `storyTitlePrefix: false` to include all stories.
+- **No toolbar toggle on a Docs (autodocs) page.** Intentional: the addon works in Story view only, so the toolbar toggle, export overlay, and review panel all stay hidden on docs pages. Open the entry as a story to export it.
 - **No notice and no tools.** Confirm the preview imports `@harrychuang/storybook-addon-figma-export/styles.css` and that the decorator (`createFigmaExportDecorator` or `createFigmaExportReviewDecorator`) is registered.
 
 ## API exports
