@@ -1514,21 +1514,47 @@ function getPrototypeFlowExportStoryUrl(prototype) {
   return url.toString();
 }
 
+function openPrototypeExternalUrl(url) {
+  try {
+    const openedWindow = window.open(url, "_blank");
+
+    if (openedWindow) {
+      try {
+        openedWindow.opener = null;
+      } catch (error) {
+        // Some browsers hand back a restricted proxy; the tab is open either way.
+      }
+
+      return;
+    }
+  } catch (error) {
+    // Fall through to the anchor fallback below.
+  }
+
+  // Popup blocked (or the browser returned null despite opening): retry through
+  // a same-document anchor click, which browsers allow more readily under a
+  // user gesture. NEVER navigate the hosting page away.
+  try {
+    const anchor = document.createElement("a");
+
+    anchor.href = url;
+    anchor.rel = "noopener noreferrer";
+    anchor.target = "_blank";
+    document.body.append(anchor);
+    anchor.click();
+    anchor.remove();
+  } catch (error) {
+    // Opening another story is best-effort; the current page must stay put.
+  }
+}
+
 function openPrototypeFlowExportStory(prototype) {
   const url = getPrototypeFlowExportStoryUrl(prototype);
   if (!url) {
     return;
   }
 
-  const openedWindow = window.open(url, "_blank");
-
-  if (openedWindow) {
-    openedWindow.opener = null;
-    return;
-  }
-
-  const targetWindow = window.top && window.top !== window ? window.top : window;
-  targetWindow.location.assign(url);
+  openPrototypeExternalUrl(url);
 }
 
 function getPrototypeComponentStoryId(component) {
@@ -1601,15 +1627,7 @@ function openPrototypeStorybookPath(path) {
     return;
   }
 
-  const openedWindow = window.open(url, "_blank");
-
-  if (openedWindow) {
-    openedWindow.opener = null;
-    return;
-  }
-
-  const targetWindow = window.top && window.top !== window ? window.top : window;
-  targetWindow.location.assign(url);
+  openPrototypeExternalUrl(url);
 }
 
 function openPrototypeComponentsMode() {
