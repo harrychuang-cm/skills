@@ -1515,25 +1515,10 @@ function getPrototypeFlowExportStoryUrl(prototype) {
 }
 
 function openPrototypeExternalUrl(url) {
-  try {
-    const openedWindow = window.open(url, "_blank");
-
-    if (openedWindow) {
-      try {
-        openedWindow.opener = null;
-      } catch (error) {
-        // Some browsers hand back a restricted proxy; the tab is open either way.
-      }
-
-      return;
-    }
-  } catch (error) {
-    // Fall through to the anchor fallback below.
-  }
-
-  // Popup blocked (or the browser returned null despite opening): retry through
-  // a same-document anchor click, which browsers allow more readily under a
-  // user gesture. NEVER navigate the hosting page away.
+  // Single code path: a synthetic anchor click under the user gesture. Pairing
+  // window.open with an anchor fallback double-opens the tab in browsers that
+  // open the window yet return null, and the return value cannot distinguish
+  // that from a blocked popup. NEVER navigate the hosting page away.
   try {
     const anchor = document.createElement("a");
 
