@@ -30,6 +30,7 @@ UI_DEP_HINT = re.compile(r"ui|design|component|token|theme|radix|chakra|mantine|
 STORY_GLOBS = ("*.stories.tsx", "*.stories.ts", "*.stories.jsx", "*.stories.js")
 CSS_FILE_CAP = 300
 STORY_FILE_CAP = 400
+STORY_ID_CAP = 8
 
 TITLE_PATTERN = re.compile(r"\btitle\s*:\s*['\"]([^'\"]+)['\"]")
 COMPONENT_PATTERN = re.compile(r"\bcomponent\s*:\s*([A-Za-z_][A-Za-z0-9_.]*)")
@@ -67,6 +68,12 @@ def token_prefix(name: str) -> str:
     return f"--{parts[0]}" if parts else name
 
 
+def to_storybook_id(value: str) -> str:
+    """Ported from scaffold_prototype.py so derived id bases match Storybook slugs."""
+    story_id = re.sub(r"[^a-z0-9]+", "-", value.strip().lower()).strip("-")
+    return story_id or "prototype"
+
+
 def scan_packages(root: Path) -> list[str]:
     lines: list[str] = []
     manifests = [root / "package.json"]
@@ -102,15 +109,33 @@ def scan_storybook_index(root: Path, index_path: Path | None) -> list[str]:
         except json.JSONDecodeError:
             continue
         entries = data.get("entries") or data.get("stories") or {}
-        by_title: dict[str, str] = {}
-        for entry in entries.values():
+        import_path_by_title: dict[str, str] = {}
+        story_ids_by_title: dict[str, list[str]] = defaultdict(list)
+        for entry_key, entry in entries.items():
             title = entry.get("title")
-            if title and title not in by_title:
-                by_title[title] = entry.get("importPath", "")
-        return [
-            f"- `{title}` — `{import_path}`" if import_path else f"- `{title}`"
-            for title, import_path in sorted(by_title.items())
-        ]
+            if not title:
+                continue
+            if title not in import_path_by_title:
+                import_path_by_title[title] = entry.get("importPath", "")
+            if entry.get("type") == "docs":
+                continue
+            story_id = str(entry.get("id") or entry_key)
+            if story_id not in story_ids_by_title[title]:
+                story_ids_by_title[title].append(story_id)
+        lines: list[str] = []
+        for title, import_path in sorted(import_path_by_title.items()):
+            line = f"- `{title}` — `{import_path}`" if import_path else f"- `{title}`"
+            story_ids = story_ids_by_title.get(title, [])
+            if story_ids:
+                shown = ", ".join(f"`{story_id}`" for story_id in story_ids[:STORY_ID_CAP])
+                more = (
+                    f" (+{len(story_ids) - STORY_ID_CAP} more)"
+                    if len(story_ids) > STORY_ID_CAP
+                    else ""
+                )
+                line += f" — stories: {shown}{more}"
+            lines.append(line)
+        return lines
     return []
 
 
@@ -127,6 +152,10 @@ def scan_story_files(root: Path) -> list[str]:
             details.append(f"component `{component_match.group(1)}`")
         if exports:
             details.append(f"stories: {', '.join(exports[:6])}")
+        if title_match:
+            details.append(
+                f"story id base: `{to_storybook_id(title_match.group(1))}` (derived)"
+            )
         label = title_match.group(1) if title_match else str(rel)
         suffix = f" — {'; '.join(details)}" if details else ""
         lines.append(f"- `{label}` (`{rel}`){suffix}")

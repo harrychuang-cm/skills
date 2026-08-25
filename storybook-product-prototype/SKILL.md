@@ -1,6 +1,6 @@
 ---
 name: storybook-product-prototype
-description: Create PRD-led Storybook product prototypes and frontend implementation handoff docs for web or app development, with deterministic fixtures, typed UI Flow route and transition metadata, API/data contracts, interactive prototype stories, template-compatible Static Flow export stories, and an optional Prototype Inspector runtime for Story/Docs/UI Flow/Data review. Use after design-system-to-storybook or independently when turning a product idea into PRD, UI Flow, Data Spec, Production Handoff, Acceptance Criteria, and a clickable Storybook prototype; when scaffolding a prototype folder; when preparing engineer or AI collaboration from design to frontend implementation; when documenting API/data contracts without real data wiring; when aligning UI Flow with the design-system-to-storybook storybook-template contract; when installing a Storybook UI Flow viewer; or when validating prototype and handoff docs across React Storybook projects.
+description: Create PRD-led Storybook product prototypes and frontend implementation handoff docs for web or app development, with deterministic fixtures, typed UI Flow route and transition metadata, API/data contracts, interactive prototype stories, template-compatible Static Flow export stories, and an optional Prototype Inspector runtime for Story/Docs/UI Flow/Components/Data review. Use after design-system-to-storybook or independently when turning a product idea into PRD, UI Flow, Data Spec, Production Handoff, Acceptance Criteria, and a clickable Storybook prototype; when scaffolding a prototype folder; when preparing engineer or AI collaboration from design to frontend implementation; when documenting API/data contracts without real data wiring; when aligning UI Flow with the design-system-to-storybook storybook-template contract; when installing a Storybook UI Flow viewer; or when validating prototype and handoff docs across React Storybook projects.
 ---
 
 # Storybook Product Prototype
@@ -57,6 +57,7 @@ Read `references/component-discovery.md`, then:
 
 - When the `design-system-governance` skill is available, run its discovery phase and honor its token and composition gates.
 - Work down the discovery tiers (design-system-to-storybook artifacts, Storybook index/stories, source exports), optionally via `scripts/inventory_components.py <repo-root>`.
+- Capture story ids and titles for discovered components when they are derivable (Story Id Resolution in `references/component-discovery.md`); step 6 reuses them as `meta.components` story links.
 - Always run the token scan and record the actual token prefix in use.
 - Record the results as the Component Map, Component Gaps, and Token Binding sections of `docs/UI_SPEC.md`.
 - Do not write `docs/UI_SPEC.md` content or prototype CSS before this completes.
@@ -118,6 +119,7 @@ Rules:
 - Add `data-prototype-route-preview="true"` on the route preview shell. Keep `data-prototype-root="true"` on the prototype root for older viewers.
 - Create `<FeaturePrototypeFlowExport>.tsx` and `<FeaturePrototypeFlowExport>.stories.tsx` with `StaticFlow`, reading layout from `../prototypeFlowLayout` and rendering route cards from the same flow metadata.
 - Add `figmaExport.flowStoryId` to the prototype meta object so export tools can locate the Static Flow story.
+- Author `meta.components.routes` from the UI_SPEC Component Map and Component Gaps: cover every route, mark each component `shared`, `local`, or `promoted` by its source section, and resolve each `storyId` through the resolution chain in `references/component-discovery.md` — never guess ids. Contract: `references/storybook-integration.md`.
 
 ### 7. Prepare Frontend Implementation Handoff
 
@@ -125,7 +127,7 @@ Create or update `docs/PRODUCTION_HANDOFF.md`.
 
 Rules:
 
-- Fill `Design System Continuity` with the token namespace record, the Component Map echo, and locally created promotion candidates.
+- Fill `Design System Continuity` with the token namespace record, the Component Map echo, the per-screen composition echo from `meta.components` (each route's components with origin and story id — format in `references/production-handoff.md`), and locally created promotion candidates.
 - State whether production is web, app, hybrid, or cross-platform.
 - Map prototype route ids to production pages, screens, navigation destinations, or shared components.
 - Separate Storybook-only behavior from reusable production behavior.
@@ -145,14 +147,14 @@ The Storybook project is the durable prototype and component hub; production tar
 1. Revisit `Component Gaps`: identify gap components the confirmed scope needs, especially ones that recur across routes or prototypes.
 2. Ask the user which candidates to promote into the hub's shared component library now. Promotion is an explicit decision, not an automatic step.
 3. Promote approved candidates with the `design-system-to-storybook` flow when that skill is available — hand each candidate in as an explicit component brief, since it has no extracted design-system spec; otherwise build the shared component to the same bar: its own file, typed props, token-bound styles, and its own stories.
-4. Update the prototype to import the promoted component, move its entry from `Component Gaps` to the `Component Map`, and re-run validation.
+4. Update the prototype to import the promoted component, move its entry from `Component Gaps` to the `Component Map`, flip its `meta.components` entry in the same motion (`origin` `local` → `promoted`, add the new `storyId`), and re-run validation.
 5. Record the outcome in `Design System Continuity`: `promoted` candidates with their shared-component path and story id; remaining `local` candidates with their prototype file path and consuming routes/regions.
 
 Skip promotion when the team has not confirmed the direction yet, when a gap component is a one-off, or when the user declines; unpromoted candidates remain valid handoff input as local markup.
 
 ### 9. Install The Runtime Viewer When Requested
 
-If the project needs the Storybook toolbar and Docs/UI Flow/Data runtime, run:
+If the project needs the Storybook toolbar and Docs/UI Flow/Components/Data runtime, run:
 
 ```sh
 node <skill-root>/scripts/install_prototype_inspector.mjs --project-root <repo-root>
@@ -166,10 +168,10 @@ The inspector styles itself through a `--pi-*` token layer that reads `--sbt-*` 
 
 Run the checks that fit the target repo:
 
-- `python3 <skill-root>/scripts/validate_prototype.py <prototype-folder>` — add `--strict-style` to turn validation warnings (component map, token discipline, CSS scope, doc coverage) into errors.
+- `python3 <skill-root>/scripts/validate_prototype.py <prototype-folder>` — add `--strict-style` to turn validation warnings (component map, token discipline, CSS scope, doc coverage, `meta.components` composition) into errors, and `--storybook-index <path>` to cross-check `meta.components` story ids against a built Storybook index.
 - Project typecheck, usually `npm run typecheck`
 - Storybook render or build, usually `npm run storybook` or `npm run storybook:build`
-- Manual Storybook review of Story, Docs, Data, and UI Flow if the project has a prototype inspector.
+- Manual Storybook review of Story, Docs, UI Flow, Components, and Data if the project has a prototype inspector; in the Components mode, confirm every route lists its composition and story links open the right stories.
 - The UX self-review pass from `references/visual-quality.md`: hierarchy, interaction states, contrast, and token binding checked against the rendered stories.
 - Manual `StaticFlow` story review when future Figma export or design review depends on a stable flow artifact.
 - Handoff review with `--handoff-ready` before using the docs as an engineering or AI implementation brief: it also cross-checks doc route/fixture references against `*Flow.ts` and `*Data.ts` and requires a `confirmed` Review Status. `--production-ready` is accepted only as a backward-compatible alias.
@@ -192,6 +194,7 @@ The scaffold creates a folder based on the feature name, adds `prototypeFlowLayo
 
 - The prototype is a clickable product flow, not a static screenshot recreation.
 - Every screen region maps to a discovered design-system component in the UI_SPEC Component Map, or has an explicit Component Gaps entry.
+- `meta.components` records every route's composition with origins (`shared` / `local` / `promoted`) that match the Component Map and Component Gaps, and story ids resolved, not guessed.
 - Prototype and Static Flow CSS consume `--proto-*` aliases bound to recorded project tokens; interactive controls ship hover/focus-visible/active/disabled states; in-scope routes render loading/empty/error.
 - PRD, UI Spec, Flow Spec, Data Spec, Acceptance Criteria, and Storybook metadata stay consistent.
 - Production Handoff maps the prototype to web/app frontend implementation work without treating Storybook-only code, fixtures, or data sources as production integration.

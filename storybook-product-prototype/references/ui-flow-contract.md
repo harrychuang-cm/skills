@@ -9,7 +9,7 @@ Each route should define:
 - `id`: stable route id used by React state and flow diagrams.
 - `title`: review label.
 - `navigationId`: shell navigation context when applicable.
-- `component`: primary component or composed surface.
+- `component`: free-form display summary of the primary component or composed surface. Display text only — the structured per-route composition lives in `meta.components` (contract in `references/storybook-integration.md`); do not duplicate it here.
 - `description`: behavior the route proves.
 - `flowGroup`: optional grouping label.
 - `flowPosition`: optional stable `{ x, y }` coordinate.

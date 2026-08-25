@@ -83,6 +83,8 @@ This section records discovery results for the receiving implementation; it does
 
 - Token namespace: [Prefix and defining file paths from the UI_SPEC Token Binding record, or `none`.]
 - Component Map: [Echo the UI_SPEC Component Map, or link to it.]
+- Per-screen composition (echo of `meta.components`):
+  - Route `__ENTRY_ROUTE_ID__`: [One entry per component — name, origin (`shared`, `local`, or `promoted`), import path, and story id in backticks when one exists, e.g. ExampleCard — `shared` — `src/components/example-card` — story `components-example-card--default`. One indented sub-bullet per route.]
 - Promotion candidates: [One line per Component Gaps candidate: name — `promoted` with its hub shared-component path and story id, or `local` with its prototype file path and the routes/regions that use it — or `none`.]
 - Receiving pass: run `design-system-governance` discovery and gates against this record before implementing; when no token system existed, follow the `frontend-product-implementation` skill's token-bootstrap reference.
 

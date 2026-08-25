@@ -11,6 +11,7 @@ const prototypeInspectorModes = [
   { id: "story", label: "Story" },
   { id: "docs", label: "Docs" },
   { id: "flow", label: "UI Flow" },
+  { id: "components", label: "Components" },
   { id: "data", label: "Data" },
 ];
 

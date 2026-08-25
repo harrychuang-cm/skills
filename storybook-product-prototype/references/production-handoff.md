@@ -168,6 +168,7 @@ Record the discovery results so the receiving implementation inherits them inste
 
 - Token namespace record: the token prefix(es) in use and the file paths that define them, from the `UI_SPEC.md` Token Binding section, or `none` when the project has no token system.
 - Component Map echo: the per-route component mapping (or a link to `UI_SPEC.md`).
+- Per-screen composition echo: for each route, the components that compose it, each with its origin (`shared`, `local`, or `promoted`) and its story id in backticks when one exists — mirroring `meta.components` (contract in `references/storybook-integration.md`). Format: one lead-in bullet with one indented sub-bullet per route (for example `` Route `entry-route`: ... ``); never column-0 `` - `kebab-id`: `` bullets, and leave no bracketed placeholder spans in the final handoff.
 - Promotion candidates: locally created components from Component Gaps. Record each candidate's status: `promoted` — the team-confirmed component was promoted into the hub's shared component library (list its shared-component path and story id) — or `local` — it stays inside the prototype (list its prototype file path and the routes/regions that use it). Production can port `promoted` components from the hub directly and may promote remaining `local` candidates into its own design system.
 - Receiving pass: the `frontend-product-implementation` pass should run `design-system-governance` discovery and gates against this record; when no token system existed, follow its token-bootstrap reference.
 

@@ -8,6 +8,9 @@ import {
   useState,
 } from "react";
 
+import { UPDATE_GLOBALS } from "storybook/internal/core-events";
+import { addons } from "storybook/preview-api";
+
 import {
   createPrototypeFlowLayoutPayload,
   getPrototypeFlowLayoutStorageKey,
@@ -22,6 +25,7 @@ const prototypeInspectorModes = [
   { id: "story", label: "Story" },
   { id: "docs", label: "Docs" },
   { id: "flow", label: "UI Flow" },
+  { id: "components", label: "Components" },
   { id: "data", label: "Data" },
 ];
 
@@ -42,6 +46,12 @@ const docDefinitions = [
   },
   { docKey: "acceptance", id: "acceptance", label: "Acceptance" },
 ];
+
+const prototypeComponentOriginLabels = {
+  local: "new",
+  promoted: "promoted",
+  shared: "shared",
+};
 
 const defaultPrototypeModeGlobalName = "prototypeMode";
 const defaultPrototypeParameterName = "prototype";
@@ -143,6 +153,18 @@ function normalizeRoutes(flow) {
 function normalizeFlowNodes(flow) {
   return Array.isArray(flow?.nodes)
     ? flow.nodes.filter((node) => isRecord(node) && typeof node.id === "string")
+    : [];
+}
+
+function normalizeComponentRoutes(components) {
+  return isRecord(components) && Array.isArray(components.routes)
+    ? components.routes.filter(isRecord)
+    : [];
+}
+
+function normalizeRouteComponents(componentRoute) {
+  return Array.isArray(componentRoute?.components)
+    ? componentRoute.components.filter(isRecord)
     : [];
 }
 
@@ -1491,6 +1513,74 @@ function openPrototypeFlowExportStory(prototype) {
   targetWindow.location.assign(url);
 }
 
+function getPrototypeComponentStoryId(component) {
+  return typeof component.storyId === "string" && component.storyId.trim()
+    ? component.storyId.trim()
+    : "";
+}
+
+function getPrototypeComponentDocsPath(storyId) {
+  const separatorIndex = storyId.lastIndexOf("--");
+
+  return separatorIndex > 0
+    ? `/docs/${storyId.slice(0, separatorIndex)}--docs`
+    : "";
+}
+
+function getPrototypeStorybookPathUrl(path) {
+  if (typeof window === "undefined" || !path) {
+    return "";
+  }
+
+  const url = new URL(window.location.href);
+
+  if (url.pathname.endsWith("/iframe.html")) {
+    url.pathname = url.pathname.replace(/\/iframe\.html$/, "/");
+  }
+
+  url.hash = "";
+  url.search = "";
+  url.searchParams.set("path", path);
+  url.searchParams.set(
+    "globals",
+    createStorybookGlobals({
+      [defaultPrototypeModeGlobalName]: "story",
+    }),
+  );
+
+  return url.toString();
+}
+
+function openPrototypeStorybookPath(path) {
+  const url = getPrototypeStorybookPathUrl(path);
+  if (!url) {
+    return;
+  }
+
+  const openedWindow = window.open(url, "_blank");
+
+  if (openedWindow) {
+    openedWindow.opener = null;
+    return;
+  }
+
+  const targetWindow = window.top && window.top !== window ? window.top : window;
+  targetWindow.location.assign(url);
+}
+
+function openPrototypeComponentsMode() {
+  try {
+    addons.getChannel().emit(UPDATE_GLOBALS, {
+      globals: { [defaultPrototypeModeGlobalName]: "components" },
+    });
+  } catch (error) {
+    console.warn(
+      "Unable to switch the Prototype Inspector to Components mode.",
+      error,
+    );
+  }
+}
+
 function getMeasuredFramePreviewSize(iframe) {
   const doc = iframe.contentDocument;
 
@@ -1594,6 +1684,7 @@ function PrototypeFlowNode({
 }
 
 function PrototypeRouteCard({
+  componentCount,
   height,
   isDragging,
   onPreviewSizeChange,
@@ -1688,6 +1779,23 @@ function PrototypeRouteCard({
         createElement("span", null, route.flowGroup ?? route.navigationId ?? "route"),
         createElement("h3", null, route.title ?? route.id),
       ),
+      componentCount > 0
+        ? createElement(
+            "button",
+            {
+              "aria-label": `Show ${componentCount} components for ${route.title ?? route.id}`,
+              className: "prototype-inspector__components-count",
+              onClick: (event) => {
+                event.stopPropagation();
+                openPrototypeComponentsMode();
+              },
+              onPointerDown: (event) => event.stopPropagation(),
+              title: "Open the Components mode",
+              type: "button",
+            },
+            `⧉ ${componentCount}`,
+          )
+        : null,
       createElement("code", null, route.id),
     ),
     createElement(
@@ -1713,6 +1821,29 @@ function PrototypeFlow({ prototype }) {
   const routes = useMemo(() => normalizeRoutes(flow), [flow]);
   const flowNodes = useMemo(() => normalizeFlowNodes(flow), [flow]);
   const transitions = useMemo(() => normalizeTransitions(flow), [flow]);
+  const routeComponentCounts = useMemo(() => {
+    const counts = new Map();
+    const seenRouteIds = new Set();
+
+    normalizeComponentRoutes(prototype.components).forEach((componentRoute) => {
+      if (
+        typeof componentRoute.route !== "string" ||
+        seenRouteIds.has(componentRoute.route)
+      ) {
+        return;
+      }
+
+      seenRouteIds.add(componentRoute.route);
+
+      const componentCount = normalizeRouteComponents(componentRoute).length;
+
+      if (componentCount > 0) {
+        counts.set(componentRoute.route, componentCount);
+      }
+    });
+
+    return counts;
+  }, [prototype.components]);
   const canvasNodeIds = useMemo(
     () => new Set([...routes.map((route) => route.id), ...flowNodes.map((node) => node.id)]),
     [flowNodes, routes],
@@ -2477,6 +2608,7 @@ function PrototypeFlow({ prototype }) {
 
             return createElement(PrototypeRouteCard, {
               key: route.id,
+              componentCount: routeComponentCounts.get(route.id) ?? 0,
               height,
               isDragging: dragState?.routeId === route.id,
               onPreviewSizeChange: handlePreviewSizeChange,
@@ -2907,6 +3039,221 @@ function PrototypeData({ prototype }) {
   );
 }
 
+function PrototypeComponentOriginBadge({ origin }) {
+  const originVariant =
+    typeof origin === "string" &&
+    Object.prototype.hasOwnProperty.call(prototypeComponentOriginLabels, origin)
+      ? origin
+      : "";
+  const label = originVariant
+    ? prototypeComponentOriginLabels[originVariant]
+    : typeof origin === "string" && origin.trim()
+      ? origin.trim()
+      : "unknown";
+  const className = originVariant
+    ? `prototype-inspector__components-origin prototype-inspector__components-origin--${originVariant}`
+    : "prototype-inspector__components-origin";
+
+  return createElement("span", { className }, label);
+}
+
+function PrototypeComponentStoryLinks({ component }) {
+  const storyId = getPrototypeComponentStoryId(component);
+  const storyTitle =
+    typeof component.storyTitle === "string" && component.storyTitle.trim()
+      ? component.storyTitle.trim()
+      : "";
+  const docsPath = storyId ? getPrototypeComponentDocsPath(storyId) : "";
+
+  if (!storyId && !storyTitle) {
+    return "-";
+  }
+
+  return createElement(
+    "div",
+    { className: "prototype-inspector__components-story" },
+    storyTitle
+      ? createElement(
+          "span",
+          { className: "prototype-inspector__components-story-title" },
+          storyTitle,
+        )
+      : null,
+    storyId
+      ? createElement(
+          "div",
+          { className: "prototype-inspector__components-links" },
+          createElement(
+            "button",
+            {
+              "aria-label": `Open the ${formatDataValue(component.name)} story`,
+              className: "prototype-inspector__components-link",
+              onClick: () => openPrototypeStorybookPath(`/story/${storyId}`),
+              title: `Open story ${storyId}`,
+              type: "button",
+            },
+            "Story",
+          ),
+          docsPath
+            ? createElement(
+                "button",
+                {
+                  "aria-label": `Open the ${formatDataValue(component.name)} docs`,
+                  className:
+                    "prototype-inspector__components-link prototype-inspector__components-link--secondary",
+                  onClick: () => openPrototypeStorybookPath(docsPath),
+                  title: `Open docs ${docsPath}`,
+                  type: "button",
+                },
+                "Docs",
+              )
+            : null,
+        )
+      : null,
+  );
+}
+
+function PrototypeComponentsRouteSection({ componentRoute, route }) {
+  const components = normalizeRouteComponents(componentRoute);
+
+  return createElement(
+    "section",
+    { className: "prototype-inspector__components-route" },
+    createElement(
+      "header",
+      { className: "prototype-inspector__components-route-header" },
+      createElement("h3", null, route.title ?? route.id ?? "Untitled route"),
+      createElement("code", null, route.id ?? "-"),
+    ),
+    components.length === 0
+      ? createElement(
+          "p",
+          { className: "prototype-inspector__components-route-empty" },
+          "No composition data for this route.",
+        )
+      : createElement(PrototypeDataTable, {
+          columns: [
+            {
+              key: "name",
+              label: "Component",
+              render: (component) =>
+                createElement(
+                  "span",
+                  { className: "prototype-inspector__components-name" },
+                  formatDataValue(component.name),
+                ),
+            },
+            {
+              key: "origin",
+              label: "Origin",
+              render: (component) =>
+                createElement(PrototypeComponentOriginBadge, {
+                  origin: component.origin,
+                }),
+            },
+            {
+              key: "storyId",
+              label: "Story",
+              render: (component) =>
+                createElement(PrototypeComponentStoryLinks, { component }),
+            },
+            {
+              key: "importPath",
+              label: "Import Path",
+              render: (component) =>
+                createElement(PrototypeDataCode, { value: component.importPath }),
+            },
+            { key: "note", label: "Note" },
+          ],
+          emptyMessage: "No composition data for this route.",
+          rows: components,
+        }),
+  );
+}
+
+function PrototypeComponents({ prototype }) {
+  const flowRoutes = normalizeRoutes(prototype.flow);
+  const componentRoutes = normalizeComponentRoutes(prototype.components);
+  const componentRouteMap = new Map();
+
+  componentRoutes.forEach((componentRoute) => {
+    if (
+      typeof componentRoute.route === "string" &&
+      !componentRouteMap.has(componentRoute.route)
+    ) {
+      componentRouteMap.set(componentRoute.route, componentRoute);
+    }
+  });
+
+  const sections =
+    flowRoutes.length > 0
+      ? flowRoutes.map((route) => ({
+          componentRoute: componentRouteMap.get(route.id),
+          route,
+        }))
+      : componentRoutes
+          .filter((componentRoute) => typeof componentRoute.route === "string")
+          .map((componentRoute) => ({
+            componentRoute,
+            route: { id: componentRoute.route, title: componentRoute.route },
+          }));
+
+  return createElement(
+    "div",
+    { className: "prototype-inspector prototype-inspector--components" },
+    createElement(PrototypeHeader, {
+      eyebrow: prototype.id,
+      title: "Prototype Components",
+      description:
+        "Per-screen component composition with shared, new, and promoted origins plus Storybook story links.",
+    }),
+    createElement(
+      "div",
+      { className: "prototype-inspector__components-body" },
+      !isRecord(prototype.components)
+        ? createElement(
+            "div",
+            { className: "prototype-inspector__components-empty" },
+            createElement(
+              "p",
+              null,
+              "This prototype has not declared its per-screen composition yet.",
+            ),
+            createElement(
+              "p",
+              null,
+              "Add a ",
+              createElement("code", null, "components"),
+              " block with ",
+              createElement("code", null, "components.routes[]"),
+              " entries to the prototype meta (",
+              createElement("code", null, "parameters.prototype"),
+              ") to record which components compose each screen, marking each origin as ",
+              createElement("code", null, "shared"),
+              ", ",
+              createElement("code", null, "local"),
+              ", or ",
+              createElement("code", null, "promoted"),
+              ". See the storybook-product-prototype skill references for the full contract.",
+            ),
+          )
+        : sections.length === 0
+          ? createElement(
+              "p",
+              { className: "prototype-inspector__empty" },
+              "No routes found for this prototype.",
+            )
+          : sections.map((section, index) =>
+              createElement(PrototypeComponentsRouteSection, {
+                componentRoute: section.componentRoute,
+                key: section.route.id ?? `route-${index}`,
+                route: section.route,
+              }),
+            ),
+    ),
+  );
+}
+
 function PrototypeEmpty({ message }) {
   return createElement(
     "div",
@@ -2933,6 +3280,10 @@ function createPrototypeInspectorDecorator(options = {}) {
 
     if (prototypeMode === "flow") {
       return createElement(PrototypeFlow, { prototype });
+    }
+
+    if (prototypeMode === "components") {
+      return createElement(PrototypeComponents, { prototype });
     }
 
     return createElement(PrototypeData, { prototype });

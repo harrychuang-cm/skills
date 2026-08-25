@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import sys
 from pathlib import Path
@@ -81,6 +82,15 @@ VAR_FALLBACK_PATTERN = re.compile(
     r"var\((--[A-Za-z0-9-]+)\s*,\s*(?:[^()]|\([^()]*\))*\)"
 )
 
+# meta.components (optional composition contract) checks pull values with
+# targeted regexes from a brace-COUNTED block — the non-greedy transition
+# object regex is never reused here because nested objects truncate it.
+COMPONENT_ORIGIN_VALUES = {"local", "promoted", "shared"}
+COMPONENT_ROUTE_PATTERN = re.compile(r"\broute\s*:\s*['\"]([^'\"]+)['\"]")
+COMPONENT_ORIGIN_PATTERN = re.compile(r"\borigin\s*:\s*['\"]([^'\"]+)['\"]")
+COMPONENT_STORY_ID_PATTERN = re.compile(r"\bstoryId\s*:\s*['\"]([^'\"]+)['\"]")
+COMPONENT_ENTRY_KEY_PATTERN = re.compile(r"\b(?:name|origin)\s*:")
+
 
 def find_one(folder: Path, pattern: str) -> Path | None:
     matches = sorted(folder.glob(pattern))
@@ -133,6 +143,146 @@ def extract_transition_objects(text: str) -> list[str]:
 def extract_string_property(object_text: str, key: str) -> str | None:
     match = re.search(rf"\b{re.escape(key)}\s*:\s*(['\"])(.*?)\1", object_text)
     return match.group(2) if match else None
+
+
+def sanitize_meta_source(text: str) -> str:
+    """Prepare meta TS source for brace-counting extraction.
+
+    Character scan that tracks string literals ('", `, with backslash
+    escapes) so it can safely drop `//` and `/* */` comments that sit
+    OUTSIDE strings (a `note: "w/ badge // caveat"` value survives) and
+    neutralize `{`/`}` characters INSIDE strings (they become spaces so
+    brace counting never sees them). Guidance comments therefore never
+    register as composition data, and string content never unbalances a
+    block. Values later read by extract_string_property keep their text
+    apart from any brace characters, which validation never needs.
+    """
+    result: list[str] = []
+    quote: str | None = None
+    index = 0
+    length = len(text)
+    while index < length:
+        char = text[index]
+        if quote is not None:
+            if char == "\\" and index + 1 < length:
+                result.append(char)
+                result.append(text[index + 1])
+                index += 2
+                continue
+            if char == quote:
+                quote = None
+                result.append(char)
+            elif char in "{}":
+                result.append(" ")
+            else:
+                result.append(char)
+            index += 1
+            continue
+        if char in "'\"`":
+            quote = char
+            result.append(char)
+            index += 1
+            continue
+        if char == "/" and index + 1 < length and text[index + 1] == "/":
+            while index < length and text[index] != "\n":
+                index += 1
+            continue
+        if char == "/" and index + 1 < length and text[index + 1] == "*":
+            close = text.find("*/", index + 2)
+            result.append(" ")
+            index = length if close == -1 else close + 2
+            continue
+        result.append(char)
+        index += 1
+    return "".join(result)
+
+
+def extract_balanced_braces(text: str, start: int) -> str:
+    """Return the balanced `{...}` block opening at `start`, or ""."""
+    depth = 0
+    for index in range(start, len(text)):
+        char = text[index]
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start:index + 1]
+    return ""
+
+
+def extract_brace_block(text: str, key: str) -> str:
+    """Return the balanced `{...}` object for `<key>:` declared at the TOP
+    level of the meta object literal, or "" if absent.
+
+    Anchoring to the `const <name>Meta = {` object at depth 1 means a
+    nested key with the same name (for example a `components` object inside
+    `data.fixtures`) can never masquerade as the composition contract.
+    Expects text already passed through sanitize_meta_source.
+    """
+    key_pattern = re.compile(rf"\b{re.escape(key)}\s*:\s*\{{")
+    meta_open = re.search(r"\bconst\s+\w+Meta\b[^=]*=\s*\{", text)
+    if not meta_open:
+        opener = key_pattern.search(text)
+        return extract_balanced_braces(text, opener.end() - 1) if opener else ""
+    depth = 0
+    index = meta_open.end() - 1
+    while index < len(text):
+        char = text[index]
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                break
+        elif depth == 1:
+            match = key_pattern.match(text, index)
+            if match:
+                return extract_balanced_braces(text, match.end() - 1)
+        index += 1
+    return ""
+
+
+def extract_component_entries(components_block: str) -> list[str]:
+    """Split a components block into individual component entry objects.
+
+    Walks the block with a brace stack and keeps each innermost balanced
+    object that declares a `name:` or `origin:` key, so route wrapper objects
+    are skipped without regex truncation.
+    """
+    entries: list[str] = []
+    stack: list[int] = []
+    for index, char in enumerate(components_block):
+        if char == "{":
+            stack.append(index)
+        elif char == "}" and stack:
+            start = stack.pop()
+            candidate = components_block[start:index + 1]
+            if "{" not in candidate[1:-1] and COMPONENT_ENTRY_KEY_PATTERN.search(
+                candidate
+            ):
+                entries.append(candidate)
+    return entries
+
+
+def load_storybook_index_ids(index_path: Path) -> set[str] | None:
+    """Return every story id in a Storybook index.json, or None if unreadable."""
+    if not index_path.is_file():
+        return None
+    try:
+        data = json.loads(read(index_path))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    entries = data.get("entries") or data.get("stories") or {}
+    if not isinstance(entries, dict):
+        return None
+    ids: set[str] = set()
+    for entry_key, entry in entries.items():
+        entry_id = entry.get("id") if isinstance(entry, dict) else None
+        ids.add(str(entry_id or entry_key))
+    return ids
 
 
 def validate_docs(
@@ -605,6 +755,97 @@ def validate_meta(path: Path | None, errors: list[str]) -> None:
     check("flowStoryId" in text, "meta missing figmaExport.flowStoryId", errors)
 
 
+def validate_components_meta(
+    folder: Path,
+    files: dict[str, Path | None],
+    errors: list[str],
+    warnings: list[str],
+    handoff_ready: bool = False,
+    storybook_index: Path | None = None,
+) -> None:
+    """Check the optional meta.components per-route composition block.
+
+    Every check here is a warning by default (--strict-style promotes them);
+    only the Storybook index storyId existence check becomes an error under
+    --handoff-ready.
+    """
+    meta_path = files.get("meta")
+    if meta_path is None or not meta_path.is_file():
+        return
+    meta_text = sanitize_meta_source(read(meta_path))
+    components_block = extract_brace_block(meta_text, "components")
+    if not components_block:
+        warnings.append("meta has no components section")
+        return
+
+    flow_path = files.get("flow")
+    route_ids: list[str] = []
+    if flow_path is not None and flow_path.is_file():
+        route_ids = extract_const_string_array(read(flow_path), "RouteIds")
+    if route_ids:
+        for route_id in COMPONENT_ROUTE_PATTERN.findall(components_block):
+            check(
+                route_id in route_ids,
+                f"meta components route '{route_id}' is not a known flow route id",
+                warnings,
+            )
+
+    for origin in COMPONENT_ORIGIN_PATTERN.findall(components_block):
+        check(
+            origin in COMPONENT_ORIGIN_VALUES,
+            f"meta components origin '{origin}' is not one of shared|local|promoted",
+            warnings,
+        )
+
+    component_names: list[str] = []
+    for index, entry in enumerate(extract_component_entries(components_block), start=1):
+        name = extract_string_property(entry, "name")
+        origin = extract_string_property(entry, "origin")
+        if name:
+            component_names.append(name)
+        if origin in {"promoted", "shared"}:
+            check(
+                extract_string_property(entry, "importPath") is not None
+                or extract_string_property(entry, "storyId") is not None,
+                f"meta components entry `{name or f'#{index}'}` has origin "
+                f"'{origin}' but neither importPath nor storyId",
+                warnings,
+            )
+
+    ui_spec = folder / "docs" / "UI_SPEC.md"
+    if component_names and ui_spec.is_file():
+        spec_text = read(ui_spec)
+        doc_sections = extract_doc_section(
+            spec_text, "Component Map"
+        ) + extract_doc_section(spec_text, "Component Gaps")
+        if doc_sections.strip():
+            for name in unique(component_names):
+                check(
+                    name in doc_sections,
+                    f"meta components names `{name}` but UI_SPEC.md Component Map/"
+                    "Component Gaps sections never mention it",
+                    warnings,
+                )
+
+    if storybook_index is not None:
+        index_ids = load_storybook_index_ids(storybook_index)
+        if index_ids is None:
+            warnings.append(
+                f"cannot read Storybook index at {storybook_index}, so meta "
+                "components storyId values were not verified"
+            )
+        else:
+            for story_id in unique(
+                COMPONENT_STORY_ID_PATTERN.findall(components_block)
+            ):
+                check(
+                    story_id in index_ids,
+                    f"meta components storyId '{story_id}' does not exist in the "
+                    "Storybook index",
+                    errors if handoff_ready else warnings,
+                )
+
+
 def validate_flow(path: Path | None, errors: list[str]) -> None:
     if path is None or not path.is_file():
         return
@@ -710,7 +951,16 @@ def main() -> int:
         action="store_true",
         help=(
             "Treat validation warnings (component map, token discipline, CSS "
-            "scope, doc coverage) as errors."
+            "scope, doc coverage, meta.components composition) as errors."
+        ),
+    )
+    parser.add_argument(
+        "--storybook-index",
+        type=Path,
+        default=None,
+        help=(
+            "Path to a Storybook index.json used to verify meta components "
+            "storyId values (warnings by default, errors with --handoff-ready)."
         ),
     )
     args = parser.parse_args()
@@ -730,6 +980,14 @@ def main() -> int:
         validate_meta(files["meta"], errors)
         validate_flow(files["flow"], errors)
         validate_component_usage(folder, files, warnings)
+        validate_components_meta(
+            folder,
+            files,
+            errors,
+            warnings,
+            args.handoff_ready,
+            args.storybook_index,
+        )
         validate_css(files, warnings)
         if args.handoff_ready:
             validate_doc_code_consistency(folder, files, errors, warnings)

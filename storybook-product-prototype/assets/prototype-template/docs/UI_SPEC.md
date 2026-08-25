@@ -6,7 +6,7 @@
 
 ## Component Map
 
-[List every screen region as: `route-id` / region: `ComponentName` from `import/path` — variant or prop notes. Flat bullets and inline code only.]
+[List every screen region as: `route-id` / region: `ComponentName` from `import/path` — variant or prop notes. A bullet may append — story: `story-id` when the Storybook id is known; keep story references as kebab-case ids in backticks, never backticked PascalCase story titles. Flat bullets and inline code only.]
 
 - `__ENTRY_ROUTE_ID__` / [region]: [`ComponentName` from `import/path` — variant or prop notes.]
 

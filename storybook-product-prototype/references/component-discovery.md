@@ -15,7 +15,7 @@ Use this reference after Frame The Product and before writing any doc content, p
 
 ## Discovery Tiers
 
-Work down the tiers in priority order and stop at the first tier that yields a usable inventory. `scripts/inventory_components.py <repo-root>` automates Tiers 2-3 and the token scan.
+Work down the tiers in priority order and stop at the first tier that yields a usable inventory. `scripts/inventory_components.py <repo-root>` automates Tiers 2-3 and the token scan; its inventory records story ids per component title (index ids are authoritative; a story-file fallback scan emits a derived story id base, marked as derived).
 
 ### Tier 1: design-system-to-storybook artifacts
 
@@ -52,15 +52,24 @@ Regardless of component tiers:
 
 Write the results into `docs/UI_SPEC.md`:
 
-- `## Component Map` — one flat bullet per screen region: `` `route-id` / region: `ComponentName` from `import/path` — variant or prop notes``. Inline code only; no tables, so the validator can parse names. Use the local binding name the prototype imports (the alias, for renamed imports), so the validator can match imports and JSX usage.
+- `## Component Map` — one flat bullet per screen region: `` `route-id` / region: `ComponentName` from `import/path` — variant or prop notes``. Inline code only; no tables, so the validator can parse names. Use the local binding name the prototype imports (the alias, for renamed imports), so the validator can match imports and JSX usage. A bullet may append `` — story: `story-id` `` when the id is known; keep story references as kebab-case ids in backticks — never backticked PascalCase story titles, which the validator would read as component names.
 - `## Component Gaps` — one bullet per region that has no reusable component, with the fallback plan (local markup now, promotion candidate later). If the scan found nothing reusable, include the exact line `- No reusable components: <evidence>` naming what was scanned.
 - `## Token Binding` — flat bullets mapping role to project token to `--proto-*` alias to fallback, plus a `Token system: <namespace or none>` line.
 
 Echo the Token Namespace Record and promotion candidates into `docs/PRODUCTION_HANDOFF.md` under `## Design System Continuity`.
+
+## Story Id Resolution
+
+When a component's story id is needed — a Component Map `— story:` suffix, or a `storyId` in `meta.components` (contract in `references/storybook-integration.md`) — resolve it through this chain and never guess silently:
+
+1. Project component catalog or design-system artifacts when present (for example a `componentCatalog.ts`). Optional tier; the skill stays generic when the project has none.
+2. Storybook index — `storybook-static/index.json`, or `inventory_components.py --storybook-index` — authoritative ids.
+3. Derivation from a KNOWN story title via Storybook slugification (the same algorithm as `scaffold_prototype.py`'s `to_storybook_id`). Record the `storyTitle` alongside the derived id as evidence.
+4. No source → omit the story id (typical for `local` components); the inspector falls back to the source path with no link.
 
 ## Composition Rules
 
 - Every screen region either renders its mapped component from the Component Map or is listed in Component Gaps. No third state.
 - Import mapped components; do not re-implement them locally "for speed".
 - Local markup created for a gap stays inside the prototype folder and is named in Component Gaps as a promotion candidate. After the team confirms the product direction, candidates the user approves are promoted into the hub's shared component library (see the promote step in `SKILL.md`); until then they stay local.
-- The user confirms and vetoes the discovered map; they do not perform discovery. Present candidates with evidence (story title, import path, inventory doc line), then ask only what is wrong or missing.
+- The user confirms and vetoes the discovered map; they do not perform discovery. Present candidates with evidence (story title, story id, import path, inventory doc line), then ask only what is wrong or missing.

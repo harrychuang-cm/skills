@@ -64,6 +64,7 @@ Adapt the root path if the project uses `src/screens`, `app`, `packages/ui`, or 
 - Every route-changing click has a transition with a stable trigger.
 - Every route has deterministic fixture data.
 - Every screen region maps to a concrete existing component (name + import path) in the Component Map, or has an explicit Component Gaps entry.
+- `meta.components` records every route's composition, origin-marked (`shared` / `local` / `promoted`) against the Component Map and Component Gaps, with story ids resolved per `references/component-discovery.md`, never guessed.
 - Prototype and Static Flow CSS consume `--proto-*` aliases bound to recorded project tokens; interactive controls ship hover/focus-visible/active/disabled states and in-scope routes render loading/empty/error.
 - Prototype-only CSS scope is named.
 - Production web/app surfaces, routes or screens, API/data contract expectations, integration ownership, and Storybook-only boundaries are documented.

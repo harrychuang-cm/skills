@@ -9,6 +9,16 @@ import { __FEATURE_CAMEL__Routes } from "./__FEATURE_CAMEL__Data";
 import { __FEATURE_CAMEL__Flow } from "./__FEATURE_CAMEL__Flow";
 
 export const __FEATURE_CAMEL__Meta = {
+  components: {
+    routes: [
+      {
+        // Fill in workflow step 6 from docs/UI_SPEC.md Component Map / Component Gaps.
+        // Entry shape: { name, origin: "shared" | "local" | "promoted", importPath, storyId?, storyTitle?, note? }
+        components: [],
+        route: "__ENTRY_ROUTE_ID__",
+      },
+    ],
+  },
   data: {
     fixtures: {
       routeCount: __FEATURE_CAMEL__Routes.length,

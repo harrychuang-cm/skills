@@ -7,6 +7,7 @@
 - `parameters.prototype.flow.routes` contains every interactive route.
 - `parameters.prototype.flow.nodes` contains every flow-only branch node.
 - `parameters.prototype.flow.transitions` contains every user-triggered transition.
+- `parameters.prototype.components.routes` records each route's composing components with `origin` (`shared`, `local`, or `promoted`) and `storyId` links where resolvable.
 - UI Flow iframe previews can render a specific route through `prototypeRoute`.
 - The prototype route shell exposes `data-prototype-route-preview` for template-compatible preview measurement.
 - The prototype root keeps `data-prototype-root` for backward-compatible preview measurement.
@@ -36,5 +37,6 @@
 
 - Prototype-only CSS is scoped to `.__FEATURE_CSS_CLASS__`.
 - Existing reusable components are used before local markup.
+- Every route's composition is recorded in `meta.components` and origin-marked against the UI Spec Component Map and Component Gaps.
 - Static Flow export reads saved layout from `../prototypeFlowLayout`.
 - TypeScript passes in the target project.
