@@ -1647,8 +1647,11 @@ function getPreviewHighlightDocument(iframe) {
 
 function isPreviewHighlightDocumentReady(doc) {
   try {
+    const root = doc.querySelector("#storybook-root");
+
     return Boolean(
-      doc.querySelector("#storybook-root") &&
+      root &&
+        root.childElementCount > 0 &&
         !doc.body.classList.contains("sb-show-preparing-story") &&
         !doc.body.classList.contains("sb-show-preparing-docs"),
     );
