@@ -90,7 +90,6 @@ type StorybookContext = {
     title?: string;
     viewMode?: string;
 };
-type StorybookStory = () => unknown;
 declare const defaultFigmaReviewStatusApiPath = "/__figma_export_review_status";
 declare function getDefaultFigmaExportComponentTitle(title: string | undefined, options: ResolvedFigmaExportAddonOptions): string;
 declare function getDefaultFigmaSourceUrl(parameters: Record<string, unknown> | undefined): string | undefined;
@@ -100,7 +99,7 @@ declare function FigmaExportReview({ apiPath, autoMarkExported, componentTitle, 
         children?: DomChild;
     };
 };
-declare function createFigmaExportReviewDecorator(figmaExportOptions?: FigmaExportAddonOptions, reviewOptions?: FigmaExportReviewOptions): (Story: StorybookStory, context: StorybookContext) => unknown;
+declare function createFigmaExportReviewDecorator(figmaExportOptions?: FigmaExportAddonOptions, reviewOptions?: FigmaExportReviewOptions): <StoryResult>(Story: () => StoryResult, context: StorybookContext) => StoryResult;
 declare function destroyFigmaReviewWorkspace(): void;
 
 export { FigmaExportReview, type FigmaExportReviewOptions, type FigmaExportReviewProps, type FigmaReviewLabels, type StorybookContext, createFigmaExportReviewDecorator, defaultFigmaReviewStatusApiPath, destroyFigmaReviewWorkspace, getDefaultFigmaExportComponentTitle, getDefaultFigmaSourceUrl };

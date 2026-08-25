@@ -4743,7 +4743,7 @@ void (async function importStorybookStory(payload) {
 
 // src/version.ts
 function getAddonVersion() {
-  return true ? "0.9.1" : "dev";
+  return true ? "0.9.2" : "dev";
 }
 
 // src/workspace.ts
@@ -7426,7 +7426,7 @@ function FigmaExportReview({
 function createFigmaExportReviewDecorator(figmaExportOptions, reviewOptions) {
   const figmaExportDecorator = createFigmaExportDecorator(figmaExportOptions);
   const resolvedOptions = resolveFigmaExportAddonOptions(figmaExportOptions);
-  return (Story, context) => {
+  return function figmaExportReviewDecorator(Story, context) {
     const storyResult = figmaExportDecorator(Story, context);
     const includedStory = isStoryIncludedForFigmaExport(
       context.title,

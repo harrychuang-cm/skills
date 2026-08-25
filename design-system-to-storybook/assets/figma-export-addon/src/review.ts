@@ -230,7 +230,6 @@ export type StorybookContext = {
   viewMode?: string;
 };
 
-type StorybookStory = () => unknown;
 type SaveState = "error" | "idle" | "loading" | "saved" | "saving";
 
 export const defaultFigmaReviewStatusApiPath = "/__figma_export_review_status";
@@ -2094,7 +2093,13 @@ export function createFigmaExportReviewDecorator(
   const figmaExportDecorator = createFigmaExportDecorator(figmaExportOptions);
   const resolvedOptions = resolveFigmaExportAddonOptions(figmaExportOptions);
 
-  return (Story: StorybookStory, context: StorybookContext) => {
+  // Generic so the story result type flows through unchanged: renderer
+  // decorator typings (React's DecoratorFunction and friends) reject a
+  // decorator that returns `unknown`.
+  return function figmaExportReviewDecorator<StoryResult>(
+    Story: () => StoryResult,
+    context: StorybookContext,
+  ): StoryResult {
     const storyResult = figmaExportDecorator(Story, context);
     const includedStory = isStoryIncludedForFigmaExport(
       context.title,
