@@ -60,6 +60,8 @@ const defaultPrototypeParameterName = "prototype";
 const routePreviewMeasurementSelector = '[data-prototype-route-preview="true"]';
 const previewHighlightStyleAttribute = "data-pi-highlight";
 const previewHighlightTargetAttribute = "data-pi-highlight-target";
+const previewHighlightRingLayerAttribute = "data-pi-highlight-ring-layer";
+const previewHighlightRingAttribute = "data-pi-highlight-ring";
 const previewReverseListenersAttribute = "data-pi-reverse-listeners";
 const previewHeightCssVariable =
   "--prototype-inspector-viewport-compact-height";
@@ -1709,6 +1711,19 @@ function ensurePreviewHighlightStyle(doc, accent) {
       "    animation: none;",
       "  }",
       "}",
+      `[${previewHighlightRingLayerAttribute}] {`,
+      "  position: fixed;",
+      "  inset: 0;",
+      "  z-index: 2147483647;",
+      "  pointer-events: none;",
+      "}",
+      `[${previewHighlightRingAttribute}] {`,
+      "  position: fixed;",
+      "  box-sizing: border-box;",
+      `  border: 2px solid ${accent};`,
+      "  border-radius: 6px;",
+      "  pointer-events: none;",
+      "}",
     ].join("\n");
 
     if (!existing) {
@@ -1724,6 +1739,70 @@ function queryPreviewSelectorMatches(doc, selector) {
     return [...doc.querySelectorAll(selector)];
   } catch (error) {
     return [];
+  }
+}
+
+function startPreviewHighlightRings(doc) {
+  try {
+    const win = doc.defaultView;
+
+    if (!win || !doc.body) {
+      return;
+    }
+
+    let layer = doc.querySelector(`[${previewHighlightRingLayerAttribute}]`);
+
+    if (layer?.piRingFrame) {
+      return;
+    }
+
+    if (!layer) {
+      layer = doc.createElement("div");
+      layer.setAttribute(previewHighlightRingLayerAttribute, "true");
+      doc.body.append(layer);
+    }
+
+    const step = () => {
+      try {
+        const targets = [
+          ...doc.querySelectorAll(`[${previewHighlightTargetAttribute}]`),
+        ];
+
+        if (targets.length === 0) {
+          layer.piRingFrame = null;
+          layer.remove();
+          return;
+        }
+
+        while (layer.children.length < targets.length) {
+          const ring = doc.createElement("div");
+
+          ring.setAttribute(previewHighlightRingAttribute, "true");
+          layer.append(ring);
+        }
+
+        while (layer.children.length > targets.length) {
+          layer.lastElementChild.remove();
+        }
+
+        targets.forEach((target, index) => {
+          const rect = target.getBoundingClientRect();
+          const ring = layer.children[index];
+
+          ring.style.left = `${rect.left - 4}px`;
+          ring.style.top = `${rect.top - 4}px`;
+          ring.style.width = `${rect.width + 8}px`;
+          ring.style.height = `${rect.height + 8}px`;
+        });
+        layer.piRingFrame = win.requestAnimationFrame(step);
+      } catch (error) {
+        layer.piRingFrame = null;
+      }
+    };
+
+    layer.piRingFrame = win.requestAnimationFrame(step);
+  } catch (error) {
+    // The ring layer is a visual enhancement; failures fall back to the outline.
   }
 }
 
@@ -1773,6 +1852,10 @@ function applyPreviewHighlight(iframe, selector, options) {
     // Keep the resolved match count even if the browser rejects scrolling.
   }
 
+  if (matches.length > 0) {
+    startPreviewHighlightRings(doc);
+  }
+
   return matches.length;
 }
 
@@ -1808,6 +1891,7 @@ function markPreviewHighlightElement(iframe, element) {
 
   try {
     element.setAttribute(previewHighlightTargetAttribute, "true");
+    startPreviewHighlightRings(doc);
   } catch (error) {
     // Highlighting is optional; an unavailable preview document is a no-op.
   }

@@ -1123,8 +1123,8 @@
 }
 
 .prototype-inspector__components-rail-button[aria-selected="true"] {
-  color: var(--pi-sys-color-on-primary-container);
-  background: var(--pi-sys-color-primary-container);
+  color: var(--pi-sys-color-on-primary);
+  background: var(--pi-sys-color-primary);
   border-color: var(--pi-sys-color-primary);
 }
 
