@@ -53,9 +53,13 @@ const prototypeComponentOriginLabels = {
   shared: "shared",
 };
 
+const prototypeComponentMissingStateLabel = "not in current state";
+
 const defaultPrototypeModeGlobalName = "prototypeMode";
 const defaultPrototypeParameterName = "prototype";
 const routePreviewMeasurementSelector = '[data-prototype-route-preview="true"]';
+const previewHighlightStyleAttribute = "data-pi-highlight";
+const previewHighlightTargetAttribute = "data-pi-highlight-target";
 const previewHeightCssVariable =
   "--prototype-inspector-viewport-compact-height";
 const previewWidthCssVariable =
@@ -126,6 +130,17 @@ function sanitizeFilename(value) {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "") || "prototype";
+}
+
+function pascalToKebab(value) {
+  return String(value ?? "")
+    .trim()
+    .replace(/([a-z0-9])([A-Z])/g, "$1-$2")
+    .replace(/([A-Z]+)([A-Z][a-z0-9])/g, "$1-$2")
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/-{2,}/g, "-")
+    .replace(/^-+|-+$/g, "");
 }
 
 function getRoutePosition(route, index) {
@@ -1527,6 +1542,32 @@ function getPrototypeComponentDocsPath(storyId) {
     : "";
 }
 
+function getPrototypeComponentHighlightSelector(component, components) {
+  const domSelector =
+    typeof component.domSelector === "string" && component.domSelector.trim()
+      ? component.domSelector.trim()
+      : "";
+
+  if (domSelector) {
+    return domSelector;
+  }
+
+  const classPrefix =
+    isRecord(components) &&
+    typeof components.classPrefix === "string" &&
+    components.classPrefix.trim()
+      ? components.classPrefix.trim()
+      : "";
+  const componentName =
+    typeof component.name === "string" && component.name.trim()
+      ? component.name.trim()
+      : "";
+
+  return classPrefix && componentName
+    ? `.${classPrefix}${pascalToKebab(componentName)}`
+    : "";
+}
+
 function getPrototypeStorybookPathUrl(path) {
   if (typeof window === "undefined" || !path) {
     return "";
@@ -1579,6 +1620,162 @@ function openPrototypeComponentsMode() {
       error,
     );
   }
+}
+
+function prefersReducedMotion() {
+  try {
+    return (
+      typeof window !== "undefined" &&
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    );
+  } catch (error) {
+    return false;
+  }
+}
+
+function getPreviewHighlightDocument(iframe) {
+  try {
+    const doc = iframe?.contentDocument;
+
+    return doc?.body ? doc : null;
+  } catch (error) {
+    return null;
+  }
+}
+
+function isPreviewHighlightDocumentReady(doc) {
+  try {
+    return Boolean(
+      doc.querySelector("#storybook-root") &&
+        !doc.body.classList.contains("sb-show-preparing-story") &&
+        !doc.body.classList.contains("sb-show-preparing-docs"),
+    );
+  } catch (error) {
+    return false;
+  }
+}
+
+function getPreviewHighlightAccent() {
+  try {
+    const source =
+      document.querySelector(".prototype-inspector") ?? document.documentElement;
+    const value = getComputedStyle(source)
+      .getPropertyValue("--pi-sys-color-primary")
+      .trim();
+
+    return value || "#2563eb";
+  } catch (error) {
+    return "#2563eb";
+  }
+}
+
+function ensurePreviewHighlightStyle(doc, accent) {
+  try {
+    const host = doc.head ?? doc.body;
+
+    if (!host) {
+      return;
+    }
+
+    const existing = doc.querySelector(
+      `style[${previewHighlightStyleAttribute}]`,
+    );
+
+    if (existing && existing.getAttribute("data-pi-highlight-accent") === accent) {
+      return;
+    }
+
+    const style = existing ?? doc.createElement("style");
+
+    style.setAttribute(previewHighlightStyleAttribute, "true");
+    style.setAttribute("data-pi-highlight-accent", accent);
+    style.textContent = [
+      `[${previewHighlightTargetAttribute}] {`,
+      `  outline: 2px solid ${accent};`,
+      "  outline-offset: 2px;",
+      "  animation: prototype-inspector-highlight-pulse 1.4s ease-in-out infinite;",
+      "}",
+      "@keyframes prototype-inspector-highlight-pulse {",
+      "  0%, 100% { outline-offset: 2px; }",
+      "  50% { outline-offset: 5px; }",
+      "}",
+      "@media (prefers-reduced-motion: reduce) {",
+      `  [${previewHighlightTargetAttribute}] {`,
+      "    animation: none;",
+      "  }",
+      "}",
+    ].join("\n");
+
+    if (!existing) {
+      host.append(style);
+    }
+  } catch (error) {
+    // Highlighting is optional; an unavailable preview document is a no-op.
+  }
+}
+
+function queryPreviewSelectorMatches(doc, selector) {
+  try {
+    return [...doc.querySelectorAll(selector)];
+  } catch (error) {
+    return [];
+  }
+}
+
+function clearPreviewHighlight(iframe) {
+  const doc = getPreviewHighlightDocument(iframe);
+
+  if (!doc) {
+    return;
+  }
+
+  try {
+    doc
+      .querySelectorAll(`[${previewHighlightTargetAttribute}]`)
+      .forEach((element) =>
+        element.removeAttribute(previewHighlightTargetAttribute),
+      );
+  } catch (error) {
+    // Highlighting is optional; an unavailable preview document is a no-op.
+  }
+}
+
+function applyPreviewHighlight(iframe, selector) {
+  const doc = getPreviewHighlightDocument(iframe);
+
+  if (!doc || !selector || !isPreviewHighlightDocumentReady(doc)) {
+    return null;
+  }
+
+  clearPreviewHighlight(iframe);
+  ensurePreviewHighlightStyle(doc, getPreviewHighlightAccent());
+
+  const matches = queryPreviewSelectorMatches(doc, selector);
+
+  try {
+    matches.forEach((element) =>
+      element.setAttribute(previewHighlightTargetAttribute, "true"),
+    );
+    matches[0]?.scrollIntoView({
+      behavior: prefersReducedMotion() ? "auto" : "smooth",
+      block: "nearest",
+    });
+  } catch (error) {
+    // Keep the resolved match count even if the browser rejects scrolling.
+  }
+
+  return matches.length;
+}
+
+function countPreviewSelectorMatches(iframe, selector) {
+  const doc = getPreviewHighlightDocument(iframe);
+
+  if (!doc || !selector || !isPreviewHighlightDocumentReady(doc)) {
+    return null;
+  }
+
+  return queryPreviewSelectorMatches(doc, selector).length;
 }
 
 function getMeasuredFramePreviewSize(iframe) {
@@ -3113,80 +3310,125 @@ function PrototypeComponentStoryLinks({ component }) {
   );
 }
 
-function PrototypeComponentsRouteSection({ componentRoute, route }) {
-  const components = normalizeRouteComponents(componentRoute);
+function PrototypeComponentCard({
+  component,
+  isHighlighted,
+  matchCount,
+  onHighlightEnd,
+  onHighlightStart,
+  selector,
+}) {
+  const storyId = getPrototypeComponentStoryId(component);
+  const storyTitle =
+    typeof component.storyTitle === "string" && component.storyTitle.trim()
+      ? component.storyTitle.trim()
+      : "";
+  const importPath =
+    typeof component.importPath === "string" && component.importPath.trim()
+      ? component.importPath.trim()
+      : "";
+  const note =
+    typeof component.note === "string" && component.note.trim()
+      ? component.note.trim()
+      : "";
+  const hasHighlight = Boolean(selector);
+  const handleHighlightBlur = (event) => {
+    if (
+      event.relatedTarget instanceof Element &&
+      event.currentTarget.contains(event.relatedTarget)
+    ) {
+      return;
+    }
+
+    onHighlightEnd();
+  };
 
   return createElement(
-    "section",
-    { className: "prototype-inspector__components-route" },
+    "article",
+    {
+      className: "prototype-inspector__components-card",
+      "data-highlightable": hasHighlight ? "true" : undefined,
+      "data-highlighted": hasHighlight && isHighlighted ? "true" : undefined,
+      onBlur: hasHighlight ? handleHighlightBlur : undefined,
+      onFocus: hasHighlight ? onHighlightStart : undefined,
+      onMouseEnter: hasHighlight ? onHighlightStart : undefined,
+      onMouseLeave: hasHighlight ? onHighlightEnd : undefined,
+      tabIndex: hasHighlight ? 0 : undefined,
+    },
     createElement(
       "header",
-      { className: "prototype-inspector__components-route-header" },
-      createElement("h3", null, route.title ?? route.id ?? "Untitled route"),
-      createElement("code", null, route.id ?? "-"),
+      { className: "prototype-inspector__components-card-header" },
+      createElement(
+        "span",
+        { className: "prototype-inspector__components-name" },
+        formatDataValue(component.name),
+      ),
+      createElement(PrototypeComponentOriginBadge, {
+        origin: component.origin,
+      }),
+      hasHighlight &&
+        isHighlighted &&
+        typeof matchCount === "number" &&
+        matchCount > 0
+        ? createElement(
+            "span",
+            { className: "prototype-inspector__components-match-count" },
+            `×${matchCount}`,
+          )
+        : null,
+      hasHighlight && matchCount === 0
+        ? createElement(
+            "span",
+            { className: "prototype-inspector__components-state-chip" },
+            prototypeComponentMissingStateLabel,
+          )
+        : null,
     ),
-    components.length === 0
+    storyId || storyTitle
+      ? createElement(PrototypeComponentStoryLinks, { component })
+      : null,
+    importPath
+      ? createElement(
+          "code",
+          { className: "prototype-inspector__components-card-path" },
+          importPath,
+        )
+      : null,
+    note
       ? createElement(
           "p",
-          { className: "prototype-inspector__components-route-empty" },
-          "No composition data for this route.",
+          { className: "prototype-inspector__components-card-note" },
+          note,
         )
-      : createElement(PrototypeDataTable, {
-          columns: [
-            {
-              key: "name",
-              label: "Component",
-              render: (component) =>
-                createElement(
-                  "span",
-                  { className: "prototype-inspector__components-name" },
-                  formatDataValue(component.name),
-                ),
-            },
-            {
-              key: "origin",
-              label: "Origin",
-              render: (component) =>
-                createElement(PrototypeComponentOriginBadge, {
-                  origin: component.origin,
-                }),
-            },
-            {
-              key: "storyId",
-              label: "Story",
-              render: (component) =>
-                createElement(PrototypeComponentStoryLinks, { component }),
-            },
-            {
-              key: "importPath",
-              label: "Import Path",
-              render: (component) =>
-                createElement(PrototypeDataCode, { value: component.importPath }),
-            },
-            { key: "note", label: "Note" },
-          ],
-          emptyMessage: "No composition data for this route.",
-          rows: components,
-        }),
+      : null,
   );
 }
 
 function PrototypeComponents({ prototype }) {
-  const flowRoutes = normalizeRoutes(prototype.flow);
-  const componentRoutes = normalizeComponentRoutes(prototype.components);
-  const componentRouteMap = new Map();
+  const components = isRecord(prototype.components)
+    ? prototype.components
+    : null;
+  const flowRoutes = useMemo(
+    () => normalizeRoutes(prototype.flow),
+    [prototype.flow],
+  );
+  const componentRoutes = useMemo(
+    () => normalizeComponentRoutes(prototype.components),
+    [prototype.components],
+  );
+  const railRoutes = useMemo(() => {
+    const componentRouteMap = new Map();
 
-  componentRoutes.forEach((componentRoute) => {
-    if (
-      typeof componentRoute.route === "string" &&
-      !componentRouteMap.has(componentRoute.route)
-    ) {
-      componentRouteMap.set(componentRoute.route, componentRoute);
-    }
-  });
+    componentRoutes.forEach((componentRoute) => {
+      if (
+        typeof componentRoute.route === "string" &&
+        !componentRouteMap.has(componentRoute.route)
+      ) {
+        componentRouteMap.set(componentRoute.route, componentRoute);
+      }
+    });
 
-  const sections =
-    flowRoutes.length > 0
+    return flowRoutes.length > 0
       ? flowRoutes.map((route) => ({
           componentRoute: componentRouteMap.get(route.id),
           route,
@@ -3197,6 +3439,188 @@ function PrototypeComponents({ prototype }) {
             componentRoute,
             route: { id: componentRoute.route, title: componentRoute.route },
           }));
+  }, [componentRoutes, flowRoutes]);
+  const defaultRouteId =
+    railRoutes.find(
+      (section) => normalizeRouteComponents(section.componentRoute).length > 0,
+    )?.route.id ??
+    railRoutes[0]?.route.id ??
+    "";
+  const [selectedRouteId, setSelectedRouteId] = useState(defaultRouteId);
+  const normalizedRouteId = railRoutes.some(
+    (section) => section.route.id === selectedRouteId,
+  )
+    ? selectedRouteId
+    : defaultRouteId;
+  const selectedSection =
+    railRoutes.find((section) => section.route.id === normalizedRouteId) ??
+    null;
+  const selectedEntries = useMemo(
+    () =>
+      normalizeRouteComponents(selectedSection?.componentRoute).map(
+        (component) => ({
+          component,
+          selector: getPrototypeComponentHighlightSelector(
+            component,
+            components,
+          ),
+        }),
+      ),
+    [components, selectedSection],
+  );
+  const previewSource = getRoutePreviewSource(normalizedRouteId);
+  const previewViewportHeight = getDefaultNodePreviewHeight();
+  const previewViewportWidth = getDefaultNodePreviewWidth();
+  const previewPaneRef = useRef(null);
+  const previewRef = useRef(null);
+  const [highlightedIndex, setHighlightedIndex] = useState(null);
+  const [matchCounts, setMatchCounts] = useState({});
+  const [previewScale, setPreviewScale] = useState(1);
+  const activeHighlightRef = useRef(null);
+  const refreshMatchCounts = useCallback(() => {
+    const iframe = previewRef.current;
+
+    if (!iframe) {
+      return false;
+    }
+
+    const counts = {};
+    let isReady = true;
+
+    selectedEntries.forEach((entry, index) => {
+      if (!entry.selector) {
+        return;
+      }
+
+      const count = countPreviewSelectorMatches(iframe, entry.selector);
+
+      if (count === null) {
+        isReady = false;
+        return;
+      }
+
+      counts[`${normalizedRouteId}:${index}`] = count;
+    });
+
+    if (!isReady) {
+      return false;
+    }
+
+    setMatchCounts(counts);
+
+    const active = activeHighlightRef.current;
+
+    if (active?.selector) {
+      applyPreviewHighlight(iframe, active.selector);
+    }
+
+    return true;
+  }, [normalizedRouteId, selectedEntries]);
+
+  useEffect(() => {
+    activeHighlightRef.current = null;
+    setHighlightedIndex(null);
+    setMatchCounts({});
+  }, [normalizedRouteId]);
+
+  useEffect(() => {
+    let isActive = true;
+    let retryCount = 40;
+    let retryTimer = null;
+
+    const updateMatchCounts = () => {
+      if (!isActive) {
+        return;
+      }
+
+      if (refreshMatchCounts()) {
+        return;
+      }
+
+      if (retryCount > 0) {
+        retryCount -= 1;
+        retryTimer = window.setTimeout(updateMatchCounts, 250);
+      }
+    };
+
+    updateMatchCounts();
+
+    return () => {
+      isActive = false;
+
+      if (retryTimer) {
+        window.clearTimeout(retryTimer);
+      }
+    };
+  }, [previewSource, refreshMatchCounts]);
+
+  useEffect(() => {
+    const previewPane = previewPaneRef.current;
+
+    if (!previewPane) {
+      return undefined;
+    }
+
+    const updatePreviewScale = () => {
+      const availableWidth = Math.max(1, previewPane.clientWidth);
+      const availableHeight = Math.max(1, previewPane.clientHeight);
+
+      setPreviewScale(
+        Math.min(
+          1,
+          availableWidth / previewViewportWidth,
+          availableHeight / previewViewportHeight,
+        ),
+      );
+    };
+    const resizeObserver =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(updatePreviewScale);
+
+    updatePreviewScale();
+    resizeObserver?.observe(previewPane);
+    window.addEventListener("resize", updatePreviewScale);
+
+    return () => {
+      resizeObserver?.disconnect();
+      window.removeEventListener("resize", updatePreviewScale);
+    };
+  }, [previewSource, previewViewportHeight, previewViewportWidth]);
+
+  useEffect(() => {
+    return () => {
+      clearPreviewHighlight(previewRef.current);
+    };
+  }, [normalizedRouteId]);
+
+  const activateHighlight = (index, selector) => {
+    if (!selector || highlightedIndex === index) {
+      return;
+    }
+
+    activeHighlightRef.current = { index, selector };
+    setHighlightedIndex(index);
+
+    const count = applyPreviewHighlight(previewRef.current, selector);
+
+    if (count !== null) {
+      setMatchCounts((counts) => ({
+        ...counts,
+        [`${normalizedRouteId}:${index}`]: count,
+      }));
+    }
+  };
+  const deactivateHighlight = (index) => {
+    if (activeHighlightRef.current?.index !== index) {
+      return;
+    }
+
+    activeHighlightRef.current = null;
+    setHighlightedIndex(null);
+    clearPreviewHighlight(previewRef.current);
+  };
+  const selectedRoute = selectedSection?.route ?? null;
 
   return createElement(
     "div",
@@ -3205,12 +3629,12 @@ function PrototypeComponents({ prototype }) {
       eyebrow: prototype.id,
       title: "Prototype Components",
       description:
-        "Per-screen component composition with shared, new, and promoted origins plus Storybook story links.",
+        "Per-screen component composition with shared, new, and promoted origins, Storybook story links, and live in-preview highlighting.",
     }),
     createElement(
       "div",
       { className: "prototype-inspector__components-body" },
-      !isRecord(prototype.components)
+      !components
         ? createElement(
             "div",
             { className: "prototype-inspector__components-empty" },
@@ -3237,18 +3661,106 @@ function PrototypeComponents({ prototype }) {
               ". See the storybook-product-prototype skill references for the full contract.",
             ),
           )
-        : sections.length === 0
+        : railRoutes.length === 0
           ? createElement(
               "p",
               { className: "prototype-inspector__empty" },
               "No routes found for this prototype.",
             )
-          : sections.map((section, index) =>
-              createElement(PrototypeComponentsRouteSection, {
-                componentRoute: section.componentRoute,
-                key: section.route.id ?? `route-${index}`,
-                route: section.route,
-              }),
+          : createElement(
+              "div",
+              { className: "prototype-inspector__components-workspace" },
+              createElement(
+                "nav",
+                {
+                  "aria-label": "Prototype routes",
+                  "aria-orientation": "vertical",
+                  className: "prototype-inspector__components-rail",
+                  role: "tablist",
+                },
+                railRoutes.map((section, index) =>
+                  createElement(
+                    "button",
+                    {
+                      "aria-selected": section.route.id === normalizedRouteId,
+                      className:
+                        "prototype-inspector__components-rail-button",
+                      key: section.route.id ?? `route-${index}`,
+                      onClick: () => setSelectedRouteId(section.route.id),
+                      role: "tab",
+                      type: "button",
+                    },
+                    createElement(
+                      "span",
+                      {
+                        className:
+                          "prototype-inspector__components-rail-title",
+                      },
+                      section.route.title ?? section.route.id,
+                    ),
+                    createElement("code", null, section.route.id),
+                  ),
+                ),
+              ),
+              createElement(
+                "div",
+                { className: "prototype-inspector__components-cards" },
+                selectedEntries.length === 0
+                  ? createElement(
+                      "p",
+                      {
+                        className:
+                          "prototype-inspector__components-route-empty",
+                      },
+                      "No composition data for this route.",
+                    )
+                  : selectedEntries.map((entry, index) =>
+                      createElement(PrototypeComponentCard, {
+                        component: entry.component,
+                        isHighlighted: highlightedIndex === index,
+                        key: `${normalizedRouteId}-${index}`,
+                        matchCount:
+                          matchCounts[`${normalizedRouteId}:${index}`] ?? null,
+                        onHighlightEnd: () => deactivateHighlight(index),
+                        onHighlightStart: () =>
+                          activateHighlight(index, entry.selector),
+                        selector: entry.selector,
+                      }),
+                    ),
+              ),
+              createElement(
+                "div",
+                {
+                  className: "prototype-inspector__components-preview",
+                  ref: previewPaneRef,
+                },
+                previewSource
+                  ? createElement(
+                      "div",
+                      {
+                        className:
+                          "prototype-inspector__components-preview-frame",
+                        style: {
+                          "--prototype-components-preview-height": `${previewViewportHeight}px`,
+                          "--prototype-components-preview-scale": previewScale,
+                          "--prototype-components-preview-width": `${previewViewportWidth}px`,
+                        },
+                      },
+                      createElement("iframe", {
+                        key: normalizedRouteId,
+                        loading: "eager",
+                        onLoad: () => {
+                          refreshMatchCounts();
+                        },
+                        ref: previewRef,
+                        src: previewSource,
+                        title: `${selectedRoute?.title ?? normalizedRouteId} preview`,
+                      }),
+                    )
+                  : createElement(PrototypeEmpty, {
+                      message: "Route preview is unavailable.",
+                    }),
+              ),
             ),
     ),
   );

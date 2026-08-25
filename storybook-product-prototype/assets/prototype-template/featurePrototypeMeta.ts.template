@@ -10,10 +10,13 @@ import { __FEATURE_CAMEL__Flow } from "./__FEATURE_CAMEL__Flow";
 
 export const __FEATURE_CAMEL__Meta = {
   components: {
+    // Optional classPrefix: the project's component root-class convention (e.g. "cm-")
+    // lets the inspector derive highlight selectors as "." + classPrefix + kebab(name).
     routes: [
       {
         // Fill in workflow step 6 from docs/UI_SPEC.md Component Map / Component Gaps.
-        // Entry shape: { name, origin: "shared" | "local" | "promoted", importPath, storyId?, storyTitle?, note? }
+        // Entry shape: { name, origin: "shared" | "local" | "promoted", importPath, storyId?, storyTitle?, domSelector?, note? }
+        // domSelector overrides the derived highlight selector for roots that do not follow classPrefix.
         components: [],
         route: "__ENTRY_ROUTE_ID__",
       },

@@ -74,6 +74,7 @@ The `figmaExport` object should expose:
 
 ```ts
 components: {
+  classPrefix: 'cm-',               // optional; project-wide component root-class prefix used to derive highlight selectors
   routes: [
     {
       route: 'route-id',              // MUST be an existing flow route id
@@ -85,6 +86,7 @@ components: {
           storyId: 'components-lists-bottom-sheet-cell--default', // optional; enables click-through
           storyTitle: 'Components/Lists/Bottom Sheet Cell',       // optional; display + derivation evidence
           note: 'variant / prop usage notes',                     // optional
+          domSelector: '.cm-bottom-sheet-cell', // optional; explicit CSS selector for this component's rendered root(s) in the route preview; overrides derivation
         },
       ],
     },
@@ -99,6 +101,7 @@ Rules:
 - The authoring source of truth stays `docs/UI_SPEC.md` Component Map / Component Gaps. `meta.components` is the machine-readable echo: author it in the compose step, and update the affected entry in the promote step in the same motion as the doc move (`origin` `local` → `promoted`, plus the new `storyId`).
 - Resolve each `storyId` through the resolution chain in `references/component-discovery.md`; never guess an id silently. When no id resolves (typical for `local`), omit `storyId` — the inspector shows the source path without a link.
 - Docs links are derived at runtime, never stored: strip the trailing `--<storyName>` segment from `storyId` and append `--docs` (`?path=/docs/<base>--docs`). The docs link is only a secondary link.
+- `classPrefix` and `domSelector` are the OPTIONAL highlight fields. The inspector resolves each entry's highlight selector as: the entry's `domSelector` when present; otherwise, when `classPrefix` is set, `"." + classPrefix + kebab(name)` (PascalCase → kebab-case, e.g. `BottomSheetCell` → `.cm-bottom-sheet-cell`; digits stay attached to the preceding word — `Grid12` → `.cm-grid12` — so use `domSelector` when the project's class convention separates digits); otherwise the entry has no highlight affordance — its card still shows the origin badge, import path, and story links. `classPrefix` records the project's component root-class convention (see `references/component-discovery.md`); `domSelector` is the per-entry escape hatch for roots that do not follow it (page-level shells, prototype-local markup). Both fields are optional and every consumer must tolerate their absence.
 
 Both the interactive story and the `StaticFlow` story share one meta object, so composition data surfaces in both automatically; both must tolerate the key being absent.
 
@@ -123,7 +126,12 @@ The bundled addon reads `parameters.prototype` and provides a Storybook toolbar 
 - `Story`: the original story.
 - `Docs`: PRD, UI Spec, Flow Spec, Data Spec, Frontend Handoff, Implementation Guide, and Acceptance markdown.
 - `UI Flow`: route cards, flow-only nodes, key transition lines, zoom, drag, pan, layout import, and layout export.
-- `Components`: per-route composition from `meta.components` — component name, origin badge (`shared` / `new` / `promoted`), story title, import path, and notes. When a `storyId` is present, the row opens `?path=/story/<storyId>` in a new tab (the same URL mechanism as `Open Static Flow`), with a secondary link to the derived `--docs` path; without a `storyId`, the row shows the source path with no link. A prototype without `meta.components` gets a friendly empty state, not an error.
+- `Components`: an interactive three-pane workspace over `meta.components`.
+  - A route rail on the left lists the flow routes in flow order (route title plus id badge); the first route with composition data is selected by default.
+  - The middle pane shows one card per component of the selected route — name, origin badge (`shared` / `new` / `promoted`), story title, import path, and notes. When a `storyId` is present, the card's `Story` button opens `?path=/story/<storyId>` in a new tab (the same URL mechanism as `Open Static Flow`), with a secondary `Docs` link to the derived `--docs` path; without a `storyId`, the card shows the source path with no link.
+  - The right pane is a live same-origin iframe preview of the selected route (the same `prototypeFlowPreview=true` + `prototypeRoute=<route-id>` URL the UI Flow cards use), scaled to fit and reloaded on route switch.
+  - Hovering or focusing a card whose highlight selector resolves (see Component Composition Metadata above) outlines the matching element(s) inside the preview iframe, scrolls the first match into view, and shows the match count on the card. A selector that matches nothing in the preview's current state is normal: the card shows a muted "not in current state" chip instead of a highlight.
+  - Everything degrades gracefully: entries without a resolvable selector (no `domSelector` and no `classPrefix`) keep their full card — origin, links, import path — just without the hover-highlight. A prototype without `meta.components` gets a friendly empty state, not an error; a selected route without a composition entry shows a "No composition data for this route" message while the preview still renders.
 - `Data`: fixture summary, API replacement points, source ownership, route data map, state rules, and raw metadata.
 - `Open Static Flow`: when `parameters.prototype.figmaExport.flowStoryId` is present, open the Figma-ready static flow story that uses the same saved layout.
 

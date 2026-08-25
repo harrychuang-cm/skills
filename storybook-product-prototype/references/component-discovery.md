@@ -48,6 +48,8 @@ Regardless of component tiers:
 3. Note Tailwind config, CSS-in-JS theme objects, or styled-system themes when present.
 4. Record the findings as the Token Namespace Record: prefix(es), defining file paths, and how the theme loads into Storybook.
 
+While scanning, also note the project's component root-class convention when one exists — for example every component root carrying a kebab-case class with a shared prefix such as `cm-`. Record that prefix: it feeds `meta.components.classPrefix` (contract in `references/storybook-integration.md`), which lets the inspector's Components workspace derive hover-highlight selectors. An entry whose rendered root does not follow the convention (a page-level shell, prototype-local markup) gets an explicit per-entry `domSelector` as the escape hatch. No convention found is a valid result — those entries simply have no highlight affordance.
+
 ## Recording Results
 
 Write the results into `docs/UI_SPEC.md`:
