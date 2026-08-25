@@ -1174,6 +1174,12 @@
   box-shadow: var(--pi-sys-shadow-raised-surface);
 }
 
+.prototype-inspector__components-card--preview-hover {
+  background: var(--pi-sys-color-primary-container-subtle);
+  border-color: var(--pi-sys-color-primary);
+  box-shadow: var(--pi-sys-shadow-raised-surface);
+}
+
 .prototype-inspector__components-card:focus-visible {
   outline: var(--pi-sys-size-control-border-width-strong) solid
     var(--pi-sys-color-primary);

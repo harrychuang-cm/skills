@@ -60,6 +60,7 @@ const defaultPrototypeParameterName = "prototype";
 const routePreviewMeasurementSelector = '[data-prototype-route-preview="true"]';
 const previewHighlightStyleAttribute = "data-pi-highlight";
 const previewHighlightTargetAttribute = "data-pi-highlight-target";
+const previewReverseListenersAttribute = "data-pi-reverse-listeners";
 const previewHeightCssVariable =
   "--prototype-inspector-viewport-compact-height";
 const previewWidthCssVariable =
@@ -1741,7 +1742,7 @@ function clearPreviewHighlight(iframe) {
   }
 }
 
-function applyPreviewHighlight(iframe, selector) {
+function applyPreviewHighlight(iframe, selector, options) {
   const doc = getPreviewHighlightDocument(iframe);
 
   if (!doc || !selector || !isPreviewHighlightDocumentReady(doc)) {
@@ -1752,15 +1753,19 @@ function applyPreviewHighlight(iframe, selector) {
   ensurePreviewHighlightStyle(doc, getPreviewHighlightAccent());
 
   const matches = queryPreviewSelectorMatches(doc, selector);
+  const shouldScroll = options?.scroll !== false;
 
   try {
     matches.forEach((element) =>
       element.setAttribute(previewHighlightTargetAttribute, "true"),
     );
-    matches[0]?.scrollIntoView({
-      behavior: prefersReducedMotion() ? "auto" : "smooth",
-      block: "nearest",
-    });
+
+    if (shouldScroll) {
+      matches[0]?.scrollIntoView({
+        behavior: prefersReducedMotion() ? "auto" : "smooth",
+        block: "nearest",
+      });
+    }
   } catch (error) {
     // Keep the resolved match count even if the browser rejects scrolling.
   }
@@ -1776,6 +1781,77 @@ function countPreviewSelectorMatches(iframe, selector) {
   }
 
   return queryPreviewSelectorMatches(doc, selector).length;
+}
+
+function markPreviewHighlightElement(iframe, element) {
+  const doc = getPreviewHighlightDocument(iframe);
+
+  if (!doc || !element || !isPreviewHighlightDocumentReady(doc)) {
+    return;
+  }
+
+  try {
+    const marked = doc.querySelectorAll(`[${previewHighlightTargetAttribute}]`);
+
+    if (marked.length === 1 && marked[0] === element) {
+      return;
+    }
+  } catch (error) {
+    // Fall through to a full re-mark when the current marks cannot be read.
+  }
+
+  clearPreviewHighlight(iframe);
+  ensurePreviewHighlightStyle(doc, getPreviewHighlightAccent());
+
+  try {
+    element.setAttribute(previewHighlightTargetAttribute, "true");
+  } catch (error) {
+    // Highlighting is optional; an unavailable preview document is a no-op.
+  }
+}
+
+function isDeeperPreviewReverseHoverElement(element, current) {
+  try {
+    return element !== current && current.contains(element);
+  } catch (error) {
+    return false;
+  }
+}
+
+function resolvePreviewReverseHoverMatch(target, entries) {
+  if (
+    !target ||
+    typeof target.closest !== "function" ||
+    !Array.isArray(entries)
+  ) {
+    return null;
+  }
+
+  let match = null;
+
+  entries.forEach((entry, index) => {
+    if (!entry?.selector) {
+      return;
+    }
+
+    let element = null;
+
+    try {
+      element = target.closest(entry.selector);
+    } catch (error) {
+      element = null;
+    }
+
+    if (!element) {
+      return;
+    }
+
+    if (!match || isDeeperPreviewReverseHoverElement(element, match.element)) {
+      match = { element, index };
+    }
+  });
+
+  return match;
 }
 
 function getMeasuredFramePreviewSize(iframe) {
@@ -3313,11 +3389,29 @@ function PrototypeComponentStoryLinks({ component }) {
 function PrototypeComponentCard({
   component,
   isHighlighted,
+  isPreviewHovered,
   matchCount,
   onHighlightEnd,
   onHighlightStart,
   selector,
 }) {
+  const cardRef = useRef(null);
+
+  useEffect(() => {
+    if (!isPreviewHovered) {
+      return;
+    }
+
+    try {
+      cardRef.current?.scrollIntoView({
+        behavior: prefersReducedMotion() ? "auto" : "smooth",
+        block: "nearest",
+      });
+    } catch (error) {
+      // Scrolling the emphasized card into view is best-effort.
+    }
+  }, [isPreviewHovered]);
+
   const storyId = getPrototypeComponentStoryId(component);
   const storyTitle =
     typeof component.storyTitle === "string" && component.storyTitle.trim()
@@ -3342,17 +3436,32 @@ function PrototypeComponentCard({
 
     onHighlightEnd();
   };
+  const handleHighlightMouseLeave = (event) => {
+    const ownerDocument = event.currentTarget?.ownerDocument;
+
+    if (
+      ownerDocument?.activeElement instanceof Element &&
+      event.currentTarget.contains(ownerDocument.activeElement)
+    ) {
+      return;
+    }
+
+    onHighlightEnd();
+  };
 
   return createElement(
     "article",
     {
-      className: "prototype-inspector__components-card",
+      className: isPreviewHovered
+        ? "prototype-inspector__components-card prototype-inspector__components-card--preview-hover"
+        : "prototype-inspector__components-card",
       "data-highlightable": hasHighlight ? "true" : undefined,
       "data-highlighted": hasHighlight && isHighlighted ? "true" : undefined,
       onBlur: hasHighlight ? handleHighlightBlur : undefined,
       onFocus: hasHighlight ? onHighlightStart : undefined,
       onMouseEnter: hasHighlight ? onHighlightStart : undefined,
-      onMouseLeave: hasHighlight ? onHighlightEnd : undefined,
+      onMouseLeave: hasHighlight ? handleHighlightMouseLeave : undefined,
+      ref: cardRef,
       tabIndex: hasHighlight ? 0 : undefined,
     },
     createElement(
@@ -3475,8 +3584,12 @@ function PrototypeComponents({ prototype }) {
   const previewRef = useRef(null);
   const [highlightedIndex, setHighlightedIndex] = useState(null);
   const [matchCounts, setMatchCounts] = useState({});
+  const [previewHoveredIndex, setPreviewHoveredIndex] = useState(null);
+  const [previewLoadCount, setPreviewLoadCount] = useState(0);
   const [previewScale, setPreviewScale] = useState(1);
   const activeHighlightRef = useRef(null);
+  const previewReverseHoverRef = useRef(null);
+  const selectedEntriesRef = useRef(selectedEntries);
   const refreshMatchCounts = useCallback(() => {
     const iframe = previewRef.current;
 
@@ -3511,15 +3624,109 @@ function PrototypeComponents({ prototype }) {
     const active = activeHighlightRef.current;
 
     if (active?.selector) {
-      applyPreviewHighlight(iframe, active.selector);
+      applyPreviewHighlight(iframe, active.selector, { scroll: false });
     }
 
     return true;
   }, [normalizedRouteId, selectedEntries]);
+  const clearPreviewReverseHover = useCallback(() => {
+    if (previewReverseHoverRef.current === null) {
+      return;
+    }
+
+    previewReverseHoverRef.current = null;
+    setPreviewHoveredIndex(null);
+
+    const active = activeHighlightRef.current;
+
+    if (active?.selector) {
+      applyPreviewHighlight(previewRef.current, active.selector, {
+        scroll: false,
+      });
+    } else {
+      clearPreviewHighlight(previewRef.current);
+    }
+  }, []);
+  const handlePreviewReverseHover = useCallback(
+    (event) => {
+      const match = resolvePreviewReverseHoverMatch(
+        event?.target,
+        selectedEntriesRef.current,
+      );
+
+      if (!match) {
+        clearPreviewReverseHover();
+        return;
+      }
+
+      previewReverseHoverRef.current = match;
+      setPreviewHoveredIndex(match.index);
+      markPreviewHighlightElement(previewRef.current, match.element);
+    },
+    [clearPreviewReverseHover],
+  );
+  const attachPreviewReverseListeners = useCallback(
+    (iframe) => {
+      const doc = getPreviewHighlightDocument(iframe);
+
+      if (!doc || !isPreviewHighlightDocumentReady(doc)) {
+        return;
+      }
+
+      try {
+        const root = doc.documentElement;
+
+        if (
+          !root ||
+          root.getAttribute(previewReverseListenersAttribute) === "true"
+        ) {
+          return;
+        }
+
+        root.setAttribute(previewReverseListenersAttribute, "true");
+        doc.addEventListener("mouseover", handlePreviewReverseHover, {
+          capture: true,
+          passive: true,
+        });
+        doc.addEventListener("mouseleave", clearPreviewReverseHover, {
+          passive: true,
+        });
+      } catch (error) {
+        // Reverse hover is optional; an unavailable preview document is a no-op.
+      }
+    },
+    [clearPreviewReverseHover, handlePreviewReverseHover],
+  );
+  const detachPreviewReverseListeners = useCallback(
+    (iframe) => {
+      const doc = getPreviewHighlightDocument(iframe);
+
+      if (!doc) {
+        return;
+      }
+
+      try {
+        doc.documentElement?.removeAttribute(previewReverseListenersAttribute);
+        doc.removeEventListener("mouseover", handlePreviewReverseHover, {
+          capture: true,
+        });
+        doc.removeEventListener("mouseleave", clearPreviewReverseHover);
+      } catch (error) {
+        // Detach is best-effort; a replaced document dies with its listeners.
+      }
+    },
+    [clearPreviewReverseHover, handlePreviewReverseHover],
+  );
+
+  useEffect(() => {
+    selectedEntriesRef.current = selectedEntries;
+  }, [selectedEntries]);
 
   useEffect(() => {
     activeHighlightRef.current = null;
+    previewReverseHoverRef.current = null;
     setHighlightedIndex(null);
+    setPreviewHoveredIndex(null);
     setMatchCounts({});
   }, [normalizedRouteId]);
 
@@ -3534,6 +3741,7 @@ function PrototypeComponents({ prototype }) {
       }
 
       if (refreshMatchCounts()) {
+        attachPreviewReverseListeners(previewRef.current);
         return;
       }
 
@@ -3552,7 +3760,12 @@ function PrototypeComponents({ prototype }) {
         window.clearTimeout(retryTimer);
       }
     };
-  }, [previewSource, refreshMatchCounts]);
+  }, [
+    attachPreviewReverseListeners,
+    previewLoadCount,
+    previewSource,
+    refreshMatchCounts,
+  ]);
 
   useEffect(() => {
     const previewPane = previewPaneRef.current;
@@ -3589,16 +3802,21 @@ function PrototypeComponents({ prototype }) {
   }, [previewSource, previewViewportHeight, previewViewportWidth]);
 
   useEffect(() => {
+    const iframe = previewRef.current;
+
     return () => {
-      clearPreviewHighlight(previewRef.current);
+      detachPreviewReverseListeners(iframe);
+      clearPreviewHighlight(iframe);
     };
-  }, [normalizedRouteId]);
+  }, [detachPreviewReverseListeners, normalizedRouteId]);
 
   const activateHighlight = (index, selector) => {
     if (!selector || highlightedIndex === index) {
       return;
     }
 
+    previewReverseHoverRef.current = null;
+    setPreviewHoveredIndex(null);
     activeHighlightRef.current = { index, selector };
     setHighlightedIndex(index);
 
@@ -3718,6 +3936,7 @@ function PrototypeComponents({ prototype }) {
                       createElement(PrototypeComponentCard, {
                         component: entry.component,
                         isHighlighted: highlightedIndex === index,
+                        isPreviewHovered: previewHoveredIndex === index,
                         key: `${normalizedRouteId}-${index}`,
                         matchCount:
                           matchCounts[`${normalizedRouteId}:${index}`] ?? null,
@@ -3750,7 +3969,13 @@ function PrototypeComponents({ prototype }) {
                         key: normalizedRouteId,
                         loading: "eager",
                         onLoad: () => {
-                          refreshMatchCounts();
+                          previewReverseHoverRef.current = null;
+                          setPreviewHoveredIndex(null);
+                          setPreviewLoadCount((count) => count + 1);
+
+                          if (refreshMatchCounts()) {
+                            attachPreviewReverseListeners(previewRef.current);
+                          }
                         },
                         ref: previewRef,
                         src: previewSource,
