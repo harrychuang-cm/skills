@@ -81,9 +81,10 @@ src/pages/prototypes/<feature-prototype>/
     DATA_SPEC.md
     ACCEPTANCE.md
     IMPLEMENTATION_GUIDE.md
+    PRODUCTION_HANDOFF.md (optional)
 ```
 
-Attach review metadata through `parameters.prototype`. The inspector reads `id`, `title`, `description`, `docs`, `flow.routes`, `flow.nodes`, `flow.transitions`, and `data` to render Story, Docs, UI Flow, and Data modes.
+Attach review metadata through `parameters.prototype`. The inspector reads `id`, `title`, `description`, `docs`, `flow.routes`, `flow.nodes`, `flow.transitions`, `components`, and `data` to render Story, Docs, UI Flow, Components, and Data modes. The optional `docs.productionHandoff` document adds a Frontend Handoff tab in Docs mode, and the optional `components` block (per-route entries with `origin`, story links, plus `classPrefix` and per-entry `domSelector` for highlight selectors) drives the Components workspace.
 
 The starter example lives at `src/pages/prototypes/example-prototype` and includes a Static Flow story id for Figma export review.
 

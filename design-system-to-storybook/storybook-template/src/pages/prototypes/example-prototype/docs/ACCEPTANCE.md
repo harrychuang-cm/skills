@@ -5,10 +5,16 @@
 - `Pages/Prototypes/Example Prototype/Default` renders the interactive story.
 - `Pages/Prototypes/Example Prototype/Static Flow` renders a static export surface.
 - Static Flow route cards render the same `ExamplePrototype` route UI used by UI Flow iframe previews.
+- `parameters.prototype` exposes `components.routes[]` entries for every route with origin markers and highlight selectors.
 
 ## Docs
 
 - Docs mode shows PRD, UI Spec, Flow Spec, Data Spec, Implementation Guide, and Acceptance.
+
+## Components
+
+- Components mode lists the `intake`, `review`, and `handoff` compositions with origin badges and a live route preview.
+- Hovering a component card highlights its rendered instances in the preview; hovering the preview emphasizes the matching card.
 
 ## UI Flow
 

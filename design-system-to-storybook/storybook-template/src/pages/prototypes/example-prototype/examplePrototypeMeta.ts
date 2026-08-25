@@ -13,6 +13,65 @@ import {
 import { examplePrototypeFlow } from "./examplePrototypeFlow";
 
 export const examplePrototypeMeta = {
+  components: {
+    classPrefix: "sbt-",
+    routes: [
+      {
+        components: [
+          {
+            importPath: "src/pages/prototypes/example-prototype/ExamplePrototype.tsx",
+            name: "ExamplePrototype",
+            note: "Prototype shell shared by every route: topbar, route tabs, and route body.",
+            origin: "local",
+          },
+          {
+            domSelector: ".sbt-example-prototype__panel",
+            importPath: "src/pages/prototypes/example-prototype/ExamplePrototype.tsx",
+            name: "IntakePanel",
+            note: "Intake request summary with owner and target details plus the Submit intake action.",
+            origin: "local",
+          },
+        ],
+        route: "intake",
+      },
+      {
+        components: [
+          {
+            importPath: "src/pages/prototypes/example-prototype/ExamplePrototype.tsx",
+            name: "ExamplePrototype",
+            note: "Prototype shell shared by every route: topbar, route tabs, and route body.",
+            origin: "local",
+          },
+          {
+            domSelector: ".sbt-example-prototype__panel",
+            importPath: "src/pages/prototypes/example-prototype/ExamplePrototype.tsx",
+            name: "ReviewPanel",
+            note: "Requirement checklist with the Request approval and Edit intake actions.",
+            origin: "local",
+          },
+        ],
+        route: "review",
+      },
+      {
+        components: [
+          {
+            importPath: "src/pages/prototypes/example-prototype/ExamplePrototype.tsx",
+            name: "ExamplePrototype",
+            note: "Prototype shell shared by every route: topbar, route tabs, and route body.",
+            origin: "local",
+          },
+          {
+            domSelector: ".sbt-example-prototype__panel",
+            importPath: "src/pages/prototypes/example-prototype/ExamplePrototype.tsx",
+            name: "HandoffPanel",
+            note: "Handoff readiness summary with checklist and the Start another request action.",
+            origin: "local",
+          },
+        ],
+        route: "handoff",
+      },
+    ],
+  },
   data: {
     apiContracts: examplePrototypeApiContracts,
     dataSources: examplePrototypeDataSources,
@@ -76,7 +135,7 @@ export const examplePrototypeMeta = {
     ],
   },
   description:
-    "A neutral Project Intake prototype that demonstrates Story, Docs, UI Flow, Data, and Static Flow export contracts for new projects.",
+    "A neutral Project Intake prototype that demonstrates Story, Docs, UI Flow, Components, Data, and Static Flow export contracts for new projects.",
   docs: {
     acceptance,
     dataSpec,

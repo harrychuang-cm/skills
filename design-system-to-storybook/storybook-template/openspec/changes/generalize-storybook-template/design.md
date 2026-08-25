@@ -11,7 +11,7 @@
 - 讓新專案透過初始化命令產生 project config，包含 project name、token prefix、class prefix、review endpoint、Figma fallback source、Storybook sorting 與 starter token/content 設定。
 - 讓 Storybook runtime、Figma export、token checks、catalog checks 與 Prototype UI Flow 讀取 project config 或使用中性名稱，不再寫死 cm、ChipK 或 inventory-prototype。
 - 讓本地 Figma importer plugin 使用 Storybook Figma export addon 生成的 importer code，維持 payload schema、token/component import 行為與 addon 同步。
-- 將 Prototype UI Flow 保留為 template core feature，讓不同專案只要提供 parameters.prototype metadata 就能使用 Story、Docs、UI Flow、Data review mode。
+- 將 Prototype UI Flow 保留為 template core feature，讓不同專案只要提供 parameters.prototype metadata 就能使用 Story、Docs、UI Flow、Components、Data review mode。
 - 保留一個中性 example prototype，作為 metadata contract、iframe preview、layout import/export、static flow export 與 verification 的可執行樣本。
 - 將 ChipK domain-specific material 與目前完整元件庫移出 template default surface，並移除 `src/` 中不屬於 starter template 的 legacy component/page/prototype source。
 
@@ -87,11 +87,12 @@ ChipK tokens、component docs、inventory prototype、domain-specific catalog en
 
 **Prototype UI Flow behavior:**
 
-- Any story with parameters.prototype can switch between Story, Docs, UI Flow, and Data modes.
+- Any story with parameters.prototype can switch between Story, Docs, UI Flow, Components, and Data modes.
 - Story mode renders the original story without wrapping behavior changes.
 - Docs mode renders available docs from parameters.prototype.docs using the existing markdown subset.
 - UI Flow mode renders routes from parameters.prototype.flow.routes, optional flow-only nodes from parameters.prototype.flow.nodes, and visible edges from transitions where flowLine equals key.
 - UI Flow layout persistence uses a generic schema name and prototype id; exported JSON includes schema, version, prototypeId, exportedAt, and positions.
+- Components mode renders a three-pane workspace from parameters.prototype.components: a route rail, per-route component cards with origin badges and Story/Docs links, and a live route preview with card-to-preview highlight plus preview-to-card reverse hover; missing components metadata shows a neutral empty state.
 - Data mode renders overview, API contracts, data sources, schemas, route data requirements, state rules, fixtures, and raw payload from parameters.prototype.data.
 - Static Flow export is available when prototype metadata provides a flow export story id; the control opens the sibling Storybook story with Figma export enabled.
 - Static Flow export uses the same generic layout storage key, normalized position payload, route/node metadata, and route preview width/height contract as UI Flow, so dragged UI Flow positions and static export positions stay aligned.

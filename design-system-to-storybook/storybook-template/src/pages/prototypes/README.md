@@ -2,7 +2,7 @@
 
 `src/pages/prototypes` stores feature-level product prototypes that can be used as implementation references for future PRDs, flows, and AI-assisted delivery.
 
-The template starter is `example-prototype`. It is intentionally neutral and demonstrates the portable `parameters.prototype` contract, Story/Docs/UI Flow/Data review modes, iframe route previews, layout import/export, and Static Flow export. Domain-specific prototypes can remain as reference material, but new projects should start from `example-prototype`.
+The template starter is `example-prototype`. It is intentionally neutral and demonstrates the portable `parameters.prototype` contract, Story/Docs/UI Flow/Components/Data review modes, iframe route previews, layout import/export, and Static Flow export. Domain-specific prototypes can remain as reference material, but new projects should start from `example-prototype`.
 
 The standard is not only visual. A prototype is complete only when the interactive story, PRD, flow metadata, fixture data, UI spec, and acceptance criteria describe the same product behavior.
 
@@ -53,12 +53,16 @@ Required fields:
 - `flow.transitions`: Every user-triggered transition between routes.
 - `data`: A summary of deterministic fixtures and navigation inputs.
 
+Optional fields:
+
+- `components`: Per-route component composition for the Components workspace. `components.routes[]` joins entries to flow routes by route id; each entry carries `name`, `origin` (`shared` | `local` | `promoted`), and `importPath`, plus optional `storyId`, `storyTitle`, `note`, and `domSelector`. `components.classPrefix` (for example `sbt-`) lets the inspector derive highlight selectors from the entry name when no `domSelector` is given. Consumers must tolerate a missing `components` key.
+
 Route metadata should include:
 
 - `id`: Stable route id used by React state and flow diagrams.
 - `title`: Visible route name.
 - `navigationId`: Bottom navigation or shell context id.
-- `component`: Primary design-system component or composed surface.
+- `component`: Primary design-system component or composed surface. This is a display-only summary string; the structured composition lives in `meta.components`.
 - `description`: What the route proves.
 - `flowGroup`: Optional visual grouping label for UI Flow cards.
 - `flowPosition`: Optional `{ x, y }` coordinate for stable UI Flow layout.
@@ -82,7 +86,8 @@ Transition metadata should include:
 5. Add prototype-specific CSS only for layout glue that cannot belong to a reusable component.
 6. Wire all controls through route state and transition mappings.
 7. Import all docs into `*Meta.ts` and attach the object to `parameters.prototype`.
-8. Verify Storybook, UI Flow, docs, TypeScript, and acceptance criteria.
+8. Author `meta.components` from the UI Spec composition sections: cover every route, mark each entry `shared`, `local`, or `promoted`, and record `storyId` for shared components.
+9. Verify Storybook, UI Flow, docs, TypeScript, and acceptance criteria.
 
 ## Zero To One Workflow
 

@@ -2,12 +2,22 @@
 
 ### Requirement: Prototype Metadata Contract
 
-The template SHALL define parameters.prototype as the portable metadata contract for product prototypes.
+The template SHALL define parameters.prototype as the portable metadata contract for product prototypes. The contract SHALL include an optional top-level components key that records per-route component composition: components.routes[] entries joined to flow routes by route id, each entry carrying name, origin (shared | local | promoted), importPath, and optional storyId, storyTitle, and note; plus an optional components.classPrefix (project-wide component root-class prefix) and an optional per-entry domSelector that overrides the classPrefix + kebab(name) selector derivation.
 
 #### Scenario: Story exposes prototype metadata
 
 - **WHEN** a Storybook story defines parameters.prototype with id, title, description, docs, flow, and data
 - **THEN** the prototype inspector reads that metadata without requiring project-specific component names or token prefixes
+
+#### Scenario: Story exposes component composition metadata
+
+- **WHEN** parameters.prototype.components defines routes[] entries with name, origin, and importPath, optionally storyId, storyTitle, note, and domSelector, and optionally a components.classPrefix
+- **THEN** the prototype inspector joins each entry to flow.routes by route id and renders the Components workspace from that metadata
+
+#### Scenario: Missing components metadata
+
+- **WHEN** parameters.prototype omits the components key, or components carries unknown extra fields
+- **THEN** all other review modes render unchanged, unknown fields are ignored, and Components mode displays an explanatory empty state describing the components.routes[] contract instead of an error
 
 #### Scenario: Missing prototype metadata
 
@@ -16,7 +26,7 @@ The template SHALL define parameters.prototype as the portable metadata contract
 
 ### Requirement: Prototype Review Modes
 
-The prototype inspector SHALL provide Story, Docs, UI Flow, and Data modes for stories that expose parameters.prototype.
+The prototype inspector SHALL provide Story, Docs, UI Flow, Components, and Data modes, in that toolbar order, for stories that expose parameters.prototype.
 
 #### Scenario: Story mode
 
@@ -25,8 +35,23 @@ The prototype inspector SHALL provide Story, Docs, UI Flow, and Data modes for s
 
 #### Scenario: Docs mode
 
-- **WHEN** the prototype toolbar is set to Docs and parameters.prototype.docs contains PRD, UI Spec, Flow Spec, Data Spec, Acceptance, and Implementation Guide markdown
-- **THEN** the inspector renders document tabs for each available document and displays the selected markdown document
+- **WHEN** the prototype toolbar is set to Docs and parameters.prototype.docs contains at least the minimum document set of PRD, UI Spec, Flow Spec, Data Spec, Acceptance, and Implementation Guide markdown
+- **THEN** the inspector renders document tabs for each available document and displays the selected markdown document, and when the optional productionHandoff document is present it additionally renders a Frontend Handoff tab that is hidden while the document is absent
+
+#### Scenario: Components workspace
+
+- **WHEN** the prototype toolbar is set to Components and parameters.prototype.components provides entries for at least one route
+- **THEN** the inspector renders a three-pane workspace: a route rail listing flow routes in flow order, a component card list for the selected route where each card shows name, an origin badge (shared | new | promoted), storyTitle, importPath, and note with Story and Docs open-links via the storybook-path URL mechanism, and a live same-origin route preview iframe (prototypeFlowPreview plus prototypeRoute) with a 375x812 natural viewport scaled to fit the pane
+
+#### Scenario: Card-to-preview highlight
+
+- **WHEN** a reviewer hovers or keyboard-focuses a component card whose highlight selector resolves (entry.domSelector when present, else "." + classPrefix + kebab(name), else the card offers no highlight affordance)
+- **THEN** the inspector outlines every matching element inside the preview iframe through an injected data-pi-highlight style, scrolls the first match into view, and shows the match count on the card, and when the selector matches zero elements the card shows a muted "not in current state" chip
+
+#### Scenario: Preview-to-card reverse hover
+
+- **WHEN** a reviewer hovers a rendered component instance inside the route preview iframe
+- **THEN** the inspector resolves the deepest closest-match among the selected route's entries, outlines only that hovered instance, marks the matching card with the .prototype-inspector__components-card--preview-hover modifier, and scrolls that card into nearest view; reverse-hover owns the highlight while the pointer remains inside the preview, any keyboard-focused card highlight is restored when reverse-hover clears, and the preview listeners never intercept clicks or navigation inside the preview
 
 #### Scenario: Data mode
 
@@ -124,9 +149,9 @@ The template SHALL include one neutral example prototype that demonstrates the c
 #### Scenario: Example prototype covers required artifacts
 
 - **WHEN** the initialized template is inspected
-- **THEN** src/pages/prototypes/example-prototype contains an interactive story, static flow export story, flow metadata, fixture data, prototype meta object, scoped CSS, PRD, UI Spec, Flow Spec, Data Spec, Acceptance, and Implementation Guide
+- **THEN** src/pages/prototypes/example-prototype contains an interactive story, static flow export story, flow metadata, fixture data, prototype meta object with a components block, scoped CSS, PRD, UI Spec, Flow Spec, Data Spec, Acceptance, and Implementation Guide
 
 #### Scenario: Example prototype verifies all review modes
 
 - **WHEN** the example prototype story is opened in Storybook
-- **THEN** Story, Docs, UI Flow, and Data modes each render meaningful content from the example prototype metadata
+- **THEN** Story, Docs, UI Flow, Components, and Data modes each render meaningful content from the example prototype metadata

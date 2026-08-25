@@ -3876,7 +3876,7 @@ function PrototypeComponents({ prototype }) {
               createElement("code", null, "local"),
               ", or ",
               createElement("code", null, "promoted"),
-              ". See the storybook-product-prototype skill references for the full contract.",
+              ". See the prototype metadata documentation in this project for the full contract.",
             ),
           )
         : railRoutes.length === 0

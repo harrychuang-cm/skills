@@ -12,7 +12,7 @@
 
 ## 3. Prototype UI Flow Core
 
-- [x] 3.1 實作 Prototype Metadata Contract 和 Prototype Review Modes：prototype inspector 只從 parameters.prototype 讀 id、title、description、docs、flow、data，且 Story mode 保持原 story render，Docs/Data mode 對缺漏資料顯示中性 empty state；以 example prototype 在 Story、Docs、Data 三個 mode 的人工檢查驗證。
+- [x] 3.1 實作 Prototype Metadata Contract 和 Prototype Review Modes：prototype inspector 只從 parameters.prototype 讀 id、title、description、docs、flow、components、data，且 Story mode 保持原 story render，Docs/Components/Data mode 對缺漏資料顯示中性 empty state；以 example prototype 在 Story、Docs、Components、Data 四個 mode 的人工檢查驗證。
 - [x] 3.2 實作 UI Flow Canvas，並落實 Keep Prototype UI Flow independent from project prefix and domain：UI Flow mode 從 flow.routes、flow.nodes、flow.transitions 產生 route cards、flow-only nodes 與 flowLine 等於 key 的 visible edges，不依賴 token prefix、component id 或 route visible label；以 example prototype 檢查兩個以上 route cards、至少一個 flow-only node、以及 key edge filtering 行為。
 - [x] 3.3 實作 UI Flow Layout Persistence：dragged positions、fit/manual zoom、Export Layout、Import Layout 使用 generic schema、version、prototypeId、exportedAt、positions payload，非 matching layout 匯入時保留目前 layout 並顯示錯誤訊息；以 example prototype 匯出 JSON、重新匯入 JSON、再匯入不匹配 JSON 的人工流程驗證。
 - [x] 3.4 實作 Route Preview Measurement：iframe 高度量測優先使用 data-prototype-route-preview="true" marker，沒有 marker 時 fallback 到 Storybook root 或 document body，且不查詢 inventory-prototype selector；以 example prototype route preview 與一個無 marker fallback story 人工檢查 UI Flow card 高度穩定。
@@ -22,7 +22,7 @@
 
 ## 4. Neutral Example And Default Surface
 
-- [x] 4.1 實作 Neutral Example Prototype，並落實 Use a neutral example prototype as a contract test：建立 example-prototype 的 interactive story、static flow export story、flow metadata、fixture data、prototype meta、scoped CSS、PRD、UI_SPEC、FLOW_SPEC、DATA_SPEC、ACCEPTANCE、IMPLEMENTATION_GUIDE，內容使用中性 Project Intake 或 Task Review domain；以 Storybook 中 example prototype 四個 review modes 都有內容驗證。
+- [x] 4.1 實作 Neutral Example Prototype，並落實 Use a neutral example prototype as a contract test：建立 example-prototype 的 interactive story、static flow export story、flow metadata、fixture data、prototype meta、scoped CSS、PRD、UI_SPEC、FLOW_SPEC、DATA_SPEC、ACCEPTANCE、IMPLEMENTATION_GUIDE，內容使用中性 Project Intake 或 Task Review domain；以 Storybook 中 example prototype 五個 review modes 都有內容驗證。
 - [x] 4.2 實作 Default Template Surface，並落實 Move ChipK material out of the default template surface：初始化後預設 Storybook navigation 只載入 generic governance、foundation、starter component、example prototype，不載入 stock、inventory、broker、portfolio domain stories；以 npm run storybook:build 和人工檢查 story index 或 built navigation 驗證 domain stories 不在 default surface。
 - [x] 4.3 更新 README 與 design-system guidance：文件說明 init-template 使用方式、prefix 規則、新增 component 流程、新增 prototype 流程、Prototype UI Flow metadata contract、ChipK sample/reference 邊界與驗證命令；以人工內容審查確認每個命令、設定欄位與驗證步驟都能對應到已實作行為。
 - [x] 4.4 Remove legacy component source from the template surface：刪除 src/components 中除 example-card 外的 ChipK domain component source，並刪除仍依賴這些元件的 src/pages/inventory-realtime-quote-page 與 src/pages/prototypes/inventory-prototype；更新 prototype README 不再指向 removed inventory reference；以 rg 檢查 src 中不再有 legacy component imports，並以 npm run typecheck、npm run storybook:build、npm run check、spectra validate generalize-storybook-template --strict 驗證 template 不受影響。

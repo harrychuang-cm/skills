@@ -23,5 +23,5 @@
 ## Verification
 
 - Run `npm run typecheck`.
-- Open Story, Docs, UI Flow, and Data modes.
+- Open Story, Docs, UI Flow, Components, and Data modes.
 - Confirm the Static Flow story id matches `pages-prototypes-example-prototype--static-flow`.

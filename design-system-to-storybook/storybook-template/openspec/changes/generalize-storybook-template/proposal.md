@@ -7,7 +7,7 @@
 - 新增 project initialization 能力，讓新專案可透過初始化腳本自動產生專案名稱、token prefix、class prefix、review endpoint、Figma source fallback 與 Storybook sorting 設定。
 - 將 Storybook core 設定、token inheritance check、Figma export config、prototype inspector storage/schema 從 cm/ChipK 硬編碼改為 project config 或中性預設。
 - 讓本地 Figma importer plugin 從 Storybook Figma export addon 產生 importer 程式碼，避免 plugin 與 addon exporter schema 分岔，並保持跨專案通用。
-- 將 Prototype UI Flow 定義為 template 的一級能力，所有專案都能透過 parameters.prototype 使用 Story、Docs、UI Flow、Data 四個 review mode。
+- 將 Prototype UI Flow 定義為 template 的一級能力，所有專案都能透過 parameters.prototype 使用 Story、Docs、UI Flow、Components、Data 五個 review mode。
 - 保留一個中性 example prototype，作為 Prototype UI Flow、docs/data metadata、static flow export 與 checks 的可驗證樣本。
 - 將 ChipK domain-specific 元件、頁面、prototype、tokens、design-system docs 與 Figma node mappings 移出 template default surface；可執行的 legacy component/page/prototype source 不保留在 template `src/` 中。
 - 更新 README 與 design-system guidance，說明如何初始化 template、如何新增 component、如何新增 prototype、如何驗證 prefix-agnostic checks。

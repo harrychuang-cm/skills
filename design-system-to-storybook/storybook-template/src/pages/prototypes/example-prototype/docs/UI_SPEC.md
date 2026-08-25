@@ -10,6 +10,18 @@ The prototype uses a compact project workspace shell with a top bar, route tabs,
 - `review`: requirements list, approval action, and edit action.
 - `handoff`: accepted scope summary and next-step checklist.
 
+## Component Map
+
+- None. The starter routes compose no pre-existing shared library components; the starter `components/example-card` component is intentionally not used by any route.
+
+## Component Gaps
+
+- No reusable components: ExamplePrototype.tsx imports nothing from src/components; every route renders the prototype-local panels listed below.
+- `ExamplePrototype`: prototype-local shell (top bar, route tabs, route body) rendered on every route; root class `.sbt-example-prototype`.
+- `IntakePanel`: intake request panel inside the shell; highlighted through domSelector `.sbt-example-prototype__panel`.
+- `ReviewPanel`: review requirements panel inside the shell; highlighted through domSelector `.sbt-example-prototype__panel`.
+- `HandoffPanel`: handoff readiness panel inside the shell; highlighted through domSelector `.sbt-example-prototype__panel`.
+
 ## Interaction Rules
 
 - Route state is explicit and typed by `ExamplePrototypeRouteId`.
