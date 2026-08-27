@@ -23,9 +23,10 @@
     --amber-deep: #3A2E1A;
     --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
     --sans: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
+    --topbar: 56px;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  [hidden] { display: none !important; }
+  html { scroll-padding-top: calc(var(--topbar) + 12px); }
   body {
     background: var(--bg);
     color: var(--ink);
@@ -34,13 +35,11 @@
     line-height: 1.75;
     -webkit-font-smoothing: antialiased;
   }
-  .wrap { max-width: 880px; margin: 0 auto; padding: 56px 24px 96px; }
-
-  h1 { font-size: 40px; font-weight: 900; line-height: 1.25; text-wrap: balance; letter-spacing: 0.01em; }
+  h1 { font-size: 38px; font-weight: 900; line-height: 1.25; text-wrap: balance; letter-spacing: 0.01em; }
   h2 { font-size: 26px; font-weight: 900; line-height: 1.3; text-wrap: balance; margin-bottom: 8px; }
   h3 { font-size: 18px; font-weight: 700; line-height: 1.4; }
   p  { max-width: 68ch; }
-  .lede { font-size: 18px; color: var(--muted); max-width: 62ch; }
+  .lede { font-size: 17.5px; color: var(--muted); max-width: 62ch; }
   .eyebrow {
     font-family: var(--mono); font-size: 12px; font-weight: 600;
     letter-spacing: 0.18em; text-transform: uppercase; color: var(--faint);
@@ -54,25 +53,58 @@
     background: var(--surface-2); color: var(--ink);
     padding: 2px 7px; border-radius: 5px; white-space: nowrap;
   }
-  section { margin-top: 84px; }
+  section { margin-top: 64px; }
+  section:first-child { margin-top: 0; }
   .section-intro { color: var(--muted); margin-top: 6px; }
   button { font-family: inherit; cursor: pointer; }
   :focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+  .topbar a:focus-visible, .station-tab:focus-visible { outline-offset: -2px; }
   a { color: var(--teal); }
+
+  /* ---------- app shell ---------- */
+  .topbar {
+    position: sticky; top: 0; z-index: 20;
+    height: var(--topbar);
+    display: flex; align-items: center; gap: 18px;
+    padding: 0 22px;
+    background: var(--bg);
+    border-bottom: 1px solid var(--surface-2);
+  }
+  .brand {
+    display: flex; align-items: center; gap: 9px;
+    color: var(--ink); text-decoration: none; flex: none;
+    font-weight: 900; font-size: 14px; letter-spacing: 0.02em;
+  }
+  .brand-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--coral); flex: none; }
+  .tabs { display: flex; align-items: center; gap: 2px; overflow-x: auto; min-width: 0; }
+  .tabs a {
+    padding: 7px 13px; border-radius: 9px;
+    color: var(--muted); text-decoration: none;
+    font-size: 14px; font-weight: 700; white-space: nowrap;
+    transition: background 0.15s, color 0.15s;
+  }
+  .tabs a:hover { background: var(--surface); color: var(--ink); }
+  .tabs a.active { background: var(--ink); color: var(--bg); }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 44px 24px 96px; }
+  .view-enter { animation: view-in 0.35s ease-out; }
+  @keyframes view-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 
   /* ---------- hero ---------- */
   .hero-tag {
     display: inline-block; font-family: var(--mono); font-size: 12px; font-weight: 600;
     letter-spacing: 0.16em; color: var(--bg); background: var(--ink);
-    padding: 4px 12px; border-radius: 100px; margin-bottom: 22px;
+    padding: 4px 12px; border-radius: 100px; margin-bottom: 20px;
   }
-  .hero p { margin-top: 18px; }
-  .route-pills { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 28px; }
+  .hero p { margin-top: 16px; }
+  .route-pills { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 26px; }
   .route-pill {
     display: flex; align-items: center; gap: 10px;
-    background: var(--surface); border-radius: 12px; padding: 14px 18px;
-    font-weight: 700; font-size: 15px;
+    background: var(--surface); border: none; color: var(--ink); text-align: left;
+    border-radius: 12px; padding: 14px 18px;
+    font-weight: 700; font-size: 15px; font-family: inherit; line-height: 1.6;
+    text-decoration: none; transition: background 0.15s;
   }
+  .route-pill:hover { background: var(--surface-2); }
   .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
   .dot.coral { background: var(--coral); }
   .dot.teal  { background: var(--teal); }
@@ -111,6 +143,8 @@
   .wz-note b { font-weight: 700; }
   .wz-jump { margin-top: 16px; display: inline-block; background: var(--surface-2); color: var(--ink); border: none; border-radius: 10px; padding: 9px 16px; font-size: 14px; font-weight: 700; text-decoration: none; }
   .wz-jump:hover { background: var(--surface-3); }
+  .paste-hint { margin-top: 22px; font-size: 14px; color: var(--muted); background: var(--surface); border-radius: 12px; padding: 14px 18px; max-width: none; }
+  .paste-hint b { color: var(--ink); }
 
   /* ---------- say / copy ---------- */
   .say {
@@ -150,8 +184,8 @@
   }
   .station-tab .sn { font-family: var(--mono); font-size: 12.5px; font-weight: 600; color: var(--faint); }
   .station-tab:hover { background: var(--surface-2); color: var(--ink); }
-  .station-tab[aria-selected="true"] { background: var(--ink); color: var(--bg); }
-  .station-tab[aria-selected="true"] .sn { color: var(--bg); }
+  .station-tab[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+  .station-tab[aria-pressed="true"] .sn { color: var(--bg); }
   .panel { background: var(--surface); border-radius: 16px; padding: 26px; margin-top: 14px; }
   .panel-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
   .panel-head .pn { font-family: var(--mono); font-size: 26px; font-weight: 600; color: var(--faint); }
@@ -217,12 +251,12 @@
   .msg { max-width: 92%; border-radius: 12px; padding: 12px 16px; font-size: 13.5px; line-height: 1.7; }
   .msg.ai { background: var(--surface-2); align-self: flex-start; }
   .msg.ai::before {
-    content: "AI"; display: block; font-family: var(--mono); font-size: 11.5px;
+    content: "AI"; display: block; font-family: var(--mono); font-size: 12px;
     font-weight: 600; letter-spacing: 0.1em; color: var(--faint); margin-bottom: 4px;
   }
   .msg.reply-set { align-self: flex-end; background: none; padding: 0; max-width: 100%; text-align: right; }
   .msg.reply-set .rl {
-    display: block; font-family: var(--mono); font-size: 11.5px; font-weight: 600;
+    display: block; font-family: var(--mono); font-size: 12px; font-weight: 600;
     letter-spacing: 0.1em; color: var(--faint); margin-bottom: 6px;
   }
   .reply-chip {
@@ -238,529 +272,645 @@
   .glossary { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 26px; }
   .term { background: var(--surface); border-radius: 12px; padding: 18px 20px; }
   .term dt { font-weight: 700; font-size: 15px; margin-bottom: 4px; }
-  .term dt code { font-size: 13px; }
   .term dd { font-size: 13.5px; color: var(--muted); }
   @media (max-width: 640px) { .glossary { grid-template-columns: 1fr; } }
 
-  .endnote { margin-top: 84px; color: var(--faint); font-size: 13px; font-family: var(--mono); letter-spacing: 0.04em; }
+  /* ---------- next / footer ---------- */
+  .next-links { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 26px; }
+  .next-link {
+    background: var(--surface); color: var(--ink); text-decoration: none;
+    border-radius: 12px; padding: 13px 18px; font-size: 14px; font-weight: 700;
+    transition: background 0.15s;
+  }
+  .next-link:hover { background: var(--surface-2); }
+  .next-link small { display: block; font-weight: 400; font-size: 12.5px; color: var(--muted); }
+  .endnote { margin-top: 72px; color: var(--faint); font-size: 13px; font-family: var(--mono); letter-spacing: 0.04em; line-height: 2; }
+  .endnote a { color: var(--teal); text-decoration: none; }
+  .endnote a:hover { text-decoration: underline; text-underline-offset: 3px; }
 
+  @media (max-width: 700px) {
+    .wrap { padding: 30px 16px 72px; }
+    .topbar { padding: 0 12px; gap: 10px; }
+    .tabs { gap: 0; }
+    .tabs a { padding: 6px 9px; font-size: 13px; }
+    .brand span:not(.brand-dot) { display: none; }
+    h1 { font-size: 29px; }
+    h2 { font-size: 22px; }
+  }
   @media (prefers-reduced-motion: reduce) {
-    * { transition: none !important; }
+    * { transition: none !important; animation: none !important; }
   }
 </style>
 </head>
 <body>
 
-<div class="wrap">
+<header class="topbar">
+  <a class="brand" href="#/"><span class="brand-dot"></span><span>從 Storybook 到上線</span></a>
+  <nav class="tabs" id="tabs" aria-label="主導覽">
+    <a href="#/" data-tab="start">找路線</a>
+    <a href="#/journey" data-tab="journey">六站旅程</a>
+    <a href="#/route-a" data-tab="route-a">路線 A</a>
+    <a href="#/route-b" data-tab="route-b">路線 B</a>
+    <a href="#/gates" data-tab="gates">紅綠燈</a>
+    <a href="#/glossary" data-tab="glossary">名詞小抄</a>
+  </nav>
+</header>
 
-  <header class="hero">
-    <span class="hero-tag">DESIGNER GUIDE</span>
-    <h1>從 Storybook 到上線</h1>
-    <p class="lede">你已經在 Storybook 上把設計做完、把原型點過一輪了——接下來呢？這份指南用設計師的語言，說明怎麼跟 AI 協作，把你確認過的東西變成正式產品。全程你不需要寫程式，你的工作是<strong style="color:var(--ink)">確認方向、回答問題、驗收結果</strong>。</p>
-    <div class="route-pills">
-      <div class="route-pill"><span class="dot coral"></span><span>路線 A：原型 → 產品<small>完整功能，帶著交接文件走</small></span></div>
-      <div class="route-pill"><span class="dot teal"></span><span>路線 B：元件庫 → 直接組裝<small>單一畫面，用現成元件拼起來</small></span></div>
-    </div>
-  </header>
-
-  <section id="wizard-section">
-    <span class="eyebrow">Start Here</span>
-    <h2>30 秒找到你的路線</h2>
-    <p class="section-intro">回答下面的問題，直接得到你該走的路、要做的步驟、和第一句該說的話。</p>
-    <div class="wizard">
-      <div class="wz-q">
-        <span class="wz-label"><span class="wz-step">Q1</span>你手上現在有什麼？</span>
-        <div class="wz-opts" data-q="have">
-          <button class="wz-opt" data-v="proto" aria-pressed="false">已審查的 Storybook 原型</button>
-          <button class="wz-opt" data-v="mockup" aria-pressed="false">定案的設計稿（Figma／截圖）</button>
-          <button class="wz-opt" data-v="idea" aria-pressed="false">還只是需求或想法</button>
-        </div>
-      </div>
-      <div class="wz-q">
-        <span class="wz-label"><span class="wz-step">Q2</span>這次要做的規模？</span>
-        <div class="wz-opts" data-q="scale">
-          <button class="wz-opt" data-v="feature" aria-pressed="false">完整功能（多畫面、有流程）</button>
-          <button class="wz-opt" data-v="screen" aria-pressed="false">單一畫面或小改版</button>
-        </div>
-      </div>
-      <div class="wz-q">
-        <span class="wz-label"><span class="wz-step">Q3</span>正式產品那邊的現況？</span>
-        <div class="wz-opts" data-q="prod">
-          <button class="wz-opt" data-v="healthy" aria-pressed="false">有元件庫也有 tokens</button>
-          <button class="wz-opt" data-v="partial" aria-pressed="false">不完整，或我不確定</button>
-          <button class="wz-opt" data-v="none" aria-pressed="false">全新產品，什麼都還沒有</button>
-        </div>
-      </div>
-      <div class="wz-result" id="wz-result" aria-live="polite">
-        <p class="wz-empty">↑ 先回答 Q1 和 Q2，你的路線會出現在這裡。Q3 會補充「AI 可能會問你什麼」。</p>
-      </div>
-    </div>
-  </section>
-
-  <section>
-    <span class="eyebrow">The Big Picture</span>
-    <h2>整條生產線長什麼樣</h2>
-    <p class="section-intro">每一站都是一個 AI 技能（skill）。你不用記名字，每一站都會告訴你該說什麼。</p>
-    <div class="pipeline">
-      <div class="pipe-node"><b>設計系統萃取</b><span>從 Figma 讀出規格</span></div>
-      <span class="pipe-arrow">→</span>
-      <div class="pipe-node"><b>Storybook 元件庫</b><span>把規格變成元件</span></div>
-      <span class="pipe-arrow">→</span>
-      <div class="pipe-node"><b>可點擊原型</b><span>用元件拼出流程</span></div>
-      <span class="pipe-arrow">→</span>
-      <div class="pipe-node"><b>產品實作</b><span>搬進正式 App／網站</span></div>
-      <span class="pipe-arrow">→</span>
-      <div class="pipe-node"><b>視覺驗收</b><span>比對有沒有跑版</span></div>
-    </div>
-    <p style="margin-top:18px; color:var(--muted); font-size:14.5px;">路線 A 走完整條線；路線 B 從「Storybook 元件庫」直接跳到「產品實作」，跳過原型那一站。</p>
-  </section>
-
-  <section>
-    <span class="eyebrow">User Journey</span>
-    <h2>你的旅程：六站到上線</h2>
-    <p class="section-intro">點每一站，看你要做什麼、AI 幫你做什麼、以及這一站你可以直接複製的說法。標了 <span class="gate-mark">等你點頭</span> 的站，代表 AI 一定會停下來問你，不會自己決定。</p>
-
-    <div class="stations" role="tablist" aria-label="旅程站點">
-      <button class="station-tab" role="tab" data-st="0" aria-selected="true"><span class="sn">01</span>設計定稿</button>
-      <button class="station-tab" role="tab" data-st="1" aria-selected="false"><span class="sn">02</span>原型審查</button>
-      <button class="station-tab" role="tab" data-st="2" aria-selected="false"><span class="sn">03</span>交接文件</button>
-      <button class="station-tab" role="tab" data-st="3" aria-selected="false"><span class="sn">04</span>進產品專案</button>
-      <button class="station-tab" role="tab" data-st="4" aria-selected="false"><span class="sn">05</span>核准時刻</button>
-      <button class="station-tab" role="tab" data-st="5" aria-selected="false"><span class="sn">06</span>視覺驗收</button>
-    </div>
-
-    <div class="panel" id="station-panel" role="tabpanel">
-      <div class="panel-head"><span class="pn" id="pn-num">01</span><h3 id="pn-title">設計定稿</h3><span class="gate-mark" id="pn-gate" hidden>等你點頭</span></div>
-      <div class="lanes">
-        <div class="lane you"><span class="lane-t">你（設計師）</span><span id="pn-you"></span></div>
-        <div class="lane"><span class="lane-t">AI 夥伴</span><span id="pn-ai"></span></div>
-        <div class="lane"><span class="lane-t">產出物</span><span id="pn-out"></span></div>
-      </div>
-      <div class="say" id="pn-say" hidden>
-        <span class="say-text" id="pn-say-text"></span>
-        <button class="copy-btn" id="pn-copy">複製</button>
-      </div>
-      <div class="panel-nav">
-        <button id="pn-prev">← 上一站</button>
-        <button id="pn-next">下一站 →</button>
-      </div>
-    </div>
-  </section>
-
-  <section class="flow-a" id="route-a">
-    <span class="eyebrow coral">Route A</span>
-    <h2>路線 A：原型 → 產品</h2>
-    <div class="flow-card">
-      <p>當你做的是一個<strong style="color:var(--ink)">完整功能</strong>——有多個畫面、有流程、需要團隊共識——走這條。原型階段產出的交接文件，就是 AI 在產品端的施工圖。</p>
-      <div class="fit"><b>適合：</b>新功能、新頁面組、需要 PM 與工程一起確認的東西。</div>
-      <ol class="steps">
-        <li class="step">
-          <span class="step-num">1</span>
-          <div>
-            <h3>確認交接包完整</h3>
-            <p>在原型專案的 <code>docs/</code> 資料夾裡有七份文件。你只需重點看 <code>PRODUCTION_HANDOFF.md</code>：目標頁面寫對了嗎？哪些狀態（載入中、錯誤、空白）要做？沒把握就請 AI 唸給你聽。</p>
-            <div class="say"><span class="say-text">幫我檢查這個原型的交接文件是否完整，用白話總結 PRODUCTION_HANDOFF 給我聽。</span><button class="copy-btn">複製</button></div>
-          </div>
-        </li>
-        <li class="step">
-          <span class="step-num">2</span>
-          <div>
-            <h3>到產品專案，說一句話</h3>
-            <p>切換到正式產品的專案，告訴 AI 依交接文件實作。它會自動判斷產品用什麼框架，不會把技術選擇丟回來問你。</p>
-            <div class="say"><span class="say-text">請用 frontend-product-implementation，依原型的 handoff 文件把這個功能實作進產品。</span><button class="copy-btn">複製</button></div>
-          </div>
-        </li>
-        <li class="step">
-          <span class="step-num">3</span>
-          <div>
-            <h3>AI 先盤點，再動工</h3>
-            <p>動工前 AI 會先掃一遍產品：有哪些 tokens、哪些現成元件、文字放在哪裡管理。原則是「先用現成的」，拼不出來才會問你要不要新增。真實 API 和資料先用假資料代替，等工程師接手。</p>
-          </div>
-        </li>
-        <li class="step">
-          <span class="step-num">4</span>
-          <div>
-            <h3>回答核准問題</h3>
-            <p>如果產品缺 tokens 或缺元件，AI 會停下來問你——下面「三個紅綠燈」有每一題的模擬對話，可以先看過一遍心裡有底。</p>
-          </div>
-        </li>
-        <li class="step">
-          <span class="step-num">5</span>
-          <div>
-            <h3>驗收</h3>
-            <p>請 AI 把做好的產品畫面和 Storybook 原型比一輪，它會附上截圖證據，跑版就修。</p>
-            <div class="say"><span class="say-text">請用 ui-compare-to-reference，以 Storybook 原型為準比對產品畫面並修正差異。</span><button class="copy-btn">複製</button></div>
-          </div>
-        </li>
-      </ol>
-    </div>
-  </section>
-
-  <section class="flow-b" id="route-b">
-    <span class="eyebrow teal">Route B</span>
-    <h2>路線 B：元件庫 → 直接組裝</h2>
-    <div class="flow-card">
-      <p>當你只是要<strong style="color:var(--ink)">加一個畫面、改一個版</strong>，設計稿已經很明確，不需要整套 PRD 和原型——直接用 Storybook 元件庫當積木，請 AI 在產品裡拼出來。</p>
-      <div class="fit"><b>適合：</b>單一畫面、既有頁面改版、設計稿（Figma 或截圖）已定案的小需求。</div>
-      <ol class="steps">
-        <li class="step">
-          <span class="step-num">1</span>
-          <div>
-            <h3>準備一份參考</h3>
-            <p>一個 Figma 連結、一張設計稿截圖、或一段清楚的描述，三者擇一。這就是 AI 的施工依據。</p>
-          </div>
-        </li>
-        <li class="step">
-          <span class="step-num">2</span>
-          <div>
-            <h3>選對入口</h3>
-            <p>有截圖或設計稿 → 請 AI 先「認積木」：它會盤點畫面上有哪些元件、對應到元件庫的哪些現成件、缺哪些。只有文字需求 → 直接請 AI 實作。</p>
-            <div class="say"><span class="say-text">（有設計稿）請用 ui-screenshot-to-storybook-product，用我們的元件庫實作這張設計稿。</span><button class="copy-btn">複製</button></div>
-            <div class="say"><span class="say-text">（只有需求）請用 frontend-product-implementation，在產品的〇〇頁面加上〇〇功能，元件請用我們 Storybook 裡現成的。</span><button class="copy-btn">複製</button></div>
-          </div>
-        </li>
-        <li class="step">
-          <span class="step-num">3</span>
-          <div>
-            <h3>AI 用現成元件拼裝</h3>
-            <p>和路線 A 一樣，AI 會先盤點元件庫再動工，不會為了一張稿另起爐灶做重複的按鈕。畫面上的顏色間距全部走 tokens，不寫死。</p>
-          </div>
-        </li>
-        <li class="step">
-          <span class="step-num">4</span>
-          <div>
-            <h3>回答核准問題，然後驗收</h3>
-            <p>缺 token、缺元件一樣會先問你。完成後請 AI 出一份像素比對報告，以你的設計稿為準。</p>
-            <div class="say"><span class="say-text">請用 ui-pixel-align-report，以這張設計稿為準，產出產品畫面的像素比對報告。</span><button class="copy-btn">複製</button></div>
-          </div>
-        </li>
-      </ol>
-    </div>
-    <p class="rule"><b>一句話判斷：</b>需要「說服別人或驗證想法」→ 路線 A；只是「把定案的東西做出來」→ 路線 B。中途發現 B 越做越大，隨時可以回頭補原型和文件，兩條路不衝突。</p>
-  </section>
-
-  <section id="gates-section">
-    <span class="eyebrow amber">Approval Gates</span>
-    <h2>三個紅綠燈：AI 何時會停下來等你</h2>
-    <p class="section-intro">不管走哪條路線，遇到這三種情況 AI 都會停下來問你，不會自作主張。展開「看模擬對話」，先預覽 AI 會怎麼問、你可以怎麼回——實際遇到時就不會慌。</p>
-    <div class="gates">
-      <div class="gate">
-        <span class="g-label">GATE 1</span>
-        <h3>產品裡沒有 design tokens</h3>
-        <p>AI 會啟動「token 搬運計畫」：從你的 Storybook 元件庫找出這次<em>實際用到</em>的顏色、字級、間距，列成一張最小清單給你看，並依產品的技術選好落地格式。你點頭，它才建立。不會整包硬搬，也不會偷偷寫死數值。</p>
-        <details>
-          <summary>看模擬對話</summary>
-          <div class="dialog">
-            <div class="msg ai">這個產品專案裡找不到 design token 系統。我建議建立一組最小 token——這次畫面實際用到的 9 個（sys-color-primary、sys-spacing-md⋯⋯每個都對應到你 Storybook 元件庫的來源檔案）。落地格式建議用 CSS variables，因為這個產品是純 CSS。要建立嗎？</div>
-            <div class="msg reply-set"><span class="rl">你可以這樣回</span><span class="reply-chip">可以，照清單建立</span><span class="reply-chip">先列出這 9 個給我看</span><span class="reply-chip">等等，我找工程師確認格式</span></div>
-          </div>
-        </details>
-      </div>
-      <div class="gate">
-        <span class="g-label">GATE 2</span>
-        <h3>現成元件拼不出這個畫面</h3>
-        <p>AI 會告訴你缺哪塊積木，問你要不要先做一個新的共用元件。你同意後它才建，並且會同步補上 Storybook 文件——新積木從此進元件庫，下次直接用。</p>
-        <details>
-          <summary>看模擬對話</summary>
-          <div class="dialog">
-            <div class="msg ai">這張畫面需要一個「可搜尋的下拉選單」，但元件庫目前只有基本的 Select。兩個選項：（1）建立新的共用元件 SearchableSelect，會一併補上 Storybook 文件；（2）先用現有 Select 頂著，搜尋功能之後再加。你想走哪個？</div>
-            <div class="msg reply-set"><span class="rl">你可以這樣回</span><span class="reply-chip">建立新元件</span><span class="reply-chip">先用現有 Select</span><span class="reply-chip">給我看兩種的畫面差異</span></div>
-          </div>
-        </details>
-      </div>
-      <div class="gate">
-        <span class="g-label">GATE 3</span>
-        <h3>產品的樣式寫法不只一種</h3>
-        <p>老專案常常混用多種樣式技術。AI 分不出哪個是主流時，會列出選項問你（或問工程師）要走哪一套，確定了才動工，避免把新畫面蓋在錯的地基上。</p>
-        <details>
-          <summary>看模擬對話</summary>
-          <div class="dialog">
-            <div class="msg ai">這個專案同時存在 SCSS variables 和 CSS custom properties 兩套寫法，各佔約一半，判斷不出主流。新建立的 tokens 要走哪一套？</div>
-            <div class="msg reply-set"><span class="rl">你可以這樣回</span><span class="reply-chip">我問一下工程師再回你</span><span class="reply-chip">先列出兩套各用在哪些地方</span></div>
-          </div>
-        </details>
-      </div>
-      <div class="gate">
-        <span class="g-label">BACKUP</span>
-        <h3>連 Storybook 端都沒有 tokens？</h3>
-        <p>最壞情況也有備案：AI 會從你的設計稿和原型樣式「逆向整理」出一份候選 token 表——每個值都附出處——先交給你核准，才開始建。永遠不會發生「沒有 tokens 所以先寫死」這件事。</p>
-        <details>
-          <summary>看模擬對話</summary>
-          <div class="dialog">
-            <div class="msg ai">原型端找不到 token 來源，我從 UI 規格和原型樣式逆向整理出候選清單：顏色 6 個、間距 4 個、字級 3 個、圓角 2 個，每個值都標了出處。清單如下⋯⋯確認後我才會建立 token 檔案。</div>
-            <div class="msg reply-set"><span class="rl">你可以這樣回</span><span class="reply-chip">確認，照這份建立</span><span class="reply-chip">主色不對，應該是 #2A6BFF</span><span class="reply-chip">間距先保留，其他建立</span></div>
-          </div>
-        </details>
-      </div>
-    </div>
-  </section>
-
-  <section>
-    <span class="eyebrow">Cheat Sheet</span>
-    <h2>名詞小抄</h2>
-    <p class="section-intro">流程中會出現的詞，用設計師的語言翻譯一次。</p>
-    <dl class="glossary">
-      <div class="term">
-        <dt>Design Token</dt>
-        <dd>設計決策的最小單位：一個顏色、一個字級、一個間距，都有名字。改一個 token，全產品跟著改——這就是為什麼絕不寫死數值。</dd>
-      </div>
-      <div class="term">
-        <dt>元件庫（Component Library）</dt>
-        <dd>Storybook 裡那些有文件、可重用的積木：按鈕、輸入框、卡片。產品畫面應該用積木拼，而不是每頁重畫。</dd>
-      </div>
-      <div class="term">
-        <dt>Handoff（交接文件）</dt>
-        <dd>原型階段產出的七份文件，讓接手的人不用私訊問你「這裡是什麼意思」。核心是 <code>PRODUCTION_HANDOFF.md</code>。</dd>
-      </div>
-      <div class="term">
-        <dt>UI Flow</dt>
-        <dd>畫面與畫面之間怎麼跳轉的地圖：從哪裡點什麼、到哪裡去，包含錯誤和載入這些中途狀態。</dd>
-      </div>
-      <div class="term">
-        <dt>Fixture（假資料）</dt>
-        <dd>寫死的示範資料，讓畫面在真實 API 接上之前就能完整展示。工程師之後把它換成真資料，畫面不用重做。</dd>
-      </div>
-      <div class="term">
-        <dt>ref → sys → comp</dt>
-        <dd>token 的三層命名：ref 是原料（藍色 500），sys 是語意（主色），comp 是元件用途（按鈕底色）。搬運 tokens 時這個層級會被完整保留。</dd>
-      </div>
-    </dl>
-  </section>
-
-  <p class="endnote">cm-skills · designer guide · route A: storybook-product-prototype → frontend-product-implementation · route B: component library → frontend-product-implementation</p>
-
-</div>
+<main class="wrap" id="view"></main>
 
 <script>
-(function () {
   "use strict";
 
-  /* ---------- copy to clipboard ---------- */
-  function doCopy(btn, text) {
-    var done = function () {
-      btn.classList.add("copied");
-      btn.textContent = "已複製 ✓";
-      setTimeout(function () {
-        btn.classList.remove("copied");
-        btn.textContent = "複製";
-      }, 1600);
-    };
-    var fallback = function () {
-      var ta = document.createElement("textarea");
-      ta.value = text;
-      ta.style.position = "fixed";
-      ta.style.opacity = "0";
-      document.body.appendChild(ta);
-      ta.select();
-      try { document.execCommand("copy"); done(); } catch (e) {}
-      document.body.removeChild(ta);
-    };
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(text).then(done, fallback);
-    } else {
-      fallback();
-    }
-  }
+  /* =====================================================  shared content */
 
-  document.querySelectorAll(".say").forEach(function (say) {
-    var btn = say.querySelector(".copy-btn");
-    var txt = say.querySelector(".say-text");
-    if (!btn || !txt || btn.id === "pn-copy") return;
-    btn.addEventListener("click", function () {
-      doCopy(btn, txt.textContent.replace(/^（[^）]*）/, "").trim());
-    });
-  });
+  const esc = (v) =>
+    String(v).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
-  /* ---------- journey stations ---------- */
-  var stations = [
+  /* label 顯示在句子前（不會被複製）；text 是實際複製的內容 */
+  const say = (text, label) =>
+    `<div class="say"><span class="say-text">${label ? `（${esc(label)}）` : ""}${esc(text)}</span><button class="copy-btn" type="button" data-copy="${esc(text)}">複製</button></div>`;
+
+  const footer = `
+    <p class="endnote">
+      cm-skills · designer guide · 路線 A：storybook-product-prototype → frontend-product-implementation · 路線 B：元件庫 → frontend-product-implementation<br>
+      更多旅程與工具：<a href="skills-guide.html">CM Skills 使用指南</a>
+    </p>`;
+
+  /* ================================================================ 找路線 */
+
+  const wizardState = { have: null, scale: null, prod: null };
+
+  const wizardQuestions = [
     {
-      num: "01", title: "設計定稿", gate: false,
-      you: "在 Figma 或 Storybook 確認視覺與互動都是你要的樣子。",
-      ai: "把設計系統萃取成規格、建好 Storybook 元件庫（如果還沒有）。",
-      out: "Design tokens ＋ 一套有文件的元件庫。",
-      say: "（還沒有元件庫時）請用 design-system-extractor 和 design-system-to-storybook，把我們的設計系統建成 Storybook 元件庫。"
+      id: "have", step: "Q1", label: "你手上現在有什麼？",
+      opts: [
+        { v: "proto", label: "已審查的 Storybook 原型" },
+        { v: "mockup", label: "定案的設計稿（Figma／截圖）" },
+        { v: "idea", label: "還只是需求或想法" },
+      ],
     },
     {
-      num: "02", title: "原型審查", gate: false,
-      you: "在 Storybook 裡把每條流程實際點過一遍：主要路徑、錯誤、空狀態。",
-      ai: "用元件庫組出可點擊原型，附上 UI Flow 流程圖和假資料。",
-      out: "一個可以直接給團隊看的互動原型。",
-      say: "請用 storybook-product-prototype，把〇〇功能做成可點擊的 Storybook 原型。"
+      id: "scale", step: "Q2", label: "這次要做的規模？",
+      opts: [
+        { v: "feature", label: "完整功能（多畫面、有流程）" },
+        { v: "screen", label: "單一畫面或小改版" },
+      ],
     },
     {
-      num: "03", title: "交接文件", gate: true,
-      you: "看一份文件就好：PRODUCTION_HANDOFF。確認「這個原型要放進產品的哪個頁面／畫面」寫對了。",
-      ai: "自動產出七份交接文件：需求、流程、介面規格、資料規格、驗收條件⋯⋯",
-      out: "工程師或 AI 不用問你就能接手的完整交接包。",
-      say: "用白話總結 PRODUCTION_HANDOFF 給我聽，我要確認目標頁面和要做的狀態。"
+      id: "prod", step: "Q3", label: "正式產品那邊的現況？",
+      opts: [
+        { v: "healthy", label: "有元件庫也有 tokens" },
+        { v: "partial", label: "不完整，或我不確定" },
+        { v: "none", label: "全新產品，什麼都還沒有" },
+      ],
     },
-    {
-      num: "04", title: "進產品專案", gate: false,
-      you: "把 AI 帶到正式產品的專案裡，說一句話請它依交接文件實作。",
-      ai: "自己搞懂產品用什麼技術、有哪些現成元件和 tokens，優先重用、不重造。",
-      out: "新功能的頁面／畫面，先用假資料跑起來。",
-      say: "請用 frontend-product-implementation，依原型的 handoff 文件把這個功能實作進產品。"
-    },
-    {
-      num: "05", title: "核准時刻", gate: true,
-      you: "回答 AI 的關鍵問題：要不要建 tokens？要不要新增共用元件？下方紅綠燈章節有每一題的模擬對話。",
-      ai: "產品缺什麼就列清單給你看——包含從原型端搬 tokens 的完整計畫——但落地前一定先問。",
-      out: "乾淨的 tokens 與元件，不會出現寫死的顏色數值。",
-      say: null
-    },
-    {
-      num: "06", title: "視覺驗收", gate: false,
-      you: "看比對報告，決定「這是跑版要修」還是「這是平台本來就該有的差異」。",
-      ai: "把產品畫面和 Storybook 原型逐格比對，抓出間距、字級、顏色的偏差並修正。",
-      out: "一份附截圖證據的像素比對報告 ＋ 修好的畫面。",
-      say: "請用 ui-compare-to-reference，以 Storybook 原型為準比對產品畫面並修正差異。"
-    }
   ];
 
-  var current = 0;
-  var tabs = document.querySelectorAll(".station-tab");
-  var pnNum = document.getElementById("pn-num");
-  var pnTitle = document.getElementById("pn-title");
-  var pnGate = document.getElementById("pn-gate");
-  var pnYou = document.getElementById("pn-you");
-  var pnAi = document.getElementById("pn-ai");
-  var pnOut = document.getElementById("pn-out");
-  var pnSay = document.getElementById("pn-say");
-  var pnSayText = document.getElementById("pn-say-text");
-  var pnCopy = document.getElementById("pn-copy");
-  var pnPrev = document.getElementById("pn-prev");
-  var pnNext = document.getElementById("pn-next");
-
-  function renderStation(i) {
-    current = i;
-    var s = stations[i];
-    pnNum.textContent = s.num;
-    pnTitle.textContent = s.title;
-    pnGate.hidden = !s.gate;
-    pnYou.textContent = s.you;
-    pnAi.textContent = s.ai;
-    pnOut.textContent = s.out;
-    if (s.say) {
-      pnSay.hidden = false;
-      pnSayText.textContent = s.say;
-    } else {
-      pnSay.hidden = true;
-    }
-    pnPrev.disabled = i === 0;
-    pnNext.disabled = i === stations.length - 1;
-    tabs.forEach(function (t, ti) {
-      t.setAttribute("aria-selected", ti === i ? "true" : "false");
-    });
-  }
-
-  tabs.forEach(function (t) {
-    t.addEventListener("click", function () {
-      renderStation(parseInt(t.getAttribute("data-st"), 10));
-    });
-  });
-  pnPrev.addEventListener("click", function () { if (current > 0) renderStation(current - 1); });
-  pnNext.addEventListener("click", function () { if (current < stations.length - 1) renderStation(current + 1); });
-  pnCopy.addEventListener("click", function () {
-    var s = stations[current];
-    if (s.say) doCopy(pnCopy, s.say.replace(/^（[^）]*）/, "").trim());
-  });
-  renderStation(0);
-
-  /* ---------- scenario wizard ---------- */
-  var state = { have: null, scale: null, prod: null };
-
-  var results = {
+  const wizardResults = {
     "proto|feature": {
       route: "a", badge: "ROUTE A", title: "路線 A：帶著交接文件進產品",
       why: "原型和文件都齊了，這是最順的一條路——交接包就是 AI 的施工圖。",
-      steps: ["確認 PRODUCTION_HANDOFF 的目標頁面寫對", "到產品專案，用下面這句話開工", "AI 盤點後動工，缺什麼會先問你", "完成後用 ui-compare-to-reference 驗收"],
+      steps: ["打開交接文件 PRODUCTION_HANDOFF，確認目標頁面寫對", "到產品專案，用下面這句話開工", "AI 盤點後動工，缺什麼會先問你", "完成後用 ui-compare-to-reference 驗收"],
       say: "請用 frontend-product-implementation，依原型的 handoff 文件把這個功能實作進產品。",
-      jump: "#route-a", jumpText: "看路線 A 完整步驟 ↓"
+      jump: "#/route-a", jumpText: "看路線 A 完整步驟 →",
     },
     "proto|screen": {
       route: "a", badge: "ROUTE A・輕量", title: "路線 A（輕量版）：小東西也走交接文件",
       why: "既然原型和文件都有了，照走 A 但份量小——AI 只會動需要的那個畫面。",
-      steps: ["跟 AI 確認 handoff 裡這個畫面的範圍", "到產品專案，用下面這句話開工", "完成後用 ui-compare-to-reference 驗收"],
+      steps: ["跟 AI 確認交接文件（handoff）裡這個畫面的範圍", "到產品專案，用下面這句話開工", "完成後用 ui-compare-to-reference 驗收"],
       say: "請用 frontend-product-implementation，依 handoff 文件實作〇〇這個畫面就好，其他不動。",
-      jump: "#route-a", jumpText: "看路線 A 完整步驟 ↓"
+      jump: "#/route-a", jumpText: "看路線 A 完整步驟 →",
     },
     "mockup|feature": {
       route: "a", badge: "ROUTE A・從原型站進入", title: "建議先補原型，再走路線 A",
       why: "多畫面的功能直接進產品風險高——先花一點時間把設計稿變成可點擊原型和交接文件，流程和狀態先驗證過，之後的實作幾乎不會返工。",
       steps: ["用下面這句話，把設計稿變成原型＋文件", "在 Storybook 點過每條流程，確認無誤", "接著照路線 A 的步驟 1–5 走"],
       say: "請用 storybook-product-prototype，把這組設計稿變成可點擊原型和交接文件。",
-      jump: "#route-a", jumpText: "看路線 A 完整步驟 ↓"
+      jump: "#/route-a", jumpText: "之後進產品時：路線 A 完整步驟 →",
     },
     "mockup|screen": {
       route: "b", badge: "ROUTE B", title: "路線 B：讓 AI 認積木，直接組裝",
       why: "單一畫面、設計稿已定案——不用原型，直接請 AI 盤點畫面上的元件、對應元件庫、拼進產品。",
       steps: ["把設計稿（Figma 連結或截圖）給 AI", "用下面這句話開工", "AI 盤點元件庫後組裝，缺積木會先問你", "完成後用 ui-pixel-align-report 出比對報告"],
       say: "請用 ui-screenshot-to-storybook-product，用我們的元件庫實作這張設計稿。",
-      jump: "#route-b", jumpText: "看路線 B 完整步驟 ↓"
+      jump: "#/route-b", jumpText: "看路線 B 完整步驟 →",
     },
     "idea|feature": {
-      route: "a", badge: "ROUTE A・從頭開始", title: "從原型站開始：先把想法變成 PRD 和原型",
+      route: "a", badge: "ROUTE A・從頭開始", title: "從原型站開始：先把想法變成 PRD（產品需求文件）和原型",
       why: "還在想法階段的完整功能，最忌直接開工。先讓 AI 陪你把需求、流程、資料想清楚，做成可點擊原型給團隊看，共識有了再進產品。",
       steps: ["用下面這句話開始 PRD 討論", "AI 一次問你一個產品問題，聊完自動產出文件和原型", "在 Storybook 審查原型", "接著照路線 A 走進產品"],
       say: "請用 storybook-product-prototype，我想做〇〇功能，先陪我把 PRD 和流程想清楚。",
-      jump: "#route-a", jumpText: "看路線 A 完整步驟 ↓"
+      jump: "#/route-a", jumpText: "之後進產品時：路線 A 完整步驟 →",
     },
     "idea|screen": {
       route: "b", badge: "ROUTE B", title: "路線 B：直接描述需求，用現成元件做",
       why: "小畫面不需要文件儀式——把需求說清楚（在哪個頁面、做什麼、成功長怎樣），AI 用元件庫現成的積木直接拼。",
       steps: ["想好三件事：哪個頁面、加什麼、成功的樣子", "用下面這句話開工", "AI 先盤點元件庫再動工", "完成後請 AI 截圖給你確認"],
       say: "請用 frontend-product-implementation，在產品的〇〇頁面加上〇〇功能，元件請用我們 Storybook 裡現成的。",
-      jump: "#route-b", jumpText: "看路線 B 完整步驟 ↓"
-    }
+      jump: "#/route-b", jumpText: "看路線 B 完整步驟 →",
+    },
   };
 
-  var prodNotes = {
+  const prodNotes = {
     healthy: "<b>Q3 預告：</b>產品端很健康——AI 盤點後會直接重用現成的 tokens 和元件，通常不會觸發紅綠燈，一路綠燈到驗收。",
-    partial: "<b>Q3 預告：</b>產品端不完整或不確定——AI 盤點後很可能觸發 GATE 1 或 GATE 2：它會列出缺的 tokens／元件清單請你核准。這是正常流程，先看下方的模擬對話心裡有底。",
-    none: "<b>Q3 預告：</b>全新產品——AI 會先問你要建立哪種技術架構與設計系統基礎，並啟動 token 搬運計畫（從你的 Storybook 端搬最小 token 子集）。核准清單後才動工，不會擅自決定。"
+    partial: "<b>Q3 預告：</b>產品端不完整或不確定——AI 盤點後很可能觸發 GATE 1 或 GATE 2：它會列出缺的 tokens／元件清單請你核准。這是正常流程，先到「紅綠燈」分頁看模擬對話心裡有底。",
+    none: "<b>Q3 預告：</b>全新產品——AI 會先問你要建立哪種技術架構與設計系統基礎，並啟動 token 搬運計畫：只從你的 Storybook 端，搬這次畫面實際用到的一小組 tokens 過來。核准清單後才動工，不會擅自決定。",
   };
 
-  var resultEl = document.getElementById("wz-result");
-
-  function renderResult() {
-    if (!state.have || !state.scale) {
-      var hint = "↑ 先回答 Q1 和 Q2，你的路線會出現在這裡。";
-      if (state.prod && !state.have) hint = "↑ 還差 Q1 和 Q2。";
-      resultEl.innerHTML = '<p class="wz-empty">' + hint + "</p>";
-      return;
+  function renderWizardResult() {
+    if (!wizardState.have || !wizardState.scale) {
+      return '<p class="wz-empty">↑ 先回答 Q1 和 Q2，你的路線會出現在這裡。Q3 會補充「AI 可能會問你什麼」。</p>';
     }
-    var r = results[state.have + "|" + state.scale];
-    var html = "";
-    html += '<span class="wz-route-badge ' + r.route + '">' + r.badge + "</span>";
-    html += "<h3>" + r.title + "</h3>";
-    html += '<p class="wz-why">' + r.why + "</p>";
+    const r = wizardResults[`${wizardState.have}|${wizardState.scale}`];
+    let html = "";
+    html += `<span class="wz-route-badge ${r.route}">${esc(r.badge)}</span>`;
+    html += `<h3>${esc(r.title)}</h3>`;
+    html += `<p class="wz-why">${esc(r.why)}</p>`;
     html += '<ol class="wz-steps">';
-    r.steps.forEach(function (s, i) {
-      html += '<li><span class="n">' + (i + 1) + ".</span><span>" + s + "</span></li>";
+    r.steps.forEach((s, i) => {
+      html += `<li><span class="n">${i + 1}.</span><span>${esc(s)}</span></li>`;
     });
     html += "</ol>";
-    html += '<div class="say"><span class="say-text">' + r.say + '</span><button class="copy-btn" id="wz-copy">複製</button></div>';
-    if (state.prod) html += '<p class="wz-note">' + prodNotes[state.prod] + "</p>";
-    html += '<a class="wz-jump" href="' + r.jump + '">' + r.jumpText + "</a>";
-    resultEl.innerHTML = html;
-    var wc = document.getElementById("wz-copy");
-    wc.addEventListener("click", function () { doCopy(wc, r.say); });
+    html += say(r.say);
+    if (wizardState.prod) html += `<p class="wz-note">${prodNotes[wizardState.prod]}</p>`;
+    html += `<a class="wz-jump" href="${r.jump}">${esc(r.jumpText)}</a>`;
+    return html;
   }
 
-  document.querySelectorAll(".wz-opts").forEach(function (group) {
-    var q = group.getAttribute("data-q");
-    group.querySelectorAll(".wz-opt").forEach(function (btn) {
-      btn.addEventListener("click", function () {
-        var v = btn.getAttribute("data-v");
-        state[q] = state[q] === v ? null : v;
-        group.querySelectorAll(".wz-opt").forEach(function (b) {
-          b.setAttribute("aria-pressed", b === btn && state[q] === v ? "true" : "false");
-        });
-        renderResult();
-      });
+  function renderStart() {
+    const questions = wizardQuestions
+      .map(
+        (q) => `
+        <div class="wz-q">
+          <span class="wz-label"><span class="wz-step">${q.step}</span>${esc(q.label)}</span>
+          <div class="wz-opts" data-q="${q.id}">
+            ${q.opts
+              .map(
+                (o) => `<button class="wz-opt" type="button" data-v="${o.v}" aria-pressed="${String(wizardState[q.id] === o.v)}">${esc(o.label)}</button>`,
+              )
+              .join("")}
+          </div>
+        </div>`,
+      )
+      .join("");
+
+    return `
+      <section class="hero">
+        <span class="hero-tag">DESIGNER GUIDE</span>
+        <h1>從 Storybook 到上線</h1>
+        <p class="lede">你在 Storybook 把設計確認過之後——或甚至還只有一個想法——接下來呢？這份指南用設計師的語言，說明怎麼跟 AI 協作，把你確認過（或想做）的東西變成正式產品。全程你不需要寫程式，你的工作是<strong style="color:var(--ink)">確認方向、回答問題、驗收結果</strong>。</p>
+        <div class="route-pills">
+          <a class="route-pill" href="#/route-a"><span class="dot coral"></span><span>路線 A：原型 → 產品<small>完整功能，帶著交接文件走</small></span></a>
+          <a class="route-pill" href="#/route-b"><span class="dot teal"></span><span>路線 B：元件庫 → 直接組裝<small>單一畫面，用現成元件拼起來</small></span></a>
+        </div>
+        <p class="paste-hint"><b>句子要貼到哪？</b>整份指南裡「你這樣說」的句子，貼進你團隊在用的 AI 工具（Cursor、Claude Code、Codex）的對話框送出就可以了。第一次不知道對話框在哪，請工程師幫你打開一次，之後都一樣。句子裡的英文長字（例如 frontend-product-implementation）是 AI 技能的名字，照貼就好，不用背也不用懂。看到不懂的詞，隨時開 <a href="#/glossary">名詞小抄</a> 查——每個詞都用設計師的語言翻譯過。</p>
+      </section>
+      <section>
+        <span class="eyebrow">Start Here</span>
+        <h2>30 秒找到你的路線</h2>
+        <p class="section-intro">回答下面的問題，直接得到你該走的路、要做的步驟、和第一句該說的話。</p>
+        <div class="wizard">
+          ${questions}
+          <div class="wz-result" id="wz-result" aria-live="polite">${renderWizardResult()}</div>
+        </div>
+      </section>`;
+  }
+
+  /* ============================================================== 六站旅程 */
+
+  const stations = [
+    {
+      num: "01", title: "設計定稿", gate: false,
+      you: "在 Figma 或 Storybook 確認視覺與互動都是你要的樣子。",
+      ai: "把設計系統萃取成規格、建好 Storybook 元件庫（如果還沒有）。",
+      out: "Design tokens ＋ 一套有文件的元件庫。",
+      say: "請用 design-system-extractor 和 design-system-to-storybook，把我們的設計系統建成 Storybook 元件庫。",
+      sayLabel: "還沒有元件庫時",
+    },
+    {
+      num: "02", title: "原型審查", gate: false,
+      you: "在 Storybook 裡把每條流程實際點過一遍：主要路徑、錯誤、空狀態。",
+      ai: "用元件庫組出可點擊原型，附上 UI Flow 流程圖和假資料。",
+      out: "一個可以直接給團隊看的互動原型。",
+      say: "請用 storybook-product-prototype，把〇〇功能做成可點擊的 Storybook 原型。",
+      sayLabel: null,
+    },
+    {
+      num: "03", title: "交接文件", gate: true,
+      you: "看一份文件就好：PRODUCTION_HANDOFF。確認「這個原型要放進產品的哪個頁面／畫面」寫對了。",
+      ai: "自動產出七份交接文件：需求、流程、介面規格、資料規格、驗收條件⋯⋯",
+      out: "工程師或 AI 不用問你就能接手的完整交接包。",
+      say: "用白話總結 PRODUCTION_HANDOFF 給我聽，我要確認目標頁面和要做的狀態。",
+      sayLabel: null,
+    },
+    {
+      num: "04", title: "進產品專案", gate: false,
+      you: "請工程師幫你在正式產品的專案裡開好 AI 工具，然後說一句話請它依交接文件實作。",
+      ai: "自己搞懂產品用什麼技術、有哪些現成元件和 tokens，優先重用、不重造。",
+      out: "新功能的頁面／畫面，先用假資料跑起來。",
+      say: "請用 frontend-product-implementation，依原型的 handoff 文件把這個功能實作進產品。",
+      sayLabel: null,
+    },
+    {
+      num: "05", title: "核准時刻", gate: true,
+      you: "回答 AI 的關鍵問題：要不要建 tokens？要不要新增共用元件？「紅綠燈」分頁有每一題的模擬對話。",
+      ai: "產品缺什麼就列清單給你看——包含從原型端搬 tokens 的完整計畫——但落地前一定先問。",
+      out: "乾淨的 tokens 與元件，不會出現寫死的顏色數值。",
+      say: null,
+      sayLabel: null,
+    },
+    {
+      num: "06", title: "視覺驗收", gate: false,
+      you: "看比對報告，決定「這是跑版要修」還是「這是平台本來就該有的差異」。",
+      ai: "把產品畫面和 Storybook 原型逐格比對，抓出間距、字級、顏色的偏差並修正。",
+      out: "修好的畫面 ＋ 比對結果回報；要留存附截圖證據的報告，請 AI 再用 ui-pixel-align-report 產出。",
+      say: "請用 ui-compare-to-reference，以 Storybook 原型為準比對產品畫面並修正差異。",
+      sayLabel: null,
+    },
+  ];
+
+  let currentStation = 0;
+
+  function renderStationPanel() {
+    const s = stations[currentStation];
+    return `
+      <div class="panel-head"><span class="pn">${s.num}</span><h3>${esc(s.title)}</h3>${s.gate ? '<span class="gate-mark">等你點頭</span>' : ""}</div>
+      <div class="lanes">
+        <div class="lane you"><span class="lane-t">你（設計師）</span><span>${esc(s.you)}</span></div>
+        <div class="lane"><span class="lane-t">AI 夥伴</span><span>${esc(s.ai)}</span></div>
+        <div class="lane"><span class="lane-t">產出物</span><span>${esc(s.out)}</span></div>
+      </div>
+      ${s.say ? say(s.say, s.sayLabel) : ""}
+      <div class="panel-nav">
+        <button type="button" id="pn-prev" ${currentStation === 0 ? "disabled" : ""}>← 上一站</button>
+        <button type="button" id="pn-next" ${currentStation === stations.length - 1 ? "disabled" : ""}>下一站 →</button>
+      </div>`;
+  }
+
+  function renderJourney() {
+    return `
+      <section>
+        <span class="eyebrow">The Big Picture</span>
+        <h2>整條生產線長什麼樣</h2>
+        <p class="section-intro">這一頁是全景地圖，幫你理解每個階段發生什麼；生產線上的每一格都是一個 AI 技能（skill），你不用記名字。實際動手時，照「<a href="#/route-a">路線 A</a>」或「<a href="#/route-b">路線 B</a>」分頁的步驟清單走就好。</p>
+        <div class="pipeline">
+          <div class="pipe-node"><b>設計系統萃取</b><span>從 Figma 讀出規格</span></div>
+          <span class="pipe-arrow">→</span>
+          <div class="pipe-node"><b>Storybook 元件庫</b><span>把規格變成元件</span></div>
+          <span class="pipe-arrow">→</span>
+          <div class="pipe-node"><b>可點擊原型</b><span>用元件拼出流程</span></div>
+          <span class="pipe-arrow">→</span>
+          <div class="pipe-node"><b>產品實作</b><span>搬進正式 App／網站</span></div>
+          <span class="pipe-arrow">→</span>
+          <div class="pipe-node"><b>視覺驗收</b><span>比對有沒有跑版</span></div>
+        </div>
+        <p style="margin-top:18px; color:var(--muted); font-size:14.5px;"><a href="#/route-a">路線 A</a> 走完整條線；<a href="#/route-b">路線 B</a> 從「Storybook 元件庫」直接跳到「產品實作」，跳過原型那一站。</p>
+      </section>
+      <section>
+        <span class="eyebrow">User Journey</span>
+        <h2>你的旅程：六站到上線</h2>
+        <p class="section-intro">點每一站，看你要做什麼、AI 幫你做什麼、以及這一站你可以直接複製的說法。標了 <span class="gate-mark">等你點頭</span> 的站，代表 AI 一定會停下來問你，不會自己決定。</p>
+        <div class="stations" role="group" aria-label="旅程站點">
+          ${stations
+            .map(
+              (s, i) => `<button class="station-tab" type="button" data-st="${i}" aria-pressed="${String(i === currentStation)}"><span class="sn">${s.num}</span>${esc(s.title)}</button>`,
+            )
+            .join("")}
+        </div>
+        <div class="panel" id="station-panel">${renderStationPanel()}</div>
+      </section>`;
+  }
+
+  /* ============================================================== 路線 A/B */
+
+  function renderRouteA() {
+    return `
+      <section class="flow-a">
+        <span class="eyebrow coral">Route A</span>
+        <h2>路線 A：原型 → 產品</h2>
+        <p class="section-intro">「你這樣說」的句子複製後貼進 AI 工具的對話框就行（<a href="#/">怎麼貼？</a>）；看到不懂的詞，隨時開 <a href="#/glossary">名詞小抄</a>。</p>
+        <div class="flow-card">
+          <p>當你做的是一個<strong style="color:var(--ink)">完整功能</strong>——有多個畫面、有流程、需要團隊共識——走這條。原型階段產出的交接文件，就是 AI 在產品端的施工圖。</p>
+          <div class="fit"><b>適合：</b>新功能、新頁面組、需要 PM 與工程一起確認的東西。</div>
+          <ol class="steps">
+            <li class="step">
+              <span class="step-num">1</span>
+              <div>
+                <h3>確認交接包完整</h3>
+                <p>在原型專案的 <code>docs/</code> 資料夾裡有七份文件。你只需重點看 <code>PRODUCTION_HANDOFF.md</code>：目標頁面寫對了嗎？哪些狀態（載入中、錯誤、空白）要做？沒把握就請 AI 唸給你聽。</p>
+                ${say("幫我檢查這個原型的交接文件是否完整，用白話總結 PRODUCTION_HANDOFF 給我聽。")}
+              </div>
+            </li>
+            <li class="step">
+              <span class="step-num">2</span>
+              <div>
+                <h3>到產品專案，說一句話</h3>
+                <p>切換到正式產品的專案，告訴 AI 依交接文件實作。（「切換到產品專案」的意思是：在正式產品的資料夾裡打開同一個 AI 工具。不會操作的話，請工程師幫你開好那個視窗——你一樣只負責貼句子。）它會自動判斷產品用什麼框架；只有在證據衝突時（例如同時存在多套技術）才會停下來問你——就是紅綠燈 GATE 3 的情況。</p>
+                ${say("請用 frontend-product-implementation，依原型的 handoff 文件把這個功能實作進產品。")}
+              </div>
+            </li>
+            <li class="step">
+              <span class="step-num">3</span>
+              <div>
+                <h3>AI 先盤點，再動工</h3>
+                <p>動工前 AI 會先掃一遍產品：有哪些 tokens、哪些現成元件、文字放在哪裡管理。原則是「先用現成的」，拼不出來才會問你要不要新增。真實 API 和資料先用假資料代替，等工程師接手。</p>
+              </div>
+            </li>
+            <li class="step">
+              <span class="step-num">4</span>
+              <div>
+                <h3>回答核准問題</h3>
+                <p>如果產品缺 tokens 或缺元件，AI 會停下來問你——<a href="#/gates">「紅綠燈」分頁</a>有每一題的模擬對話，可以先看過一遍心裡有底。</p>
+              </div>
+            </li>
+            <li class="step">
+              <span class="step-num">5</span>
+              <div>
+                <h3>驗收</h3>
+                <p>請 AI 把做好的產品畫面和 Storybook 原型比一輪，跑版就修；要留下附截圖證據的報告，請它再用 ui-pixel-align-report 產出。</p>
+                ${say("請用 ui-compare-to-reference，以 Storybook 原型為準比對產品畫面並修正差異。")}
+              </div>
+            </li>
+          </ol>
+        </div>
+        <p class="rule"><b>一句話判斷：</b>需要「說服別人或驗證想法」→ 路線 A；只是「把定案的東西做出來」→ 路線 B。中途發現 B 越做越大，隨時可以回頭補原型和文件，兩條路不衝突。</p>
+        <div class="next-links">
+          <a class="next-link" href="#/gates">下一步：先看紅綠燈<small>AI 何時會停下來等你點頭</small></a>
+          <a class="next-link" href="#/route-b">改走路線 B<small>單一畫面直接組裝</small></a>
+        </div>
+      </section>`;
+  }
+
+  function renderRouteB() {
+    return `
+      <section class="flow-b">
+        <span class="eyebrow teal">Route B</span>
+        <h2>路線 B：元件庫 → 直接組裝</h2>
+        <p class="section-intro">「你這樣說」的句子複製後貼進 AI 工具的對話框就行（<a href="#/">怎麼貼？</a>）；看到不懂的詞，隨時開 <a href="#/glossary">名詞小抄</a>。</p>
+        <div class="flow-card">
+          <p>當你只是要<strong style="color:var(--ink)">加一個畫面、改一個版</strong>，設計稿已經很明確，不需要整套 PRD 和原型——直接用 Storybook 元件庫當積木，請 AI 在產品裡拼出來。</p>
+          <div class="fit"><b>適合：</b>單一畫面、既有頁面改版、設計稿（Figma 或截圖）已定案的小需求。</div>
+          <ol class="steps">
+            <li class="step">
+              <span class="step-num">1</span>
+              <div>
+                <h3>準備一份參考</h3>
+                <p>一個 Figma 連結、一張設計稿截圖、或一段清楚的描述，三者擇一。這就是 AI 的施工依據。</p>
+              </div>
+            </li>
+            <li class="step">
+              <span class="step-num">2</span>
+              <div>
+                <h3>選對入口</h3>
+                <p>有截圖或設計稿 → 請 AI 先「認積木」：它會盤點畫面上有哪些元件、對應到元件庫的哪些現成件、缺哪些。只有文字需求 → 直接請 AI 實作。</p>
+                ${say("請用 ui-screenshot-to-storybook-product，用我們的元件庫實作這張設計稿。", "有設計稿")}
+                ${say("請用 frontend-product-implementation，在產品的〇〇頁面加上〇〇功能，元件請用我們 Storybook 裡現成的。", "只有需求")}
+              </div>
+            </li>
+            <li class="step">
+              <span class="step-num">3</span>
+              <div>
+                <h3>AI 用現成元件拼裝</h3>
+                <p>和路線 A 一樣，AI 會先盤點元件庫再動工，不會為了一張稿另起爐灶做重複的按鈕。畫面上的顏色間距全部走 tokens，不寫死。</p>
+              </div>
+            </li>
+            <li class="step">
+              <span class="step-num">4</span>
+              <div>
+                <h3>回答核准問題，然後驗收</h3>
+                <p>缺 token、缺元件一樣會先問你。完成後請 AI 出一份像素比對報告，以你的設計稿為準。</p>
+                ${say("請用 ui-pixel-align-report，以這張設計稿為準，產出產品畫面的像素比對報告。")}
+              </div>
+            </li>
+          </ol>
+        </div>
+        <p class="rule"><b>小提示：</b>如果你的 Storybook 裝了「元件覆蓋率分析」工具頁（Tools › Component Coverage Analyzer），可以改在那個頁面送出設計稿，按「複製分析提示詞」貼給 AI——分析報告會把畫面分成三類（可直接用現成元件、需擴充、缺少需新建）。你在頁面上逐區塊覆核、按「確認覆核完成」後，再按「複製實作提示詞」交給 AI 實作。這條路取代步驟 2 和 3；驗收仍照步驟 4 走。</p>
+        <p class="rule"><b>一句話判斷：</b>需要「說服別人或驗證想法」→ 路線 A；只是「把定案的東西做出來」→ 路線 B。中途發現 B 越做越大，隨時可以回頭補原型和文件，兩條路不衝突。</p>
+        <div class="next-links">
+          <a class="next-link" href="#/gates">下一步：先看紅綠燈<small>AI 何時會停下來等你點頭</small></a>
+          <a class="next-link" href="#/route-a">改走路線 A<small>完整功能帶交接文件</small></a>
+        </div>
+      </section>`;
+  }
+
+  /* ================================================================ 紅綠燈 */
+
+  function renderGates() {
+    return `
+      <section>
+        <span class="eyebrow amber">Approval Gates</span>
+        <h2>紅綠燈：AI 什麼時候會停下來等你</h2>
+        <p class="section-intro">不管走哪條路線，遇到下面這幾種情況——三個紅綠燈，加一個最壞情況的備案——AI 都會停下來問你，不會自作主張。展開「看模擬對話」，先預覽 AI 會怎麼問、你可以怎麼回——實際遇到時就不會慌。</p>
+        <div class="gates">
+          <div class="gate">
+            <span class="g-label">GATE 1</span>
+            <h3>產品裡沒有 design tokens</h3>
+            <p>AI 會啟動「token 搬運計畫」：從你的 Storybook 元件庫找出這次<em>實際用到</em>的顏色、字級、間距，列成一張最小清單給你看，並依產品的技術選好落地格式。你點頭，它才建立。不會整包硬搬，也不會偷偷寫死數值。</p>
+            <details>
+              <summary>看模擬對話</summary>
+              <div class="dialog">
+                <div class="msg ai">這個產品專案裡找不到 design token 系統。我建議建立一組最小 token——這次畫面實際用到的 9 個（sys-color-primary、sys-spacing-md⋯⋯每個都對應到你 Storybook 元件庫的來源檔案）。落地格式建議用 CSS variables，因為這個產品是純 CSS。要建立嗎？</div>
+                <div class="msg reply-set"><span class="rl">你可以這樣回</span><span class="reply-chip">可以，照清單建立</span><span class="reply-chip">先列出這 9 個給我看</span><span class="reply-chip">等等，我找工程師確認格式</span></div>
+              </div>
+            </details>
+          </div>
+          <div class="gate">
+            <span class="g-label">GATE 2</span>
+            <h3>現成元件拼不出這個畫面</h3>
+            <p>AI 會告訴你缺哪塊積木，問你要不要先做一個新的共用元件。你同意後它才建；專案有 Storybook 時會同步補上元件文件（stories），新積木從此進元件庫，下次直接用。</p>
+            <details>
+              <summary>看模擬對話</summary>
+              <div class="dialog">
+                <div class="msg ai">這張畫面需要一個「可搜尋的下拉選單」，但元件庫目前只有基本的 Select。兩個選項：（1）建立新的共用元件 SearchableSelect，會一併補上 Storybook 文件；（2）先用現有 Select 頂著，搜尋功能之後再加。你想走哪個？</div>
+                <div class="msg reply-set"><span class="rl">你可以這樣回</span><span class="reply-chip">建立新元件</span><span class="reply-chip">先用現有 Select</span><span class="reply-chip">給我看兩種的畫面差異</span></div>
+              </div>
+            </details>
+          </div>
+          <div class="gate">
+            <span class="g-label">GATE 3</span>
+            <h3>產品的樣式寫法不只一種</h3>
+            <p>老專案常常混用多種樣式技術。AI 分不出哪個是主流時，會列出選項問你（或問工程師）要走哪一套，確定了才動工，避免把新畫面蓋在錯的地基上。對話裡的技術名詞看不懂沒關係——這一題本來就可以整包轉給工程師決定。</p>
+            <details>
+              <summary>看模擬對話</summary>
+              <div class="dialog">
+                <div class="msg ai">這個專案同時存在 SCSS variables 和 CSS custom properties 兩套寫法，各佔約一半，判斷不出主流。新建立的 tokens 要走哪一套？</div>
+                <div class="msg reply-set"><span class="rl">你可以這樣回</span><span class="reply-chip">我問一下工程師再回你</span><span class="reply-chip">先列出兩套各用在哪些地方</span></div>
+              </div>
+            </details>
+          </div>
+          <div class="gate">
+            <span class="g-label">BACKUP</span>
+            <h3>連 Storybook 端都沒有 tokens？</h3>
+            <p>最壞情況也有備案：AI 會從交接文件的 UI 規格和原型樣式「逆向整理」出一份候選 token 表——每個值都附出處——先交給你核准，才開始建。永遠不會發生「沒有 tokens 所以先寫死」這件事。</p>
+            <details>
+              <summary>看模擬對話</summary>
+              <div class="dialog">
+                <div class="msg ai">原型端找不到 token 來源，我從 UI 規格和原型樣式逆向整理出候選清單：顏色 6 個、間距 4 個、字級 3 個、圓角 2 個，每個值都標了出處。清單如下⋯⋯確認後我才會建立 token 檔案。</div>
+                <div class="msg reply-set"><span class="rl">你可以這樣回</span><span class="reply-chip">確認，照這份建立</span><span class="reply-chip">主色不對，應該是 #2A6BFF</span><span class="reply-chip">間距先保留，其他建立</span></div>
+              </div>
+            </details>
+          </div>
+        </div>
+        <div class="next-links">
+          <a class="next-link" href="#/route-a">回路線 A 繼續<small>原型 → 產品</small></a>
+          <a class="next-link" href="#/route-b">回路線 B 繼續<small>元件庫 → 直接組裝</small></a>
+        </div>
+      </section>`;
+  }
+
+  /* =============================================================== 名詞小抄 */
+
+  function renderGlossary() {
+    return `
+      <section>
+        <span class="eyebrow">Cheat Sheet</span>
+        <h2>名詞小抄</h2>
+        <p class="section-intro">流程中會出現的詞，用設計師的語言翻譯一次。</p>
+        <dl class="glossary">
+          <div class="term">
+            <dt>PRD（產品需求文件）</dt>
+            <dd>把「要做什麼、為誰做、做到什麼程度算成功」寫清楚的一份文件。從想法開始走路線 A 時，AI 會用問答陪你把它生出來，不用自己從空白頁寫。</dd>
+          </div>
+          <div class="term">
+            <dt>Design Token</dt>
+            <dd>設計決策的最小單位：一個顏色、一個字級、一個間距，都有名字。改一個 token，全產品跟著改——這就是為什麼絕不寫死數值。</dd>
+          </div>
+          <div class="term">
+            <dt>元件庫（Component Library）</dt>
+            <dd>Storybook 裡那些有文件、可重用的積木：按鈕、輸入框、卡片。產品畫面應該用積木拼，而不是每頁重畫。</dd>
+          </div>
+          <div class="term">
+            <dt>Handoff（交接文件）</dt>
+            <dd>原型階段產出的七份文件，讓接手的人不用私訊問你「這裡是什麼意思」。核心是 <code>PRODUCTION_HANDOFF.md</code>。</dd>
+          </div>
+          <div class="term">
+            <dt>UI Flow</dt>
+            <dd>畫面與畫面之間怎麼跳轉的地圖：從哪裡點什麼、到哪裡去，包含錯誤和載入這些中途狀態。</dd>
+          </div>
+          <div class="term">
+            <dt>Fixture（假資料）</dt>
+            <dd>寫死的示範資料，讓畫面在真實 API 接上之前就能完整展示。工程師之後把它換成真資料，畫面不用重做。</dd>
+          </div>
+          <div class="term">
+            <dt>ref → sys → comp</dt>
+            <dd>token 的三層命名：ref 是原料（藍色 500），sys 是語意（主色），comp 是元件用途（按鈕底色）。搬運 tokens 時這個層級會被完整保留。</dd>
+          </div>
+        </dl>
+      </section>`;
+  }
+
+  /* ================================================================ router */
+
+  const viewEl = document.getElementById("view");
+  let navByClick = false;
+
+  const views = {
+    "start": { render: renderStart, title: "從 Storybook 到上線" },
+    "journey": { render: renderJourney, title: "六站旅程 — 從 Storybook 到上線" },
+    "route-a": { render: renderRouteA, title: "路線 A — 從 Storybook 到上線" },
+    "route-b": { render: renderRouteB, title: "路線 B — 從 Storybook 到上線" },
+    "gates": { render: renderGates, title: "紅綠燈 — 從 Storybook 到上線" },
+    "glossary": { render: renderGlossary, title: "名詞小抄 — 從 Storybook 到上線" },
+  };
+
+  function route() {
+    const hash = location.hash || "#/";
+    const id = hash === "#/" ? "start" : hash.replace(/^#\//, "");
+    const view = views[id] || views["start"];
+    const tabId = views[id] ? id : "start";
+    viewEl.innerHTML = `<div class="view-enter">${view.render()}${footer}</div>`;
+    document.title = view.title;
+    document.querySelectorAll("#tabs a").forEach((a) => {
+      a.classList.toggle("active", a.dataset.tab === tabId);
     });
+    if (navByClick) window.scrollTo(0, 0);
+    navByClick = false;
+  }
+
+  window.addEventListener("hashchange", route);
+  route();
+
+  /* ========================================================== interactions */
+
+  document.addEventListener("click", async (event) => {
+    const navLink = event.target.closest('a[href^="#"]');
+    if (navLink && navLink.getAttribute("href") !== (location.hash || "#/")) navByClick = true;
+
+    /* copy buttons */
+    const copyBtn = event.target.closest("[data-copy]");
+    if (copyBtn) {
+      let copied = true;
+      try {
+        await navigator.clipboard.writeText(copyBtn.dataset.copy);
+      } catch {
+        const area = document.createElement("textarea");
+        area.value = copyBtn.dataset.copy;
+        area.setAttribute("readonly", "");
+        area.style.cssText = "position:fixed;top:0;left:0;opacity:0;pointer-events:none";
+        document.body.appendChild(area);
+        area.select();
+        copied = document.execCommand("copy");
+        area.remove();
+      }
+      if (copied) {
+        copyBtn.classList.add("copied");
+        copyBtn.textContent = "已複製 ✓";
+        setTimeout(() => {
+          copyBtn.classList.remove("copied");
+          copyBtn.textContent = "複製";
+        }, 1600);
+      }
+      return;
+    }
+
+    /* wizard options */
+    const wzBtn = event.target.closest(".wz-opts [data-v]");
+    if (wzBtn) {
+      const group = wzBtn.closest(".wz-opts");
+      const q = group.dataset.q;
+      const v = wzBtn.dataset.v;
+      wizardState[q] = wizardState[q] === v ? null : v;
+      group.querySelectorAll("[data-v]").forEach((b) => {
+        b.setAttribute("aria-pressed", String(b === wzBtn && wizardState[q] === v));
+      });
+      const out = document.getElementById("wz-result");
+      if (out) out.innerHTML = renderWizardResult();
+      return;
+    }
+
+    /* station tabs + prev/next */
+    const stTab = event.target.closest("[data-st]");
+    if (stTab) {
+      currentStation = parseInt(stTab.dataset.st, 10);
+      document.querySelectorAll("[data-st]").forEach((t) => {
+        t.setAttribute("aria-pressed", String(parseInt(t.dataset.st, 10) === currentStation));
+      });
+      const panel = document.getElementById("station-panel");
+      if (panel) panel.innerHTML = renderStationPanel();
+      return;
+    }
+    let moved;
+    if (event.target.closest("#pn-prev") && currentStation > 0) {
+      currentStation -= 1;
+      moved = "pn-prev";
+    } else if (event.target.closest("#pn-next") && currentStation < stations.length - 1) {
+      currentStation += 1;
+      moved = "pn-next";
+    } else {
+      return;
+    }
+    document.querySelectorAll("[data-st]").forEach((t) => {
+      t.setAttribute("aria-pressed", String(parseInt(t.dataset.st, 10) === currentStation));
+    });
+    const panel = document.getElementById("station-panel");
+    if (panel) panel.innerHTML = renderStationPanel();
+    const btn = document.getElementById(moved);
+    if (btn && !btn.disabled) btn.focus();
+    else {
+      const other = document.getElementById(moved === "pn-prev" ? "pn-next" : "pn-prev");
+      if (other) other.focus();
+    }
   });
-})();
 </script>
 
 </body>
