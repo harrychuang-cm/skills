@@ -45,6 +45,14 @@ const figmaExportOptions = {
 
 `createFigmaReviewStatusPlugin` (see the review-server section) now also serves the store endpoints — POST/list/GET under `/__figma-export/payloads` with permissive CORS, persisted to `design-system/figma-export-payloads/` (`payloadDir` option). The paired Figma plugin's "Load from Storybook" section fetches that list and imports selected payloads without clipboard round-trips.
 
+The store also keeps a **synced baseline** per story — the "last confirmed sync" copy used by the `figma-sync-back` skill's three-way comparison. Regular exports never overwrite it:
+
+- `POST /__figma-export/payloads/<storyId>/promote` copies the current payload into `synced/<storyId>.json` and answers 200 with a baseline summary; promoting a story that has no current payload answers 404.
+- `GET /__figma-export/payloads/<storyId>/baseline` answers the frozen baseline payload, or 404 when the story was never promoted.
+- List summaries carry `hasBaseline` and `baselineGeneratedAt` so tools can detect stale baselines at a glance.
+
+Promote only after a sync is confirmed (the Figma import matches the story again) — the baseline is the reference point that lets the sync-back comparison tell "Figma changed" apart from "code changed".
+
 ## Verification suite
 
 Run from the addon root (after `npm run build` for the store test):

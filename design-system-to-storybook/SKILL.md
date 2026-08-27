@@ -299,6 +299,8 @@ Figma importer plugin (once per machine):
 
 Record the plugin version, the chosen distribution channel with its manifest path, machine setup status, and any blocked reason in the implementation map. The plugin version constant and UI badge are stamped from the plugin `package.json` by its `prebuild` script; never hand-edit `PLUGIN_VERSION` or the badge, and never patch the bundled plugin asset for a single product. Read `references/tooling-updates.md` for the full update journey across machine, project, and Figma layers.
 
+**Sync back from Figma.** This skill's export pipeline is one-directional: Storybook to Figma. When a user refines imported components or pages in Figma and asks which stories need updating from those edits, switch to the `figma-sync-back` skill instead of comparing by eye. That skill builds the story-to-node mapping (plugin ≥ 1.10.0 writes shared plugin data `storybook/storyId` on every import for this), runs a deterministic three-way comparison against the synced baseline, and produces a routed report — token differences go to the design-system-extractor Late-Arriving Authoritative Source Pass, visual differences to `ui-compare-to-reference`, structural differences to manual handling. It never edits product code. The review-server baseline endpoints (`POST /__figma-export/payloads/<storyId>/promote`, `GET .../baseline`) belong to that loop: promote a story's payload only after the user confirms Figma and Storybook match again, so the frozen baseline stays the honest reference for the next comparison.
+
 ### 8. Implementation Map
 
 Before editing code, create or update the implementation map with:

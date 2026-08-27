@@ -85,7 +85,7 @@ assert.throws(
   "installer rejects wildcard or incomplete allowlists",
 );
 
-assert.equal(packageJson.version, "1.9.0", "canonical package uses release version 1.9.0");
+assert.equal(packageJson.version, "1.10.0", "canonical package uses release version 1.10.0");
 assert.equal(packageLock.version, packageJson.version, "lockfile version matches package version");
 assert.equal(
   packageLock.packages?.[""]?.version,

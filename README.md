@@ -107,6 +107,18 @@ Build or update Storybook from an already extracted design-system package:
 
 Use this after `design-system-extractor` when the extraction is complete and you want the design-system documentation to become a token-backed component catalog in a product project.
 
+### `figma-sync-back`
+
+Detect which Storybook stories need updating from Figma-side edits and produce a routed sync-back report — the reverse direction of the export pipeline above. Classification only; it never modifies product code:
+
+1. Build the story-to-node mapping from `component-review-status.json`, the shared plugin data the importer plugin (≥ 1.10.0) writes on every import (`storybook/storyId`), or name matching as a low-confidence fallback.
+2. Run a deterministic three-way comparison per story with `scripts/compare_payload_baseline.mjs`: base = the synced baseline payload (frozen by the review-server's promote endpoint), ours = the current Storybook export, theirs = the current Figma state normalized into a figma-facts JSON.
+3. Classify each story — `synced`, `figma-only`, `code-only`, `conflict` — after filtering out known exporter fidelity noise (font metrics, sRGB clamping, raster caps); suppressed diffs stay in the report for audit.
+4. Route every real difference: token changes to `design-system-extractor`'s Late-Arriving Authoritative Source Pass, visual changes to `ui-compare-to-reference`, structural changes to manual handling.
+5. End with the promote commands that freeze the new baseline once the user confirms both sides match again.
+
+Use this when components or pages exported with the `design-system-to-storybook` Figma export addon were refined in Figma and you need to know what changed, in which direction, and how each change should flow back.
+
 ### `storybook-product-prototype`
 
 Create PRD-led product prototypes and frontend handoff docs in Storybook:
@@ -345,6 +357,10 @@ The generated report is a static HTML + CSS artifact, usually under `reports/des
 │   ├── SKILL.md
 │   ├── agents/
 │   ├── assets/
+│   ├── references/
+│   └── scripts/
+├── figma-sync-back/
+│   ├── SKILL.md
 │   ├── references/
 │   └── scripts/
 ├── design-automation-hub-install/

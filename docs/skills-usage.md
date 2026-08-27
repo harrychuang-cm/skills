@@ -42,6 +42,7 @@ Read <cm-skills path>/frontend-product-implementation/SKILL.md and follow that w
 | 確保 UI 開發遵循設計系統規則 | `$design-system-governance` | 搭配實作類 skill 使用，先檢查 tokens、元件庫、i18n，缺 token/元件要先問。（外部 skill，不在本 repo） |
 | 把畫面修成跟參考來源一致 | `$ui-compare-to-reference` | 參考來源可以是 Figma、設計圖，或另一個平台的原始碼（網頁 ↔ App 互為標準）。修在 token 或共用元件上，不是修在單一畫面。 |
 | 產出設計落差稽核報告 | `$ui-pixel-align-report` | 兩邊都抽成同一份規格再比對，產出截圖證據、嚴重度、歸屬層級的離線 HTML 報告與 `findings.json`。 |
+| 判斷 Figma 端修改要不要同步回 Storybook | `$figma-sync-back` | 三方比對分辨 Figma 改了／程式碼改了／兩邊都改，產出分流報告；只判斷、不動程式碼。 |
 | 把重複性流程變成自動化 | `$agent-automation-orchestrate` | 自動化的起始點：建立專案契約，之後用它執行、續跑、查狀態。 |
 | 在 Storybook 專案安裝通用工具頁（覆蓋率、元件時間軸） | `$storybook-tools-install` | 帶入「UI 圖片/PRD → 覆蓋率報告 → 審查 → 實作」工具、Component Timeline 頁面和配套 skills。 |
 | 在其他專案安裝 Figma 清理自動化 | `$design-automation-hub-install` | 安裝 Figma plugin、本機 coordinator 和 figma-cleanup task。 |
@@ -268,6 +269,34 @@ Use $ui-pixel-align-report on https://www.figma.com/design/...?node-id=1-234 and
 Use $ui-pixel-align-report on reference/dashboard.png and Dashboard.stories.tsx.
 ```
 
+### `$figma-sync-back`
+
+用途：當元件或頁面曾用 Figma export addon 匯出到 Figma、之後在 Figma 端被繼續打磨，判斷哪些 story 需要同步回 Storybook，並把每個差異導到對的修法。只判斷、不動程式碼。
+
+作法是三方比對：拿「上次確認同步的 baseline」當基準，跟「目前 Storybook 的匯出」和「目前 Figma 的狀態」各比一次，分辨出 Figma 單邊改（回流候選）、程式碼單邊改（該重新匯出）、兩邊都改（停下來問你）。匯出工具本來就做不到位的假差異（字型換行、色域壓縮等）會被濾掉，但保留在報告中可稽核。
+
+適合情境：
+
+- 設計師在 Figma 上調整了匯入的元件，想知道哪些元件、哪些屬性要跟著更新。
+- 元件是先在 Storybook 做好、匯出到 Figma 打磨的（原本沒有設計稿也適用 — 匯入時外掛已寫好對應識別）。
+- 想在動手修改前，先拿到一份「誰改了、差在哪、該怎麼修」的報告。
+
+會產出：
+
+- `design-system/figma-sync-report.md`（人看）與 `.json`（機器可讀）
+- 每個 story 的方向判定：`synced` / `figma-only` / `code-only` / `conflict`
+- 分流建議：token 差異 → `$design-system-extractor` 的 Late-Arriving Pass 裁決；視覺差異 → `$ui-compare-to-reference`；結構差異 → 人工處理
+- 待你確認的「更新 baseline」指令清單
+
+前置需求：Storybook 專案裝有 Figma export addon（含 review-server bridge），且元件曾用 Storybook Code To Design 外掛（1.10.0 以上）匯入 Figma。
+
+範例：
+
+```text
+Use $figma-sync-back to check which stories need syncing back from Figma.
+Use $figma-sync-back to check the Button component for Figma-side changes.
+```
+
 ### `$agent-automation-orchestrate`
 
 用途：自動化流程的起始點。把重複性的工作寫成一份專案契約，之後由它執行、續跑和回報。
@@ -447,6 +476,8 @@ $agent-automation-orchestrate
 | `$storybook-product-prototype` | `$frontend-product-implementation` | prototype docs 會成為 production frontend 實作輸入。 |
 | `$frontend-product-implementation` | `$ui-compare-to-reference` | 功能做完後，用參考圖檢查視覺偏差。 |
 | `$ui-pixel-align-report` | `$ui-compare-to-reference` | 先產出差異報告，再修正畫面。 |
+| `$figma-sync-back` | `$ui-compare-to-reference` | 分流報告裡的視覺差異，交給它以 Figma 節點為標準修正。 |
+| `$figma-sync-back` | `$design-system-extractor` | 分流報告裡的 token 差異，走 Late-Arriving Authoritative Source Pass 裁決。 |
 | `$design-system-governance` | 所有 UI 實作類 skill | 確保 token-first、component-first，不亂硬寫 UI。 |
 | `$agent-automation-orchestrate` | 契約中指定的配套 skill | runner 保持通用，專案自己的指示和驗證寫在 task 契約裡。 |
 | `$design-automation-hub-install` | `$agent-automation-orchestrate` | 在既有契約上加 `figma-cleanup` task，不用再裝第二套 runner。 |
@@ -489,6 +520,12 @@ Use $ui-compare-to-reference on <reference screenshot> and <local URL or route o
 
 ```text
 Use $ui-pixel-align-report on <reference screenshot> and <local URL>.
+```
+
+### 檢查 Figma 端修改要不要同步回來
+
+```text
+Use $figma-sync-back to check which stories need syncing back from Figma. Storybook runs at <storybook URL>.
 ```
 
 ### 建立自動化

@@ -287,6 +287,7 @@ type BoundVariableTarget = SceneNode & {
 type NodePluginData = BaseNode & {
   getPluginData?: (key: string) => string;
   setPluginData?: (key: string, value: string) => void;
+  setSharedPluginData?: (namespace: string, key: string, value: string) => void;
 };
 
 type NodeWithChildren = BaseNode & {
@@ -524,6 +525,7 @@ type ComponentSetRecord = {
 
 type ComponentSectionMetadata = {
   componentTitle?: string;
+  generatedAt?: string;
   storyId?: string;
   storyName?: string;
 };
@@ -538,7 +540,7 @@ type ComponentSectionTarget = {
 
 // Bump this on every behavior change so the Figma UI badge confirms which
 // build is running (Figma re-reads code.js per run, but the badge removes doubt).
-const PLUGIN_VERSION = "1.9.0 (2026-07-30)";
+const PLUGIN_VERSION = "1.10.0 (2026-08-27)";
 
 const SUPPORTED_PAYLOAD_VERSIONS = [1, 2] as const;
 const DEFAULT_TOKEN_PLUGIN_DATA_KEY = "storybookCssToken";
@@ -562,6 +564,13 @@ const REFERENCE_IMAGE_GAP = 64;
 const COMPONENT_SPEC_HASH_PLUGIN_DATA_KEY = "storybookComponentSpecHash";
 const COMPONENT_SECTION_ROLE_PLUGIN_DATA_KEY = "storybookComponentSectionRole";
 const STORYBOOK_STORY_PLUGIN_DATA_KEY = "storybookStoryId";
+// Shared plugin data mirrors the story identity so tools outside this plugin
+// (Figma REST plugin_data queries, MCP agents, the figma-sync-back skill) can
+// resolve node-to-story mappings. Private plugin data stays the importer's own
+// reuse key and is unchanged by this mirror.
+const SHARED_PLUGIN_DATA_NAMESPACE = "storybook";
+const SHARED_STORY_ID_KEY = "storyId";
+const SHARED_GENERATED_AT_KEY = "generatedAt";
 const COLLECTION_NAMES: Record<TokenCollection, string> = {
   comp: "comp",
   ref: "ref",
@@ -683,6 +692,12 @@ async function importStorybookDesign(
   if (!shouldImportAsComponent) {
     rootNode.x = 0;
     rootNode.y = 0;
+    // Page artifacts have no managed section; the root node carries the
+    // externally readable story identity instead.
+    applySharedStoryIdentity(rootNode, {
+      generatedAt: payload.generatedAt,
+      storyId: payload.storyId,
+    });
   }
   if (!rootNode.parent) figma.currentPage.appendChild(rootNode);
   if (viewportNode.parent === figma.currentPage) {
@@ -790,6 +805,7 @@ function placeComponentImportInSection(
         : getRootComponentSectionKey(payload),
     metadata: {
       componentTitle: payload.componentTitle,
+      generatedAt: payload.generatedAt,
       storyId: payload.storyId,
       storyName: payload.storyName,
     },
@@ -907,6 +923,38 @@ function configureComponentSection(
   }
   if (target.metadata?.storyName) {
     setNodePluginData(section, "storybookStoryName", target.metadata.storyName);
+  }
+  applySharedStoryIdentity(section, {
+    generatedAt: target.metadata?.generatedAt,
+    storyId: target.metadata?.storyId,
+  });
+}
+
+// Writes the externally readable story identity on an import's identity node
+// (component section or page-artifact root). Runs on both created and reused
+// nodes so re-importing backfills files made by older plugin versions.
+function applySharedStoryIdentity(
+  node: BaseNode,
+  identity: { generatedAt?: string; storyId?: string },
+): void {
+  try {
+    const target = node as NodePluginData;
+    if (identity.storyId) {
+      target.setSharedPluginData?.(
+        SHARED_PLUGIN_DATA_NAMESPACE,
+        SHARED_STORY_ID_KEY,
+        identity.storyId,
+      );
+    }
+    if (identity.generatedAt) {
+      target.setSharedPluginData?.(
+        SHARED_PLUGIN_DATA_NAMESPACE,
+        SHARED_GENERATED_AT_KEY,
+        identity.generatedAt,
+      );
+    }
+  } catch {
+    // Shared identity is best-effort metadata for external tools.
   }
 }
 
@@ -4686,7 +4734,9 @@ function formatError(error: unknown): string {
 declare const module: { exports?: Record<string, unknown> } | undefined;
 if (typeof module !== "undefined" && module) {
   module.exports = {
+    applySharedStoryIdentity,
     collectFontFamilyTokenNames,
+    configureComponentSection,
     colorFromCss,
     colorFromCssStrict,
     detectFontEnvironmentFault,

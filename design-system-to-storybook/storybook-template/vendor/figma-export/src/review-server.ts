@@ -470,26 +470,59 @@ function setCorsHeaders(response: ServerResponse): void {
 }
 
 type PayloadSummary = {
+  baselineGeneratedAt: string;
   componentTitle: string;
   generatedAt: string;
+  hasBaseline: boolean;
   storyId: string;
   storyName: string;
 };
 
-function toPayloadSummary(storyId: string, payload: unknown): PayloadSummary {
+// The synced baseline is the "last confirmed sync" copy used by the
+// figma-sync-back three-way comparison. Regular exports never touch it; only
+// an explicit promote call does.
+const SYNCED_BASELINE_DIRNAME = "synced";
+
+function syncedBaselinePath(payloadDir: string, storyId: string): string {
+  return join(payloadDir, SYNCED_BASELINE_DIRNAME, `${storyId}.json`);
+}
+
+function toPayloadSummary(
+  storyId: string,
+  payload: unknown,
+  baseline?: unknown,
+): PayloadSummary {
   const source = isRecord(payload) ? payload : {};
+  const baselineSource = isRecord(baseline) ? baseline : undefined;
   return {
+    baselineGeneratedAt:
+      typeof baselineSource?.generatedAt === "string" ? baselineSource.generatedAt : "",
     componentTitle:
       typeof source.componentTitle === "string" ? source.componentTitle : "",
     generatedAt: typeof source.generatedAt === "string" ? source.generatedAt : "",
+    hasBaseline: baselineSource !== undefined,
     storyId,
     storyName: typeof source.storyName === "string" ? source.storyName : "",
   };
 }
 
+async function readSyncedBaseline(
+  payloadDir: string,
+  storyId: string,
+): Promise<unknown | undefined> {
+  try {
+    return JSON.parse(await readFile(syncedBaselinePath(payloadDir, storyId), "utf8"));
+  } catch {
+    // Missing or corrupt baselines simply report as absent.
+    return undefined;
+  }
+}
+
 async function listStoredPayloads(payloadDir: string): Promise<PayloadSummary[]> {
   let files: string[] = [];
   try {
+    // The synced/ subdirectory never matches the .json filter, so baselines
+    // are not listed as current payloads.
     files = (await readdir(payloadDir)).filter((file) => file.endsWith(".json"));
   } catch (error) {
     if (isNodeError(error) && error.code === "ENOENT") return [];
@@ -501,7 +534,9 @@ async function listStoredPayloads(payloadDir: string): Promise<PayloadSummary[]>
     const storyId = file.slice(0, -".json".length);
     try {
       const raw = await readFile(join(payloadDir, file), "utf8");
-      summaries.push(toPayloadSummary(storyId, JSON.parse(raw)));
+      summaries.push(
+        toPayloadSummary(storyId, JSON.parse(raw), await readSyncedBaseline(payloadDir, storyId)),
+      );
     } catch {
       // Skip unreadable or corrupt payload files instead of failing the list.
     }
@@ -521,11 +556,61 @@ export async function handleFigmaExportPayloadRequest({
   setCorsHeaders(response);
   const method = request.method ?? "GET";
   const url = new URL(request.url ?? "/", "http://storybook.local");
-  const pathStoryId = decodeURIComponent(url.pathname.replace(/^\/+|\/+$/g, ""));
+  // Path shapes: "" (store root), "<storyId>", "<storyId>/promote",
+  // "<storyId>/baseline". Anything deeper is unknown.
+  const segments = url.pathname
+    .split("/")
+    .filter(Boolean)
+    .map((segment) => decodeURIComponent(segment));
+  const pathStoryId = segments[0] ?? "";
+  const pathAction = segments[1] ?? "";
 
   if (method === "OPTIONS") {
     response.statusCode = 204;
     response.end();
+    return;
+  }
+
+  if (segments.length > 2) {
+    sendJson(response, 404, { error: `Unknown payload store path ${url.pathname}.` });
+    return;
+  }
+
+  if (method === "POST" && pathAction === "promote") {
+    const storyId = sanitizePayloadStoryId(pathStoryId);
+    if (!storyId) {
+      sendJson(response, 400, { error: "storyId sanitized to an empty value." });
+      return;
+    }
+
+    let raw: string;
+    try {
+      raw = await readFile(join(payloadDir, `${storyId}.json`), "utf8");
+    } catch (error) {
+      if (isNodeError(error) && error.code === "ENOENT") {
+        sendJson(response, 404, {
+          error: `No stored payload for ${storyId}; export the story before promoting.`,
+        });
+        return;
+      }
+      throw error;
+    }
+
+    await mkdir(join(payloadDir, SYNCED_BASELINE_DIRNAME), { recursive: true });
+    await writeFile(syncedBaselinePath(payloadDir, storyId), raw, "utf8");
+    const summary = toPayloadSummary(storyId, JSON.parse(raw));
+    sendJson(response, 200, {
+      componentTitle: summary.componentTitle,
+      generatedAt: summary.generatedAt,
+      promoted: true,
+      storyId: summary.storyId,
+      storyName: summary.storyName,
+    });
+    return;
+  }
+
+  if (pathAction && !(method === "GET" && pathAction === "baseline")) {
+    sendJson(response, 404, { error: `Unknown payload store action ${pathAction}.` });
     return;
   }
 
@@ -573,14 +658,23 @@ export async function handleFigmaExportPayloadRequest({
     return;
   }
 
+  const readsBaseline = pathAction === "baseline";
+  const filePath = readsBaseline
+    ? syncedBaselinePath(payloadDir, storyId)
+    : join(payloadDir, `${storyId}.json`);
+
   try {
-    const raw = await readFile(join(payloadDir, `${storyId}.json`), "utf8");
+    const raw = await readFile(filePath, "utf8");
     response.statusCode = 200;
     response.setHeader("Content-Type", "application/json; charset=utf-8");
     response.end(raw);
   } catch (error) {
     if (isNodeError(error) && error.code === "ENOENT") {
-      sendJson(response, 404, { error: `No stored payload for ${storyId}.` });
+      sendJson(response, 404, {
+        error: readsBaseline
+          ? `No synced baseline for ${storyId}.`
+          : `No stored payload for ${storyId}.`,
+      });
       return;
     }
     throw error;

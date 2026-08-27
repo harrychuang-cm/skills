@@ -1649,14 +1649,28 @@ function setCorsHeaders(response) {
   response.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   response.setHeader("Access-Control-Allow-Headers", "content-type");
 }
-function toPayloadSummary(storyId, payload) {
+var SYNCED_BASELINE_DIRNAME = "synced";
+function syncedBaselinePath(payloadDir, storyId) {
+  return join2(payloadDir, SYNCED_BASELINE_DIRNAME, `${storyId}.json`);
+}
+function toPayloadSummary(storyId, payload, baseline) {
   const source = isRecord(payload) ? payload : {};
+  const baselineSource = isRecord(baseline) ? baseline : void 0;
   return {
+    baselineGeneratedAt: typeof baselineSource?.generatedAt === "string" ? baselineSource.generatedAt : "",
     componentTitle: typeof source.componentTitle === "string" ? source.componentTitle : "",
     generatedAt: typeof source.generatedAt === "string" ? source.generatedAt : "",
+    hasBaseline: baselineSource !== void 0,
     storyId,
     storyName: typeof source.storyName === "string" ? source.storyName : ""
   };
+}
+async function readSyncedBaseline(payloadDir, storyId) {
+  try {
+    return JSON.parse(await readFile2(syncedBaselinePath(payloadDir, storyId), "utf8"));
+  } catch {
+    return void 0;
+  }
 }
 async function listStoredPayloads(payloadDir) {
   let files = [];
@@ -1671,7 +1685,9 @@ async function listStoredPayloads(payloadDir) {
     const storyId = file.slice(0, -".json".length);
     try {
       const raw = await readFile2(join2(payloadDir, file), "utf8");
-      summaries.push(toPayloadSummary(storyId, JSON.parse(raw)));
+      summaries.push(
+        toPayloadSummary(storyId, JSON.parse(raw), await readSyncedBaseline(payloadDir, storyId))
+      );
     } catch {
     }
   }
@@ -1685,10 +1701,50 @@ async function handleFigmaExportPayloadRequest({
   setCorsHeaders(response);
   const method = request.method ?? "GET";
   const url = new URL(request.url ?? "/", "http://storybook.local");
-  const pathStoryId = decodeURIComponent(url.pathname.replace(/^\/+|\/+$/g, ""));
+  const segments = url.pathname.split("/").filter(Boolean).map((segment) => decodeURIComponent(segment));
+  const pathStoryId = segments[0] ?? "";
+  const pathAction = segments[1] ?? "";
   if (method === "OPTIONS") {
     response.statusCode = 204;
     response.end();
+    return;
+  }
+  if (segments.length > 2) {
+    sendJson(response, 404, { error: `Unknown payload store path ${url.pathname}.` });
+    return;
+  }
+  if (method === "POST" && pathAction === "promote") {
+    const storyId2 = sanitizePayloadStoryId(pathStoryId);
+    if (!storyId2) {
+      sendJson(response, 400, { error: "storyId sanitized to an empty value." });
+      return;
+    }
+    let raw;
+    try {
+      raw = await readFile2(join2(payloadDir, `${storyId2}.json`), "utf8");
+    } catch (error) {
+      if (isNodeError(error) && error.code === "ENOENT") {
+        sendJson(response, 404, {
+          error: `No stored payload for ${storyId2}; export the story before promoting.`
+        });
+        return;
+      }
+      throw error;
+    }
+    await mkdir2(join2(payloadDir, SYNCED_BASELINE_DIRNAME), { recursive: true });
+    await writeFile2(syncedBaselinePath(payloadDir, storyId2), raw, "utf8");
+    const summary = toPayloadSummary(storyId2, JSON.parse(raw));
+    sendJson(response, 200, {
+      componentTitle: summary.componentTitle,
+      generatedAt: summary.generatedAt,
+      promoted: true,
+      storyId: summary.storyId,
+      storyName: summary.storyName
+    });
+    return;
+  }
+  if (pathAction && !(method === "GET" && pathAction === "baseline")) {
+    sendJson(response, 404, { error: `Unknown payload store action ${pathAction}.` });
     return;
   }
   if (method === "POST") {
@@ -1728,14 +1784,18 @@ async function handleFigmaExportPayloadRequest({
     sendJson(response, 400, { error: "storyId sanitized to an empty value." });
     return;
   }
+  const readsBaseline = pathAction === "baseline";
+  const filePath = readsBaseline ? syncedBaselinePath(payloadDir, storyId) : join2(payloadDir, `${storyId}.json`);
   try {
-    const raw = await readFile2(join2(payloadDir, `${storyId}.json`), "utf8");
+    const raw = await readFile2(filePath, "utf8");
     response.statusCode = 200;
     response.setHeader("Content-Type", "application/json; charset=utf-8");
     response.end(raw);
   } catch (error) {
     if (isNodeError(error) && error.code === "ENOENT") {
-      sendJson(response, 404, { error: `No stored payload for ${storyId}.` });
+      sendJson(response, 404, {
+        error: readsBaseline ? `No synced baseline for ${storyId}.` : `No stored payload for ${storyId}.`
+      });
       return;
     }
     throw error;

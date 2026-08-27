@@ -2,7 +2,7 @@
 
 Figma development plugin for importing Storybook Code To Design JSON exports. The plugin parses JSON only; it does not evaluate pasted JavaScript.
 
-Version: `1.6.1` (the authoritative version is stamped from `package.json` into the UI badge and `PLUGIN_VERSION`)
+Version: `1.10.0` (the authoritative version is stamped from `package.json` into the UI badge and `PLUGIN_VERSION`)
 
 ## Fidelity fields (payload v2, all optional)
 
@@ -136,6 +136,29 @@ The JSON payload includes:
 2. In the **Paste JSON** tab, paste the Storybook JSON (the hint confirms the payload is valid and names the story).
 3. Click `Import to Figma` (or press `Cmd/Ctrl+Enter` in the textarea).
 4. Review the status strip for created/reused variable counts and any binding warnings. When a text node's font could not be loaded and a fallback was used, the summary reports how many fonts were substituted; if two or more families failed every style, the warnings lead with the local-font-service diagnosis (restart Figma or check font access permissions).
+
+## Shared Story Identity
+
+Every successful import writes an externally readable story identity as
+**shared plugin data** on the import's identity node, so tools outside this
+plugin (Figma REST `plugin_data` queries, MCP agents, the `figma-sync-back`
+skill) can resolve node-to-story mappings without access to private plugin
+data:
+
+- Namespace: `storybook`
+- Keys: `storyId` (the payload `storyId`) and `generatedAt` (the payload
+  `generatedAt`, identifying which export the Figma content descends from)
+- Identity node: the managed component **section** for component artifacts
+  (the same node that carries the private `storybookStoryId` plugin data);
+  the imported **root node** for page artifacts (`Pages/` story titles),
+  which have no managed section
+- Re-import backfill: the shared identity is written on both newly created
+  and reused identity nodes, so re-importing a story into a file created by
+  an older plugin version backfills the shared identity without a separate
+  migration; `generatedAt` always reflects the most recent import
+
+Private plugin data behavior (section reuse, variable deduplication) is
+unchanged; the shared identity is a read-only mirror for external tooling.
 
 ## Variable Reuse Rules
 

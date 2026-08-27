@@ -762,4 +762,123 @@ assert.equal(
   "single failing family adds no environment fault report",
 );
 
+// --- Shared story identity on import --------------------------------------
+
+// The identity nodes record both private plugin data (the importer's own
+// reuse key) and shared plugin data under the "storybook" namespace so
+// external tools (REST plugin_data queries, MCP agents) can resolve
+// node-to-story mappings.
+function createIdentityStubNode() {
+  const pluginData = {};
+  const sharedPluginData = {};
+  return {
+    pluginData,
+    sharedPluginData,
+    getPluginData(key) {
+      return pluginData[key] ?? "";
+    },
+    setPluginData(key, value) {
+      pluginData[key] = value;
+    },
+    setSharedPluginData(namespace, key, value) {
+      sharedPluginData[`${namespace}/${key}`] = value;
+    },
+  };
+}
+
+// Component import path: configureComponentSection is the single write site
+// for managed sections, on both create and reuse.
+const sectionStub = createIdentityStubNode();
+plugin.configureComponentSection(sectionStub, {
+  key: "story:components-button--primary",
+  metadata: {
+    componentTitle: "Components/Actions/Button",
+    generatedAt: "2026-08-27T10:00:00.000Z",
+    storyId: "components-button--primary",
+    storyName: "Primary",
+  },
+  name: "Components/Actions/Button / Primary",
+  role: "root",
+});
+assert.equal(
+  sectionStub.sharedPluginData["storybook/storyId"],
+  "components-button--primary",
+  "component section carries shared storybook/storyId",
+);
+assert.equal(
+  sectionStub.sharedPluginData["storybook/generatedAt"],
+  "2026-08-27T10:00:00.000Z",
+  "component section carries shared storybook/generatedAt",
+);
+assert.equal(
+  sectionStub.pluginData.storybookStoryId,
+  "components-button--primary",
+  "private storybookStoryId plugin data is still written",
+);
+
+// Re-import/backfill: reconfiguring the same (legacy) section updates the
+// shared identity to the latest payload's generatedAt.
+plugin.configureComponentSection(sectionStub, {
+  key: "story:components-button--primary",
+  metadata: {
+    componentTitle: "Components/Actions/Button",
+    generatedAt: "2026-08-28T09:30:00.000Z",
+    storyId: "components-button--primary",
+    storyName: "Primary",
+  },
+  name: "Components/Actions/Button / Primary",
+  role: "root",
+});
+assert.equal(
+  sectionStub.sharedPluginData["storybook/generatedAt"],
+  "2026-08-28T09:30:00.000Z",
+  "re-import updates shared generatedAt to the latest payload",
+);
+assert.equal(
+  sectionStub.sharedPluginData["storybook/storyId"],
+  "components-button--primary",
+  "re-import keeps the shared storyId",
+);
+
+// Page import path: the root node is the identity node (pages have no
+// managed section).
+const pageRootStub = createIdentityStubNode();
+plugin.applySharedStoryIdentity(pageRootStub, {
+  generatedAt: "2026-08-27T10:00:00.000Z",
+  storyId: "pages-dashboard--default",
+});
+assert.equal(
+  pageRootStub.sharedPluginData["storybook/storyId"],
+  "pages-dashboard--default",
+  "page root carries shared storybook/storyId",
+);
+assert.equal(
+  pageRootStub.sharedPluginData["storybook/generatedAt"],
+  "2026-08-27T10:00:00.000Z",
+  "page root carries shared storybook/generatedAt",
+);
+
+// A node without setSharedPluginData (older stub environments) is a no-op,
+// never a crash.
+assert.doesNotThrow(
+  () =>
+    plugin.applySharedStoryIdentity(
+      { setPluginData() {} },
+      { generatedAt: "2026-08-27T10:00:00.000Z", storyId: "any" },
+    ),
+  "missing setSharedPluginData degrades to a no-op",
+);
+
+// The page-artifact branch of the import flow wires the helper to the root
+// node (behavioral wiring is exercised in Figma; this guards the call site).
+const builtSource = require("node:fs").readFileSync(
+  require("node:path").join(__dirname, "..", "code.js"),
+  "utf8",
+);
+assert.match(
+  builtSource,
+  /applySharedStoryIdentity\(rootNode, \{/,
+  "page-artifact import branch applies the shared story identity to the root node",
+);
+
 console.log("verify-pure-functions: all assertions passed");

@@ -196,7 +196,7 @@ function selectVariantGroup(groups, componentTitle) {
 }
 // Bump this on every behavior change so the Figma UI badge confirms which
 // build is running (Figma re-reads code.js per run, but the badge removes doubt).
-var PLUGIN_VERSION = "1.9.0 (2026-07-30)";
+var PLUGIN_VERSION = "1.10.0 (2026-08-27)";
 var SUPPORTED_PAYLOAD_VERSIONS = [1, 2];
 var DEFAULT_TOKEN_PLUGIN_DATA_KEY = "storybookCssToken";
 var LEGACY_CM_TOKEN_PLUGIN_DATA_KEY = "cmCssToken";
@@ -219,6 +219,13 @@ var REFERENCE_IMAGE_GAP = 64;
 var COMPONENT_SPEC_HASH_PLUGIN_DATA_KEY = "storybookComponentSpecHash";
 var COMPONENT_SECTION_ROLE_PLUGIN_DATA_KEY = "storybookComponentSectionRole";
 var STORYBOOK_STORY_PLUGIN_DATA_KEY = "storybookStoryId";
+// Shared plugin data mirrors the story identity so tools outside this plugin
+// (Figma REST plugin_data queries, MCP agents, the figma-sync-back skill) can
+// resolve node-to-story mappings. Private plugin data stays the importer's own
+// reuse key and is unchanged by this mirror.
+var SHARED_PLUGIN_DATA_NAMESPACE = "storybook";
+var SHARED_STORY_ID_KEY = "storyId";
+var SHARED_GENERATED_AT_KEY = "generatedAt";
 var COLLECTION_NAMES = {
     comp: "comp",
     ref: "ref",
@@ -365,6 +372,12 @@ function importStorybookDesign(payload_1) {
                     if (!shouldImportAsComponent) {
                         rootNode.x = 0;
                         rootNode.y = 0;
+                        // Page artifacts have no managed section; the root node carries the
+                        // externally readable story identity instead.
+                        applySharedStoryIdentity(rootNode, {
+                            generatedAt: payload.generatedAt,
+                            storyId: payload.storyId,
+                        });
                     }
                     if (!rootNode.parent)
                         figma.currentPage.appendChild(rootNode);
@@ -469,6 +482,7 @@ function placeComponentImportInSection(rootNode, payload, targetPage) {
             : getRootComponentSectionKey(payload),
         metadata: {
             componentTitle: payload.componentTitle,
+            generatedAt: payload.generatedAt,
             storyId: payload.storyId,
             storyName: payload.storyName,
         },
@@ -537,7 +551,7 @@ function getOrCreateComponentSection(targetPage, sectionName, sectionKey) {
     return { created: true, section: section };
 }
 function configureComponentSection(section, target) {
-    var _a, _b, _c;
+    var _a, _b, _c, _d, _e;
     section.name = target.name;
     section.fills = [whitePaint()];
     section.strokes = [];
@@ -551,6 +565,28 @@ function configureComponentSection(section, target) {
     }
     if ((_c = target.metadata) === null || _c === void 0 ? void 0 : _c.storyName) {
         setNodePluginData(section, "storybookStoryName", target.metadata.storyName);
+    }
+    applySharedStoryIdentity(section, {
+        generatedAt: (_d = target.metadata) === null || _d === void 0 ? void 0 : _d.generatedAt,
+        storyId: (_e = target.metadata) === null || _e === void 0 ? void 0 : _e.storyId,
+    });
+}
+// Writes the externally readable story identity on an import's identity node
+// (component section or page-artifact root). Runs on both created and reused
+// nodes so re-importing backfills files made by older plugin versions.
+function applySharedStoryIdentity(node, identity) {
+    var _a, _b;
+    try {
+        var target = node;
+        if (identity.storyId) {
+            (_a = target.setSharedPluginData) === null || _a === void 0 ? void 0 : _a.call(target, SHARED_PLUGIN_DATA_NAMESPACE, SHARED_STORY_ID_KEY, identity.storyId);
+        }
+        if (identity.generatedAt) {
+            (_b = target.setSharedPluginData) === null || _b === void 0 ? void 0 : _b.call(target, SHARED_PLUGIN_DATA_NAMESPACE, SHARED_GENERATED_AT_KEY, identity.generatedAt);
+        }
+    }
+    catch (_c) {
+        // Shared identity is best-effort metadata for external tools.
     }
 }
 function getComponentSectionName(payload) {
@@ -3977,7 +4013,9 @@ function formatError(error) {
 }
 if (typeof module !== "undefined" && module) {
     module.exports = {
+        applySharedStoryIdentity: applySharedStoryIdentity,
         collectFontFamilyTokenNames: collectFontFamilyTokenNames,
+        configureComponentSection: configureComponentSection,
         colorFromCss: colorFromCss,
         colorFromCssStrict: colorFromCssStrict,
         detectFontEnvironmentFault: detectFontEnvironmentFault,
