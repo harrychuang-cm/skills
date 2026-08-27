@@ -72,7 +72,12 @@
       "Bash(git -C . branch --show-current)",
       "Bash(git stash *)",
       "Bash(grep -oE '>[A-Z][^<>]{3,60}<' template/figma/design-automation-hub/ui.html)",
-      "Bash(echo \"grep exit: $?\")"
+      "Bash(echo \"grep exit: $?\")",
+      "Bash(grep -n -E '\"[^\"]*[A-Za-z]{3,}[^\"]*\"' /Users/a04-0214-0320/Public/works/cm-skills/design-system-extractor/scripts/audit_sources.mjs)",
+      "Bash(git -C /Users/a04-0214-0320/Public/works/cm-skills status --porcelain -uall -- openspec/changes/add-extractor-report-language/)",
+      "Bash(git clone *)",
+      "Bash(git -C /Users/a04-0214-0320/Public/works/cm-skills remote -v)",
+      "Bash(git -C /Users/a04-0214-0320/Public/works/cm-skills log --oneline --all -- figma-m3-variables design-system-governance create-design-workspace)"
     ],
     "additionalDirectories": [
       "/dev"
