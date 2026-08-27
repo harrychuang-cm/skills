@@ -1,6 +1,6 @@
 # Storybook Integration
 
-Use this reference when creating `<FeaturePrototype>.stories.tsx` and `<featurePrototypeMeta>.ts`.
+Use this reference when creating `<FeaturePrototype>.stories.tsx` (React) or `<FeaturePrototype>.stories.ts` (Vue) and `<featurePrototypeMeta>.ts`.
 
 ## Story Requirements
 
@@ -21,6 +21,15 @@ The Static Flow story should:
 - Use `layout: "fullscreen"`.
 - Render route cards and flow-only nodes from `flow.routes`, `flow.nodes`, and key `flow.transitions`.
 - Read saved layout through `../prototypeFlowLayout` so positions edited in the Prototype Inspector match the export artifact.
+
+## Vue Story Conventions
+
+The Vue overlay templates follow the same story requirements with these framework-native conventions:
+
+- Story files are `.stories.ts` (`<FeaturePrototype>.stories.ts`, `<FeaturePrototypeFlowExport>.stories.ts`), typed with `Meta` and `StoryObj` from `@storybook/vue3-vite`.
+- The prototype component is a `<script setup lang="ts">` SFC imported as a default export (`import FeaturePrototype from "./FeaturePrototype.vue"`); component references inside SFC templates use PascalCase.
+- The story `render` function returns a `{ components, setup, template }` object that binds args onto the component.
+- `parameters.prototype`, `layout: "fullscreen"`, the `StaticFlow` export name, and the `prototypeRoute` / `prototypeFlowPreview` query modes are identical to the React contract — the meta, flow, and data modules stay plain TypeScript and are shared unchanged across frameworks.
 
 ## Metadata Shape
 

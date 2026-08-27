@@ -86,6 +86,36 @@ VAR_FALLBACK_PATTERN = re.compile(
 # targeted regexes from a brace-COUNTED block — the non-greedy transition
 # object regex is never reused here because nested objects truncate it.
 COMPONENT_ORIGIN_VALUES = {"local", "promoted", "shared"}
+
+# Framework-specific file locations; every other checked file is shared.
+FRAMEWORK_FILE_PATTERNS = {
+    "react": {
+        "component": "*Prototype.tsx",
+        "story": "*Prototype.stories.tsx",
+        "static flow export": "*PrototypeFlowExport.tsx",
+        "static flow story": "*PrototypeFlowExport.stories.tsx",
+    },
+    "vue": {
+        "component": "*Prototype.vue",
+        "story": "*Prototype.stories.ts",
+        "static flow export": "*PrototypeFlowExport.vue",
+        "static flow story": "*PrototypeFlowExport.stories.ts",
+    },
+}
+
+
+def detect_prototype_framework(folder: Path) -> tuple[str, str | None]:
+    react_component = find_one(folder, FRAMEWORK_FILE_PATTERNS["react"]["component"])
+    vue_component = find_one(folder, FRAMEWORK_FILE_PATTERNS["vue"]["component"])
+    if react_component is not None and vue_component is not None:
+        return (
+            "mixed",
+            f"folder mixes frameworks: found both {react_component.name} and "
+            f"{vue_component.name}; pass an explicit --framework react or --framework vue",
+        )
+    if vue_component is not None:
+        return "vue", None
+    return "react", None
 COMPONENT_ROUTE_PATTERN = re.compile(r"\broute\s*:\s*['\"]([^'\"]+)['\"]")
 COMPONENT_ORIGIN_PATTERN = re.compile(r"\borigin\s*:\s*['\"]([^'\"]+)['\"]")
 COMPONENT_STORY_ID_PATTERN = re.compile(r"\bstoryId\s*:\s*['\"]([^'\"]+)['\"]")
@@ -486,8 +516,12 @@ def validate_doc_code_consistency(
 
 
 def validate_component_usage(
-    folder: Path, files: dict[str, Path | None], warnings: list[str]
+    folder: Path,
+    files: dict[str, Path | None],
+    warnings: list[str],
+    framework: str = "react",
 ) -> None:
+    component_label = FRAMEWORK_FILE_PATTERNS[framework]["component"]
     ui_spec = folder / "docs" / "UI_SPEC.md"
     component_path = files.get("component")
     if not ui_spec.is_file() or component_path is None or not component_path.is_file():
@@ -517,13 +551,13 @@ def validate_component_usage(
         )
         check(
             imported,
-            f"UI_SPEC Component Map names `{name}` but *Prototype.tsx never imports it",
+            f"UI_SPEC Component Map names `{name}` but {component_label} never imports it",
             warnings,
         )
         check(
             re.search(rf"<(?:\w+\.)?{re.escape(name)}[\s/>]", component_text)
             is not None,
-            f"UI_SPEC Component Map names `{name}` but *Prototype.tsx never renders it",
+            f"UI_SPEC Component Map names `{name}` but {component_label} never renders it",
             warnings,
         )
 
@@ -533,6 +567,10 @@ def validate_component_usage(
         if specifier.endswith(".css"):
             return False
         if not specifier.startswith("."):
+            if framework == "vue":
+                if specifier in {"vue", "clsx", "classnames"}:
+                    return False
+                return not specifier.startswith(("@storybook", "@vue/", "vue/"))
             if specifier in {"react", "react-dom", "clsx", "classnames"}:
                 return False
             return not specifier.startswith(("@storybook", "react/", "react-dom/"))
@@ -553,7 +591,7 @@ def validate_component_usage(
     )
     check(
         has_design_system_import or has_no_reusable_marker,
-        "*Prototype.tsx has no design-system import and Component Gaps lacks a "
+        f"{component_label} has no design-system import and Component Gaps lacks a "
         "'- No reusable components: <evidence>' line",
         warnings,
     )
@@ -648,12 +686,15 @@ def validate_css(files: dict[str, Path | None], warnings: list[str]) -> None:
             )
 
 
-def validate_files(folder: Path, errors: list[str]) -> dict[str, Path | None]:
+def validate_files(
+    folder: Path, errors: list[str], framework: str = "react"
+) -> dict[str, Path | None]:
+    patterns = FRAMEWORK_FILE_PATTERNS[framework]
     files = {
-        "component": find_one(folder, "*Prototype.tsx"),
-        "story": find_one(folder, "*Prototype.stories.tsx"),
-        "static flow export": find_one(folder, "*PrototypeFlowExport.tsx"),
-        "static flow story": find_one(folder, "*PrototypeFlowExport.stories.tsx"),
+        "component": find_one(folder, patterns["component"]),
+        "story": find_one(folder, patterns["story"]),
+        "static flow export": find_one(folder, patterns["static flow export"]),
+        "static flow story": find_one(folder, patterns["static flow story"]),
         "flow": find_one(folder, "*PrototypeFlow.ts"),
         "data": find_one(folder, "*PrototypeData.ts"),
         "meta": find_one(folder, "*PrototypeMeta.ts"),
@@ -963,6 +1004,15 @@ def main() -> int:
             "storyId values (warnings by default, errors with --handoff-ready)."
         ),
     )
+    parser.add_argument(
+        "--framework",
+        choices=("auto", "react", "vue"),
+        default="auto",
+        help=(
+            "Prototype framework. auto classifies the folder from its component "
+            "file (*Prototype.vue vs *Prototype.tsx)."
+        ),
+    )
     args = parser.parse_args()
 
     folder = Path(args.prototype_folder).resolve()
@@ -971,26 +1021,35 @@ def main() -> int:
 
     check(folder.is_dir(), f"{folder} is not a directory", errors)
     if folder.is_dir():
-        validate_docs(folder, errors, warnings, args.handoff_ready)
-        files = validate_files(folder, errors)
-        validate_story(files["story"], errors)
-        validate_static_flow_story(files["static flow story"], errors)
-        validate_static_flow_export(files["static flow export"], errors)
-        validate_viewer_compatibility(files, errors)
-        validate_meta(files["meta"], errors)
-        validate_flow(files["flow"], errors)
-        validate_component_usage(folder, files, warnings)
-        validate_components_meta(
-            folder,
-            files,
-            errors,
-            warnings,
-            args.handoff_ready,
-            args.storybook_index,
-        )
-        validate_css(files, warnings)
-        if args.handoff_ready:
-            validate_doc_code_consistency(folder, files, errors, warnings)
+        framework = args.framework
+        if framework == "auto":
+            framework, detection_error = detect_prototype_framework(folder)
+            if framework == "mixed":
+                errors.append(detection_error or "folder mixes prototype frameworks")
+
+        if framework == "mixed":
+            validate_docs(folder, errors, warnings, args.handoff_ready)
+        else:
+            validate_docs(folder, errors, warnings, args.handoff_ready)
+            files = validate_files(folder, errors, framework)
+            validate_story(files["story"], errors)
+            validate_static_flow_story(files["static flow story"], errors)
+            validate_static_flow_export(files["static flow export"], errors)
+            validate_viewer_compatibility(files, errors)
+            validate_meta(files["meta"], errors)
+            validate_flow(files["flow"], errors)
+            validate_component_usage(folder, files, warnings, framework)
+            validate_components_meta(
+                folder,
+                files,
+                errors,
+                warnings,
+                args.handoff_ready,
+                args.storybook_index,
+            )
+            validate_css(files, warnings)
+            if args.handoff_ready:
+                validate_doc_code_consistency(folder, files, errors, warnings)
 
     if args.strict_style:
         errors.extend(warnings)

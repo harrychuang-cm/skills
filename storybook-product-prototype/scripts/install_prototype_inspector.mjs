@@ -76,6 +76,24 @@ function findStorybookMain(storybookDir) {
   return candidates.map((name) => resolve(storybookDir, name)).find(existsSync);
 }
 
+// The inspector's preview decorator returns React elements, so it only renders
+// in React Storybook projects. Known non-React renderer package prefixes abort
+// the install before any file is written.
+const nonReactRendererPrefixes = [
+  "@storybook/vue3",
+  "@storybook/angular",
+  "@storybook/svelte",
+  "@storybook/web-components",
+  "@storybook/html",
+  "@storybook/preact",
+  "@storybook/ember",
+  "@storybook/solid",
+];
+
+function findNonReactRenderer(mainSource) {
+  return nonReactRendererPrefixes.find((prefix) => mainSource.includes(prefix));
+}
+
 function getAddonEntry(mainPath) {
   return mainPath.endsWith(".cjs")
     ? 'require("node:path").resolve(__dirname, "prototype-inspector/preset.js")'
@@ -146,6 +164,18 @@ function main() {
     throw new Error(`Missing Storybook main config in ${storybookDir}`);
   }
 
+  const source = readFileSync(mainPath, "utf8");
+  const nonReactRenderer = findNonReactRenderer(source);
+  if (nonReactRenderer) {
+    console.error(
+      `Prototype Inspector only supports React Storybook projects; ${mainPath} references ${nonReactRenderer}.`,
+    );
+    console.error(
+      "No files were written. For non-React projects, review the flow through the StaticFlow story and the docs/ handoff files (see storybook-product-prototype SKILL.md).",
+    );
+    process.exit(1);
+  }
+
   const targetAddonDir = resolve(storybookDir, "prototype-inspector");
   if (existsSync(targetAddonDir) && !args.force) {
     throw new Error(
@@ -160,7 +190,6 @@ function main() {
     bridgeTokenPrefix(targetAddonDir, args.tokenPrefix);
   }
 
-  const source = readFileSync(mainPath, "utf8");
   const nextSource = insertAddonEntry(source, getAddonEntry(mainPath));
   if (nextSource !== source) {
     writeFileSync(mainPath, nextSource);

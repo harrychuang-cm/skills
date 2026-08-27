@@ -1,11 +1,11 @@
 ---
 name: storybook-product-prototype
-description: Create PRD-led Storybook product prototypes and frontend implementation handoff docs for web or app development, with deterministic fixtures, typed UI Flow route and transition metadata, API/data contracts, interactive prototype stories, template-compatible Static Flow export stories, and an optional Prototype Inspector runtime for Story/Docs/UI Flow/Components/Data review. Use after design-system-to-storybook or independently when turning a product idea into PRD, UI Flow, Data Spec, Production Handoff, Acceptance Criteria, and a clickable Storybook prototype; when scaffolding a prototype folder; when preparing engineer or AI collaboration from design to frontend implementation; when documenting API/data contracts without real data wiring; when aligning UI Flow with the design-system-to-storybook storybook-template contract; when installing a Storybook UI Flow viewer; or when validating prototype and handoff docs across React Storybook projects.
+description: Create PRD-led Storybook product prototypes and frontend implementation handoff docs for web or app development, with deterministic fixtures, typed UI Flow route and transition metadata, API/data contracts, interactive prototype stories, template-compatible Static Flow export stories, and an optional Prototype Inspector runtime for Story/Docs/UI Flow/Components/Data review. Use after design-system-to-storybook or independently when turning a product idea into PRD, UI Flow, Data Spec, Production Handoff, Acceptance Criteria, and a clickable Storybook prototype; when scaffolding a prototype folder; when preparing engineer or AI collaboration from design to frontend implementation; when documenting API/data contracts without real data wiring; when aligning UI Flow with the design-system-to-storybook storybook-template contract; when installing a Storybook UI Flow viewer; or when validating prototype and handoff docs across React and Vue Storybook projects.
 ---
 
 # Storybook Product Prototype
 
-Use this skill to create a product prototype workflow that starts with PRD and flow decisions, then generates docs, deterministic fixtures, typed route metadata, a clickable Storybook story, a Static Flow export story, and frontend implementation handoff guidance for web or app development. The skill is project-agnostic, but it expects a React/TypeScript Storybook project or a project that can adapt the generated files.
+Use this skill to create a product prototype workflow that starts with PRD and flow decisions, then generates docs, deterministic fixtures, typed route metadata, a clickable Storybook story, a Static Flow export story, and frontend implementation handoff guidance for web or app development. The skill is project-agnostic and supports React and Vue TypeScript Storybook projects for scaffolding and validation; other projects can adapt the generated files. `scripts/scaffold_prototype.py` and `scripts/validate_prototype.py` accept `--framework {auto,react,vue}` (default `auto`): the scaffold detects the framework from the nearest `package.json` above the target root, and the validator classifies the prototype folder from its component file (`*Prototype.vue` vs `*Prototype.tsx`).
 
 When the target was created or upgraded by `design-system-to-storybook/storybook-template`, treat that template's Prototype Inspector, `prototypeFlowLayout.ts`, `parameters.prototype`, `prototypeRoute`, `prototypeFlowPreview`, and Static Flow story pattern as the canonical UI Flow contract.
 
@@ -105,7 +105,7 @@ Rules:
 
 ### 6. Compose The Storybook Prototype
 
-Create the React prototype, Static Flow export, CSS, metadata, stories, and index files.
+Create the framework-native prototype component (React `.tsx` or Vue SFC), Static Flow export, CSS, metadata, stories, and index files.
 
 Rules:
 
@@ -164,11 +164,13 @@ Use `--force` only when intentionally replacing an existing `.storybook/prototyp
 
 The inspector styles itself through a `--pi-*` token layer that reads `--sbt-*` tokens when the project defines them and falls back to built-in neutral light/dark values otherwise. When the project uses a different token prefix (recorded in the Token Binding discovery), pass `--token-prefix <prefix>` (for example `--token-prefix md`) so the inspector binds to the project's tokens while keeping the fallbacks.
 
+The Prototype Inspector is React-only: its preview decorator returns React elements, so it cannot render in Vue (or other non-React) Storybook projects, and the installer aborts without writing files when `.storybook/main.*` references a non-React renderer such as `@storybook/vue3-vite`. In Vue projects, skip this step and review the flow through the `StaticFlow` story plus direct reading of the `docs/` handoff files; the `prototypeRoute` and `prototypeFlowPreview` query modes still work because they are implemented inside the prototype component itself.
+
 ### 10. Validate
 
 Run the checks that fit the target repo:
 
-- `python3 <skill-root>/scripts/validate_prototype.py <prototype-folder>` — add `--strict-style` to turn validation warnings (component map, token discipline, CSS scope, doc coverage, `meta.components` composition) into errors, and `--storybook-index <path>` to cross-check `meta.components` story ids against a built Storybook index.
+- `python3 <skill-root>/scripts/validate_prototype.py <prototype-folder>` — add `--strict-style` to turn validation warnings (component map, token discipline, CSS scope, doc coverage, `meta.components` composition) into errors, and `--storybook-index <path>` to cross-check `meta.components` story ids against a built Storybook index. The validator auto-detects React vs Vue folders; pass `--framework react` or `--framework vue` explicitly when a folder mixes both component formats.
 - Project typecheck, usually `npm run typecheck`
 - Storybook render or build, usually `npm run storybook` or `npm run storybook:build`
 - Manual Storybook review of Story, Docs, UI Flow, Components, and Data if the project has a prototype inspector; in the Components mode, confirm every route lists its composition and story links open the right stories.
@@ -188,7 +190,9 @@ python3 <skill-root>/scripts/scaffold_prototype.py "Portfolio Alerts" \
   --owner "Product Team"
 ```
 
-The scaffold creates a folder based on the feature name, adds `prototypeFlowLayout.ts` to the prototypes root when needed, and fills template tokens. After scaffolding, replace the generated bracketed guidance with concrete product content before implementation.
+The scaffold creates a folder based on the feature name, adds `prototypeFlowLayout.ts` to the prototypes root when needed, and fills template tokens. It detects the target framework from the nearest `package.json` above the target root and prints the result; pass `--framework react` or `--framework vue` to override. Vue mode produces `.vue` components with `.stories.ts` stories from the bundled Vue overlay template set instead of the React `.tsx` files. After scaffolding, replace the generated bracketed guidance with concrete product content before implementation.
+
+Run `python3 <skill-root>/scripts/test_scaffold_validate.py` after changing the templates or scripts; it scaffolds and validates one prototype per framework and fails when the two rounds diverge.
 
 ## Quality Bar
 
