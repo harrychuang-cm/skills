@@ -96,6 +96,11 @@ components: {
           storyTitle: 'Components/Lists/Bottom Sheet Cell',       // optional; display + derivation evidence
           note: 'variant / prop usage notes',                     // optional
           domSelector: '.cm-bottom-sheet-cell', // optional; explicit CSS selector for this component's rendered root(s) in the route preview; overrides derivation
+          targets: {                  // optional; per-platform production counterparts
+            web: 'src/components/bottom-sheet-cell', // production component/import path, when it exists
+            ios: null,                // string = SwiftUI view name; null = must be newly built; key absent = platform out of scope
+            android: 'BottomSheetCell', // string = composable name; same null/absent semantics
+          },
         },
       ],
     },
@@ -106,6 +111,7 @@ components: {
 Rules:
 
 - The key is optional. Every consumer must tolerate its absence (older prototypes) and ignore unknown extra fields.
+- `targets` is the OPTIONAL per-platform mapping for multi-platform deliveries: each of `web`, `ios`, and `android` holds the production counterpart's name or path (a string), an explicit `null` meaning the counterpart must be newly built, or is absent meaning that platform is out of scope for the entry. Entries without `targets` keep the single-target contract unchanged. Fill it when `PRODUCTION_HANDOFF.md` Target Surfaces declares more than one platform, so a native receiver can tell which SwiftUI view or composable corresponds to each prototype component instead of re-deriving the mapping.
 - `origin` semantics: `shared` = the component existed before this prototype (a UI_SPEC Component Map entry); `local` = created for this prototype (a UI_SPEC Component Gaps entry or prototype-local file, usually with no story); `promoted` = was a gap, then promoted into the hub's shared component library in the promote workflow step (has a hub path and story id).
 - The authoring source of truth stays `docs/UI_SPEC.md` Component Map / Component Gaps. `meta.components` is the machine-readable echo: author it in the compose step, and update the affected entry in the promote step in the same motion as the doc move (`origin` `local` → `promoted`, plus the new `storyId`).
 - Resolve each `storyId` through the resolution chain in `references/component-discovery.md`; never guess an id silently. When no id resolves (typical for `local`), omit `storyId` — the inspector shows the source path without a link.

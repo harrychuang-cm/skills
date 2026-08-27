@@ -13,6 +13,8 @@ Each route should define:
 - `description`: behavior the route proves.
 - `flowGroup`: optional grouping label.
 - `flowPosition`: optional stable `{ x, y }` coordinate.
+- `params`: optional array of `{ name, type }` route parameters production navigation needs (URL params on web, destination arguments on iOS/Android). Declare them here so codegen and the receiving implementation never re-derive them from fixtures.
+- `deepLink`: optional direct-entry pattern for the route (for example `/alerts/:alertId` or `app://alerts/:alertId`). Declare it when the route is a deep-link target.
 
 ## Flow-Only Nodes
 
@@ -42,6 +44,8 @@ Every user-triggered route change must define:
 - `trigger`: stable event or branch condition name.
 - `label`: human-readable edge label.
 - `kind`: optional semantic category such as `primary`, `return`, `global`, `secondary`, `outcome`, or `condition`.
+- `presentation`: optional presentation semantics for the target surface — `push` (stack navigation / page change), `modal` (blocking overlay), `sheet` (partial overlay), `fullscreen` (full-screen cover), or `replace` (swap without history). This is what lets iOS map the edge to NavigationStack vs sheet and Android to NavHost vs dialog; web benefits too (modal vs page). Required at handoff time for non-`return` transitions when an app target is in scope (`validate_prototype.py --handoff-ready` warns, `--strict-style` fails).
+- `backBehavior`: optional exit semantics — `pop` (one step back), `popToRoot` (back to the flow's root), `dismiss` (close the overlay), or `none` (no user-initiated back). Declare it whenever leaving the surface is not a plain `pop`.
 - `flowLine`: optional display hint. Use `key` only for transitions drawn on the simplified canvas.
 - `sourceAnchor`: optional `{ x, y }` route-card-relative ratio used only when Static Flow export needs a stable edge origin for Figma-ready layout. Use sparingly and keep values between `0` and `1`.
 

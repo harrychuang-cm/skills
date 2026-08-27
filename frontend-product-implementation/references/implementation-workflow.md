@@ -112,14 +112,15 @@ Greenfield work should be minimal but production-like: clear folders, typed cont
 
 ## API/Data Adapter Pattern
 
-When real integration is out of scope, create:
+Real integration is never in scope for this skill. For every feature, create the named adapter seam:
 
-- `types` for request, response, error, and UI state
+- `types` for request, response, error, and UI state; reuse the DATA_SPEC state vocabulary (`default`, `loading`, `empty`, `error`) plus documented disabled/permission branches
+- a `<Feature>DataSource` interface with one method per handoff fixture group (web: TypeScript interface; the same name carries to a protocol or interface on other platforms)
+- a `Mock<Feature>DataSource` implementation returning the deterministic fixtures — loading the handoff's `fixtures/<group>.json` exports when they exist, otherwise porting the fixture values
 - fixtures for documented success, loading, empty, error, disabled, and permission states
-- mock adapter or hook returning deterministic data
-- clear replacement point for the receiving implementation
+- a clear replacement point: record the interface name, mock implementation path, and replacement steps in the implementation map, and fill the handoff's `Adapter interface` column in `PRODUCTION_HANDOFF.md` when updating handoff docs
 
-Do not invent real endpoints. Do not add secrets, environment variables, auth flows, or persistence without explicit scope.
+Do not invent real endpoints. Do not add secrets, environment variables, auth flows, or persistence; those belong to the named data-integration owner.
 
 ## Documentation Updates
 

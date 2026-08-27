@@ -4,9 +4,11 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import sys
+from datetime import date
 from pathlib import Path
 
 
@@ -60,9 +62,15 @@ NEW_DOC_HEADINGS = {
         "Open Product Decisions",
         "Review Status",
     ],
-    "DATA_SPEC.md": ["Data Schemas", "State And Branch Fixtures"],
-    "ACCEPTANCE.md": ["Data"],
+    "DATA_SPEC.md": ["Data Schemas (JSON Schema)", "State And Branch Fixtures"],
+    "ACCEPTANCE.md": ["Data", "Production Integration Acceptance"],
 }
+
+# Acceptance criteria carry stable three-tier ids. Only bullet leaders are
+# read so prose mentions like `AC-S-*` in guidance text never false-positive.
+AC_ID_TOKEN_PATTERN = re.compile(r"^\s*[-*]\s+(AC-[^\s:]+)", re.MULTILINE)
+AC_ID_VALID_PATTERN = re.compile(r"^AC-([SHP])-(\d{3})$")
+AC_P_LINE_PATTERN = re.compile(r"^\s*[-*]\s+(AC-P-\d{3})\b(.*)$")
 
 # Doc↔code cross-checks only trust ids written as top-level list-item leaders
 # (`- `id`:` at column 0) so inline code in prose and nested explanation
@@ -189,10 +197,15 @@ def scan_matching_bracket(text: str, start: int) -> int:
 def extract_array_body(text: str, suffix: str) -> str:
     """Body of ``export const <name><suffix> = [ ... ]``.
 
-    Accepts any tail (``as const``, ``satisfies T[]``, or a bare literal) so the
-    declaration style never decides whether cross-checks run.
+    Accepts any tail (``as const``, ``satisfies T[]``, or a bare literal) AND a
+    leading type annotation (``: T[] =``) so the declaration style never decides
+    whether cross-checks run. Missing the annotated form is silent and
+    expensive: an annotated transitions array parses as empty, so every
+    per-transition check below simply never runs on it.
     """
-    match = re.search(rf"export\s+const\s+\w+{re.escape(suffix)}\s*=\s*\[", text)
+    match = re.search(
+        rf"export\s+const\s+\w+{re.escape(suffix)}\s*(?::[^=;\n]+)?=\s*\[", text
+    )
     if not match:
         return ""
     start = text.rindex("[", match.start(), match.end())
@@ -449,8 +462,11 @@ def validate_docs(
             )
             if doc_name == "PRODUCTION_HANDOFF.md":
                 validate_review_status(text, errors, warnings)
+                validate_integration_ownership(text, warnings)
         if doc_name == "PRODUCTION_HANDOFF.md":
             validate_handoff_scope(text, warnings)
+        if doc_name == "ACCEPTANCE.md":
+            validate_acceptance_ids(text, errors, warnings, handoff_ready)
 
 
 SCOPE_VALUES = {"A", "B", "C", "U"}
@@ -497,38 +513,42 @@ def validate_handoff_scope(handoff_text: str, warnings: list[str]) -> None:
         )
         return
 
+    # Single-target maps carry one `Scope` column; multi-target maps carry
+    # `Scope(web)` / `Scope(app)` columns. Both forms are legal.
     header = rows[0]
-    scope_index = next(
-        (
-            index
-            for index, cell in enumerate(header)
-            if cell.replace("*", "").strip().lower() == "scope"
-        ),
-        None,
-    )
-    if scope_index is None:
+    scope_indexes = [
+        index
+        for index, cell in enumerate(header)
+        if re.fullmatch(
+            r"scope(\((?:web|app)\))?", cell.replace("*", "").strip().lower()
+        )
+    ]
+    if not scope_indexes:
         warnings.append(
             "docs/PRODUCTION_HANDOFF.md Prototype To Frontend Map has no 'Scope' "
-            "column, so the receiving implementation cannot tell which surfaces "
-            "already ship (A) from which are new (B)"
+            "(or 'Scope(web)'/'Scope(app)') column, so the receiving "
+            "implementation cannot tell which surfaces already ship (A) from "
+            "which are new (B)"
         )
         return
 
     for row in rows[1:]:
-        if scope_index >= len(row):
-            label = row[0] if row else "(empty row)"
-            warnings.append(
-                f"docs/PRODUCTION_HANDOFF.md map row {label} has no Scope cell"
-            )
-            continue
-        if not normalize_scope_cell(row[scope_index]):
-            label = row[0] or "(unnamed row)"
-            warnings.append(
-                f"docs/PRODUCTION_HANDOFF.md map row {label} has an unresolved "
-                f"Scope value; use A (already ships, do not rebuild), B (new), "
-                f"C (Storybook-only), or U (unverified, also list it in Open "
-                f"Product Decisions)"
-            )
+        for scope_index in scope_indexes:
+            column = header[scope_index].replace("*", "").strip() or "Scope"
+            if scope_index >= len(row):
+                label = row[0] if row else "(empty row)"
+                warnings.append(
+                    f"docs/PRODUCTION_HANDOFF.md map row {label} has no {column} cell"
+                )
+                continue
+            if not normalize_scope_cell(row[scope_index]):
+                label = row[0] or "(unnamed row)"
+                warnings.append(
+                    f"docs/PRODUCTION_HANDOFF.md map row {label} has an unresolved "
+                    f"{column} value; use A (already ships, do not rebuild), B (new), "
+                    f"C (Storybook-only), or U (unverified, also list it in Open "
+                    f"Product Decisions)"
+                )
 
 
 def validate_review_status(
@@ -557,6 +577,84 @@ def validate_review_status(
             "docs/PRODUCTION_HANDOFF.md Review Status is not confirmed; the team "
             "must confirm the Storybook demo before handoff",
             errors,
+        )
+
+
+def validate_acceptance_ids(
+    text: str, errors: list[str], warnings: list[str], handoff_ready: bool
+) -> None:
+    """Acceptance criteria carry stable AC-S/AC-H/AC-P ids.
+
+    Format violations and duplicates are always errors. Tier coverage is
+    checked only under --handoff-ready. A legacy file with no ids at all gets
+    a single warning so acceptance docs written before the id scheme keep
+    validating.
+    """
+    tokens = AC_ID_TOKEN_PATTERN.findall(text)
+    if not tokens:
+        if handoff_ready:
+            warnings.append(
+                "docs/ACCEPTANCE.md has no AC-S/AC-H/AC-P criterion ids; legacy "
+                "acceptance files keep validating, but new handoffs need stable "
+                "ids so the receiving implementation can report traceability "
+                "row by row"
+            )
+        return
+
+    tier_counts = {"S": 0, "H": 0, "P": 0}
+    seen: dict[str, int] = {}
+    for token in tokens:
+        match = AC_ID_VALID_PATTERN.match(token)
+        if not match:
+            errors.append(
+                f"docs/ACCEPTANCE.md criterion id '{token}' does not match the "
+                "AC-S-NNN / AC-H-NNN / AC-P-NNN format"
+            )
+            continue
+        tier_counts[match.group(1)] += 1
+        seen[token] = seen.get(token, 0) + 1
+
+    for token in sorted(token for token, count in seen.items() if count > 1):
+        errors.append(f"docs/ACCEPTANCE.md criterion id '{token}' is duplicated")
+
+    if handoff_ready:
+        for tier, label in (
+            ("S", "AC-S (Storybook acceptance)"),
+            ("H", "AC-H (handoff acceptance)"),
+            ("P", "AC-P (production acceptance)"),
+        ):
+            check(
+                tier_counts[tier] > 0,
+                f"docs/ACCEPTANCE.md has no {label} criterion",
+                errors,
+            )
+
+    for line in text.splitlines():
+        match = AC_P_LINE_PATTERN.match(line)
+        if match and "(assembly)" not in match.group(2) and "(integration)" not in match.group(2):
+            warnings.append(
+                f"docs/ACCEPTANCE.md {match.group(1)} has no (assembly) or "
+                "(integration) owner tag, so the assembly pass cannot tell "
+                "which production criteria it must settle in mock mode"
+            )
+
+
+def validate_integration_ownership(handoff_text: str, warnings: list[str]) -> None:
+    """New handoffs name the stage-3 receiver of real data wiring explicitly.
+
+    Warning-level so legacy handoffs written before the three-stage ownership
+    contract keep validating; new handoffs must name an owner or record the
+    open decision.
+    """
+    section = extract_doc_section(handoff_text, "Integration Ownership")
+    if not section:
+        return
+    if "Data Integration Ownership" not in section:
+        warnings.append(
+            "docs/PRODUCTION_HANDOFF.md Integration Ownership has no 'Data "
+            "Integration Ownership' field naming who replaces the mock adapters "
+            "with real integrations; name a team, system, or person, or record "
+            "the open decision in Open Product Decisions"
         )
 
 
@@ -685,6 +783,164 @@ def validate_doc_code_consistency(
                     "*PrototypeData.ts does not export it",
                     errors,
                 )
+
+
+def extract_named_array_body(text: str, name: str) -> str:
+    """Body of ``export const <name> = [ ... ]`` for an exact export name."""
+    match = re.search(
+        rf"export\s+const\s+{re.escape(name)}\s*(?::[^=;\n]+)?=\s*\[", text
+    )
+    if not match:
+        return ""
+    start = text.rindex("[", match.start(), match.end())
+    end = scan_matching_bracket(text, start)
+    return text[start + 1 : end - 1] if end != -1 else ""
+
+
+def validate_fixture_json_consistency(
+    folder: Path,
+    files: dict[str, Path | None],
+    errors: list[str],
+    warnings: list[str],
+) -> None:
+    """Cross-check the two fixture carriers (.ts exports and fixtures/*.json).
+
+    Runs only with --handoff-ready. Structural checks only: presence in both
+    carriers and JSON parseability are errors, and for route-content groups
+    (names ending in ``Routes``) every JSON ``id`` must be a known flow screen
+    id. Deep value equality is not checked; a route-id set difference between
+    the carriers is a warning.
+    """
+    data_path = files.get("data")
+    if data_path is None or not data_path.is_file():
+        return
+    # Strip comments first so example fixtures in guidance comments never
+    # register as real ids or exports.
+    data_text = sanitize_meta_source(read(data_path))
+    exports = sorted(set(EXPORT_CONST_PATTERN.findall(data_text)))
+    fixtures_dir = folder / "fixtures"
+    json_groups: dict[str, Path] = {}
+    if fixtures_dir.is_dir():
+        json_groups = {path.stem: path for path in sorted(fixtures_dir.glob("*.json"))}
+    if not exports and not json_groups:
+        return
+
+    if exports and not fixtures_dir.is_dir():
+        errors.append(
+            "prototype has no fixtures/ directory; every fixture group needs a "
+            f"language-neutral fixtures/<group>.json counterpart ({', '.join(exports)})"
+        )
+        return
+
+    for name in exports:
+        check(
+            name in json_groups,
+            f"fixture group `{name}` has no fixtures/{name}.json counterpart",
+            errors,
+        )
+    for name in sorted(json_groups):
+        check(
+            name in exports,
+            f"fixtures/{name}.json has no matching fixture export in *PrototypeData.ts",
+            errors,
+        )
+
+    flow_path = files.get("flow")
+    valid_ids: set[str] = set()
+    if flow_path is not None and flow_path.is_file():
+        valid_ids = set(extract_flow_screen_ids(read(flow_path)))
+
+    for name, path in sorted(json_groups.items()):
+        try:
+            payload = json.loads(read(path))
+        except json.JSONDecodeError as exc:
+            errors.append(f"fixtures/{path.name} is not valid JSON: {exc}")
+            continue
+        if not name.endswith("Routes"):
+            continue
+        json_ids = [
+            item["id"]
+            for item in (payload if isinstance(payload, list) else [])
+            if isinstance(item, dict) and isinstance(item.get("id"), str)
+        ]
+        if valid_ids:
+            for value in unique(json_ids):
+                check(
+                    value in valid_ids,
+                    f"fixtures/{path.name} references route id '{value}' that the "
+                    "flow metadata does not define",
+                    errors,
+                )
+        ts_ids = set(
+            re.findall(
+                r"\bid\s*:\s*['\"]([^'\"]+)['\"]",
+                extract_named_array_body(data_text, name),
+            )
+        )
+        if name in exports and ts_ids != set(json_ids):
+            ts_only = sorted(ts_ids - set(json_ids))
+            json_only = sorted(set(json_ids) - ts_ids)
+            detail = "; ".join(
+                part
+                for part in (
+                    f"only in .ts: {', '.join(ts_only)}" if ts_only else "",
+                    f"only in .json: {', '.join(json_only)}" if json_only else "",
+                )
+                if part
+            )
+            warnings.append(
+                f"fixture group `{name}` route id sets differ between the .ts and "
+                f".json carriers ({detail}); keep both carriers in sync"
+            )
+
+
+TRANSITION_PRESENTATION_VALUES = {"push", "modal", "sheet", "fullscreen", "replace"}
+TRANSITION_BACK_BEHAVIOR_VALUES = {"pop", "popToRoot", "dismiss", "none"}
+
+
+def app_target_in_scope(handoff_text: str) -> bool:
+    """True when Target Surfaces declares an app surface that is in scope."""
+    section = extract_doc_section(handoff_text, "Target Surfaces")
+    match = re.search(
+        r"^\s*[-*]\s*App\s*:\s*(.+)$", section, re.MULTILINE | re.IGNORECASE
+    )
+    if not match:
+        return False
+    return "not in scope" not in match.group(1).strip().lower()
+
+
+def validate_transition_presentation(
+    folder: Path, files: dict[str, Path | None], warnings: list[str]
+) -> None:
+    """App-bound handoffs need presentation semantics on navigation edges.
+
+    Runs only with --handoff-ready and only when the handoff declares an app
+    target. Warning-level (--strict-style promotes) so web-era prototypes keep
+    validating; without a presentation value a native receiver cannot tell a
+    push from a sheet from a dialog.
+    """
+    handoff = folder / "docs" / "PRODUCTION_HANDOFF.md"
+    if not handoff.is_file() or not app_target_in_scope(read(handoff)):
+        return
+    flow_path = files.get("flow")
+    if flow_path is None or not flow_path.is_file():
+        return
+    for index, transition in enumerate(
+        extract_transition_objects(read(flow_path)), start=1
+    ):
+        if extract_string_property(transition, "kind") == "return":
+            continue
+        if extract_string_property(transition, "presentation") is None:
+            label = (
+                extract_string_property(transition, "trigger")
+                or extract_string_property(transition, "label")
+                or f"#{index}"
+            )
+            warnings.append(
+                f"transition {label} has no presentation value (push/modal/sheet/"
+                "fullscreen/replace) although Target Surfaces declares an app "
+                "target; native navigation cannot be derived without it"
+            )
 
 
 def validate_component_usage(
@@ -1176,11 +1432,194 @@ def validate_flow(path: Path | None, errors: list[str]) -> None:
             )
             has_key_flow_line = has_key_flow_line or flow_line == "key"
 
+        presentation = extract_string_property(transition, "presentation")
+        if presentation:
+            check(
+                presentation in TRANSITION_PRESENTATION_VALUES,
+                f"transition {transition_label} has invalid presentation "
+                f"'{presentation}' (expected push|modal|sheet|fullscreen|replace)",
+                errors,
+            )
+        back_behavior = extract_string_property(transition, "backBehavior")
+        if back_behavior:
+            check(
+                back_behavior in TRANSITION_BACK_BEHAVIOR_VALUES,
+                f"transition {transition_label} has invalid backBehavior "
+                f"'{back_behavior}' (expected pop|popToRoot|dismiss|none)",
+                errors,
+            )
+
     check(
         not transitions or has_key_flow_line,
         'flow with transitions should mark at least one transition as flowLine: "key"',
         errors,
     )
+
+
+MANIFEST_NAME = "HANDOFF_MANIFEST.json"
+MANIFEST_SCHEMA_VERSION = 1
+
+
+def sha256_text(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def compute_docs_hashes(folder: Path) -> dict[str, str]:
+    """sha256 per handoff document, manifest itself excluded."""
+    docs_dir = folder / "docs"
+    hashes: dict[str, str] = {}
+    for doc_name in REQUIRED_DOCS:
+        doc_path = docs_dir / doc_name
+        if doc_path.is_file():
+            hashes[doc_name] = sha256_text(read(doc_path))
+    return hashes
+
+
+def docs_digest(docs_hashes: dict[str, str]) -> str:
+    """Stable digest of the whole docs hash object; the hash the receiving
+    frontend-product-implementation pass records as the consumed version."""
+    return sha256_text(json.dumps(docs_hashes, sort_keys=True))
+
+
+def write_handoff_manifest(
+    folder: Path, files: dict[str, Path | None], changelog_summary: str | None
+) -> Path:
+    """Write docs/HANDOFF_MANIFEST.json after a fully passing --handoff-ready run.
+
+    The manifest is the versioned snapshot the receiving implementation pins:
+    per-doc hashes for drift detection, flow/fixture snapshots for coverage
+    audits, and an incrementing changelog so a consumed version is nameable.
+    """
+    docs_dir = folder / "docs"
+    docs_hashes = compute_docs_hashes(folder)
+
+    route_ids: list[str] = []
+    flow_node_ids: list[str] = []
+    transition_count = 0
+    flow_path = files.get("flow")
+    if flow_path is not None and flow_path.is_file():
+        flow_text = read(flow_path)
+        route_ids = extract_const_string_array(flow_text, "RouteIds")
+        flow_node_ids = extract_const_string_array(flow_text, "FlowNodeIds")
+        transition_count = len(extract_transition_objects(flow_text))
+
+    fixture_exports: list[str] = []
+    data_path = files.get("data")
+    if data_path is not None and data_path.is_file():
+        fixture_exports = sorted(
+            set(EXPORT_CONST_PATTERN.findall(sanitize_meta_source(read(data_path))))
+        )
+
+    handoff_path = docs_dir / "PRODUCTION_HANDOFF.md"
+    handoff_text = read(handoff_path) if handoff_path.is_file() else ""
+    review_section = extract_doc_section(handoff_text, "Review Status")
+    review_status: dict[str, str | None] = {"status": "unknown", "confirmedOn": None}
+    status_match = re.search(
+        r"^\s*[-*]\s*Status\s*:\s*(.+)$", review_section, re.MULTILINE
+    )
+    if status_match:
+        review_status["status"] = status_match.group(1).strip().strip("`")
+    confirmed_match = re.search(
+        r"^\s*[-*]\s*Confirmed on\s*:\s*(.+)$", review_section, re.MULTILINE
+    )
+    if confirmed_match:
+        review_status["confirmedOn"] = confirmed_match.group(1).strip()
+
+    manifest_path = docs_dir / MANIFEST_NAME
+    previous_changelog: list[dict] = []
+    if manifest_path.is_file():
+        try:
+            previous = json.loads(read(manifest_path))
+        except json.JSONDecodeError:
+            previous = None
+        if isinstance(previous, dict) and isinstance(previous.get("changelog"), list):
+            previous_changelog = [
+                entry for entry in previous["changelog"] if isinstance(entry, dict)
+            ]
+
+    version = 1
+    if previous_changelog:
+        version = (
+            max(int(entry.get("version", 0)) for entry in previous_changelog) + 1
+        )
+    summary = changelog_summary or (
+        "regenerated" if previous_changelog else "initial handoff"
+    )
+    changelog = previous_changelog + [
+        {"version": version, "date": date.today().isoformat(), "summary": summary}
+    ]
+
+    manifest = {
+        "manifestSchemaVersion": MANIFEST_SCHEMA_VERSION,
+        "feature": folder.name,
+        "generatedAt": date.today().isoformat(),
+        "reviewStatus": review_status,
+        "docs": docs_hashes,
+        "docsDigest": docs_digest(docs_hashes),
+        "flow": {
+            "routeIds": route_ids,
+            "flowNodeIds": flow_node_ids,
+            "transitionCount": transition_count,
+        },
+        "fixtures": {"exports": fixture_exports},
+        "scopeDigest": sha256_text(
+            extract_doc_section(handoff_text, "Prototype To Frontend Map")
+        ),
+        "changelog": changelog,
+    }
+    manifest_path.write_text(
+        json.dumps(manifest, indent=2, ensure_ascii=False) + "\n"
+    )
+    return manifest_path
+
+
+def run_verify_manifest(folder: Path) -> int:
+    """Compare current handoff docs against docs/HANDOFF_MANIFEST.json.
+
+    Exit 0 when every listed document still matches its recorded hash;
+    otherwise list each drifted or missing document and exit 1.
+    """
+    manifest_path = folder / "docs" / MANIFEST_NAME
+    if not manifest_path.is_file():
+        print(f"No {MANIFEST_NAME} found in {folder / 'docs'}; run --handoff-ready first.")
+        return 1
+    try:
+        manifest = json.loads(read(manifest_path))
+    except json.JSONDecodeError as exc:
+        print(f"{MANIFEST_NAME} is not valid JSON: {exc}")
+        return 1
+    recorded = manifest.get("docs")
+    if not isinstance(recorded, dict) or not recorded:
+        print(f"{MANIFEST_NAME} has no docs hash object; regenerate it with --handoff-ready.")
+        return 1
+
+    drifted: list[str] = []
+    missing: list[str] = []
+    for doc_name, recorded_hash in recorded.items():
+        doc_path = folder / "docs" / str(doc_name)
+        if not doc_path.is_file():
+            missing.append(str(doc_name))
+        elif sha256_text(read(doc_path)) != recorded_hash:
+            drifted.append(str(doc_name))
+
+    if not drifted and not missing:
+        version = ""
+        changelog = manifest.get("changelog")
+        if isinstance(changelog, list) and changelog:
+            version = f" (changelog version {changelog[-1].get('version')})"
+        print(f"Handoff docs match {MANIFEST_NAME}{version}; no drift.")
+        return 0
+
+    print("Handoff drift detected against " + MANIFEST_NAME + ":")
+    for doc_name in drifted:
+        print(f"- drifted: docs/{doc_name}")
+    for doc_name in missing:
+        print(f"- missing: docs/{doc_name}")
+    print(
+        "Re-confirm the direction if needed, then regenerate the manifest with "
+        "--handoff-ready --changelog \"<summary>\"."
+    )
+    return 1
 
 
 def main() -> int:
@@ -1229,11 +1668,33 @@ def main() -> int:
             "file (*Prototype.vue vs *Prototype.tsx)."
         ),
     )
+    parser.add_argument(
+        "--verify-manifest",
+        dest="verify_manifest",
+        action="store_true",
+        help=(
+            "Compare current handoff docs against docs/HANDOFF_MANIFEST.json and "
+            "exit non-zero listing drifted or missing documents. Runs instead of "
+            "the normal validation."
+        ),
+    )
+    parser.add_argument(
+        "--changelog",
+        default=None,
+        help=(
+            "Changelog summary recorded in docs/HANDOFF_MANIFEST.json when a "
+            "passing --handoff-ready run writes or regenerates the manifest."
+        ),
+    )
     args = parser.parse_args()
 
     folder = Path(args.prototype_folder).resolve()
+    if args.verify_manifest:
+        return run_verify_manifest(folder)
+
     errors: list[str] = []
     warnings: list[str] = []
+    files: dict[str, Path | None] = {}
 
     check(folder.is_dir(), f"{folder} is not a directory", errors)
     if folder.is_dir():
@@ -1266,6 +1727,8 @@ def main() -> int:
             validate_css(files, warnings)
             if args.handoff_ready:
                 validate_doc_code_consistency(folder, files, errors, warnings)
+                validate_fixture_json_consistency(folder, files, errors, warnings)
+                validate_transition_presentation(folder, files, warnings)
 
     if args.strict_style:
         errors.extend(warnings)
@@ -1281,6 +1744,10 @@ def main() -> int:
         for error in errors:
             print(f"- {error}")
         return 1
+
+    if args.handoff_ready and folder.is_dir():
+        manifest_path = write_handoff_manifest(folder, files, args.changelog)
+        print(f"Wrote docs/{manifest_path.name} (handoff snapshot for drift detection).")
 
     print("Prototype validation passed.")
     return 0

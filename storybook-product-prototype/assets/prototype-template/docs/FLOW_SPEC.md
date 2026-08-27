@@ -23,6 +23,8 @@ Each route must define:
 - `description`
 - `flowGroup`
 - `flowPosition`
+- `params` when the route takes parameters in production navigation
+- `deepLink` when the route is a direct-entry target
 
 ## Flow Node Metadata Contract
 
@@ -48,6 +50,8 @@ Each transition must define:
 - `trigger`
 - `label`
 - `kind`
+- `presentation` when an app target is in scope (`push`, `modal`, `sheet`, `fullscreen`, or `replace`)
+- `backBehavior` when leaving the surface is not a plain `pop`
 - `flowLine`
 - `sourceAnchor` only when Static Flow export needs a stable edge origin for Figma layout.
 
@@ -57,8 +61,12 @@ Use route ids in mapping objects. Do not derive navigation behavior from rendere
 
 ## Production Navigation Map
 
-- Web: [Map route ids to URL paths, nested layouts, sheets, modals, query params, or `Not in scope`.]
-- App: [Map route ids to tabs, navigation stack entries, sheets, modals, deep links, or `Not in scope`.]
+One row per route id; write `Not in scope` in the cells of platforms the product does not target.
+
+| Route id | Web path | iOS destination | Android route |
+| --- | --- | --- | --- |
+| `__ENTRY_ROUTE_ID__` | [URL path, nested layout, modal, or `Not in scope`.] | [NavigationStack destination, tab, sheet, or `Not in scope`.] | [NavHost route, tab, dialog, or `Not in scope`.] |
+
 - Shared state: [Map non-screen flow nodes to service, permission, validation, or async state decisions.]
 
 ## Local State Rules

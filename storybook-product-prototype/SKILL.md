@@ -31,6 +31,7 @@ Read only the reference needed for the current step:
 - Storybook story and metadata integration: `references/storybook-integration.md`
 - Fixture and API replacement rules: `references/data-contract.md`
 - Frontend implementation handoff for web/app development: `references/production-handoff.md`
+- Where this skill sits in the prototype-to-production chain and which gates follow it: `references/pipeline-stations.md` (this skill owns stations 1 and 3)
 
 ## Workflow
 
@@ -107,6 +108,8 @@ Create `<featurePrototypeData>.ts`.
 Rules:
 
 - Keep all prototype data local and deterministic.
+- Mirror every fixture group as `fixtures/<group>.json` with the same values; the JSON file is the language-neutral carrier native platforms and receiving mock adapters load.
+- Author one JSON Schema block per fixture group in `DATA_SPEC.md`'s `Data Schemas (JSON Schema)` section and keep it in sync with the fixtures.
 - Use existing component prop types where possible.
 - Include branch, empty, loading, and error fixtures when those states are in scope.
 - Document fixture ownership and future API replacement points in `DATA_SPEC.md`.
@@ -153,7 +156,7 @@ Rules:
 - Convert deterministic fixtures into API/data contract placeholders with request, response, error, state, and ownership notes when known.
 - List frontend state handling for loading, empty, error, disabled, optimistic, retry, permission, and async branch states that matter.
 - Define handoff acceptance separately from Storybook acceptance and from final production integration acceptance.
-- State integration ownership: this skill owns UI behavior, fixtures, and contracts; the receiving implementation owns real APIs, data sources, auth, backend clients, storage, persistence, and environment-specific wiring.
+- State integration ownership as three stages — prototype (this skill: UI behavior, fixtures, contracts) → frontend assembly (`frontend-product-implementation`: routes, interaction states, typed adapter seams, mock adapters) → data integration (real APIs, auth, storage, persistence) — and fill `Data Integration Ownership` with the stage-3 receiver or an open decision with an owner.
 - Record open product, design, API, platform, or security decisions instead of inventing them.
 - Keep `Review Status` at `pending` until the team reviews the Storybook demo and confirms the product direction; `--handoff-ready` fails while it is `pending`.
 
@@ -188,12 +191,14 @@ The Prototype Inspector is React-only: its preview decorator returns React eleme
 Run the checks that fit the target repo:
 
 - `python3 <skill-root>/scripts/validate_prototype.py <prototype-folder>` — add `--strict-style` to turn validation warnings (component map, token discipline, CSS scope, doc coverage, `meta.components` composition) into errors, and `--storybook-index <path>` to cross-check `meta.components` story ids against a built Storybook index. The validator auto-detects React vs Vue folders; pass `--framework react` or `--framework vue` explicitly when a folder mixes both component formats.
+- `python3 <skill-root>/scripts/export_prototype_contracts.py <prototype-folder>` — regenerate `docs/TOKENS.json` (W3C DTCG) from the `--proto-*` alias block and normalize `fixtures/*.json` formatting. Re-run it whenever the alias block or fixtures change; native token codegen consumes the DTCG file, not the CSS.
 - Project typecheck, usually `npm run typecheck`
 - Storybook render or build, usually `npm run storybook` or `npm run storybook:build`
 - Manual Storybook review of Story, Docs, UI Flow, Components, and Data if the project has a prototype inspector; in the Components mode, confirm every route lists its composition and story links open the right stories.
 - The UX self-review pass from `references/visual-quality.md`: hierarchy, interaction states, contrast, and token binding checked against the rendered stories.
 - Manual `StaticFlow` story review when future Figma export or design review depends on a stable flow artifact.
-- Handoff review with `--handoff-ready` before using the docs as an engineering or AI implementation brief: it also cross-checks doc route/fixture references against `*Flow.ts` and `*Data.ts` and requires a `confirmed` Review Status. `--production-ready` is accepted only as a backward-compatible alias.
+- Handoff review with `--handoff-ready` before using the docs as an engineering or AI implementation brief: it also cross-checks doc route/fixture references against `*Flow.ts` and `*Data.ts`, checks the `.ts`↔`fixtures/*.json` carriers and acceptance ids, requires a `confirmed` Review Status, and — on a fully passing run — writes `docs/HANDOFF_MANIFEST.json` (per-doc hashes, flow/fixture snapshot, changelog; pass `--changelog "<summary>"` to label the version). `--production-ready` is accepted only as a backward-compatible alias.
+- After the handoff is consumed, detect post-confirmation drift with `python3 <skill-root>/scripts/validate_prototype.py <prototype-folder> --verify-manifest`: it exits non-zero listing every doc that changed since the manifest was written.
 
 Do not mark the prototype complete unless docs, flow metadata, fixture data, frontend handoff, story metadata, and interactive behavior describe the same product behavior.
 
@@ -225,6 +230,10 @@ Run `python3 <skill-root>/scripts/test_scaffold_validate.py` after changing the 
 - UI Flow route cards preview the correct route through `prototypeRoute` and `prototypeFlowPreview`.
 - Static Flow export uses the same metadata and saved inspector layout as the runtime UI Flow.
 - `figmaExport.flowStoryId` points to the `StaticFlow` story for future Figma export automation.
-- Fixture data is deterministic and local.
+- Fixture data is deterministic and local, mirrored in `fixtures/<group>.json`, and schema-documented in `DATA_SPEC.md`'s `Data Schemas (JSON Schema)` section.
+- `docs/TOKENS.json` is regenerated after `--proto-*` alias block changes so native token codegen never reads stale values.
+- Acceptance criteria carry stable `AC-S-*`/`AC-H-*`/`AC-P-*` ids, and `AC-P` entries carry `(assembly)`/`(integration)` owner tags.
+- When an app target is in scope, non-`return` transitions carry `presentation` semantics (and `backBehavior` where leaving is not a plain pop).
+- A passing `--handoff-ready` run leaves `docs/HANDOFF_MANIFEST.json` as the versioned handoff snapshot; post-confirmation edits are surfaced with `--verify-manifest`, not discovered by the receiving implementation.
 - Storybook `parameters.prototype` remains the review contract.
 - Runtime UI Flow rendering is provided by the bundled Prototype Inspector when installed, or by an existing project-specific viewer when present.

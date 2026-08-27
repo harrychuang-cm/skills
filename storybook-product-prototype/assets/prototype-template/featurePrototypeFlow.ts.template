@@ -25,6 +25,13 @@ export type __FEATURE_PASCAL__Route = {
     x: number;
     y: number;
   };
+  /** Route parameters production navigation needs, e.g. [{ name: "alertId", type: "string" }]. */
+  params?: {
+    name: string;
+    type: string;
+  }[];
+  /** Deep-link entry pattern, e.g. "/alerts/:alertId" or "app://alerts/:alertId". */
+  deepLink?: string;
 };
 
 export type __FEATURE_PASCAL__FlowNode = {
@@ -57,6 +64,10 @@ export type __FEATURE_PASCAL__Transition = {
     | "secondary"
     | "outcome"
     | "condition";
+  /** How the target surface is presented (web modal vs page, iOS push vs sheet, Android dialog). */
+  presentation?: "push" | "modal" | "sheet" | "fullscreen" | "replace";
+  /** How the surface is left again; production back/dismiss semantics. */
+  backBehavior?: "pop" | "popToRoot" | "dismiss" | "none";
 };
 
 export const __FEATURE_CAMEL__Routes = [

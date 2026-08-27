@@ -16,16 +16,17 @@ This reference covers the token layer only. A missing component library is handl
 
 Locate the token source of truth on the prototype side. Check in this order and select the highest-priority source that exists:
 
-1. Token files in the prototype Storybook repo produced by `design-system-to-storybook`: generated token source files, theme or `tokens/` directories, and Storybook foundation stories that document them.
-2. Token architecture and component token spec documents produced by `design-system-extractor`.
-3. Figma Variables exports for the feature's design file.
+1. A `docs/TOKENS.json` W3C Design Tokens (DTCG) export shipped with the prototype handoff, produced by `storybook-product-prototype`'s `export_prototype_contracts.py` from the prototype's `--proto-*` alias block.
+2. Token files in the prototype Storybook repo produced by `design-system-to-storybook`: generated token source files, theme or `tokens/` directories, and Storybook foundation stories that document them.
+3. Token architecture and component token spec documents produced by `design-system-extractor`.
+4. Figma Variables exports for the feature's design file.
 
 Rules:
 
 - Record the selected source and its file-level evidence (paths, not just package names) in the implementation notes and in the final response.
 - When multiple sources exist, use the highest-priority one as the source of truth; treat lower-priority sources as background only and note any value conflicts.
 - Do not invent token values that appear in no discovered source. Every ported value must trace to a file in the selected source.
-- If none of the three source types can be located, switch to Reverse-Inventory Fallback With Approval below. Do not fabricate values to avoid the fallback.
+- If none of the four source types can be located, switch to Reverse-Inventory Fallback With Approval below. Do not fabricate values to avoid the fallback.
 
 ## Minimal Token Subset Derivation
 
@@ -53,10 +54,13 @@ Select the token output format from repo evidence of the production styling stac
 | Plain CSS or CSS-in-JS stack | CSS custom properties |
 | Tailwind configuration consumed by the build | Tailwind theme extension |
 | SCSS pipeline | SCSS variables or maps |
-| React Native or another non-CSS runtime | Typed theme object |
+| React Native or another non-CSS JavaScript runtime | Typed theme object |
+| SwiftUI target (Xcode project, Swift sources) | SwiftUI `Color`/`Font` extensions or an asset-catalog-backed token enum |
+| Jetpack Compose target (Gradle module, Kotlin sources) | Kotlin theme object or `MaterialTheme` extension |
 
 Rules:
 
+- When the discovery order selected a `docs/TOKENS.json` DTCG export, generate the target format from it — via Style Dictionary (for example its `ios-swift` / `compose` transforms) or an equivalent codegen step — instead of transcribing values by hand.
 - Place token files following the target framework's native conventions (for example a theme module where the framework expects one, or the repo's existing styles directory), not a location copied from the prototype repo.
 - Keep ref → sys → comp names recognizable across formats so governance discovery and later audits can match them.
 - When the styling stack is ambiguous or mixed — for example both SCSS variables and CSS custom properties with no dominant convention — stop and ask the user which format to use before writing any token file.

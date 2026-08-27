@@ -10,7 +10,7 @@ Use this skill to turn frontend handoff documents into working product code in a
 - Greenfield: create a new frontend product from 0 to 1.
 - Existing product: add a new interface, route, screen, or feature to an existing app.
 
-This skill owns frontend implementation only. When real API clients, auth, persistence, storage, or environment wiring are not explicitly provided, create typed contracts, deterministic fixtures, and mock adapters instead of inventing production integrations.
+This skill owns frontend implementation only: UI assembly and flow interaction. Real API clients, auth, persistence, storage, cache policy, and environment wiring are never in scope for this skill. Always create typed contracts, deterministic fixtures, and mock adapters, and hand the real integration work — together with its contract — over to the named data-integration owner recorded in the handoff: a team, a system, or the `production-data-integration` skill. When no owner is named, record the hand-over as a blocking open decision and ask the user to name one.
 
 ## Required Companion Skill
 
@@ -33,6 +33,7 @@ Read only the reference needed for the current step:
 - Greenfield and existing-product implementation flow: `references/implementation-workflow.md`
 - Token bootstrap for a target with no token system: `references/token-bootstrap.md` (read only when governance discovery finds no token system and the user approves establishing one)
 - Verification and final reporting: `references/verification-reporting.md`
+- Where this skill sits in the prototype-to-production chain and which gates precede and follow it: `storybook-product-prototype/references/pipeline-stations.md` (this skill owns station 4, web branch; `native-product-implementation` owns the native branch, `production-data-integration` owns station 5)
 
 ## First Actions
 
@@ -46,7 +47,7 @@ Read only the reference needed for the current step:
    - `PRODUCTION_HANDOFF.md`
    - `ACCEPTANCE.md`
    - `IMPLEMENTATION_GUIDE.md`
-4. Read `PRODUCTION_HANDOFF.md` first when present, then cross-check PRD, flow, UI, data, and acceptance docs.
+4. Read `PRODUCTION_HANDOFF.md` first when present. Check its `Review Status` before anything else: when the status is `pending` or the section is missing, stop and ask whether the team demo confirmation happened before treating the docs as a brief. Then cross-check PRD, flow, UI, data, and acceptance docs, and record the consumed `HANDOFF_MANIFEST.json` digest and changelog version (or `unversioned`) in the implementation map.
 5. Inspect target-root and handoff evidence, then create the required runtime architecture decision record.
 6. Resolve the architecture gate before implementation:
    - Greenfield: treat explicit scaffold-affecting choices in the current request as confirmation; otherwise ask only for unresolved choices before running a scaffolder, installing dependencies, or generating app code.
@@ -65,12 +66,12 @@ Read only the reference needed for the current step:
 - Add product surfaces by following the selected root's existing routing, screen, state, i18n, and test conventions.
 - Treat a feature request as authorization for the feature, not for a framework, renderer, build-tool, language, package-manager, routing, state, styling, or repository migration.
 - Do not scaffold, install dependencies, or change runtime architecture until the architecture decision record is resolved at the level required for the current mode.
-- Use deterministic fixtures and mock adapters when real data sources are not in scope.
+- Use deterministic fixtures and mock adapters; real data sources are never in scope for this skill.
 - Preserve handoff route ids and transition triggers in implementation names, tests, comments, or metadata where useful for traceability.
 - Implement loading, empty, error, disabled, permission, optimistic, retry, and async branch states when documented.
 - Keep Storybook or regression stories when the repo has Storybook; add or update stories for changed shared components.
 - Do not create new shared components, tokens, or visual semantics without approval.
-- Do not wire real API clients, auth, storage, persistence, or environment-specific behavior unless the user explicitly asks and the repo provides the pattern.
+- Do not wire real API clients, auth, storage, persistence, or environment-specific behavior under any condition. When the user asks for real integration, deliver the typed adapter interface plus its mock implementation, then transfer the replacement work and its contract to the named data-integration owner from the handoff's Data Integration Ownership field; when no owner is named, ask the user to name one instead of implementing the integration.
 - Update implementation notes or docs when the production code intentionally diverges from handoff docs.
 
 ## Greenfield Mode
@@ -112,4 +113,5 @@ Do not consider work complete until:
 - Every handoff route and state reached one of three terminal outcomes: implemented; verified as already shipping in the target repo and excluded from this change, with the evidence path recorded; or explicitly marked deferred/open. An existing surface is none of the first or last — recording it as deferred wrongly promises future work, and implementing it rebuilds something that already ships.
 - Data contracts are implemented or explicitly marked as deferred/open. Fixtures belonging to surfaces excluded as already-shipping do not become API integration work.
 - Framework-native typecheck, tests, build, Storybook build, or app preview commands have been run when available.
-- Remaining open decisions are listed, especially real API/data/auth/persistence ownership.
+- `IMPLEMENTATION_MAP.md` is written per `references/verification-reporting.md` and `scripts/validate_implementation.py` passes against it when the handoff provides docs to audit against.
+- Every real API/data/auth/persistence integration item is handed over to a named receiving owner recorded in the final report, or listed as a blocking open decision that asks the user to name that owner; none is silently deferred.

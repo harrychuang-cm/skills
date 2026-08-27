@@ -32,6 +32,9 @@ reads this column to decide what to build; nothing outside `B` is a build item.
 Rows may be a whole route or a region inside one — a route that is `A` overall
 can contain a `B` region, so split it rather than forcing one label onto the
 route. A parent row's scope does not carry down to its children.
+When more than one platform is in scope, replace the `Scope` column with
+`Scope(web)` and `Scope(app)` columns — the same region can be `A` on web and
+`B` on app; single-target deliveries keep one `Scope` column.
 
 | Prototype part | Scope | Production location or existing source | What to do | Source |
 | --- | --- | --- | --- | --- |
@@ -74,9 +77,9 @@ this section only if the map has no `A` rows.]
 
 ## API And Data Contracts
 
-| Fixture group | Expected source | Request | Response | Errors | Owner |
-| --- | --- | --- | --- | --- | --- |
-| `__FEATURE_CAMEL__Routes` | [Expected endpoint, service, local store, or static content.] | [Shape or unknown.] | [Shape or unknown.] | [Error shape or unknown.] | [Team or owner.] |
+| Fixture group | Expected source | Request | Response | Errors | Semantics | Adapter interface | Owner |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `__FEATURE_CAMEL__Routes` | [Expected endpoint, service, local store, or static content.] | [Shape or unknown.] | [Shape or unknown.] | [Error shape or unknown.] | [`key: value` shorthand, e.g. `pagination: cursor; freshness: poll 30s; mutation: none; errors: retryable/reauth` — or `unknown (owner: <team>)`.] | [`pending` at handoff; the frontend assembly pass fills in the `<Feature>DataSource` method and mock implementation path.] | [Team or owner.] |
 
 ## Frontend Handoff Acceptance
 
@@ -90,9 +93,13 @@ this section only if the map has no `A` rows.]
 
 ## Integration Ownership
 
-- Prototype/handoff owner: UI behavior, route flow, interaction triggers, visual states, deterministic fixtures, and API/data contract expectations.
-- Receiving implementation owner: real API clients, data sources, auth/session integration, cache policy, storage, persistence, environment configuration, and final production tests.
-- Change rule: if implementation changes route behavior, data shape, or branch states, update these docs and the Storybook regression story.
+Ownership is three-stage; each stage hands a contract to the next.
+
+- Stage 1 — Prototype (this handoff): UI behavior, route flow, interaction triggers, visual states, deterministic fixtures, and API/data contract expectations.
+- Stage 2 — Frontend assembly (`frontend-product-implementation`): production routes/screens, interaction states, typed adapter interfaces, and mock adapters backed by these fixtures. Delivers a replaceable seam; never wires real integrations.
+- Stage 3 — Data integration: real API clients, data sources, auth/session integration, cache policy, storage, persistence, environment configuration, and final production tests.
+- Data Integration Ownership: [Named team, system, person, or the `production-data-integration` skill that replaces the mock adapters with real integrations — or an `Open Product Decisions` entry with the owner responsible for resolving it.]
+- Change rule: if a later stage changes route behavior, data shape, or branch states, update these docs and the Storybook regression story.
 
 ## Storybook-Only Boundaries
 

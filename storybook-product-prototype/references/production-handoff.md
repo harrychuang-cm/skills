@@ -85,6 +85,14 @@ Rows may be finer than a route. A route that is `A` overall often contains a `B`
 an existing settings list with one new row, an existing page whose table must now honor a
 new preference. Split the row; a parent's scope never carries down to its children.
 
+For a multi-target delivery — `Target Surfaces` declares more than one platform — split
+the scope per target: replace the single `Scope` column with `Scope(web)` and `Scope(app)`
+columns, each holding `A`/`B`/`C`/`U` with the same semantics. The same region routinely
+already ships on web (`A`) while its app counterpart is new (`B`); a single column cannot
+say that, and a receiver reading "web already has it" as "the app has it too" rebuilds
+nothing that should exist. Single-target handoffs keep the single `Scope` column;
+`validate_prototype.py` accepts both forms.
+
 Two signals mean a part is almost certainly `A`, not `B`:
 
 - **It renders without a fixture.** A component the prototype passes only an
@@ -151,6 +159,15 @@ For each prototype fixture group that needs a receiving-side replacement, docume
 - owning team or system
 - routes or screens that consume it
 - fixture group being replaced
+- adapter interface: `pending` at handoff time; the frontend assembly pass fills in the `<Feature>DataSource` method and mock implementation path once the seam exists, so the data-integration owner has a predictable replacement point
+- semantics — the five entries the data-integration pass confirms before wiring, as `key: value` shorthand separated by semicolons:
+  - `pagination`: `cursor`, `offset`, or `none`
+  - `sort` / `filter`: the fields the caller may pass
+  - `freshness`: `static`, `poll` (with interval), or `push` (with transport)
+  - `mutation`: the verb, idempotency, and whether optimistic updates are allowed
+  - `errors`: the retryable / terminal / reauthentication split
+
+  For example `pagination: cursor; freshness: poll 30s; mutation: none; errors: retryable/reauth`. An unresolved entry is `unknown (owner: <team>)`, never a guess. `validate_prototype.py` does not judge this cell's content — it is guidance for station 5, and `production-data-integration` asks the named owner for anything missing before it wires that seam.
 
 If an API is unknown, document the UI's expected contract and mark the owner or endpoint as open. Do not invent real endpoints or data sources.
 
@@ -168,11 +185,15 @@ Define handoff-ready checks separately from Storybook checks and from final prod
 
 ## Integration Ownership
 
-State ownership explicitly:
+Ownership is three-stage; each stage hands a contract to the next. State all three explicitly:
 
-- This prototype/handoff owns UI behavior, route flow, interaction triggers, visual states, deterministic fixtures, and API/data contract expectations.
-- The receiving engineer or AI owns real API clients, data sources, auth/session integration, cache policy, storage, persistence, environment configuration, and final production tests.
-- If the receiving implementation intentionally changes a route, data shape, or branch state, it should update the handoff docs and Storybook regression story.
+- Stage 1 — Prototype (this handoff, `storybook-product-prototype`): UI behavior, route flow, interaction triggers, visual states, deterministic fixtures, and API/data contract expectations.
+- Stage 2 — Frontend assembly (`frontend-product-implementation`): production routes/screens, interaction states, typed adapter interfaces, and mock adapters backed by these fixtures. This stage delivers a replaceable seam; it never wires real integrations.
+- Stage 3 — Data integration (the named owner below): real API clients, data sources, auth/session integration, cache policy, storage, persistence, environment configuration, and final production tests.
+
+Include a `Data Integration Ownership` field naming the stage-3 receiver — a team, a system, a person, or the `production-data-integration` skill. When the owner is unknown, record an open decision in `Open Product Decisions` with an owner responsible for resolving it; never leave the field absent in a new handoff. `validate_prototype.py --handoff-ready` reports a missing field on a legacy handoff as a warning.
+
+- If a later stage intentionally changes a route, data shape, or branch state, it updates the handoff docs and the Storybook regression story.
 
 ## Storybook-Only Boundaries
 

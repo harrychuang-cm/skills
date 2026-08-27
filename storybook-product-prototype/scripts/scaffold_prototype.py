@@ -145,6 +145,12 @@ def scaffold(args: argparse.Namespace) -> Path:
     words = split_words(args.feature_name)
     feature_kebab = args.kebab or to_kebab(words)
     feature_pascal = args.pascal or f"{to_pascal(words)}Prototype"
+    # Feature name without the Prototype suffix, for production-facing names
+    # such as the `<Feature>DataSource` adapter contract in ACCEPTANCE.md.
+    feature_base_pascal = to_pascal(words)
+    if args.pascal:
+        stripped = args.pascal[: -len("Prototype")] if args.pascal.endswith("Prototype") else args.pascal
+        feature_base_pascal = stripped or args.pascal
     feature_camel = args.camel or f"{to_camel(words)}Prototype"
     feature_title = args.title or f"{to_title(words)} Prototype"
     entry_route = args.entry_route or to_kebab(words)
@@ -173,6 +179,7 @@ def scaffold(args: argparse.Namespace) -> Path:
 
     replacements = {
         "__ENTRY_ROUTE_ID__": entry_route,
+        "__FEATURE_BASE_PASCAL__": feature_base_pascal,
         "__FEATURE_CAMEL__": feature_camel,
         "__FEATURE_CSS_CLASS__": css_class,
         "__FEATURE_KEBAB__": f"{feature_kebab}-prototype",

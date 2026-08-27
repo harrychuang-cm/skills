@@ -16,10 +16,29 @@ Read in this order when available:
 
 If `PRODUCTION_HANDOFF.md` is missing, continue from the remaining docs and create a short implementation map before coding.
 
+## Review Status Gate
+
+Before treating the docs as an implementation brief, read the `Review Status` section of `PRODUCTION_HANDOFF.md`:
+
+- `confirmed`: continue, and record who confirmed and when in the working map.
+- `pending`, or the section is missing: stop and ask the user whether the team demo confirmation happened. Do not start implementation until the user confirms; record that confirmation as the decision source.
+
+This is the receiving half of the gate; the prototype side enforces the same rule through `validate_prototype.py --handoff-ready`. Docs that skipped that validator still do not skip this check.
+
+## Consumed Manifest
+
+When `docs/HANDOFF_MANIFEST.json` exists next to the handoff docs, record in the implementation map:
+
+- its `docsDigest` (the sha256 of the docs hash object) as the consumed handoff version
+- the latest changelog `version`
+
+When no manifest exists, record the handoff as consumed `unversioned` and list the missing manifest as a traceability limitation in the final report. Before final reporting, re-check for drift with `validate_prototype.py <prototype-folder> --verify-manifest` when the prototype folder is reachable; on drift, surface the changed docs instead of silently finishing against the stale version.
+
 ## Extract These Contracts
 
 Build a working map with:
 
+- Review Status confirmation state, and the consumed manifest `docsDigest` and changelog version (or `unversioned`)
 - product goal and primary user
 - target surface: web, app, hybrid, shared package, or unknown
 - proposed runtime architecture: target root, delivery mode, platform, framework/version, rendering model, build tool, language, and package manager
@@ -54,15 +73,15 @@ Keep unresolved architecture choices visible in the implementation map. Do not m
 
 ## Data Boundary
 
-Handoff docs may describe API and data shapes, but they do not require real data wiring.
+Handoff docs describe API and data shapes as contract expectations; real data wiring is never this pass's work.
 
-When real integration is not explicitly scoped:
+Always:
 
 - create typed interfaces for request, response, errors, and UI state
 - create deterministic fixtures or mock adapters
 - keep adapter seams easy to replace
 - avoid real auth, persistence, storage, cache, and environment assumptions
-- list integration ownership as an open decision
+- record the named data-integration owner from the handoff's Data Integration Ownership field; when none is named, list the hand-over as a blocking open decision that asks the user to name one
 
 ## Conflict Handling
 
