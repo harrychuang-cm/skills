@@ -11,10 +11,19 @@ Ask one focused question at a time. Stop asking when the route model, data contr
 3. Is the production target web, app, hybrid, or still undecided?
 4. What is the entry route and first visible state?
 5. What are the core journeys that must be clickable?
-6. What success, error, loading, empty, disabled, or permission states matter?
-7. After running the discovery pass (`references/component-discovery.md`), present the discovered Component Map candidates and ask only: which candidates are wrong or off-limits, and what did the scan miss?
-8. Which external systems must remain mocked in Storybook but described as API/data contracts for the receiving implementation?
-9. What must be true in Storybook and in production for reviewers to approve the work?
+6. Which screens in these journeys already ship in production today, and which are new
+   in this change? For each existing one: is it being modified (say which region), or is
+   it re-created only so the new behavior can be judged at real information density?
+   If the whole prototype re-creates existing screens — a density reference, a
+   standards example — answer once at the prototype level instead of per route.
+   Nothing downstream asks this again: the handoff's delivery-scope column, the
+   `Do Not Rebuild` section, and the acceptance scope banner all trace back to this
+   answer, and without it the receiving implementation has no way to tell a stand-in
+   from a deliverable.
+7. What success, error, loading, empty, disabled, or permission states matter?
+8. After running the discovery pass (`references/component-discovery.md`), present the discovered Component Map candidates and ask only: which candidates are wrong or off-limits, and what did the scan miss?
+9. Which external systems must remain mocked in Storybook but described as API/data contracts for the receiving implementation?
+10. What must be true in Storybook and in production for reviewers to approve the work?
 
 ## PRD Structure
 

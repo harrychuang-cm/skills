@@ -143,6 +143,8 @@ def main() -> int:
                     "after framework-wording normalization"
                 )
 
+    failures.extend(check_flow_parsing())
+
     if failures:
         print("Scaffold/validate smoke test failed:")
         for failure in failures:
@@ -151,7 +153,70 @@ def main() -> int:
 
     print("react: scaffold + validate passed")
     print("vue: scaffold + validate passed (output equivalent to react baseline)")
+    print("flow parsing: nested objects and both id layers resolve")
     return 0
+
+
+def check_flow_parsing() -> list[str]:
+    """Regression guard for the flow-metadata parsers.
+
+    Both defects these cover were silent: a non-greedy `{(.*?)}` stopped at the
+    nested `sourceAnchor` brace and reported `to`/`trigger` missing on
+    transitions that plainly had them, and reading only the `*RouteIds` string
+    array rejected every transition between the finer board screens declared in
+    `*Routes`. Neither showed up as a crash — just wrong findings that made a
+    healthy prototype look broken and a broken one look clean.
+    """
+    sys.path.insert(0, str(SCRIPTS_DIR))
+    import validate_prototype as vp
+
+    flow_source = """
+export const featurePrototypeRouteIds = ["quotes", "settings"] as const;
+
+export const featurePrototypeRoutes = [
+  { id: "quotes-introduction", title: "Quotes" },
+  { id: "settings", title: "Settings" },
+] satisfies FeaturePrototypeRoute[];
+
+export const featurePrototypeTransitions = [
+  {
+    from: "quotes-introduction",
+    sourceAnchor: { side: "right", xRatio: 0.95, yRatio: 0.43 },
+    to: "settings",
+    trigger: "topAppBar.more",
+    label: "More [ ] { }",
+  },
+] satisfies FeaturePrototypeTransition[];
+"""
+
+    failures: list[str] = []
+
+    transitions = vp.extract_transition_objects(flow_source)
+    if len(transitions) != 1:
+        failures.append(
+            f"expected 1 transition object, parsed {len(transitions)}"
+        )
+    else:
+        for key, expected in (
+            ("from", "quotes-introduction"),
+            ("to", "settings"),
+            ("trigger", "topAppBar.more"),
+        ):
+            actual = vp.extract_string_property(transitions[0], key)
+            if actual != expected:
+                failures.append(
+                    f"transition {key} parsed as {actual!r} after a nested "
+                    f"sourceAnchor object; expected {expected!r}"
+                )
+
+    screen_ids = vp.extract_flow_screen_ids(flow_source)
+    for expected_id in ("quotes", "settings", "quotes-introduction"):
+        if expected_id not in screen_ids:
+            failures.append(
+                f"flow screen id {expected_id!r} missing from {screen_ids}"
+            )
+
+    return failures
 
 
 if __name__ == "__main__":

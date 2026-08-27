@@ -94,7 +94,7 @@ For a feature in an existing product:
 1. Inspect the selected root's manifests, lockfile, configs, source structure, and scripts, then record the inherited runtime architecture and evidence.
 2. When one target and stack are clear and consistent, proceed without asking the user to choose the framework again.
 3. When app ownership, framework, rendering model, or target root is ambiguous, ask only for the decision that repo evidence cannot safely resolve.
-4. Match handoff routes to existing app routes, screens, navigation stacks, sheets, modals, or component surfaces.
+4. Match handoff routes to existing app routes, screens, navigation stacks, sheets, modals, or component surfaces. Before matching, read the delivery scope of every row in `PRODUCTION_HANDOFF.md`'s Prototype To Frontend Map and carry it into the implementation map verbatim — do not re-derive it. A prototype routinely re-creates screens that already ship, so that the new behavior can be judged at real information density; rebuilding one of those is silent waste that compiles, lints, and passes every criterion below. Rows scoped `A` are excluded from the build; verify each against the target repo and record the evidence path. Rows scoped `U`, or any row whose scope is absent because the handoff predates this column, are blocking questions — ask, do not assume `B`.
 5. Reuse existing shared components and framework-native local feature patterns.
 6. Add only the smallest new route/screen/state/data-adapter code needed for the feature.
 7. Keep changes inside the selected root's ownership boundaries; require explicit approval before any re-platform or architecture migration.
@@ -109,6 +109,7 @@ Do not consider work complete until:
 - No framework or architecture migration occurred without explicit approval; approved deviations from the inherited or confirmed record are reported.
 - Existing tokens/components reused are identified.
 - Any new token/component approval decisions are reported.
-- Handoff routes, states, and data contracts are implemented or explicitly marked as deferred/open.
+- Every handoff route and state reached one of three terminal outcomes: implemented; verified as already shipping in the target repo and excluded from this change, with the evidence path recorded; or explicitly marked deferred/open. An existing surface is none of the first or last — recording it as deferred wrongly promises future work, and implementing it rebuilds something that already ships.
+- Data contracts are implemented or explicitly marked as deferred/open. Fixtures belonging to surfaces excluded as already-shipping do not become API integration work.
 - Framework-native typecheck, tests, build, Storybook build, or app preview commands have been run when available.
 - Remaining open decisions are listed, especially real API/data/auth/persistence ownership.

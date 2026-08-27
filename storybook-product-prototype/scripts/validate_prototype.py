@@ -54,6 +54,7 @@ PLACEHOLDER_PATTERN = re.compile(r"\[(?!(?:x|X| )?\])[^\]\n]+\](?!\()")
 NEW_DOC_HEADINGS = {
     "UI_SPEC.md": ["Component Map", "Component Gaps", "Token Binding"],
     "PRODUCTION_HANDOFF.md": [
+        "Scope Classification",
         "Design System Continuity",
         "Shared Domain And UI State Model",
         "Open Product Decisions",
@@ -150,24 +151,115 @@ def quoted_strings(value: str) -> list[str]:
     return [match[0] or match[1] for match in re.findall(r'"([^"]+)"|\'([^\']+)\'', value)]
 
 
+def scan_matching_bracket(text: str, start: int) -> int:
+    """Index just past the bracket matching ``text[start]``, or ``-1``.
+
+    Walks the source so nested brackets and brackets inside string literals do
+    not terminate the span early. A non-greedy regex cannot do this: a
+    transition object that carries a nested ``sourceAnchor: { ... }`` closes at
+    the inner brace, silently hiding every key declared after it.
+    """
+    opener = text[start]
+    closer = {"[": "]", "{": "}"}[opener]
+    depth = 0
+    index = start
+    length = len(text)
+    while index < length:
+        char = text[index]
+        if char in "\"'`":
+            quote = char
+            index += 1
+            while index < length:
+                if text[index] == "\\":
+                    index += 2
+                    continue
+                if text[index] == quote:
+                    break
+                index += 1
+        elif char == opener:
+            depth += 1
+        elif char == closer:
+            depth -= 1
+            if depth == 0:
+                return index + 1
+        index += 1
+    return -1
+
+
+def extract_array_body(text: str, suffix: str) -> str:
+    """Body of ``export const <name><suffix> = [ ... ]``.
+
+    Accepts any tail (``as const``, ``satisfies T[]``, or a bare literal) so the
+    declaration style never decides whether cross-checks run.
+    """
+    match = re.search(rf"export\s+const\s+\w+{re.escape(suffix)}\s*=\s*\[", text)
+    if not match:
+        return ""
+    start = text.rindex("[", match.start(), match.end())
+    end = scan_matching_bracket(text, start)
+    return text[start + 1 : end - 1] if end != -1 else ""
+
+
+def split_top_level_objects(body: str) -> list[str]:
+    """Top-level ``{ ... }`` bodies inside an array literal."""
+    objects: list[str] = []
+    index = 0
+    length = len(body)
+    while index < length:
+        if body[index] == "{":
+            end = scan_matching_bracket(body, index)
+            if end == -1:
+                break
+            objects.append(body[index + 1 : end - 1])
+            index = end
+            continue
+        index += 1
+    return objects
+
+
 def extract_const_string_array(text: str, suffix: str) -> list[str]:
-    match = re.search(
-        rf"export\s+const\s+\w+{re.escape(suffix)}\s*=\s*\[(.*?)\]\s*as\s+const",
-        text,
-        re.DOTALL,
-    )
-    return quoted_strings(match.group(1)) if match else []
+    return quoted_strings(extract_array_body(text, suffix))
+
+
+def extract_object_array_ids(text: str, suffix: str) -> list[str]:
+    """``id`` of every top-level object in ``export const <name><suffix> = [...]``.
+
+    Route and flow-node ids also live here, and this is the shape the Prototype
+    Inspector actually consumes (``flow.routes[].id``). Reading it keeps the
+    validator's idea of a valid transition target aligned with the runtime's.
+    """
+    ids: list[str] = []
+    for obj in split_top_level_objects(extract_array_body(text, suffix)):
+        value = extract_string_property(obj, "id")
+        if value:
+            ids.append(value)
+    return ids
 
 
 def extract_transition_objects(text: str) -> list[str]:
-    match = re.search(
-        r"export\s+const\s+\w+Transitions\s*=\s*\[(.*?)\]\s*satisfies",
-        text,
-        re.DOTALL,
-    )
-    if not match:
-        return []
-    return re.findall(r"\{(.*?)\}", match.group(1), re.DOTALL)
+    return split_top_level_objects(extract_array_body(text, "Transitions"))
+
+
+def extract_flow_screen_ids(flow_text: str) -> list[str]:
+    """Every screen id the flow metadata declares, across both id layers.
+
+    Layer one is the component's own navigation routes (`*RouteIds`,
+    `*FlowNodeIds`); layer two is the board screens rendered as UI Flow cards
+    (`flow.routes[].id`, `flow.nodes[].id`), which a prototype may decompose
+    more finely — one navigation route plus a dialog or toast state. Both are
+    legitimate targets for a transition and legitimate keys for
+    `meta.components.routes`, so checks must accept either.
+    """
+    ids: list[str] = []
+    for value in (
+        extract_const_string_array(flow_text, "RouteIds")
+        + extract_const_string_array(flow_text, "FlowNodeIds")
+        + extract_object_array_ids(flow_text, "Routes")
+        + extract_object_array_ids(flow_text, "FlowNodes")
+    ):
+        if value not in ids:
+            ids.append(value)
+    return ids
 
 
 def extract_string_property(object_text: str, key: str) -> str | None:
@@ -357,6 +449,86 @@ def validate_docs(
             )
             if doc_name == "PRODUCTION_HANDOFF.md":
                 validate_review_status(text, errors, warnings)
+        if doc_name == "PRODUCTION_HANDOFF.md":
+            validate_handoff_scope(text, warnings)
+
+
+SCOPE_VALUES = {"A", "B", "C", "U"}
+
+
+def markdown_table_rows(section: str) -> list[list[str]]:
+    """Cell lists for each pipe-table row, separator rows dropped."""
+    rows: list[list[str]] = []
+    for line in section.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("|"):
+            continue
+        cells = [cell.strip() for cell in stripped.strip("|").split("|")]
+        if all(re.fullmatch(r":?-{2,}:?", cell) for cell in cells if cell):
+            continue
+        rows.append(cells)
+    return rows
+
+
+def normalize_scope_cell(cell: str) -> str:
+    """Leading scope letter of a cell, tolerating emphasis and trailing notes."""
+    value = cell.replace("*", "").replace("`", "").strip()
+    if not value:
+        return ""
+    head = value[0].upper()
+    if head in SCOPE_VALUES and (len(value) == 1 or not value[1].isalpha()):
+        return head
+    return ""
+
+
+def validate_handoff_scope(handoff_text: str, warnings: list[str]) -> None:
+    """Every mapped part must declare whether production already has it.
+
+    Without this column the map reads as a work list, and a receiving
+    implementation rebuilds screens that already ship — waste that compiles,
+    lints, and satisfies every other criterion. Warning-level so handoffs
+    written before the column keep validating.
+    """
+    section = extract_doc_section(handoff_text, "Prototype To Frontend Map")
+    rows = markdown_table_rows(section)
+    if not rows:
+        warnings.append(
+            "docs/PRODUCTION_HANDOFF.md Prototype To Frontend Map has no table rows"
+        )
+        return
+
+    header = rows[0]
+    scope_index = next(
+        (
+            index
+            for index, cell in enumerate(header)
+            if cell.replace("*", "").strip().lower() == "scope"
+        ),
+        None,
+    )
+    if scope_index is None:
+        warnings.append(
+            "docs/PRODUCTION_HANDOFF.md Prototype To Frontend Map has no 'Scope' "
+            "column, so the receiving implementation cannot tell which surfaces "
+            "already ship (A) from which are new (B)"
+        )
+        return
+
+    for row in rows[1:]:
+        if scope_index >= len(row):
+            label = row[0] if row else "(empty row)"
+            warnings.append(
+                f"docs/PRODUCTION_HANDOFF.md map row {label} has no Scope cell"
+            )
+            continue
+        if not normalize_scope_cell(row[scope_index]):
+            label = row[0] or "(unnamed row)"
+            warnings.append(
+                f"docs/PRODUCTION_HANDOFF.md map row {label} has an unresolved "
+                f"Scope value; use A (already ships, do not rebuild), B (new), "
+                f"C (Storybook-only), or U (unverified, also list it in Open "
+                f"Product Decisions)"
+            )
 
 
 def validate_review_status(
@@ -686,18 +858,56 @@ def validate_css(files: dict[str, Path | None], warnings: list[str]) -> None:
             )
 
 
+def find_with_convention_fallback(
+    folder: Path,
+    label: str,
+    preferred: str,
+    fallback: str,
+    warnings: list[str],
+) -> Path | None:
+    """Locate a file, tolerating a non-conforming name instead of going quiet.
+
+    Every doc/code cross-check keys off these paths and returns early when one
+    is ``None``. Without a fallback a prototype that named its flow file
+    ``featureFlow.ts`` instead of ``featurePrototypeFlow.ts`` loses the whole
+    cross-check suite and reports *fewer* problems than a conforming one — the
+    output ends up anti-correlated with quality. Take the file, and say so.
+    """
+    path = find_one(folder, preferred)
+    if path is not None:
+        return path
+    path = find_one(folder, fallback)
+    if path is not None:
+        warnings.append(
+            f"{path.name} does not follow the {preferred} naming convention; "
+            f"cross-checks ran against it, but rename it so tooling keyed on "
+            f"the convention keeps finding it"
+        )
+    return path
+
+
 def validate_files(
-    folder: Path, errors: list[str], framework: str = "react"
+    folder: Path,
+    errors: list[str],
+    framework: str = "react",
+    warnings: list[str] | None = None,
 ) -> dict[str, Path | None]:
+    warnings = warnings if warnings is not None else []
     patterns = FRAMEWORK_FILE_PATTERNS[framework]
     files = {
         "component": find_one(folder, patterns["component"]),
         "story": find_one(folder, patterns["story"]),
         "static flow export": find_one(folder, patterns["static flow export"]),
         "static flow story": find_one(folder, patterns["static flow story"]),
-        "flow": find_one(folder, "*PrototypeFlow.ts"),
-        "data": find_one(folder, "*PrototypeData.ts"),
-        "meta": find_one(folder, "*PrototypeMeta.ts"),
+        "flow": find_with_convention_fallback(
+            folder, "flow", "*PrototypeFlow.ts", "*Flow.ts", warnings
+        ),
+        "data": find_with_convention_fallback(
+            folder, "data", "*PrototypeData.ts", "*Data.ts", warnings
+        ),
+        "meta": find_with_convention_fallback(
+            folder, "meta", "*PrototypeMeta.ts", "*Meta.ts", warnings
+        ),
         "css": find_one(folder, "*-prototype.css"),
         "flow layout helper": folder.parent / "prototypeFlowLayout.ts",
         "index": folder / "index.ts",
@@ -822,7 +1032,7 @@ def validate_components_meta(
     flow_path = files.get("flow")
     route_ids: list[str] = []
     if flow_path is not None and flow_path.is_file():
-        route_ids = extract_const_string_array(read(flow_path), "RouteIds")
+        route_ids = extract_flow_screen_ids(read(flow_path))
     if route_ids:
         for route_id in COMPONENT_ROUTE_PATTERN.findall(components_block):
             check(
@@ -918,7 +1128,13 @@ def validate_flow(path: Path | None, errors: list[str]) -> None:
         )
 
     transitions = extract_transition_objects(text)
-    valid_targets = set(all_ids)
+    # A transition may target any screen the flow metadata actually declares.
+    # Some prototypes keep two id layers on purpose — navigation route ids for
+    # the component's own routing, and finer board-screen ids for the UI Flow
+    # cards the Inspector renders from `flow.routes[].id`. Only reading the
+    # `*RouteIds` / `*FlowNodeIds` string arrays would reject every edge drawn
+    # between board screens.
+    valid_targets = set(extract_flow_screen_ids(text))
 
     check(
         len(all_ids) <= 1 or bool(transitions),
@@ -1031,7 +1247,7 @@ def main() -> int:
             validate_docs(folder, errors, warnings, args.handoff_ready)
         else:
             validate_docs(folder, errors, warnings, args.handoff_ready)
-            files = validate_files(folder, errors, framework)
+            files = validate_files(folder, errors, framework, warnings)
             validate_story(files["story"], errors)
             validate_static_flow_story(files["static flow story"], errors)
             validate_static_flow_export(files["static flow export"], errors)

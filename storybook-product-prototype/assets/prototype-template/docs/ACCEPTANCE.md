@@ -1,5 +1,11 @@
 # Acceptance Criteria
 
+> These criteria accept the **Storybook prototype**, not the production delivery.
+> Where a criterion names a surface that `PRODUCTION_HANDOFF.md` marks scope `A`, it
+> checks that the prototype re-creates that existing surface faithfully enough to judge
+> the new behavior against — it is not a request to build that surface in production.
+> The build-or-not decision lives only in the Prototype To Frontend Map's `Scope` column.
+
 ## Storybook
 
 - The default story renders the interactive `__FEATURE_TITLE__` prototype.

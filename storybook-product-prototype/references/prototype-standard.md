@@ -15,6 +15,10 @@ src/pages/prototypes/<feature-prototype>/
   <featurePrototypeData>.ts
   <featurePrototypeFlow>.ts
   <featurePrototypeMeta>.ts
+
+The literal word `Prototype` stays in every file name — substitute only the feature part
+(`priceAlertPrototypeFlow.ts`, not `priceAlertFlow.ts`). `validate_prototype.py` locates
+these files by that convention.
   <feature-prototype>.css
   index.ts
   docs/

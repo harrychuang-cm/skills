@@ -65,14 +65,39 @@ If the target is unknown, write the safest known assumptions and list the blocki
 
 ## Prototype To Frontend Map
 
-Map each prototype route id to frontend implementation concepts:
+Map each prototype part to frontend implementation concepts:
 
-- route id
-- production page, screen, sheet, modal, or component
-- owning package or app folder when known
+- **delivery scope — record this first, it decides whether the rest is work at all:**
+  - `A` existing — already ships in production; the prototype re-creates it only so the
+    new behavior can be judged at real information density. **Do not rebuild.**
+  - `B` new — does not exist in production yet. Build it.
+  - `C` storybook-only — never ships.
+  - `U` unverified — you do not know. Write `U`, and add it to `Open Product Decisions`
+    with an owner. Never guess `B`: a wrong `B` costs the receiver a rebuilt screen,
+    while `U` costs one question.
+- prototype part (a route, or a region inside a route)
+- production page, screen, sheet, modal, or component — or, for `A`, the existing surface it stands in for
+- what to do: build, do not rebuild, modify just this region, or strip
 - reusable prototype files or components
-- Storybook-only files that must not ship
 - production navigation entry and exit points
+
+Rows may be finer than a route. A route that is `A` overall often contains a `B` region —
+an existing settings list with one new row, an existing page whose table must now honor a
+new preference. Split the row; a parent's scope never carries down to its children.
+
+Two signals mean a part is almost certainly `A`, not `B`:
+
+- **It renders without a fixture.** A component the prototype passes only an
+  `ariaLabel` to, whose on-screen values come from the component's own demo constants,
+  is a context stand-in — not a data-driven deliverable. Say so in `DATA_SPEC.md` too,
+  or the receiver will build a typed interface and a mock adapter for a screen that
+  already ships, and may go ask a backend team for an endpoint nobody needs.
+- **Nothing on it drives the flow.** If a route carries many components but only one
+  or two handlers actually change route state, the rest is scenery.
+
+Fill `Do Not Rebuild` with the `A` rows a receiver is most likely to build by mistake,
+plus the evidence that settles each one. The table carries the verdict; that section
+carries the reason, which is what survives a skeptical reader.
 
 ## Web Implementation Notes
 

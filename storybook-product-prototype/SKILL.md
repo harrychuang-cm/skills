@@ -43,6 +43,9 @@ Before writing implementation files, confirm:
 - Entry route and initial state.
 - Target production surfaces: web, native app, hybrid app, or shared component package.
 - Required routes and branch states.
+- Which of those screens already ship in production and which are new in this change,
+  and for each existing one whether it is being modified or only re-created as a
+  context stand-in. Nothing later in the workflow asks this again.
 - Required user-triggered transitions.
 - Existing components to reuse.
 - Fixture data needed by each route.
@@ -79,6 +82,13 @@ The docs are the durable handoff. They must be specific enough for another engin
 ### 4. Model UI Flow Before UI
 
 Create `<featurePrototypeFlow>.ts` before the main React surface.
+
+Naming is load-bearing: keep the literal word `Prototype` in the file name
+(`priceAlertPrototypeFlow.ts`, not `priceAlertFlow.ts`), and name the id arrays
+`<name>RouteIds` and `<name>FlowNodeIds`. `scripts/validate_prototype.py` locates these
+files and id arrays by that convention; a non-conforming name still validates through a
+fallback, but every tool keyed on the convention stops finding it. `scaffold_prototype.py`
+already emits conforming names — prefer it over hand-writing the file set.
 
 Rules:
 
@@ -129,6 +139,13 @@ Rules:
 
 - Fill `Design System Continuity` with the token namespace record, the Component Map echo, the per-screen composition echo from `meta.components` (each route's components with origin and story id — format in `references/production-handoff.md`), and locally created promotion candidates.
 - State whether production is web, app, hybrid, or cross-platform.
+- Give every row of `Prototype To Frontend Map` a delivery scope before anything else:
+  `A` existing (already ships; the prototype re-creates it so the new behavior can be
+  judged at real information density — do not rebuild), `B` new, `C` Storybook-only, or
+  `U` unverified. `U` must also appear in `Open Product Decisions` with an owner; never
+  guess `B`. Rows may be a region inside a route, and a parent's scope does not carry
+  down to its children. Fill `Do Not Rebuild` with the `A` rows most likely to be built
+  by mistake and the evidence that settles each.
 - Map prototype route ids to production pages, screens, navigation destinations, or shared components.
 - Separate Storybook-only behavior from reusable production behavior.
 - For web, document routing, rendering mode when known, responsive constraints, accessibility, analytics, and browser-specific behavior.

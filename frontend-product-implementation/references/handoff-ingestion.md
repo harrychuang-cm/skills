@@ -38,6 +38,8 @@ Normalize these architecture inputs into the decision record defined in `runtime
 
 For each route or screen, map:
 
+- delivery scope, copied verbatim from the `Scope` column of `PRODUCTION_HANDOFF.md`'s Prototype To Frontend Map: `A` already ships (do not rebuild), `B` new, `C` Storybook-only, `U` unverified. Never infer it from whether the prototype renders the screen — a prototype re-creates existing screens on purpose. If the handoff predates this column, treat every row as `U`.
+- for any row claimed `A`: the evidence path in the target repo that confirms it already ships. When the target repo is unreachable, record `claimed pre-existing, unverified` and ask before excluding it — never exclude silently.
 - handoff route id
 - selected target root and runtime architecture
 - production route/screen/navigation target

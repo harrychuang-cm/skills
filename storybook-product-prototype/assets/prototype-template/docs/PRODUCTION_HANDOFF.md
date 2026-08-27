@@ -15,11 +15,36 @@
 - Shared package: [Reusable component or domain module, if any.]
 - Release scope: [Feature flag, rollout, or environment assumptions.]
 
+## Scope Classification
+
+Every row of the map below carries one of these. The receiving implementation
+reads this column to decide what to build; nothing outside `B` is a build item.
+
+| Scope | Meaning | What the receiver does |
+| --- | --- | --- |
+| `A` | Already ships in production. The prototype re-creates it only so the new behavior can be judged at real information density. | **Do not rebuild.** Modify only where a row says so. |
+| `B` | New in this change. Does not exist in production yet. | Build it. |
+| `C` | Storybook-only scaffolding. | Never ships. Strip it. |
+| `U` | Not verified yet. | **Stop and ask.** Every `U` must also appear in Open Product Decisions with an owner. |
+
 ## Prototype To Frontend Map
 
-| Prototype route or node | Frontend surface | Reusable source | Storybook-only boundary |
-| --- | --- | --- | --- |
-| `__ENTRY_ROUTE_ID__` | [Web route or app screen.] | `__FEATURE_PASCAL__.tsx`, `__FEATURE_CAMEL__Flow.ts`, `__FEATURE_CAMEL__Data.ts` | `prototypeRoute`, `prototypeFlowPreview`, local fixtures. |
+Rows may be a whole route or a region inside one — a route that is `A` overall
+can contain a `B` region, so split it rather than forcing one label onto the
+route. A parent row's scope does not carry down to its children.
+
+| Prototype part | Scope | Production location or existing source | What to do | Source |
+| --- | --- | --- | --- | --- |
+| `__ENTRY_ROUTE_ID__` | [`A` / `B` / `C` / `U`] | [Web route, app screen, or the existing surface it stands in for.] | [Build it / do not rebuild / modify just this region / strip.] | `__FEATURE_PASCAL__.tsx`, `__FEATURE_CAMEL__Flow.ts`, `__FEATURE_CAMEL__Data.ts` |
+| Storybook-only query modes and fixtures | `C` | — | Strip. | `prototypeRoute`, `prototypeFlowPreview`, local fixtures |
+
+## Do Not Rebuild
+
+[List the `A` rows the receiver is most likely to build by mistake, and the
+evidence that settles it — a component with no fixture, a route where only one
+handler drives navigation, a screen already shipping under a known name. The
+table states the verdict; this section says why it is safe to trust it. Delete
+this section only if the map has no `A` rows.]
 
 ## Web Implementation Notes
 
