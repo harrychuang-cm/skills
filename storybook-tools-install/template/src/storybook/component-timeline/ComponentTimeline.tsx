@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 import {
   componentCatalog,
@@ -10,10 +10,14 @@ import { getTimelineExtras } from "./timelineExtrasRegistry";
 import "./component-timeline.css";
 
 /**
- * Components rendered per page. Each card mounts a live story iframe, so the
- * page size is what keeps the number of concurrent iframes bounded.
+ * Component budget per page. Pages hold whole date groups packed up to this
+ * budget — a date group is never split across pages, and a single date group
+ * larger than the budget occupies a page of its own. Each card mounts a live
+ * story iframe, so the budget is what keeps the number of concurrently
+ * mounted iframes bounded (by the larger of the budget and the largest
+ * single-date group).
  */
-const pageSize = 30;
+const pageComponentBudget = 36;
 
 const copy = {
   eyebrow: "Timeline",
@@ -55,8 +59,45 @@ const timelineItems: readonly TimelineItem[] = componentTimelineEntries.map(
   }),
 );
 
-const pageCount = Math.max(1, Math.ceil(timelineItems.length / pageSize));
 const timelineDates = new Set(timelineItems.map((item) => item.firstSeen));
+
+/**
+ * Packs consecutive whole date groups into pages: a group joins the current
+ * page unless that would push the page past the component budget, and a group
+ * larger than the budget occupies a page of its own. Groups are never split,
+ * so every date header shows the date's full component count.
+ */
+function packGroupsIntoPages(
+  groups: readonly DateGroup[],
+  budget: number,
+): readonly (readonly DateGroup[])[] {
+  const pages: DateGroup[][] = [];
+  let current: DateGroup[] = [];
+  let currentCount = 0;
+
+  for (const group of groups) {
+    if (current.length > 0 && currentCount + group.items.length > budget) {
+      pages.push(current);
+      current = [];
+      currentCount = 0;
+    }
+
+    current.push(group);
+    currentCount += group.items.length;
+  }
+
+  if (current.length > 0) {
+    pages.push(current);
+  }
+
+  return pages;
+}
+
+const timelinePages = packGroupsIntoPages(
+  groupByDate(timelineItems),
+  pageComponentBudget,
+);
+const pageCount = Math.max(1, timelinePages.length);
 
 /**
  * Builds an absolute link to the story inside the full Storybook manager UI.
@@ -309,14 +350,21 @@ export function ComponentTimeline() {
   const storyIndex = useStoryIndex();
   const [page, setPage] = useState(0);
 
-  const pageItems = useMemo(
-    () => timelineItems.slice(page * pageSize, page * pageSize + pageSize),
-    [page],
+  const dateGroups = timelinePages[page] ?? [];
+  const pageItemCount = dateGroups.reduce(
+    (count, group) => count + group.items.length,
+    0,
   );
-  const dateGroups = useMemo(() => groupByDate(pageItems), [pageItems]);
+  const priorItemCount = timelinePages
+    .slice(0, page)
+    .reduce(
+      (count, groups) =>
+        count + groups.reduce((n, group) => n + group.items.length, 0),
+      0,
+    );
 
-  const rangeStart = page * pageSize + 1;
-  const rangeEnd = page * pageSize + pageItems.length;
+  const rangeStart = priorItemCount + 1;
+  const rangeEnd = priorItemCount + pageItemCount;
 
   return (
     <main className="ctl-shell">
