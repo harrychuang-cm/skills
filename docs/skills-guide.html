@@ -21,11 +21,10 @@
         --accent-bright: #e97396;
         --accent-deep: #98254a;
 
-        --r-sm: 5px;   /* controls: nav items, options, chips */
-        --r-md: 18px;  /* card surfaces: hero, situation, stage, skill, code */
+        --r-sm: 5px;   /* controls: tabs, options, chips, inputs */
+        --r-md: 18px;  /* card surfaces */
 
-        --sidebar: 244px;
-        --topbar: 60px;
+        --topbar: 58px;
 
         --font: "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", ui-sans-serif,
           system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -35,8 +34,6 @@
       }
 
       * { box-sizing: border-box; }
-
-      html { scroll-behavior: smooth; }
 
       body {
         margin: 0;
@@ -48,11 +45,13 @@
         -webkit-font-smoothing: antialiased;
       }
 
+      :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+      /* rings on elements inside clipped containers must draw inward */
+      .skill-top:focus-visible, .tabs a:focus-visible { outline-offset: -2px; }
+
       /* the page's one decorative device: a vertical rule beside text */
-      .vrule {
-        position: relative;
-        padding-left: 18px;
-      }
+      .vrule { position: relative; padding-left: 18px; }
 
       .vrule::before {
         content: "";
@@ -69,104 +68,6 @@
 
       /* ---------------------------------------------------------- app shell */
 
-      .app {
-        display: grid;
-        grid-template-columns: var(--sidebar) minmax(0, 1fr);
-        min-height: 100vh;
-      }
-
-      .sidebar {
-        position: sticky;
-        top: 0;
-        height: 100vh;
-        border-right: 1px solid var(--line);
-        background: var(--panel);
-        display: flex;
-        flex-direction: column;
-        overflow-y: auto;
-      }
-
-      .brand {
-        height: var(--topbar);
-        display: flex;
-        align-items: center;
-        gap: 11px;
-        padding: 0 20px;
-        border-bottom: 1px solid var(--line);
-        flex: none;
-      }
-
-      .brand-mark {
-        width: 20px;
-        height: 20px;
-        border-radius: 4px;
-        background: var(--accent);
-        flex: none;
-      }
-
-      .brand-name {
-        font-size: 14px;
-        font-weight: 700;
-        letter-spacing: 0.13em;
-        text-transform: uppercase;
-      }
-
-      .side-nav { padding: 16px 12px; display: grid; gap: 2px; }
-
-      .side-nav a {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        padding: 9px 12px;
-        border-radius: var(--r-sm);
-        color: var(--text-2);
-        text-decoration: none;
-        font-size: 15px;
-        transition: background 0.18s var(--ease), color 0.18s var(--ease);
-      }
-
-      .side-nav a::before {
-        content: "";
-        width: 2px;
-        height: 15px;
-        border-radius: 1px;
-        background: transparent;
-        flex: none;
-        transition: background 0.18s var(--ease);
-      }
-
-      .side-nav a:hover { background: var(--panel-2); color: var(--text); }
-      .side-nav a.active { color: var(--text); }
-      .side-nav a.active::before { background: var(--accent); }
-
-      .side-foot {
-        margin-top: auto;
-        padding: 18px 20px 20px;
-        border-top: 1px solid var(--line);
-        color: var(--muted);
-        font-size: 13px;
-        line-height: 1.75;
-      }
-
-      .side-foot code { font-family: var(--mono); font-size: 12.5px; color: var(--text-2); }
-
-      .repo-link {
-        display: flex;
-        align-items: center;
-        gap: 7px;
-        margin-bottom: 14px;
-        color: var(--accent-bright);
-        text-decoration: none;
-        font-size: 13.5px;
-        font-weight: 600;
-        word-break: break-all;
-      }
-
-      .repo-link:hover { text-decoration: underline; text-underline-offset: 3px; }
-      .repo-link svg { width: 15px; height: 15px; flex: none; }
-
-      .main { min-width: 0; }
-
       .topbar {
         position: sticky;
         top: 0;
@@ -174,25 +75,61 @@
         height: var(--topbar);
         display: flex;
         align-items: center;
-        justify-content: space-between;
-        gap: 16px;
-        padding: 0 30px;
+        gap: 20px;
+        padding: 0 26px;
         border-bottom: 1px solid var(--line);
         background: var(--bg);
       }
 
-      .topbar h1 { margin: 0; font-size: 15.5px; font-weight: 600; }
-      .topbar .crumb { color: var(--dim); font-weight: 400; }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        color: var(--text);
+        text-decoration: none;
+        flex: none;
+      }
 
-      .top-right { display: flex; align-items: center; gap: 18px; }
+      .brand-mark { width: 18px; height: 18px; border-radius: 4px; background: var(--accent); }
 
-      .status {
+      .brand-name {
+        font-size: 13.5px;
+        font-weight: 700;
+        letter-spacing: 0.13em;
+        text-transform: uppercase;
+        white-space: nowrap;
+      }
+
+      .tabs {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        overflow-x: auto;
+        min-width: 0;
+      }
+
+      .tabs a {
+        padding: 8px 14px;
+        border-radius: var(--r-sm);
+        color: var(--text-2);
+        text-decoration: none;
+        font-size: 14.5px;
+        white-space: nowrap;
+        transition: background 0.18s var(--ease), color 0.18s var(--ease);
+      }
+
+      .tabs a:hover { background: var(--panel); color: var(--text); }
+      .tabs a.active { background: var(--panel-2); color: var(--text); font-weight: 600; }
+
+      .top-count {
+        margin-left: auto;
         display: flex;
         align-items: center;
         gap: 9px;
         font-size: 13px;
         color: var(--muted);
         font-family: var(--mono);
+        white-space: nowrap;
       }
 
       .dot {
@@ -208,13 +145,18 @@
         50% { opacity: 0.3; }
       }
 
-      .canvas { padding: 36px 30px 100px; max-width: 1160px; }
+      .canvas { padding: 34px 26px 90px; max-width: 1080px; margin: 0 auto; }
+
+      .view-enter { animation: view-in 0.4s var(--ease); }
+
+      @keyframes view-in {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: none; }
+      }
 
       /* ------------------------------------------------------------ blocks */
 
-      .section { margin-bottom: 64px; scroll-margin-top: 80px; }
-
-      .section-head { margin-bottom: 22px; }
+      .section { margin-bottom: 54px; }
 
       .kicker {
         font-size: 12.5px;
@@ -225,85 +167,81 @@
         margin-bottom: 9px;
       }
 
-      .section h2 {
+      h2.title {
         margin: 0 0 8px;
-        font-size: 25px;
+        font-size: 26px;
         line-height: 1.45;
-        font-weight: 650;
-        letter-spacing: -0.01em;
+        font-weight: 680;
+        letter-spacing: -0.015em;
       }
 
-      .section h2 .q { color: var(--accent); }
+      h2.title .q { color: var(--accent); }
 
-      .section .sub { margin: 0; color: var(--text-2); font-size: 15.5px; max-width: 70ch; }
+      .sub { margin: 0; color: var(--text-2); font-size: 15.5px; max-width: 68ch; }
 
-      /* cards are surfaces, not outlined boxes — separation comes from fill */
-      .card {
-        background: var(--panel);
-        border-radius: var(--r-md);
-        padding: 24px;
+      .lbl {
+        font-size: 12.5px;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: var(--dim);
+        font-family: var(--mono);
+        margin-bottom: 10px;
+      }
+
+      .card { background: var(--panel); border-radius: var(--r-md); padding: 24px; }
+
+      .new-badge {
+        display: inline-block;
+        font-family: var(--mono);
+        font-size: 11.5px;
+        letter-spacing: 0.08em;
+        color: var(--accent-bright);
+        background: var(--panel-2);
+        border-radius: 4px;
+        padding: 2px 8px;
+        transform: translateY(-2px);
+        margin-left: 8px;
       }
 
       /* --------------------------------------------------------------- hero */
 
       .hero {
         display: grid;
-        grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+        grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
         align-items: start;
         gap: 18px;
-        margin-bottom: 56px;
+        margin-bottom: 48px;
       }
 
       .hero-main h2 {
-        margin: 0 0 16px;
-        font-size: 30px;
-        line-height: 1.45;
+        margin: 0 0 14px;
+        font-size: 29px;
+        line-height: 1.5;
         font-weight: 680;
         letter-spacing: -0.02em;
       }
 
-      .hero-main p { margin: 0 0 16px; color: var(--text-2); font-size: 16px; }
-
-      .points { display: grid; gap: 9px; margin-top: 22px; }
-
-      .point {
-        display: flex;
-        align-items: baseline;
-        gap: 11px;
-        font-size: 15px;
-        color: var(--text-2);
-      }
-
-      .point::before {
-        content: "";
-        width: 5px;
-        height: 5px;
-        border-radius: 50%;
-        background: var(--accent);
-        flex: none;
-        transform: translateY(-3px);
-      }
+      .hero-main p { margin: 0 0 14px; color: var(--text-2); font-size: 15.5px; }
+      .hero-main p:last-of-type { margin-bottom: 0; }
 
       .hero-cta {
         display: inline-flex;
         align-items: baseline;
         gap: 10px;
-        margin-top: 22px;
+        margin-top: 20px;
         padding: 11px 16px;
         background: var(--panel-2);
-        border: 1px solid var(--line);
         border-radius: var(--r-sm);
         color: var(--text);
         text-decoration: none;
         font-size: 14.5px;
-        transition: border-color 0.2s var(--ease), color 0.2s var(--ease);
+        transition: color 0.2s var(--ease), background 0.2s var(--ease);
       }
 
       .hero-cta .tag { color: var(--dim); font-size: 12.5px; letter-spacing: 0.06em; }
+      .hero-cta:hover { color: var(--accent-bright); }
 
-      .hero-cta:hover { border-color: var(--accent); color: var(--accent-bright); }
-
-      .hero-side { display: grid; gap: 12px; align-content: start; }
+      .hero-side { display: grid; gap: 14px; align-content: start; }
 
       .fact { display: flex; align-items: baseline; gap: 14px; }
 
@@ -314,38 +252,37 @@
         letter-spacing: -0.02em;
         color: var(--accent);
         line-height: 1.2;
-        min-width: 46px;
+        min-width: 42px;
       }
 
       .fact .t { font-size: 15px; color: var(--text-2); }
 
-      /* --------------------------------------------------- situation picker */
+      /* --------------------------------------------------------- goal cards */
 
-      .situations {
+      .goal-group { margin-bottom: 34px; }
+
+      .goals {
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(258px, 1fr));
+        grid-template-columns: repeat(auto-fill, minmax(264px, 1fr));
         gap: 12px;
       }
 
-      .situation {
+      .goal {
         position: relative;
-        text-align: left;
+        display: block;
         background: var(--panel);
-        border: 0;
         border-radius: var(--r-md);
         padding: 18px 19px 17px;
         color: inherit;
-        font: inherit;
-        cursor: pointer;
+        text-decoration: none;
         transition: background 0.2s var(--ease), transform 0.2s var(--ease);
       }
 
-      .situation:hover { background: var(--panel-2); transform: translateY(-2px); }
-      .situation[aria-pressed="true"] { background: var(--panel-2); }
+      .goal:hover { background: var(--panel-2); transform: translateY(-2px); }
 
-      .situation .inner { display: block; position: relative; padding-left: 16px; }
+      .goal .inner { display: block; position: relative; padding-left: 16px; }
 
-      .situation .inner::before {
+      .goal .inner::before {
         content: "";
         position: absolute;
         left: 0;
@@ -357,41 +294,55 @@
         transition: background 0.22s var(--ease);
       }
 
-      .situation:hover .inner::before,
-      .situation[aria-pressed="true"] .inner::before { background: var(--accent); }
+      .goal:hover .inner::before { background: var(--accent); }
 
-      .situation .say {
+      .goal .say {
         display: block;
         font-size: 16px;
         font-weight: 640;
         line-height: 1.6;
         margin-bottom: 5px;
-        padding-right: 28px;
+        padding-right: 24px;
       }
 
-      .situation .then { display: block; font-size: 14.5px; color: var(--muted); line-height: 1.7; }
+      .goal .then { display: block; font-size: 14.5px; color: var(--muted); line-height: 1.7; }
 
-      .situation .idx {
+      .goal .go {
         position: absolute;
-        top: 15px;
+        top: 16px;
         right: 16px;
         font-family: var(--mono);
-        font-size: 12px;
+        font-size: 13px;
         color: var(--dim);
+        transition: color 0.2s var(--ease), transform 0.2s var(--ease);
       }
 
-      /* ----------------------------------------------------------- flow map */
+      .goal:hover .go { color: var(--accent-bright); transform: translateX(3px); }
 
-      .flow-head { margin-bottom: 20px; }
-      .flow-title { font-size: 17px; font-weight: 650; line-height: 1.5; }
-      .flow-goal { font-size: 15px; color: var(--muted); }
+      /* -------------------------------------------------------- journey view */
 
-      .flow-scroll { overflow-x: auto; padding: 4px 2px 14px; }
+      .back {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 22px;
+        color: var(--muted);
+        text-decoration: none;
+        font-size: 14px;
+        font-family: var(--mono);
+        transition: color 0.18s var(--ease);
+      }
 
+      .back:hover { color: var(--accent-bright); }
+
+      .j-head { margin-bottom: 30px; }
+      .j-head .goal-line { color: var(--text-2); font-size: 15.5px; max-width: 68ch; }
+
+      .flow-scroll { overflow-x: auto; padding: 4px 2px 12px; }
       .flow-track { display: flex; align-items: stretch; min-width: min-content; }
 
       .stage {
-        flex: 0 0 224px;
+        flex: 0 0 226px;
         background: var(--panel);
         border-radius: var(--r-md);
         padding: 17px 18px;
@@ -406,7 +357,7 @@
       @keyframes stage-in { to { opacity: 1; transform: translateY(0); } }
 
       .link {
-        flex: 0 0 42px;
+        flex: 0 0 40px;
         position: relative;
         align-self: center;
         height: 2px;
@@ -428,7 +379,7 @@
 
       @keyframes flow {
         from { transform: translateX(-14px); }
-        to { transform: translateX(42px); }
+        to { transform: translateX(40px); }
       }
 
       .stage .num {
@@ -456,36 +407,47 @@
         font-size: 13.5px;
         color: var(--dim);
         font-family: var(--mono);
-        margin: 0 0 18px;
+        margin: 0 0 8px;
         display: none;
       }
 
       .scroll-note.show { display: block; }
 
-      .flow-io {
+      .j-io {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
         gap: 26px;
-        margin-top: 6px;
-      }
-
-      .lbl {
-        font-size: 12.5px;
-        letter-spacing: 0.16em;
-        text-transform: uppercase;
-        color: var(--dim);
-        font-family: var(--mono);
-        margin-bottom: 8px;
       }
 
       .io ul { margin: 0; padding-left: 20px; color: var(--text-2); font-size: 15px; }
       .io li { margin-bottom: 4px; }
 
-      /* ------------------------------------------------------------ matcher */
+      .notes { display: grid; gap: 12px; }
 
-      .matcher { display: grid; grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.15fr); gap: 34px; }
+      .note-item { color: var(--text-2); font-size: 15px; line-height: 1.8; }
+      .note-item strong { color: var(--text); font-weight: 640; }
 
-      .picker-group { margin-bottom: 26px; }
+      .related { display: flex; flex-wrap: wrap; gap: 9px; }
+
+      .rel-chip {
+        font-size: 14px;
+        padding: 8px 15px;
+        border-radius: var(--r-sm);
+        background: var(--panel);
+        color: var(--text-2);
+        text-decoration: none;
+        transition: background 0.18s var(--ease), color 0.18s var(--ease);
+      }
+
+      .rel-chip:hover { background: var(--panel-2); color: var(--accent-bright); }
+
+      /* ------------------------------------------------------------ widgets */
+
+      .widget { background: var(--panel); border-radius: var(--r-md); padding: 22px; }
+
+      .w-grid { display: grid; grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.15fr); gap: 30px; }
+
+      .picker-group { margin-bottom: 22px; }
       .picker-group:last-child { margin-bottom: 0; }
 
       .opts { display: grid; gap: 8px; }
@@ -494,20 +456,20 @@
         display: flex;
         align-items: center;
         gap: 12px;
-        padding: 14px 16px;
+        padding: 13px 15px;
         border: 0;
         border-radius: var(--r-sm);
-        background: var(--panel);
+        background: var(--panel-2);
         color: var(--text-2);
         font: inherit;
         font-size: 15px;
         text-align: left;
         cursor: pointer;
-        transition: background 0.18s var(--ease), color 0.18s var(--ease);
+        transition: color 0.18s var(--ease);
       }
 
-      .opt:hover { background: var(--panel-2); color: var(--text); }
-      .opt[aria-pressed="true"] { background: var(--panel-2); color: var(--text); }
+      .opt:hover { color: var(--text); }
+      .opt[aria-pressed="true"] { color: var(--text); }
 
       .opt .mark {
         width: 16px;
@@ -533,17 +495,49 @@
 
       .opt[aria-pressed="true"] .mark::after { transform: scale(1); }
 
-      .result { display: flex; flex-direction: column; gap: 22px; }
+      .field { margin-bottom: 16px; }
+      .field:last-child { margin-bottom: 0; }
 
+      .field input, .field textarea {
+        width: 100%;
+        background: var(--panel-2);
+        border: 0;
+        border-radius: var(--r-sm);
+        color: var(--text);
+        font-family: var(--mono);
+        font-size: 13.5px;
+        line-height: 1.7;
+        padding: 11px 13px;
+        resize: vertical;
+      }
+
+      .field input::placeholder, .field textarea::placeholder { color: var(--dim); }
+
+      .pills { display: flex; flex-wrap: wrap; gap: 8px; }
+
+      .pill {
+        font: inherit;
+        font-size: 14.5px;
+        padding: 8px 16px;
+        border-radius: var(--r-sm);
+        border: 0;
+        background: var(--panel-2);
+        color: var(--muted);
+        cursor: pointer;
+        transition: color 0.18s var(--ease);
+      }
+
+      .pill:hover { color: var(--text); }
+      .pill[aria-pressed="true"] { color: var(--accent-bright); font-weight: 600; }
+
+      .verdict .say { font-size: 17px; font-weight: 650; line-height: 1.6; margin-bottom: 7px; }
+      .verdict .note { font-size: 14.5px; color: var(--text-2); line-height: 1.8; }
       .verdict.swap { animation: swap-in 0.34s var(--ease); }
 
       @keyframes swap-in {
         from { opacity: 0.3; transform: translateY(6px); }
         to { opacity: 1; transform: translateY(0); }
       }
-
-      .verdict .say { font-size: 18px; font-weight: 650; line-height: 1.6; margin-bottom: 8px; }
-      .verdict .note { font-size: 15px; color: var(--text-2); line-height: 1.8; }
 
       .chain { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
 
@@ -552,12 +546,56 @@
         font-size: 12.5px;
         padding: 6px 12px;
         border-radius: var(--r-sm);
-        background: var(--panel);
+        background: var(--panel-2);
         color: var(--text-2);
       }
 
       .chain-node.end { color: var(--accent-bright); }
       .chain-arrow { color: var(--dim); font-size: 13px; }
+
+      .result-stack { display: grid; gap: 20px; align-content: start; }
+
+      /* checklist */
+
+      .checklist { display: grid; gap: 8px; }
+
+      .check {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 13px 15px;
+        border: 0;
+        border-radius: var(--r-sm);
+        background: var(--panel-2);
+        color: var(--text-2);
+        font: inherit;
+        font-size: 15px;
+        line-height: 1.7;
+        text-align: left;
+        cursor: pointer;
+        transition: color 0.18s var(--ease);
+      }
+
+      .check .box {
+        width: 17px;
+        height: 17px;
+        border-radius: 4px;
+        border: 1.5px solid var(--dim);
+        flex: none;
+        margin-top: 5px;
+        display: grid;
+        place-items: center;
+        transition: border-color 0.18s var(--ease), background 0.18s var(--ease);
+      }
+
+      .check .box svg { width: 11px; height: 11px; opacity: 0; transition: opacity 0.18s var(--ease); }
+
+      .check[aria-pressed="true"] { color: var(--text); }
+      .check[aria-pressed="true"] .box { border-color: var(--accent); background: var(--accent); }
+      .check[aria-pressed="true"] .box svg { opacity: 1; }
+
+      .check-progress { margin-top: 14px; font-family: var(--mono); font-size: 13px; color: var(--muted); }
+      .check-progress .ok { color: var(--accent-bright); }
 
       /* -------------------------------------------------------------- code */
 
@@ -565,7 +603,7 @@
         position: relative;
         background: var(--panel);
         border-radius: var(--r-md);
-        padding: 16px 50px 16px 18px;
+        padding: 15px 50px 15px 18px;
         font-family: var(--mono);
         font-size: 13.5px;
         line-height: 1.8;
@@ -574,12 +612,15 @@
         word-break: break-word;
       }
 
+      .widget .code, .w-grid .code { background: var(--panel-2); }
+
       .code .tok { color: var(--accent-bright); }
+      .code .ph { color: var(--dim); }
 
       .copy {
         position: absolute;
-        top: 10px;
-        right: 10px;
+        top: 9px;
+        right: 9px;
         width: 30px;
         height: 30px;
         border: 0;
@@ -603,6 +644,9 @@
         to { transform: scale(1); opacity: 1; }
       }
 
+      .prompt-list { display: grid; gap: 10px; }
+      .prompt-label { font-size: 13.5px; color: var(--muted); margin: 4px 0 6px; }
+
       /* ------------------------------------------------------------- skills */
 
       .skill-filter { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
@@ -620,12 +664,7 @@
       }
 
       .chip:hover { background: var(--panel-2); color: var(--text); }
-
-      .chip[aria-pressed="true"] {
-        background: var(--panel-2);
-        color: var(--accent-bright);
-        font-weight: 600;
-      }
+      .chip[aria-pressed="true"] { background: var(--panel-2); color: var(--accent-bright); font-weight: 600; }
 
       .skill-grid {
         display: grid;
@@ -642,8 +681,7 @@
       }
 
       .skill.hide { display: none; }
-      .skill:hover,
-      .skill.open { background: var(--panel-2); }
+      .skill:hover, .skill.open { background: var(--panel-2); }
 
       .skill-top {
         width: 100%;
@@ -690,12 +728,7 @@
 
       .skill-note-tag { color: var(--dim); font-family: var(--mono); font-size: 12.5px; }
 
-      .skill-body {
-        display: grid;
-        grid-template-rows: 0fr;
-        transition: grid-template-rows 0.34s var(--ease);
-      }
-
+      .skill-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.34s var(--ease); }
       .skill.open .skill-body { grid-template-rows: 1fr; }
       .skill-body > div { overflow: hidden; }
 
@@ -710,44 +743,28 @@
       .kv .k { color: var(--dim); font-size: 12.5px; font-family: var(--mono); padding-top: 3px; }
       .kv .v { color: var(--text-2); font-size: 14.5px; line-height: 1.75; }
 
-      /* ------------------------------------------------------------ outputs */
-
-      .out-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 30px; }
-
-      .out h3 { margin: 0 0 5px; font-size: 17px; font-weight: 650; }
-      .out .hint { margin: 0 0 14px; font-size: 14px; color: var(--muted); }
-
-      .files { display: grid; gap: 7px; }
-
-      .file {
-        font-family: var(--mono);
-        font-size: 13px;
-        color: var(--text-2);
-        line-height: 1.6;
-        word-break: break-all;
+      .skill-journey-link {
+        justify-self: start;
+        font-size: 14px;
+        color: var(--accent-bright);
+        text-decoration: none;
       }
+
+      .skill-journey-link:hover { text-decoration: underline; text-underline-offset: 3px; }
 
       /* -------------------------------------------------------------- misc */
 
       .rule h3 { margin: 0 0 7px; font-size: 17px; font-weight: 650; }
       .rule p { margin: 0; color: var(--text-2); font-size: 15.5px; }
 
-      .prompt-list { display: grid; gap: 10px; }
-
-      .reveal {
-        opacity: 0;
-        transform: translateY(14px);
-        transition: opacity 0.6s var(--ease), transform 0.6s var(--ease);
-      }
-
-      .reveal.seen { opacity: 1; transform: none; }
-
       footer {
         border-top: 1px solid var(--line);
-        margin-top: 26px;
+        margin-top: 40px;
         padding-top: 22px;
         color: var(--muted);
         font-size: 14px;
+        display: grid;
+        gap: 8px;
       }
 
       footer a { color: var(--accent-bright); text-decoration: none; }
@@ -755,95 +772,89 @@
 
       /* ------------------------------------------------------- responsive */
 
-      @media (max-width: 980px) {
+      @media (max-width: 900px) {
         .hero { grid-template-columns: 1fr; }
-        .matcher { grid-template-columns: 1fr; gap: 26px; }
+        .w-grid { grid-template-columns: 1fr; gap: 24px; }
       }
 
-      @media (max-width: 780px) {
-        :root { --sidebar: 0px; }
+      @media (max-width: 700px) {
         body { font-size: 15.5px; }
-        .app { grid-template-columns: 1fr; }
-        .sidebar { display: none; }
-        .canvas { padding: 26px 18px 76px; }
-        .topbar { padding: 0 18px; }
-        .top-right .status { display: none; }
-        .hero-main h2 { font-size: 25px; }
+        .canvas { padding: 24px 16px 70px; }
+        .topbar { padding: 0 14px; gap: 12px; }
+        .top-count { display: none; }
+        .brand-name { display: none; }
+        .hero-main h2 { font-size: 24px; }
+        h2.title { font-size: 22px; }
       }
 
       @media (prefers-reduced-motion: reduce) {
-        html { scroll-behavior: auto; }
         *, *::before, *::after {
           animation-duration: 0.001ms !important;
+          animation-delay: 0s !important;
           animation-iteration-count: 1 !important;
           transition-duration: 0.001ms !important;
         }
-        .reveal { opacity: 1; transform: none; }
       }
     </style>
   </head>
   <body>
-    <div class="app">
-      <aside class="sidebar">
-        <div class="brand">
-          <span class="brand-mark" aria-hidden="true"></span>
-          <span class="brand-name">CM Skills</span>
-        </div>
-        <nav class="side-nav" id="side-nav" aria-label="頁面導覽"></nav>
-        <div class="side-foot">
-          <a class="repo-link" href="https://github.com/harrychuang-cm/skills" target="_blank" rel="noopener">
-            <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-              <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.4 7.4 0 0 1 2-.27c.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z" />
-            </svg>
-            GitHub 上的原始碼
-          </a>
-          這頁是入口，不是規格書。每個 skill 的完整規則以它資料夾裡的 <code>SKILL.md</code> 為準。
-        </div>
-      </aside>
+    <header class="topbar">
+      <a class="brand" href="#/">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span class="brand-name">CM Skills</span>
+      </a>
+      <nav class="tabs" id="tabs" aria-label="主導覽">
+        <a href="#/" data-tab="home">選目標</a>
+        <a href="#/skills" data-tab="skills">工具目錄</a>
+        <a href="#/prompts" data-tab="prompts">口令表</a>
+      </nav>
+      <div class="top-count"><span class="dot" aria-hidden="true"></span><span id="skill-count"></span></div>
+    </header>
 
-      <main class="main">
-        <header class="topbar">
-          <h1><span class="crumb">CM Skills ／</span> 我該用哪一個？</h1>
-          <div class="top-right">
-            <div class="status"><span class="dot" aria-hidden="true"></span><span id="skill-count"></span></div>
-          </div>
-        </header>
-
-        <div class="canvas" id="canvas"></div>
-      </main>
-    </div>
+    <main class="canvas" id="view"></main>
 
     <script>
       /* =====================================================  content model */
 
       const REPO_URL = "https://github.com/harrychuang-cm/skills";
 
-      const facts = [
-        { n: "13", t: "個可重複使用的 skill" },
-        { n: "7", t: "條常見的工作旅程" },
-        { n: "0", t: "需要安裝的外掛或伺服器" },
+      const groups = [
+        { id: "build", label: "從設計到上線" },
+        { id: "fix", label: "檢查與修正" },
+        { id: "auto", label: "工具與自動化" },
       ];
 
       const journeys = [
         {
           id: "from-design",
+          group: "build",
           say: "我有設計稿，準備開始做",
           then: "先把設計稿變成有規則的設計系統，再開始寫畫面",
-          goal: "讓 token 與元件先站穩，之後每個畫面都會長得一致",
+          goal: "讓 token 與元件先站穩，之後每個畫面都會長得一致。",
           stages: [
             { name: "萃取", desc: "把設計稿讀成設計原則、色彩與間距規則、元件清單", who: "$design-system-extractor" },
-            { name: "審查", desc: "打開產出的 review 頁，確認有沒有重複的元件或太接近的色票", who: "你自己看" },
+            { name: "審查", desc: "打開萃取產出的審查頁（review 頁），確認有沒有重複的元件或太接近的色票", who: "你自己看" },
             { name: "落地", desc: "依照文件建立 Storybook 的基礎樣式、共用元件與範例", who: "$design-system-to-storybook" },
             { name: "比對", desc: "做出來之後跟設計稿對一次，把落差修在正確的地方", who: "$ui-compare-to-reference" },
           ],
-          give: ["設計稿截圖、Figma 連結，或是既有產品的網址"],
-          get: ["設計原則與元件清單文件", "三層 token 檔案", "可瀏覽的設計系統網頁"],
+          give: ["設計稿截圖、Figma 連結，或既有專案的資料夾路徑"],
+          get: ["設計原則與元件清單文件", "三層 token 檔案", "元件與色票的審查頁", "可瀏覽的設計系統網頁"],
+          prompts: [
+            { text: "用 $design-system-extractor 從 ./reference 的截圖萃取一份設計系統。" },
+            { text: "用 $design-system-to-storybook，設計系統在 ./design-system，產品專案在 ./apps/web。" },
+            { label: "做完之後對一次設計稿", text: "用 $ui-compare-to-reference 比對設計稿和做好的畫面，把落差修在 token 或共用元件上。" },
+          ],
+          notes: [
+            "<strong>審查那一步不要跳過。</strong>審查頁會列出太接近的色票、重複或近似的元件 — 這些是該由人決定去留的，AI 不會替你選。",
+          ],
+          related: ["fix-drift", "one-screen"],
         },
         {
           id: "from-legacy",
+          group: "build",
           say: "我有既有產品，想把設計整理成系統",
           then: "從現成的程式碼反推出設計系統，而不是重畫一遍",
-          goal: "把散落在專案裡的樣式收斂成一套可維護的規則",
+          goal: "把散落在專案裡的樣式收斂成一套可維護的規則。",
           stages: [
             { name: "反推", desc: "讀既有專案的樣式與元件，整理出實際在用的規則", who: "$design-system-extractor" },
             { name: "審查", desc: "找出重複、衝突、近似但不同的值，決定要留哪一個", who: "你自己看" },
@@ -852,26 +863,46 @@
           ],
           give: ["既有專案的資料夾路徑"],
           get: ["目前實際在用的設計規則文件", "收斂後的 token 檔", "後續開發的把關規則"],
+          prompts: [
+            { text: "用 $design-system-extractor 從 ./apps/web 反推出目前實際在用的設計規則。" },
+            { label: "反推完、你審查過之後", text: "用 $design-system-to-storybook，設計系統在 ./design-system，產品專案在 ./apps/web。" },
+            { label: "之後改 UI 時的把關", text: "之後每次改 UI，都搭配 $design-system-governance：動手前先檢查 token 與共用元件。" },
+          ],
+          notes: [
+            "反推出來的是「實際的樣子」，不是「理想的樣子」。同一個灰色出現六種值的時候，留哪一個是設計決策，收斂前先過你這關。",
+            "$design-system-governance 不在這個 repo 裡，需要另外安裝 — 不確定裝了沒，直接問 AI。",
+          ],
+          related: ["from-design", "fix-drift"],
         },
         {
           id: "one-screen",
+          group: "build",
           say: "我只有一張畫面圖",
           then: "先拆成可重複用的積木，再組成畫面",
-          goal: "避免一張圖做出一堆只能用一次的樣式",
+          goal: "避免一張圖做出一堆只能用一次的樣式。",
           stages: [
             { name: "拆解", desc: "把畫面拆成一塊一塊的 UI 積木，看看哪些其實是同一種", who: "$ui-screenshot-to-storybook-product" },
             { name: "建積木", desc: "先把共用元件補齊，放進元件目錄", who: "$ui-screenshot-to-storybook-product" },
-            { name: "組畫面", desc: "用剛剛的積木組出真正的產品畫面", who: "$frontend-product-implementation" },
+            { name: "組畫面", desc: "用剛剛的積木組出真正的產品畫面", who: "$ui-screenshot-to-storybook-product" },
             { name: "比對", desc: "跟原圖對一次，確認沒有走樣", who: "$ui-compare-to-reference" },
           ],
           give: ["一張畫面截圖或 Figma 匯出圖"],
           get: ["可重複使用的元件", "元件的使用範例", "組好的產品畫面"],
+          prompts: [
+            { text: "用 $ui-screenshot-to-storybook-product 處理 reference/dashboard.png，用可重用元件實作出來。" },
+            { label: "最後對一次原圖", text: "用 $ui-compare-to-reference 比對 reference/dashboard.png 和做好的畫面，把落差修掉。" },
+          ],
+          notes: [
+            "重點是<strong>先建積木、再組畫面</strong>。照著圖把樣式硬刻一遍當下最快，但那些樣式誰都不能再用第二次。",
+          ],
+          related: ["from-design", "fix-drift"],
         },
         {
           id: "idea-to-proto",
+          group: "build",
           say: "我有產品想法，想先做個可以點的",
           then: "先把流程講清楚，做出可點的原型，再進到真的實作",
-          goal: "在寫正式程式碼之前，先讓大家點過一遍、對齊想法",
+          goal: "在寫正式程式碼之前，先讓大家點過一遍、對齊想法。",
           stages: [
             { name: "寫清楚", desc: "把想法整理成產品需求、畫面流程、需要哪些資料", who: "$storybook-product-prototype" },
             { name: "做原型", desc: "產出可以點擊、有假資料的原型", who: "$storybook-product-prototype" },
@@ -880,12 +911,22 @@
           ],
           give: ["一段產品想法的描述"],
           get: ["需求與流程文件", "可點擊的原型", "工程交接文件"],
+          prompts: [
+            { text: "用 $storybook-product-prototype 做一個結帳流程的原型和交接文件。" },
+            { text: "用 $frontend-product-implementation 依照原型資料夾裡的交接文件（例如 src/pages/prototypes/checkout/docs），把結帳流程做進 ./apps/web。" },
+          ],
+          notes: [
+            "原型裡的資料是<strong>固定的假資料</strong>：每次打開都長一樣，demo 和討論才有共同基準。",
+            "團隊在原型上點過、確認過之後再進實作 — 交接文件會把「確認過的樣子」帶過去。",
+          ],
+          related: ["one-screen", "add-tools"],
         },
         {
           id: "fix-drift",
+          group: "fix",
           say: "做出來的跟設計稿不一樣",
           then: "找出差在哪，然後修在對的地方",
-          goal: "不是把畫面硬改對，而是修在 token 或元件上，讓其他畫面一起變對",
+          goal: "不是把畫面硬改對，而是修在 token 或元件上，讓其他畫面一起變對。",
           stages: [
             { name: "選參考", desc: "決定誰是標準：Figma 設計稿、網頁版程式碼，或 App 版程式碼", who: "你決定" },
             { name: "抽規格", desc: "把參考與實作兩邊都讀成同一份規格，換算成同一個單位", who: "$ui-pixel-align-report" },
@@ -895,12 +936,19 @@
           ],
           give: ["Figma 連結、設計圖，或另一個平台的程式碼", "要修的畫面：網址、路由、或檔案路徑"],
           get: ["逐項落差清單與截圖證據", "修好的畫面", "哪些差異是刻意保留的說明"],
+          prompts: [],
+          notes: [
+            "想先看報告、不要動程式碼，就把 $ui-compare-to-reference 換成 $ui-pixel-align-report。",
+          ],
+          widget: "matcher",
+          related: ["evidence", "from-design"],
         },
         {
           id: "evidence",
+          group: "fix",
           say: "我要留證據給團隊或客戶看",
           then: "產出一份可以直接寄出去的視覺健檢報告",
-          goal: "讓討論建立在證據上，而不是「我覺得有點怪」",
+          goal: "讓討論建立在證據上，而不是「我覺得有點怪」。",
           stages: [
             { name: "抽規格", desc: "把設計與實作兩邊讀成可比較的規格", who: "$ui-pixel-align-report" },
             { name: "分類", desc: "每個差異標上嚴重程度、該誰負責、屬於哪一層", who: "$ui-pixel-align-report" },
@@ -909,20 +957,96 @@
           ],
           give: ["設計參考與實作畫面各一份"],
           get: ["靜態 HTML 報告", "逐項對照截圖", "可交給工程的修正建議清單"],
+          prompts: [
+            { text: "用 $ui-pixel-align-report 比對 https://www.figma.com/design/…?node-id=1-234 和 http://localhost:3000/dashboard。" },
+          ],
+          notes: [
+            "報告是<strong>純靜態檔案</strong>：不用開伺服器，用瀏覽器打開就能看，直接寄給客戶或附在票上都行。",
+            "這條旅程只做健檢、不動程式碼。要順手修掉，接著走「做出來的跟設計稿不一樣」那條。",
+          ],
+          related: ["fix-drift"],
+        },
+        {
+          id: "add-tools",
+          group: "auto",
+          isNew: true,
+          say: "我想在 Storybook 裡加上團隊工具頁",
+          then: "裝好兩個工具：元件覆蓋率分析、元件時間軸",
+          goal: "讓「這張圖能用現有元件拼出多少」和「元件庫長到哪了」變成隨時打開就能看的頁面。",
+          stages: [
+            { name: "安裝", desc: "請 AI 把工具裝進專案。預設兩個都裝，也可以只點名一個", who: "$storybook-tools-install" },
+            { name: "過目元件目錄", desc: "AI 會讀你專案的元件生成一份元件目錄。目錄品質決定分析品質，裝完請看一眼", who: "你自己看" },
+            { name: "日常：覆蓋率", desc: "上傳 UI 圖或貼需求 → 按「複製分析提示詞」交給 AI → 回來覆核 → 確認後按「複製實作提示詞」交給 AI 實作", who: "你 ＋ AI 輪流" },
+            { name: "日常：時間軸", desc: "新增元件、改動進了版本紀錄（commit）之後，跑一次 npm run build:component-timeline，時間軸就會更新 — 自己跑或請 AI 跑都行", who: "裝好的腳本" },
+          ],
+          give: ["React Storybook 專案路徑（覆蓋率工具需要 Vite 建置；時間軸需要完整 git 歷史 — 不確定就讓 AI 先檢查）"],
+          get: ["Storybook 側欄多一個 Tools 分類", "覆蓋率報告：可覆核、確認後直接交接 AI 實作", "元件時間軸：每個元件哪天誕生，卡片內嵌即時預覽"],
+          prompts: [
+            { label: "之後要更新工具版本時", text: "用 $storybook-tools-install 把已安裝的 Storybook 工具更新到最新版。" },
+          ],
+          notes: [
+            "<strong>覆蓋率的覆核權在你手上。</strong>報告把畫面分成三類：可直接使用、需擴充、缺少需新建 — 每一塊由你決定，確認後 AI 的實作清單只來自你的決策。",
+            "確認後的報告在工具頁裡是唯讀的；要改就先按「還原為草稿」，改完重新確認。（唯讀只擋工具頁上的操作 — 細節見 README。）",
+            "想看完整的操作與維護細節：<code>storybook-tools-install/README.md</code>（中文）。",
+          ],
+          widget: "tools-install",
+          related: ["idea-to-proto", "repeatable"],
         },
         {
           id: "repeatable",
-          say: "這件事我每週都要做一次",
-          then: "把流程寫成契約，之後一句話就能重跑",
-          goal: "重複的工作不該每次都重新交代一遍",
+          group: "auto",
+          say: "同一件事我每週都要做一次",
+          then: "把流程存成專案的自動化設定，之後一句話就能重跑",
+          goal: "重複的工作不該每次都重新交代一遍。",
           stages: [
-            { name: "白話描述", desc: "用一般講話的方式描述這件事要做什麼", who: "$agent-automation-orchestrate" },
-            { name: "寫成契約", desc: "把指令、驗證方式、必要產物存成專案設定檔", who: "$agent-automation-orchestrate" },
-            { name: "執行", desc: "之後每次執行、續跑、查狀態都用同一份契約", who: "$agent-automation-orchestrate" },
-            { name: "追蹤", desc: "在看板上看目前跑到哪、卡在哪、輪到誰", who: "$pipeline-board" },
+            { name: "白話描述", desc: "用講話的方式說你要自動化什麼。AI 會用選項一問一答，不會出現術語，也不會要你寫任何設定", who: "$agent-automation-orchestrate" },
+            { name: "存成設定", desc: "AI 把流程存進專案：做什麼、怎麼驗證做完了、要留下哪些檔案", who: "$agent-automation-orchestrate" },
+            { name: "一句話執行", desc: "之後執行、續跑、查狀態都用同一份設定。查狀態永遠不會啟動任何付費流程", who: "$agent-automation-orchestrate" },
+            { name: "看板追蹤", desc: "單一專案用進度看板；同時顧很多專案就用總覽儀表板", who: "$pipeline-board ＋ $portfolio-dashboard" },
           ],
-          give: ["專案路徑，以及你想自動化的事情"],
-          get: ["專案自動化契約", "每次執行的紀錄", "可分享的進度看板"],
+          give: ["專案路徑，加上白話描述你想自動化的事情"],
+          get: ["一份存在專案裡的自動化設定", "每次執行的紀錄，可以續跑", "可分享的進度看板"],
+          prompts: [
+            { label: "看單一專案的進度看板", text: "用 $pipeline-board 產生 ./apps/web 的進度看板。" },
+            { label: "同時顧很多專案", text: "用 $portfolio-dashboard 把我追蹤的專案整理成一頁總覽。" },
+          ],
+          notes: [
+            "<strong>「完成」的標準很嚴。</strong>驗證指令全部通過、該留下的檔案都在，才算完成 — AI 自己說做完不算數。",
+            "設定檔裡永遠不會放密碼或金鑰。",
+            "想看五種模式與完整指令：<code>agent-automation-orchestrate/README.md</code>（中文）。",
+          ],
+          widget: "automation",
+          related: ["figma-hub", "add-tools"],
+        },
+        {
+          id: "figma-hub",
+          group: "auto",
+          isNew: true,
+          say: "我想把 Figma 清理自動化裝進專案",
+          then: "裝好 Figma 外掛＋本機協調程式，在 Figma 圈個範圍就能請 AI 出清理計畫",
+          goal: "AI 只出計畫、你確認才動 — 它永遠不會直接改你的 Figma 檔案。",
+          stages: [
+            { name: "預覽", desc: "先跑一次完全不寫入任何檔案的安裝預覽，看清楚會裝什麼", who: "$design-automation-hub-install" },
+            { name: "報上身分", desc: "提供專案代號、顯示名稱、Figma 檔案 key（網址裡 design/ 後面那串英數字）。這三樣 AI 一定會開口問你，不會自己猜", who: "你提供" },
+            { name: "安裝", desc: "複製外掛與協調程式，在專案的自動化設定上加一個 figma-cleanup 任務。還沒有自動化設定的話，AI 會先帶你建一份", who: "$design-automation-hub-install" },
+            { name: "手動匯入", desc: "在 Figma Desktop 匯入外掛。這是安裝流程裡唯一 AI 不能代勞的步驟 — 它不會自動操作 Figma", who: "你動手" },
+            { name: "開始用", desc: "啟動本機協調程式，之後在 Figma 外掛裡圈範圍、送任務、確認清理計畫", who: "你 ＋ AI" },
+          ],
+          give: ["目標專案路徑", "專案代號、顯示名稱、Figma 檔案 key（網址裡 design/ 後面那串英數字）"],
+          get: ["Figma 外掛（Design Automation Hub）", "跑在你自己電腦上的協調程式", "figma-cleanup 自動化任務"],
+          prompts: [
+            { label: "先看會裝什麼（不寫入任何檔案）", text: "用 $design-automation-hub-install 幫 /path/to/repo 做一次安裝預覽，先不要寫入任何檔案。" },
+            { label: "確認後真的安裝", text: "用 $design-automation-hub-install 把 Design Automation Hub 裝進 /path/to/repo。" },
+            { label: "之後更新", text: "用 $design-automation-hub-install 更新 /path/to/repo 裡已安裝的 Design Automation Hub，先預覽再更新。" },
+          ],
+          notes: [
+            "<strong>AI 出的是清理「計畫」。</strong>它讀的是範圍限定的快照，最後由你在 Figma 外掛裡確認才會執行 — Figma 檔案不會在你不知情時被動到。",
+            "更新時你自己改過的檔案會被當成衝突擋下來，不會被靜默覆蓋。",
+            "啟動協調程式時會設定一組通行碼（這套工具的門禁密碼）。它只存在你自己的電腦上，不會被寫進任何專案檔案、報告或截圖。",
+            "想看完整的安裝與驗證細節：<code>design-automation-hub-install/README.md</code>（中文）。",
+          ],
+          widget: "hub-checklist",
+          related: ["repeatable"],
         },
       ];
 
@@ -948,7 +1072,7 @@
           },
           "web|web": {
             say: "拿另一個網頁當標準去修這個網頁",
-            note: "同一個平台，所以間距、字級、顏色全部嚴格比對，沒有「平台不同所以可以不一樣」的空間。適合把新畫面對齊既有的標準畫面。",
+            note: "同一個平台、同一種畫面尺寸，所以間距、字級、顏色全部嚴格比對，沒有「平台不同所以可以不一樣」的空間。適合把新畫面對齊既有的標準畫面。",
           },
           "web|app": {
             say: "拿網頁版當標準去修 App",
@@ -964,7 +1088,7 @@
           },
           "image|web": {
             say: "拿一張圖去修網頁",
-            note: "沒有 Figma 時的備案。會先找一個已知尺寸的元素定出比例再量，數值是估的，1～2px 的差異不會拿來當證據。",
+            note: "沒有 Figma 時的備案。會先找一個已知尺寸的元素定出比例再量，數值是估的，小於 2px 的差異不會拿來當證據。",
           },
           "image|app": {
             say: "拿一張圖去修 App",
@@ -991,6 +1115,7 @@
           give: "設計稿截圖、Figma 連結、既有專案資料夾，或原型程式碼",
           get: "設計原則、三層 token、元件清單、可瀏覽的設計系統網頁",
           note: "在動手寫畫面之前做。它會逼你先決定規則，而不是邊做邊決定。",
+          journey: "from-design",
         },
         {
           tag: "$design-system-to-storybook",
@@ -999,6 +1124,7 @@
           give: "已萃取的設計系統資料夾，加上目標專案路徑",
           get: "Storybook 基礎樣式、共用元件、每個元件的使用範例",
           note: "元件很多時會自動排隊分批做，不會一次塞爆。",
+          journey: "from-design",
         },
         {
           tag: "$design-system-governance",
@@ -1006,8 +1132,9 @@
           when: "我想確保之後每次改 UI 都不會又散掉",
           give: "不用給什麼，搭配其他 UI skill 一起用",
           get: "動手前先檢查 token 與元件的把關流程",
-          note: "缺 token 或元件時它會停下來問你，而不是自己硬寫一個。",
+          note: "缺 token 或元件時它會停下來問你，而不是自己硬寫一個。這個 skill 不在本 repo，需另外安裝 — 不確定裝了沒，直接問 AI。",
           external: true,
+          journey: "from-legacy",
         },
         {
           tag: "$ui-screenshot-to-storybook-product",
@@ -1016,6 +1143,7 @@
           give: "一張截圖或 Figma 匯出圖",
           get: "拆解後的 UI 積木、補齊的共用元件、組好的畫面",
           note: "重點是先建積木再組畫面，不是照著圖把樣式硬刻一遍。",
+          journey: "one-screen",
         },
         {
           tag: "$storybook-product-prototype",
@@ -1024,14 +1152,16 @@
           give: "一段產品想法的描述",
           get: "需求與流程文件、可點擊的原型、工程交接文件",
           note: "原型裡的資料是固定的假資料，每次打開都長一樣，方便討論。",
+          journey: "idea-to-proto",
         },
         {
           tag: "$frontend-product-implementation",
           group: "把畫面做出來",
           when: "文件都齊了，該做成真的功能了",
           give: "交接文件路徑，加上要寫進去的專案路徑",
-          get: "真正的路由、畫面、狀態處理與假資料接口",
+          get: "真正的頁面路由（網址結構）、畫面、狀態處理與假資料串接",
           note: "會先讀專案現有的 token 與元件再動手，不會另起爐灶。",
+          journey: "idea-to-proto",
         },
         {
           tag: "$ui-pixel-align-report",
@@ -1040,6 +1170,7 @@
           give: "參考來源（Figma／設計圖／另一個平台的程式碼）＋ 要檢查的畫面",
           get: "逐項落差清單、並排截圖、可離線開啟的 HTML 報告",
           note: "只做健檢不動程式碼。差異會分成「該修」與「本來就該不一樣」兩類。",
+          journey: "evidence",
         },
         {
           tag: "$ui-compare-to-reference",
@@ -1048,106 +1179,93 @@
           give: "參考來源 ＋ 要修的畫面，或是上一步產出的落差清單",
           get: "修好的畫面，加上哪些差異是刻意保留的說明",
           note: "修的順序是 token → 共用元件 → 組裝 → 這個畫面，不會直接貼一段只能用一次的樣式。",
+          journey: "fix-drift",
         },
         {
           tag: "$storybook-tools-install",
-          group: "裝工具進專案",
-          when: "我想在 Storybook 裡加上通用工具頁（元件覆蓋率、元件時間軸）",
-          give: "目標專案路徑（React + Vite 的 Storybook 專案），可指定只裝其中一個工具",
-          get: "Storybook 裡的覆蓋率工具頁、元件時間軸頁、檢查腳本、配套 skill",
-          note: "覆蓋率走「UI 圖或需求 → 覆蓋率報告 → 審查 → 實作」；時間軸依 git 歷史呈現每個元件何時誕生。",
-        },
-        {
-          tag: "$design-automation-hub-install",
-          group: "裝工具進專案",
-          when: "我想把 Figma 清理的自動化搬到另一個專案",
-          give: "目標專案路徑",
-          get: "Figma 外掛、本機協調程式、figma-cleanup 任務",
-          note: "會先給你一份不寫入任何檔案的安裝預覽，確認後才真的裝。",
+          group: "工具與自動化",
+          badge: "新 · 整合",
+          when: "我想在 Storybook 裡加上團隊工具頁（元件覆蓋率、元件時間軸）",
+          give: "React Storybook 專案路徑；可以指定只裝其中一個工具",
+          get: "Storybook 側欄多一個 Tools 分類：覆蓋率分析頁＋元件時間軸頁",
+          note: "覆蓋率走「送圖 → AI 分析 → 你覆核 → AI 實作」四步；時間軸依 git 歷史呈現每個元件哪天誕生，卡片內嵌即時預覽。",
+          journey: "add-tools",
         },
         {
           tag: "$agent-automation-orchestrate",
-          group: "自動化與追蹤",
+          group: "工具與自動化",
           when: "同一件事我要重複做很多次",
           give: "專案路徑，加上白話描述你想自動化什麼",
-          get: "一份專案自動化契約，可以執行、續跑、查狀態",
-          note: "有引導式的白話問答可以用，不必自己寫設定檔。",
+          get: "一份存在專案裡的自動化設定，之後執行、續跑、查狀態都是一句話",
+          note: "有白話問答的引導模式，不必自己寫設定檔；查狀態永遠不會啟動付費流程。",
+          journey: "repeatable",
+        },
+        {
+          tag: "$design-automation-hub-install",
+          group: "工具與自動化",
+          badge: "新",
+          when: "我想把 Figma 清理自動化搬到另一個專案",
+          give: "目標專案路徑，加上專案代號、名稱與 Figma 檔案 key",
+          get: "Figma 外掛、本機協調程式、figma-cleanup 自動化任務",
+          note: "一定先給你零寫入的安裝預覽；AI 只出清理計畫，你在 Figma 裡確認後才會動。",
+          journey: "figma-hub",
         },
         {
           tag: "$pipeline-board",
-          group: "自動化與追蹤",
+          group: "工具與自動化",
           when: "我想看這個專案的自動化現在跑到哪",
           give: "專案路徑",
           get: "一個單檔 HTML 看板，顯示目前階段、卡在哪、輪到誰",
           note: "純唯讀的快照，不會啟動任何東西，也不需要開伺服器。",
+          journey: "repeatable",
         },
         {
           tag: "$portfolio-dashboard",
-          group: "自動化與追蹤",
+          group: "工具與自動化",
           when: "我同時顧好幾個專案，想一頁看完",
           give: "要追蹤的專案清單",
           get: "一頁總覽，每個專案一張卡，寫明它現在卡在什麼事情上",
           note: "每張卡只講一件最需要你注意的事，不會把所有細節倒出來。",
+          journey: "repeatable",
         },
       ];
 
-      const prompts = [
-        "用 $design-system-extractor 從 ./reference 的截圖萃取一份設計系統。",
-        "用 $design-system-to-storybook，設計系統在 ./design-system，產品專案在 ./apps/web。",
-        "用 $storybook-product-prototype 做一個結帳流程的原型和交接文件。",
-        "用 $ui-screenshot-to-storybook-product 處理 reference/dashboard.png，用可重用元件實作出來。",
-        "用 $ui-pixel-align-report 比對 https://www.figma.com/design/…?node-id=1-234 和 http://localhost:3000/dashboard。",
-        "用 $ui-compare-to-reference 比對 https://www.figma.com/design/…?node-id=1-234 和 src/screens/WalletHome.tsx，把落差修掉。",
-        "用 $ui-compare-to-reference，以 apps/web/src/pages/Wallet.tsx 為標準，修 apps/mobile/src/screens/WalletHome.tsx。",
-        "用 $agent-automation-orchestrate 幫 ./apps/web 設定自動化，我要把 Figma 上標記完成的元件做進 Storybook。",
-        "用 $pipeline-board 產生 ./apps/web 的進度看板。",
-      ];
-
-      const outputs = [
+      const promptGroups = [
         {
-          title: "設計系統萃取",
-          hint: "$design-system-extractor 會在專案裡留下這些",
-          files: [
-            "design-system/DESIGN_PRINCIPLES.md",
-            "design-system/COMPONENT_INVENTORY.md",
-            "tokens/tokens-ref.css",
-            "tokens/tokens-sys.css",
-            "tokens/tokens-comp.css",
-            "docs/design-system/index.html",
+          title: "建立設計系統",
+          items: [
+            "用 $design-system-extractor 從 ./reference 的截圖萃取一份設計系統。",
+            "用 $design-system-to-storybook，設計系統在 ./design-system，產品專案在 ./apps/web。",
           ],
         },
         {
-          title: "視覺健檢報告",
-          hint: "$ui-pixel-align-report 會在專案裡留下這些",
-          files: [
-            "reports/design-pixel-align/<畫面>/index.html",
-            "reports/design-pixel-align/<畫面>/findings.json",
-            "reports/design-pixel-align/<畫面>/spec/reference.json",
-            "reports/design-pixel-align/<畫面>/spec/implementation.json",
-            "設計與實作的完整截圖",
-            "每一項落差的並排截圖",
+          title: "把畫面做出來",
+          items: [
+            "用 $storybook-product-prototype 做一個結帳流程的原型和交接文件。",
+            "用 $ui-screenshot-to-storybook-product 處理 reference/dashboard.png，用可重用元件實作出來。",
+            "用 $frontend-product-implementation 依照原型資料夾裡的交接文件（例如 src/pages/prototypes/checkout/docs），把結帳流程做進 ./apps/web。",
           ],
         },
         {
-          title: "Storybook 元件庫",
-          hint: "$design-system-to-storybook 會在專案裡留下這些",
-          files: [
-            "Storybook 基礎樣式文件",
-            "共用 UI 元件",
-            "每個元件的使用範例與狀態",
-            "大量元件時的分批清單",
-            "每批的驗證紀錄",
+          title: "檢查與修正",
+          items: [
+            "用 $ui-pixel-align-report 比對 https://www.figma.com/design/…?node-id=1-234 和 http://localhost:3000/dashboard。",
+            "用 $ui-compare-to-reference 比對 https://www.figma.com/design/…?node-id=1-234 和 src/screens/WalletHome.tsx，把落差修掉。",
+            "用 $ui-compare-to-reference，以 apps/web/src/pages/Wallet.tsx 為標準，修 apps/mobile/src/screens/WalletHome.tsx。",
           ],
         },
-      ];
-
-      const navItems = [
-        { href: "#start", label: "從你的處境開始" },
-        { href: "#journey", label: "旅程地圖" },
-        { href: "#matcher", label: "修圖配對器" },
-        { href: "#skills", label: "13 個 skill" },
-        { href: "#prompts", label: "怎麼開口" },
-        { href: "#outputs", label: "會產出什麼" },
+        {
+          title: "工具與自動化",
+          items: [
+            "用 $storybook-tools-install 把 Storybook 工具組（覆蓋率＋時間軸）裝進 ./apps/web。",
+            "用 $storybook-tools-install 把已安裝的 Storybook 工具更新到最新版。",
+            "用 $agent-automation-orchestrate 幫 ./apps/web 設定自動化，我要把 Figma 上標記完成的元件做進 Storybook。",
+            "用 $agent-automation-orchestrate 回報 ./apps/web 目前的自動化狀態。",
+            "用 $design-automation-hub-install 幫 /path/to/repo 做一次安裝預覽，先不要寫入任何檔案。",
+            "用 $pipeline-board 產生 ./apps/web 的進度看板。",
+            "用 $portfolio-dashboard 把我追蹤的專案整理成一頁總覽。",
+          ],
+        },
       ];
 
       /* ===========================================================  helpers */
@@ -1169,25 +1287,37 @@
       const codeBlock = (text) =>
         `<div class="code">${highlight(text)}<button class="copy" type="button" data-copy="${esc(text)}" aria-label="複製">${copyIcon}</button></div>`;
 
-      /* =========================================================== renderers */
+      const journeyHref = (id) => `#/j/${id}`;
 
-      function renderNav() {
-        return navItems.map((item) => `<a href="${item.href}">${esc(item.label)}</a>`).join("");
-      }
+      /* ================================================================ home */
 
-      function renderHero() {
+      function renderHome() {
+        const facts = [
+          { n: String(skills.length), t: "個可重複使用的 skill" },
+          { n: String(journeys.length), t: "條照著走就好的旅程" },
+          { n: "1", t: "句話就能開始，不用學指令" },
+        ];
+        const cards = (groupId) =>
+          journeys
+            .filter((j) => j.group === groupId)
+            .map(
+              (j) => `
+              <a class="goal" href="${journeyHref(j.id)}">
+                <span class="go" aria-hidden="true">→</span>
+                <span class="inner">
+                  <span class="say">${esc(j.say)}${j.isNew ? '<span class="new-badge">新</span>' : ""}</span>
+                  <span class="then">${esc(j.then)}</span>
+                </span>
+              </a>`,
+            )
+            .join("");
+
         return `
           <section class="hero">
             <div class="card hero-main">
-              <h2>把設計稿變成畫面，<br />再把畫面修回設計稿。</h2>
-              <p>這裡是一組給 AI 用的工作說明書。你不用學指令，只要說清楚你現在在哪一步、手上有什麼，AI 就會照著同一套流程做事 — 先建立規則，再做畫面，最後檢查有沒有走樣。</p>
-              <p>Cursor、Claude Code、Codex 都能用。往下滑，從「你現在的處境」開始選就好。</p>
-              <div class="points">
-                <div class="point">先有規則，再做畫面</div>
-                <div class="point">修在元件上，不是修在單一畫面</div>
-                <div class="point">網頁與 App 可以互為標準</div>
-                <div class="point">產出的報告可離線開啟</div>
-              </div>
+              <h2>把設計稿變成畫面，<br />把重複的事變成一句話。</h2>
+              <p>這裡是一組給 AI 用的工作說明書。你不用學指令 — 從下面選一個最像你現在處境的目標，那條旅程會告訴你要走幾步、每一步交給誰、以及你該說哪句話。</p>
+              <p>句子要貼到哪？貼進你團隊在用的 AI 工具（Cursor、Claude Code、Codex）的對話框送出就可以了。第一次不知道對話框在哪，請工程師幫你打開一次，之後都一樣。</p>
               <a class="hero-cta" href="designer-guide-storybook-to-production.html">
                 <span class="tag">設計師指南</span>
                 從 Storybook 到上線 — 互動版旅程與情境嚮導 →
@@ -1196,36 +1326,29 @@
             <div class="card hero-side">
               ${facts.map((f) => `<div class="fact"><span class="n">${esc(f.n)}</span><span class="t">${esc(f.t)}</span></div>`).join("")}
             </div>
+          </section>
+          <section class="section">
+            <div class="vrule" style="margin-bottom:26px">
+              <div class="kicker">Start here</div>
+              <h2 class="title">你現在想做什麼<span class="q">？</span></h2>
+              <p class="sub">點一張卡，進到那條旅程的專頁。每一頁都自成完整說明：步驟、要準備什麼、可照抄的口令、注意事項 — 看完那一頁就夠了。</p>
+            </div>
+            ${groups
+              .map(
+                (g) => `
+              <div class="goal-group">
+                <div class="lbl">${esc(g.label)}</div>
+                <div class="goals">${cards(g.id)}</div>
+              </div>`,
+              )
+              .join("")}
           </section>`;
       }
 
-      function renderSituations() {
-        return `
-          <section class="section reveal" id="start">
-            <div class="section-head vrule">
-              <div class="kicker">Step 01</div>
-              <h2>你現在的處境是<span class="q">？</span></h2>
-              <p class="sub">選一個最接近的。下面的旅程地圖會跟著換成那條路線 — 你會知道要做幾步、每一步交給誰、以及你要準備什麼。</p>
-            </div>
-            <div class="situations" id="situations" role="group" aria-label="選擇你的處境">
-              ${journeys
-                .map(
-                  (j, i) => `
-                <button class="situation" type="button" data-journey="${j.id}" aria-pressed="false">
-                  <span class="idx">${String(i + 1).padStart(2, "0")}</span>
-                  <span class="inner">
-                    <span class="say">${esc(j.say)}</span>
-                    <span class="then">${esc(j.then)}</span>
-                  </span>
-                </button>`,
-                )
-                .join("")}
-            </div>
-          </section>`;
-      }
+      /* ============================================================= journey */
 
-      function renderJourney(journey) {
-        const stages = journey.stages
+      function renderStages(journey) {
+        return journey.stages
           .map(
             (stage, index) => `
             ${index > 0 ? `<div class="link" style="--delay:${index * 0.26}s"></div>` : ""}
@@ -1237,15 +1360,34 @@
             </div>`,
           )
           .join("");
+      }
+
+      function renderJourney(journey) {
+        const related = (journey.related || [])
+          .map((id) => journeys.find((j) => j.id === id))
+          .filter(Boolean)
+          .map((j) => `<a class="rel-chip" href="${journeyHref(j.id)}">${esc(j.say)} →</a>`)
+          .join("");
+
+        const prompts = (journey.prompts || [])
+          .map((p) => `${p.label ? `<div class="prompt-label">${esc(p.label)}</div>` : ""}${codeBlock(p.text)}`)
+          .join("");
 
         return `
-          <div class="flow-head vrule">
-            <div class="flow-title">${esc(journey.say)}</div>
-            <div class="flow-goal">${esc(journey.goal)}</div>
+          <a class="back" href="#/">← 回到選目標</a>
+          <div class="j-head vrule">
+            <div class="kicker">Journey</div>
+            <h2 class="title">${esc(journey.say)}${journey.isNew ? '<span class="new-badge">新</span>' : ""}</h2>
+            <p class="goal-line">${esc(journey.goal)}</p>
           </div>
-          <div class="flow-scroll"><div class="flow-track">${stages}</div></div>
-          <p class="scroll-note">→ 向右捲動看完整流程</p>
-          <div class="flow-io">
+
+          <div class="section">
+            <div class="lbl">這條路怎麼走</div>
+            <div class="flow-scroll"><div class="flow-track">${renderStages(journey)}</div></div>
+            <p class="scroll-note">→ 向右捲動看完整流程</p>
+          </div>
+
+          <div class="section j-io">
             <div class="io vrule quiet">
               <div class="lbl">你要準備</div>
               <ul>${journey.give.map((g) => `<li>${esc(g)}</li>`).join("")}</ul>
@@ -1254,71 +1396,47 @@
               <div class="lbl">你會拿到</div>
               <ul>${journey.get.map((g) => `<li>${esc(g)}</li>`).join("")}</ul>
             </div>
-          </div>`;
+          </div>
+
+          ${journey.widget ? `<div class="section" id="widget-slot"></div>` : ""}
+
+          ${
+            prompts
+              ? `<div class="section">
+                  <div class="lbl">直接照抄，把連結和路徑換成你自己的就行</div>
+                  <div class="prompt-list">${prompts}</div>
+                </div>`
+              : ""
+          }
+
+          ${
+            journey.notes && journey.notes.length
+              ? `<div class="section">
+                  <div class="lbl">要知道的事</div>
+                  <div class="notes">${journey.notes.map((n) => `<div class="note-item vrule quiet">${n}</div>`).join("")}</div>
+                </div>`
+              : ""
+          }
+
+          ${
+            related
+              ? `<div class="section">
+                  <div class="lbl">相關旅程</div>
+                  <div class="related">${related}</div>
+                </div>`
+              : ""
+          }`;
       }
 
-      function renderJourneySection() {
-        return `
-          <section class="section reveal" id="journey">
-            <div class="section-head vrule">
-              <div class="kicker">Step 02</div>
-              <h2>這條路要走幾步</h2>
-              <p class="sub">左到右就是時間順序。每一格底下標的是負責那一步的 skill；標「你自己看」「你決定」的那幾格，是需要你判斷、AI 不該替你決定的地方。</p>
-            </div>
-            <div id="journey-slot"></div>
-          </section>`;
-      }
+      /* ------------------------------------------------------------ matcher */
 
-      function renderMatcher() {
-        return `
-          <section class="section reveal" id="matcher">
-            <div class="section-head vrule">
-              <div class="kicker">Step 03</div>
-              <h2>「做出來跟設計稿不一樣」該怎麼講</h2>
-              <p class="sub">這是最常遇到的情況，也是最容易講不清楚的。選一下你手上有什麼、要修哪一邊，下面會生出可以直接複製的一句話。</p>
-            </div>
-            <div class="matcher">
-              <div>
-                <div class="picker-group">
-                  <div class="lbl">誰是標準</div>
-                  <div class="opts" id="opt-source">
-                    ${matcher.sources
-                      .map(
-                        (s, i) => `
-                      <button class="opt" type="button" data-source="${s.id}" aria-pressed="${i === 0}">
-                        <span class="mark" aria-hidden="true"></span><span>${esc(s.label)}</span>
-                      </button>`,
-                      )
-                      .join("")}
-                  </div>
-                </div>
-                <div class="picker-group">
-                  <div class="lbl">要修哪一邊</div>
-                  <div class="opts" id="opt-target">
-                    ${matcher.targets
-                      .map(
-                        (t, i) => `
-                      <button class="opt" type="button" data-target="${t.id}" aria-pressed="${i === 0}">
-                        <span class="mark" aria-hidden="true"></span><span>${esc(t.label)}</span>
-                      </button>`,
-                      )
-                      .join("")}
-                  </div>
-                </div>
-              </div>
-              <div class="result" id="matcher-result"></div>
-            </div>
-          </section>`;
-      }
+      const matcherState = { source: "figma", target: "web" };
 
-      function renderMatcherResult(sourceId, targetId) {
-        const key = `${sourceId}|${targetId}`;
-        const source = matcher.sources.find((s) => s.id === sourceId);
-        const target = matcher.targets.find((t) => t.id === targetId);
-        const info = matcher.cases[key] || {
-          say: `拿${source.label}當標準去修${target.label.split("（")[0]}`,
-          note: "兩邊都會先讀成同一份規格再比對，並區分出該修的落差與該保留的平台差異。",
-        };
+      function renderMatcherResult() {
+        const key = `${matcherState.source}|${matcherState.target}`;
+        const source = matcher.sources.find((s) => s.id === matcherState.source);
+        const target = matcher.targets.find((t) => t.id === matcherState.target);
+        const info = matcher.cases[key];
         const example = matcher.examples[key];
 
         return `
@@ -1340,108 +1458,301 @@
             ${codeBlock(example)}
           </div>
           <div class="verdict vrule quiet">
-            <div class="note">想先看報告不要動程式碼，就把 $ui-compare-to-reference 換成 $ui-pixel-align-report。${esc(source.note)}</div>
+            <div class="note">${esc(source.note)}</div>
           </div>`;
       }
 
-      function renderSkills() {
-        const groups = [...new Set(skills.map((s) => s.group))];
+      function renderMatcherWidget() {
         return `
-          <section class="section reveal" id="skills">
-            <div class="section-head vrule">
-              <div class="kicker">Step 04</div>
-              <h2>13 個 skill，分成四類</h2>
-              <p class="sub">點一張卡看細節：你要給它什麼、它會回你什麼。不用背名字，用上面的旅程地圖找就好。</p>
+          <div class="lbl">選一下你手上有什麼，這句口令就生好了</div>
+          <div class="widget">
+            <div class="w-grid">
+              <div>
+                <div class="picker-group">
+                  <div class="lbl">誰是標準</div>
+                  <div class="opts">
+                    ${matcher.sources
+                      .map(
+                        (s) => `
+                      <button class="opt" type="button" data-source="${s.id}" aria-pressed="${String(s.id === matcherState.source)}">
+                        <span class="mark" aria-hidden="true"></span><span>${esc(s.label)}</span>
+                      </button>`,
+                      )
+                      .join("")}
+                  </div>
+                </div>
+                <div class="picker-group">
+                  <div class="lbl">要修哪一邊</div>
+                  <div class="opts">
+                    ${matcher.targets
+                      .map(
+                        (t) => `
+                      <button class="opt" type="button" data-target="${t.id}" aria-pressed="${String(t.id === matcherState.target)}">
+                        <span class="mark" aria-hidden="true"></span><span>${esc(t.label)}</span>
+                      </button>`,
+                      )
+                      .join("")}
+                  </div>
+                </div>
+              </div>
+              <div class="result-stack" id="matcher-result">${renderMatcherResult()}</div>
             </div>
-            <div class="skill-filter" id="skill-filter">
-              <button class="chip" type="button" data-group="all" aria-pressed="true">全部</button>
-              ${groups.map((g) => `<button class="chip" type="button" data-group="${esc(g)}" aria-pressed="false">${esc(g)}</button>`).join("")}
+          </div>`;
+      }
+
+      /* ----------------------------------------------- tools install widget */
+
+      const toolsState = { scope: "both", path: "./apps/web" };
+
+      const toolsScopes = [
+        { id: "both", label: "兩個都裝（預設）" },
+        { id: "coverage", label: "只裝元件覆蓋率分析" },
+        { id: "timeline", label: "只裝元件時間軸" },
+      ];
+
+      function toolsPrompt() {
+        const path = toolsState.path.trim() || "./apps/web";
+        if (toolsState.scope === "coverage") return `用 $storybook-tools-install 只安裝元件覆蓋率分析（component coverage）工具到 ${path}。`;
+        if (toolsState.scope === "timeline") return `用 $storybook-tools-install 只安裝元件時間軸（component timeline）工具到 ${path}。`;
+        return `用 $storybook-tools-install 把 Storybook 工具組（覆蓋率＋時間軸）裝進 ${path}。`;
+      }
+
+      function toolsHint() {
+        if (toolsState.scope === "coverage") return "覆蓋率工具需要用 Vite 建置的 React Storybook；最好已有可比對的元件庫 — 沒有也能裝，但分析結果會全部被判成「缺少」。不確定自己的專案符不符合？直接貼這句，AI 會先檢查再安裝。";
+        if (toolsState.scope === "timeline") return "時間軸需要專案完整的 git 歷史 — 有些下載方式只帶最近的紀錄（shallow clone），會做不出時間軸。不確定就直接貼這句讓 AI 先檢查。只裝時間軸的話，不是 Vite 建置的專案也能用。";
+        return "AI 會逐工具檢查前置條件：某個工具條件不符只會擋下那個工具，不會擋整個安裝。";
+      }
+
+      function renderToolsResult() {
+        return `
+          <div>
+            <div class="lbl">直接複製這句</div>
+            ${codeBlock(toolsPrompt())}
+          </div>
+          <div class="verdict vrule quiet"><div class="note">${esc(toolsHint())}</div></div>`;
+      }
+
+      function renderToolsWidget() {
+        return `
+          <div class="lbl">要裝哪些工具？選好，這句口令就生好了</div>
+          <div class="widget">
+            <div class="w-grid">
+              <div>
+                <div class="picker-group">
+                  <div class="lbl">安裝範圍</div>
+                  <div class="opts">
+                    ${toolsScopes
+                      .map(
+                        (s) => `
+                      <button class="opt" type="button" data-scope="${s.id}" aria-pressed="${String(s.id === toolsState.scope)}">
+                        <span class="mark" aria-hidden="true"></span><span>${esc(s.label)}</span>
+                      </button>`,
+                      )
+                      .join("")}
+                  </div>
+                </div>
+                <div class="picker-group">
+                  <div class="lbl">專案路徑</div>
+                  <div class="field"><input type="text" data-bind="tools-path" value="${esc(toolsState.path)}" placeholder="./apps/web" aria-label="專案路徑" /></div>
+                </div>
+              </div>
+              <div class="result-stack" id="tools-result">${renderToolsResult()}</div>
             </div>
-            <div class="skill-grid" id="skill-grid">
-              ${skills
+          </div>`;
+      }
+
+      /* ------------------------------------------------- automation widget */
+
+      const autoState = { mode: "setup", path: "./apps/web", wish: "把 Figma 上標記完成的元件做進 Storybook" };
+
+      const autoModes = [
+        { id: "setup", label: "第一次設定" },
+        { id: "run", label: "執行" },
+        { id: "status", label: "查狀態" },
+      ];
+
+      function autoPrompt() {
+        const path = autoState.path.trim() || "./apps/web";
+        if (autoState.mode === "run") return `用 $agent-automation-orchestrate 執行 ${path} 的〈任務名稱〉任務，先演練（dry run）給我看執行計畫，我確認後再真的跑。`;
+        if (autoState.mode === "status") return `用 $agent-automation-orchestrate 回報 ${path} 目前的自動化狀態。`;
+        const wish = autoState.wish.trim() || "把 Figma 上標記完成的元件做進 Storybook";
+        return `用 $agent-automation-orchestrate 幫 ${path} 設定自動化，我想要${wish}。`;
+      }
+
+      function autoHint() {
+        if (autoState.mode === "run") return "「演練（dry run）」只會列出要做什麼，不會真的動任何東西；你看過計畫、確認後才真的執行。〈任務名稱〉在第一次設定完成時 AI 會告訴你。";
+        if (autoState.mode === "status") return "查狀態是唯讀的：不會啟動任何付費流程，隨便查。";
+        return "用你自己的話描述就好。AI 會用選項一問一答，把它整理成專案的自動化設定 — 你不用寫任何設定檔。";
+      }
+
+      function renderAutoResult() {
+        return `
+          <div>
+            <div class="lbl">直接複製這句</div>
+            ${codeBlock(autoPrompt())}
+          </div>
+          <div class="verdict vrule quiet"><div class="note">${esc(autoHint())}</div></div>`;
+      }
+
+      function renderAutoWidget() {
+        return `
+          <div class="lbl">你想做哪件事？選好，這句口令就生好了</div>
+          <div class="widget">
+            <div class="picker-group">
+              <div class="pills">
+                ${autoModes
+                  .map((m) => `<button class="pill" type="button" data-mode="${m.id}" aria-pressed="${String(m.id === autoState.mode)}">${esc(m.label)}</button>`)
+                  .join("")}
+              </div>
+            </div>
+            <div class="w-grid">
+              <div>
+                <div class="picker-group">
+                  <div class="lbl">專案路徑</div>
+                  <div class="field"><input type="text" data-bind="auto-path" value="${esc(autoState.path)}" placeholder="./apps/web" aria-label="專案路徑" /></div>
+                </div>
+                <div class="picker-group" id="auto-wish-group" ${autoState.mode === "setup" ? "" : "hidden"}>
+                  <div class="lbl">你想自動化什麼（白話描述）</div>
+                  <div class="field"><textarea rows="3" data-bind="auto-wish" aria-label="你想自動化什麼">${esc(autoState.wish)}</textarea></div>
+                </div>
+              </div>
+              <div class="result-stack" id="auto-result">${renderAutoResult()}</div>
+            </div>
+          </div>`;
+      }
+
+      /* ------------------------------------------------ hub checklist widget */
+
+      const hubChecks = [
+        { id: "contract", text: "專案已經有自動化設定（沒有的話，AI 安裝時會先帶你建 — 可以先走「同一件事我每週都要做一次」那條旅程）" },
+        { id: "identity", text: "想好專案代號、顯示名稱，手上有 Figma 檔案的 key（打開檔案時網址裡 design/ 後面那串英數字；舊版連結是 file/ 後面）" },
+        { id: "dryrun", text: "先請 AI 做零寫入的安裝預覽，看過會裝什麼再說" },
+        { id: "manual", text: "裝完記得：Figma Desktop → Plugins → Development → Import plugin from manifest（這步 AI 不會代勞）" },
+      ];
+
+      const hubState = { done: new Set() };
+
+      const tickSvg = `<svg viewBox="0 0 16 16" fill="none" stroke="#0d0d11" stroke-width="2.5" aria-hidden="true"><path d="M3 8.5l3.5 3.5L13 5" /></svg>`;
+
+      function renderHubProgress() {
+        const n = hubState.done.size;
+        if (n === hubChecks.length) return `<span class="ok">✓ 四項都完成了</span>`;
+        if (["contract", "identity", "dryrun"].every((id) => hubState.done.has(id)))
+          return `<span class="ok">✓ 安裝前的三項都確認了 — 可以請 AI 安裝，最後一項裝完再回來勾</span>`;
+        return `${n} / ${hubChecks.length} 確認`;
+      }
+
+      function renderHubWidget() {
+        return `
+          <div class="lbl">安裝前後的四個確認（點一下打勾）</div>
+          <div class="widget">
+            <div class="checklist">
+              ${hubChecks
                 .map(
-                  (skill) => `
-                <article class="skill" data-group="${esc(skill.group)}">
-                  <button class="skill-top" type="button" aria-expanded="false">
-                    <span class="skill-when">${esc(skill.when)}</span>
-                    <span class="skill-tag">${esc(skill.tag)}${skill.external ? ' <span class="skill-note-tag">· 需另外安裝</span>' : ""}</span>
-                  </button>
-                  <div class="skill-body"><div><div class="skill-inner">
-                    <div class="kv"><div class="k">你給</div><div class="v">${esc(skill.give)}</div></div>
-                    <div class="kv"><div class="k">你拿到</div><div class="v">${esc(skill.get)}</div></div>
-                    <div class="kv"><div class="k">要知道</div><div class="v">${esc(skill.note)}</div></div>
-                  </div></div></div>
-                </article>`,
+                  (c) => `
+                <button class="check" type="button" data-check="${c.id}" aria-pressed="${String(hubState.done.has(c.id))}">
+                  <span class="box" aria-hidden="true">${tickSvg}</span>
+                  <span>${esc(c.text)}</span>
+                </button>`,
                 )
                 .join("")}
             </div>
-          </section>`;
+            <div class="check-progress" id="hub-progress">${renderHubProgress()}</div>
+          </div>`;
       }
 
-      function renderPrompts() {
+      const widgetRenderers = {
+        "matcher": renderMatcherWidget,
+        "tools-install": renderToolsWidget,
+        "automation": renderAutoWidget,
+        "hub-checklist": renderHubWidget,
+      };
+
+      /* ============================================================== skills */
+
+      function renderSkillsView() {
+        const cats = [...new Set(skills.map((s) => s.group))];
         return `
-          <section class="section reveal" id="prompts">
-            <div class="section-head vrule">
-              <div class="kicker">Step 05</div>
-              <h2>怎麼跟 AI 開口</h2>
-              <p class="sub">照抄下面任何一句，把路徑換成你自己的就行。如果 AI 說不認得這個名字，就請它先讀那個資料夾裡的 SKILL.md 再照做。</p>
-            </div>
-            <div class="prompt-list">${prompts.map((p) => codeBlock(p)).join("")}</div>
-            <div class="rule vrule" style="margin-top:26px">
-              <h3>唯一一條原則：不要跳過設計系統那層</h3>
-              <p>有 token 或共用元件就先用它、先改它，再處理單一畫面。跳過這層當下會快一點，但之後每個畫面都會愈長愈不一樣，最後誰都不敢改。</p>
-            </div>
-          </section>`;
+          <div class="vrule" style="margin-bottom:26px">
+            <div class="kicker">Catalog</div>
+            <h2 class="title">${skills.length} 個 skill，分成四類</h2>
+            <p class="sub">點一張卡看細節：你要給它什麼、它會回你什麼。不用背名字 — 不確定要用哪個時，回「選目標」用旅程找更快。</p>
+          </div>
+          <div class="skill-filter" id="skill-filter">
+            <button class="chip" type="button" data-group="all" aria-pressed="true">全部</button>
+            ${cats.map((g) => `<button class="chip" type="button" data-group="${esc(g)}" aria-pressed="false">${esc(g)}</button>`).join("")}
+          </div>
+          <div class="skill-grid" id="skill-grid">
+            ${skills
+              .map(
+                (skill) => `
+              <article class="skill" data-group="${esc(skill.group)}">
+                <button class="skill-top" type="button" aria-expanded="false">
+                  <span class="skill-when">${esc(skill.when)}${skill.badge ? `<span class="new-badge">${esc(skill.badge)}</span>` : ""}</span>
+                  <span class="skill-tag">${esc(skill.tag)}${skill.external ? ' <span class="skill-note-tag">· 需另外安裝</span>' : ""}</span>
+                </button>
+                <div class="skill-body"><div><div class="skill-inner">
+                  <div class="kv"><div class="k">你給</div><div class="v">${esc(skill.give)}</div></div>
+                  <div class="kv"><div class="k">你拿到</div><div class="v">${esc(skill.get)}</div></div>
+                  <div class="kv"><div class="k">要知道</div><div class="v">${esc(skill.note)}</div></div>
+                  ${skill.journey ? `<a class="skill-journey-link" href="${journeyHref(skill.journey)}">看它在旅程裡的位置 →</a>` : ""}
+                </div></div></div>
+              </article>`,
+              )
+              .join("")}
+          </div>`;
       }
 
-      function renderOutputs() {
+      /* ============================================================= prompts */
+
+      function renderPromptsView() {
         return `
-          <section class="section reveal" id="outputs">
-            <div class="section-head vrule">
-              <div class="kicker">Step 06</div>
-              <h2>做完會留下什麼</h2>
-              <p class="sub">這些檔案會留在專案裡，不會只存在對話紀錄。報告類的產出都是靜態檔案，直接用瀏覽器開就能看。</p>
-            </div>
-            <div class="out-grid">
-              ${outputs
-                .map(
-                  (out) => `
-                <div class="out vrule quiet">
-                  <h3>${esc(out.title)}</h3>
-                  <p class="hint">${esc(out.hint)}</p>
-                  <div class="files">${out.files.map((f) => `<div class="file">${esc(f)}</div>`).join("")}</div>
-                </div>`,
-                )
-                .join("")}
-            </div>
-            <footer>
-              這頁是入口。每個 skill 的完整規則、參數與邊界條件，以各自資料夾裡的 SKILL.md 為準 —
-              <a href="${REPO_URL}" target="_blank" rel="noopener">github.com/harrychuang-cm/skills</a>
-            </footer>
-          </section>`;
+          <div class="vrule" style="margin-bottom:26px">
+            <div class="kicker">Cheat sheet</div>
+            <h2 class="title">怎麼跟 AI 開口</h2>
+            <p class="sub">照抄任何一句，把連結和路徑換成你自己的就行。句子裡 $ 開頭的字是 skill 的名字，整個照抄、不用改。如果 AI 說不認得這個名字，就告訴它 skill 都放在 skills 專案裡的同名資料夾（例如 $pipeline-board 就在 pipeline-board/），請它先讀那個資料夾裡的 SKILL.md 再照做。</p>
+          </div>
+          ${promptGroups
+            .map(
+              (g) => `
+            <div class="section">
+              <div class="lbl">${esc(g.title)}</div>
+              <div class="prompt-list">${g.items.map((p) => codeBlock(p)).join("")}</div>
+            </div>`,
+            )
+            .join("")}
+          <div class="rule vrule">
+            <h3>唯一一條原則：不要跳過設計系統那層</h3>
+            <p>有 token 或共用元件就先用它、先改它，再處理單一畫面。跳過這層當下會快一點，但之後每個畫面都會愈長愈不一樣，最後誰都不敢改。</p>
+          </div>`;
       }
 
-      /* ================================================================ boot */
+      /* ============================================================== footer */
 
-      document.getElementById("side-nav").innerHTML = renderNav();
+      function renderFooter() {
+        return `
+          <footer>
+            <div>這頁是入口，不是規格書。每個 skill 的完整規則以它資料夾裡的 SKILL.md 為準；<code>storybook-tools-install</code>、<code>agent-automation-orchestrate</code>、<code>design-automation-hub-install</code> 另有中文 README。</div>
+            <div><a href="${REPO_URL}" target="_blank" rel="noopener">GitHub 上的原始碼</a> ・ <a href="designer-guide-storybook-to-production.html">設計師指南：從 Storybook 到上線</a></div>
+          </footer>`;
+      }
+
+      /* ============================================================== router */
+
+      const viewEl = document.getElementById("view");
       document.getElementById("skill-count").textContent = `${skills.length} skills`;
-      document.getElementById("canvas").innerHTML = [
-        renderHero(),
-        renderSituations(),
-        renderJourneySection(),
-        renderMatcher(),
-        renderSkills(),
-        renderPrompts(),
-        renderOutputs(),
-      ].join("");
 
-      /* --------------------------------------------------- situation → flow */
+      function setTab(tabId) {
+        document.querySelectorAll("#tabs a").forEach((a) => {
+          a.classList.toggle("active", a.dataset.tab === tabId);
+        });
+      }
 
-      const journeySlot = document.getElementById("journey-slot");
+      let unwireScrollHint = null;
 
       function wireScrollHint() {
-        const scroller = journeySlot.querySelector(".flow-scroll");
-        const note = journeySlot.querySelector(".scroll-note");
+        const scroller = viewEl.querySelector(".flow-scroll");
+        const note = viewEl.querySelector(".scroll-note");
         if (!scroller || !note) return;
         const update = () => {
           const more = scroller.scrollWidth - scroller.clientWidth - scroller.scrollLeft > 8;
@@ -1449,130 +1760,190 @@
         };
         scroller.addEventListener("scroll", update, { passive: true });
         window.addEventListener("resize", update, { passive: true });
+        unwireScrollHint = () => window.removeEventListener("resize", update);
         update();
       }
 
-      function selectJourney(id, scroll) {
-        const journey = journeys.find((j) => j.id === id) || journeys[0];
-        document.querySelectorAll("[data-journey]").forEach((button) => {
-          button.setAttribute("aria-pressed", String(button.dataset.journey === journey.id));
-        });
-        journeySlot.innerHTML = renderJourney(journey);
-        wireScrollHint();
-        if (scroll) {
-          document.getElementById("journey").scrollIntoView({ behavior: "smooth", block: "start" });
+      function mountWidget(journey) {
+        const slot = document.getElementById("widget-slot");
+        if (!slot || !journey.widget) return;
+        const renderer = widgetRenderers[journey.widget];
+        if (renderer) slot.innerHTML = renderer();
+      }
+
+      let navByClick = false;
+
+      function route() {
+        if (unwireScrollHint) {
+          unwireScrollHint();
+          unwireScrollHint = null;
         }
+        const scrollTop = () => {
+          if (navByClick) window.scrollTo(0, 0);
+          navByClick = false;
+        };
+        const hash = location.hash || "#/";
+        let html = "";
+        let tab = "home";
+        let title = "CM Skills — 我該用哪一個？";
+
+        const journeyMatch = hash.match(/^#\/j\/([a-z-]+)$/);
+
+        if (journeyMatch) {
+          const journey = journeys.find((j) => j.id === journeyMatch[1]);
+          if (journey) {
+            html = renderJourney(journey);
+            title = `${journey.say} — CM Skills`;
+            viewEl.innerHTML = `<div class="view-enter">${html}${renderFooter()}</div>`;
+            document.title = title;
+            setTab("home");
+            scrollTop();
+            mountWidget(journey);
+            wireScrollHint();
+            return;
+          }
+        } else if (hash === "#/skills") {
+          html = renderSkillsView();
+          tab = "skills";
+          title = "工具目錄 — CM Skills";
+        } else if (hash === "#/prompts") {
+          html = renderPromptsView();
+          tab = "prompts";
+          title = "口令表 — CM Skills";
+        }
+
+        if (!html) {
+          html = renderHome();
+          tab = "home";
+        }
+
+        viewEl.innerHTML = `<div class="view-enter">${html}${renderFooter()}</div>`;
+        document.title = title;
+        setTab(tab);
+        scrollTop();
       }
 
-      document.getElementById("situations").addEventListener("click", (event) => {
-        const button = event.target.closest("[data-journey]");
-        if (button) selectJourney(button.dataset.journey, true);
-      });
+      window.addEventListener("hashchange", route);
+      route();
 
-      selectJourney("from-design", false);
-
-      /* ------------------------------------------------------------ matcher */
-
-      const matcherState = { source: "figma", target: "web" };
-      const matcherResult = document.getElementById("matcher-result");
-
-      function paintMatcher() {
-        matcherResult.innerHTML = renderMatcherResult(matcherState.source, matcherState.target);
-      }
-
-      document.getElementById("opt-source").addEventListener("click", (event) => {
-        const button = event.target.closest("[data-source]");
-        if (!button) return;
-        matcherState.source = button.dataset.source;
-        document.querySelectorAll("[data-source]").forEach((other) => {
-          other.setAttribute("aria-pressed", String(other === button));
-        });
-        paintMatcher();
-      });
-
-      document.getElementById("opt-target").addEventListener("click", (event) => {
-        const button = event.target.closest("[data-target]");
-        if (!button) return;
-        matcherState.target = button.dataset.target;
-        document.querySelectorAll("[data-target]").forEach((other) => {
-          other.setAttribute("aria-pressed", String(other === button));
-        });
-        paintMatcher();
-      });
-
-      paintMatcher();
-
-      /* ------------------------------------------------------------- skills */
-
-      document.getElementById("skill-grid").addEventListener("click", (event) => {
-        const top = event.target.closest(".skill-top");
-        if (!top) return;
-        const card = top.closest(".skill");
-        const open = card.classList.toggle("open");
-        top.setAttribute("aria-expanded", String(open));
-      });
-
-      document.getElementById("skill-filter").addEventListener("click", (event) => {
-        const chip = event.target.closest("[data-group]");
-        if (!chip) return;
-        const group = chip.dataset.group;
-        document.querySelectorAll("#skill-filter [data-group]").forEach((other) => {
-          other.setAttribute("aria-pressed", String(other === chip));
-        });
-        document.querySelectorAll("#skill-grid .skill").forEach((card) => {
-          card.classList.toggle("hide", group !== "all" && card.dataset.group !== group);
-        });
-      });
-
-      /* --------------------------------------------------------------- copy */
+      /* ======================================================== interactions */
 
       document.addEventListener("click", async (event) => {
-        const button = event.target.closest("[data-copy]");
-        if (!button) return;
-        try {
-          await navigator.clipboard.writeText(button.dataset.copy);
-        } catch {
-          const area = document.createElement("textarea");
-          area.value = button.dataset.copy;
-          document.body.appendChild(area);
-          area.select();
-          document.execCommand("copy");
-          area.remove();
+        /* in-page navigation: only user clicks force scroll-to-top (not back/forward) */
+        if (event.target.closest('a[href^="#"]')) navByClick = true;
+
+        /* copy buttons */
+        const copyBtn = event.target.closest("[data-copy]");
+        if (copyBtn) {
+          let copied = true;
+          try {
+            await navigator.clipboard.writeText(copyBtn.dataset.copy);
+          } catch {
+            const area = document.createElement("textarea");
+            area.value = copyBtn.dataset.copy;
+            area.setAttribute("readonly", "");
+            area.style.cssText = "position:fixed;top:0;left:0;opacity:0;pointer-events:none";
+            document.body.appendChild(area);
+            area.select();
+            copied = document.execCommand("copy");
+            area.remove();
+          }
+          if (copied) {
+            copyBtn.classList.add("done");
+            setTimeout(() => copyBtn.classList.remove("done"), 1400);
+          }
+          return;
         }
-        button.classList.add("done");
-        setTimeout(() => button.classList.remove("done"), 1400);
+
+        /* matcher options */
+        const srcBtn = event.target.closest("[data-source]");
+        if (srcBtn) {
+          matcherState.source = srcBtn.dataset.source;
+          document.querySelectorAll("[data-source]").forEach((b) => b.setAttribute("aria-pressed", String(b === srcBtn)));
+          const out = document.getElementById("matcher-result");
+          if (out) out.innerHTML = renderMatcherResult();
+          return;
+        }
+        const tgtBtn = event.target.closest("[data-target]");
+        if (tgtBtn) {
+          matcherState.target = tgtBtn.dataset.target;
+          document.querySelectorAll("[data-target]").forEach((b) => b.setAttribute("aria-pressed", String(b === tgtBtn)));
+          const out = document.getElementById("matcher-result");
+          if (out) out.innerHTML = renderMatcherResult();
+          return;
+        }
+
+        /* tools install scope */
+        const scopeBtn = event.target.closest("[data-scope]");
+        if (scopeBtn) {
+          toolsState.scope = scopeBtn.dataset.scope;
+          document.querySelectorAll("[data-scope]").forEach((b) => b.setAttribute("aria-pressed", String(b === scopeBtn)));
+          const out = document.getElementById("tools-result");
+          if (out) out.innerHTML = renderToolsResult();
+          return;
+        }
+
+        /* automation mode pills */
+        const modeBtn = event.target.closest("[data-mode]");
+        if (modeBtn) {
+          autoState.mode = modeBtn.dataset.mode;
+          document.querySelectorAll("[data-mode]").forEach((b) => b.setAttribute("aria-pressed", String(b === modeBtn)));
+          const wishGroup = document.getElementById("auto-wish-group");
+          if (wishGroup) wishGroup.hidden = autoState.mode !== "setup";
+          const out = document.getElementById("auto-result");
+          if (out) out.innerHTML = renderAutoResult();
+          return;
+        }
+
+        /* hub checklist */
+        const checkBtn = event.target.closest("[data-check]");
+        if (checkBtn) {
+          const id = checkBtn.dataset.check;
+          if (hubState.done.has(id)) hubState.done.delete(id);
+          else hubState.done.add(id);
+          checkBtn.setAttribute("aria-pressed", String(hubState.done.has(id)));
+          const progress = document.getElementById("hub-progress");
+          if (progress) progress.innerHTML = renderHubProgress();
+          return;
+        }
+
+        /* skill cards */
+        const skillTop = event.target.closest(".skill-top");
+        if (skillTop) {
+          const card = skillTop.closest(".skill");
+          const open = card.classList.toggle("open");
+          skillTop.setAttribute("aria-expanded", String(open));
+          return;
+        }
+
+        /* skill filter chips */
+        const chip = event.target.closest("#skill-filter [data-group]");
+        if (chip) {
+          const group = chip.dataset.group;
+          document.querySelectorAll("#skill-filter [data-group]").forEach((b) => b.setAttribute("aria-pressed", String(b === chip)));
+          document.querySelectorAll("#skill-grid .skill").forEach((card) => {
+            card.classList.toggle("hide", group !== "all" && card.dataset.group !== group);
+          });
+        }
       });
 
-      /* ------------------------------------------------- reveal + nav state */
-
-      const revealer = new IntersectionObserver(
-        (entries) => {
-          entries.forEach((entry) => {
-            if (entry.isIntersecting) {
-              entry.target.classList.add("seen");
-              revealer.unobserve(entry.target);
-            }
-          });
-        },
-        { rootMargin: "0px 0px -12% 0px" },
-      );
-
-      document.querySelectorAll(".reveal").forEach((node) => revealer.observe(node));
-
-      const navLinks = [...document.querySelectorAll("#side-nav a")];
-      const spy = new IntersectionObserver(
-        (entries) => {
-          entries.forEach((entry) => {
-            if (!entry.isIntersecting) return;
-            navLinks.forEach((link) => {
-              link.classList.toggle("active", link.getAttribute("href") === `#${entry.target.id}`);
-            });
-          });
-        },
-        { rootMargin: "-20% 0px -70% 0px" },
-      );
-
-      document.querySelectorAll(".section[id]").forEach((node) => spy.observe(node));
+      document.addEventListener("input", (event) => {
+        const bind = event.target.dataset && event.target.dataset.bind;
+        if (!bind) return;
+        if (bind === "tools-path") {
+          toolsState.path = event.target.value;
+          const out = document.getElementById("tools-result");
+          if (out) out.innerHTML = renderToolsResult();
+        } else if (bind === "auto-path") {
+          autoState.path = event.target.value;
+          const out = document.getElementById("auto-result");
+          if (out) out.innerHTML = renderAutoResult();
+        } else if (bind === "auto-wish") {
+          autoState.wish = event.target.value;
+          const out = document.getElementById("auto-result");
+          if (out) out.innerHTML = renderAutoResult();
+        }
+      });
     </script>
   </body>
 </html>
