@@ -22,6 +22,8 @@ Bootstrap, guide, validate, run, resume, and inspect reusable engineering automa
 
 Use this when a project needs a portable multi-agent automation contract, when a designer describes a repeatable design-to-engineering automation in plain scenario language, when an existing `.agent-automation/config.json` task should run or resume, or when adapting one automation workflow to a repository with different build, test, artifact, or framework requirements. `design-automation-hub-install` installs its Figma cleanup task on top of this skill rather than replacing it.
 
+One-page navigation guide (zh-TW): `agent-automation-orchestrate/README.md`.
+
 ### `design-system-extractor`
 
 Extract a reusable design-system package from screenshots, Figma references, exports, existing app folders, or prototype code:
@@ -153,6 +155,8 @@ Install the project-neutral Design Automation Hub into an explicit target reposi
 5. Update managed files with receipt-based collision protection and keep the Figma Desktop manifest import as an explicit manual handoff.
 
 Use this when another project needs the same safe Figma cleanup → AI plan → human confirmation workflow without copying the product repository or embedding a second generic runner.
+
+Install & usage guide (zh-TW): `design-automation-hub-install/README.md`.
 
 ### `pipeline-board`
 
