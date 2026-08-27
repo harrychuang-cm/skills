@@ -128,17 +128,19 @@ Implement frontend products and features from handoff docs:
 
 Use this after `storybook-product-prototype` or any equivalent handoff when you want the docs to become frontend product code while preserving design-system governance.
 
-### `component-coverage-install`
+### `storybook-tools-install`
 
-Install and bind the Storybook「Component Coverage Analyzer」tool into any React + Vite Storybook project:
+Install and bind a suite of generic Storybook「Tools」pages into any React + Vite Storybook project — currently the Component Coverage Analyzer and the Component Timeline:
 
-1. Copy the bundled template verbatim: tool UI (Storybook Tools page), dev API vite plugin, check scripts, and the companion `component-coverage-analyze` / `component-coverage-implement` project skills.
+1. Copy the bundled template verbatim, per tool (all tools by default, or a named subset): the Component Coverage Analyzer (tool UI, dev API vite plugin, check scripts, companion `component-coverage-analyze` / `component-coverage-implement` project skills) and the Component Timeline (git-derived component birth dates joined with the catalog, live story previews, build/check scripts).
 2. Install both companion skills from one upstream source into shared `.agents/skills/` paths for Cursor/Codex and byte-identical `.claude/skills/` mirrors for Claude Code.
 3. Generate a project-specific component catalog by reading the target project's components and stories (the AI binding step — see `references/catalog-authoring.md`).
 4. Wire `.storybook/main.ts` (`viteFinal` plugin + `staticDirs`), create the `outputs/component-coverage/` data directory, and verify end to end (checks, skill hashes, typecheck, dev API, tool page, static build).
-5. Update a previously installed copy via the `TEMPLATE_MANIFEST.json` version, overwriting only template-owned files and retiring obsolete managed skill mirrors safely.
+5. Update a previously installed copy via the `TEMPLATE_MANIFEST.json` version, overwriting only template-owned files and retiring obsolete managed skill mirrors safely — including upgrading legacy component-coverage-only installations to the multi-tool layout.
 
-Use this to bring the UI-image/PRD → coverage report → developer review → implementation workflow to a new Storybook project.
+Use this to bring the Storybook tools suite — the UI-image/PRD → coverage report → developer review → implementation workflow, and the component timeline page — to a new Storybook project.
+
+Developer-facing install & usage guide (zh-TW): `storybook-tools-install/README.md`.
 
 ### `design-automation-hub-install`
 
@@ -325,7 +327,7 @@ The generated report is a static HTML + CSS artifact, usually under `reports/des
 │   │   └── scenario-templates/
 │   ├── references/
 │   └── scripts/
-├── component-coverage-install/
+├── storybook-tools-install/
 │   ├── SKILL.md
 │   ├── references/
 │   └── template/

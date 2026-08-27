@@ -43,7 +43,7 @@ Read <cm-skills path>/frontend-product-implementation/SKILL.md and follow that w
 | 把畫面修成跟參考來源一致 | `$ui-compare-to-reference` | 參考來源可以是 Figma、設計圖，或另一個平台的原始碼（網頁 ↔ App 互為標準）。修在 token 或共用元件上，不是修在單一畫面。 |
 | 產出設計落差稽核報告 | `$ui-pixel-align-report` | 兩邊都抽成同一份規格再比對，產出截圖證據、嚴重度、歸屬層級的離線 HTML 報告與 `findings.json`。 |
 | 把重複性流程變成自動化 | `$agent-automation-orchestrate` | 自動化的起始點：建立專案契約，之後用它執行、續跑、查狀態。 |
-| 在 Storybook 專案安裝元件覆蓋率工具 | `$component-coverage-install` | 帶入「UI 圖片/PRD → 覆蓋率報告 → 審查 → 實作」的工具和配套 skills。 |
+| 在 Storybook 專案安裝通用工具頁（覆蓋率、元件時間軸） | `$storybook-tools-install` | 帶入「UI 圖片/PRD → 覆蓋率報告 → 審查 → 實作」工具、Component Timeline 頁面和配套 skills。 |
 | 在其他專案安裝 Figma 清理自動化 | `$design-automation-hub-install` | 安裝 Figma plugin、本機 coordinator 和 figma-cleanup task。 |
 
 ## 每個 Skill 怎麼用
@@ -293,21 +293,28 @@ Use $agent-automation-orchestrate to set up automation for ./apps/web. I want re
 Use $agent-automation-orchestrate to run the build-components task in ./apps/web, with a dry run first.
 ```
 
-### `$component-coverage-install`
+### `$storybook-tools-install`
 
-用途：把 Storybook「Component Coverage Analyzer」工具安裝並綁定到 React + Vite 的 Storybook 專案。
+用途：把一組通用的 Storybook「Tools」頁面安裝並綁定到 React + Vite 的 Storybook 專案。目前包含 Component Coverage Analyzer（元件覆蓋率）和 Component Timeline（元件時間軸）兩個工具，預設全裝，也可以只點名安裝其中一個。
 
 適合情境：
 
 - 想在新專案導入「UI 圖片或 PRD → 覆蓋率報告 → 開發者審查 → 實作」的流程。
+- 想要一頁依 git 歷史呈現「每個元件何時誕生」的 Component Timeline，附 live story 預覽。
 - 需要 Storybook Tools 頁、dev API、檢查腳本和配套的 analyze / implement skills。
-- 要更新既有安裝版本（依 `TEMPLATE_MANIFEST.json` 的版本比對，只覆蓋模板擁有的檔案）。
+- 要更新既有安裝版本（依 `TEMPLATE_MANIFEST.json` 的版本比對，只覆蓋模板擁有的檔案；舊的單工具安裝會升級成多工具佈局）。
 
 範例：
 
 ```text
-Use $component-coverage-install to install the component coverage analyzer into ./apps/web.
+Use $storybook-tools-install to install the Storybook tools suite into ./apps/web.
 ```
+
+```text
+Use $storybook-tools-install to install only the component timeline into ./apps/web.
+```
+
+完整的安裝與使用說明（含 Coverage 覆核流程、Timeline 維運、更新與客製化範圍）：`storybook-tools-install/README.md`。
 
 ### `$design-automation-hub-install`
 

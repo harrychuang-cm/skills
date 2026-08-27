@@ -40,19 +40,19 @@ The review UI SHALL derive the decisions offered for a block from its coverage c
 source: improve-coverage-review-ux
 updated: 2026-08-04
 code:
-  - component-coverage-install/template/scripts/check-component-coverage-preview-contract.mjs
-  - component-coverage-install/template/src/storybook/component-coverage/coverageTypes.ts
-  - component-coverage-install/SKILL.md
-  - component-coverage-install/template/scripts/component-coverage/vite-plugin.mjs
-  - component-coverage-install/template/src/storybook/component-coverage/ReportView.tsx
-  - component-coverage-install/template/src/storybook/component-coverage/component-coverage.css
-  - component-coverage-install/template/skills/component-coverage-analyze/SKILL.md
-  - component-coverage-install/template/src/storybook/component-coverage/CompositionPreview.tsx
-  - component-coverage-install/template/skills/component-coverage-implement/SKILL.md
-  - component-coverage-install/template/scripts/check-component-coverage-reports.mjs
+  - storybook-tools-install/template/scripts/check-component-coverage-preview-contract.mjs
+  - storybook-tools-install/template/src/storybook/component-coverage/coverageTypes.ts
+  - storybook-tools-install/SKILL.md
+  - storybook-tools-install/template/scripts/component-coverage/vite-plugin.mjs
+  - storybook-tools-install/template/src/storybook/component-coverage/ReportView.tsx
+  - storybook-tools-install/template/src/storybook/component-coverage/component-coverage.css
+  - storybook-tools-install/template/skills/component-coverage-analyze/SKILL.md
+  - storybook-tools-install/template/src/storybook/component-coverage/CompositionPreview.tsx
+  - storybook-tools-install/template/skills/component-coverage-implement/SKILL.md
+  - storybook-tools-install/template/scripts/check-component-coverage-reports.mjs
   - .spectra.yaml
-  - component-coverage-install/template/TEMPLATE_MANIFEST.json
-  - component-coverage-install/template/src/stories/tools/ComponentCoverageAnalyzer.stories.tsx
+  - storybook-tools-install/template/TEMPLATE_MANIFEST.json
+  - storybook-tools-install/template/src/stories/tools/ComponentCoverageAnalyzer.stories.tsx
 -->
 
 ---
@@ -80,19 +80,19 @@ A review with decision use-existing SHALL carry an overrideComponentId that name
 source: improve-coverage-review-ux
 updated: 2026-08-04
 code:
-  - component-coverage-install/template/scripts/check-component-coverage-preview-contract.mjs
-  - component-coverage-install/template/src/storybook/component-coverage/coverageTypes.ts
-  - component-coverage-install/SKILL.md
-  - component-coverage-install/template/scripts/component-coverage/vite-plugin.mjs
-  - component-coverage-install/template/src/storybook/component-coverage/ReportView.tsx
-  - component-coverage-install/template/src/storybook/component-coverage/component-coverage.css
-  - component-coverage-install/template/skills/component-coverage-analyze/SKILL.md
-  - component-coverage-install/template/src/storybook/component-coverage/CompositionPreview.tsx
-  - component-coverage-install/template/skills/component-coverage-implement/SKILL.md
-  - component-coverage-install/template/scripts/check-component-coverage-reports.mjs
+  - storybook-tools-install/template/scripts/check-component-coverage-preview-contract.mjs
+  - storybook-tools-install/template/src/storybook/component-coverage/coverageTypes.ts
+  - storybook-tools-install/SKILL.md
+  - storybook-tools-install/template/scripts/component-coverage/vite-plugin.mjs
+  - storybook-tools-install/template/src/storybook/component-coverage/ReportView.tsx
+  - storybook-tools-install/template/src/storybook/component-coverage/component-coverage.css
+  - storybook-tools-install/template/skills/component-coverage-analyze/SKILL.md
+  - storybook-tools-install/template/src/storybook/component-coverage/CompositionPreview.tsx
+  - storybook-tools-install/template/skills/component-coverage-implement/SKILL.md
+  - storybook-tools-install/template/scripts/check-component-coverage-reports.mjs
   - .spectra.yaml
-  - component-coverage-install/template/TEMPLATE_MANIFEST.json
-  - component-coverage-install/template/src/stories/tools/ComponentCoverageAnalyzer.stories.tsx
+  - storybook-tools-install/template/TEMPLATE_MANIFEST.json
+  - storybook-tools-install/template/src/stories/tools/ComponentCoverageAnalyzer.stories.tsx
 -->
 
 ---
@@ -120,19 +120,19 @@ A block whose saved review decision is skip SHALL be rendered in the composition
 source: improve-coverage-review-ux
 updated: 2026-08-04
 code:
-  - component-coverage-install/template/scripts/check-component-coverage-preview-contract.mjs
-  - component-coverage-install/template/src/storybook/component-coverage/coverageTypes.ts
-  - component-coverage-install/SKILL.md
-  - component-coverage-install/template/scripts/component-coverage/vite-plugin.mjs
-  - component-coverage-install/template/src/storybook/component-coverage/ReportView.tsx
-  - component-coverage-install/template/src/storybook/component-coverage/component-coverage.css
-  - component-coverage-install/template/skills/component-coverage-analyze/SKILL.md
-  - component-coverage-install/template/src/storybook/component-coverage/CompositionPreview.tsx
-  - component-coverage-install/template/skills/component-coverage-implement/SKILL.md
-  - component-coverage-install/template/scripts/check-component-coverage-reports.mjs
+  - storybook-tools-install/template/scripts/check-component-coverage-preview-contract.mjs
+  - storybook-tools-install/template/src/storybook/component-coverage/coverageTypes.ts
+  - storybook-tools-install/SKILL.md
+  - storybook-tools-install/template/scripts/component-coverage/vite-plugin.mjs
+  - storybook-tools-install/template/src/storybook/component-coverage/ReportView.tsx
+  - storybook-tools-install/template/src/storybook/component-coverage/component-coverage.css
+  - storybook-tools-install/template/skills/component-coverage-analyze/SKILL.md
+  - storybook-tools-install/template/src/storybook/component-coverage/CompositionPreview.tsx
+  - storybook-tools-install/template/skills/component-coverage-implement/SKILL.md
+  - storybook-tools-install/template/scripts/check-component-coverage-reports.mjs
   - .spectra.yaml
-  - component-coverage-install/template/TEMPLATE_MANIFEST.json
-  - component-coverage-install/template/src/stories/tools/ComponentCoverageAnalyzer.stories.tsx
+  - storybook-tools-install/template/TEMPLATE_MANIFEST.json
+  - storybook-tools-install/template/src/stories/tools/ComponentCoverageAnalyzer.stories.tsx
 -->
 
 ---
@@ -173,19 +173,19 @@ When a reviewer selects use-existing, the review panel SHALL show a search input
 source: improve-coverage-review-ux
 updated: 2026-08-04
 code:
-  - component-coverage-install/template/scripts/check-component-coverage-preview-contract.mjs
-  - component-coverage-install/template/src/storybook/component-coverage/coverageTypes.ts
-  - component-coverage-install/SKILL.md
-  - component-coverage-install/template/scripts/component-coverage/vite-plugin.mjs
-  - component-coverage-install/template/src/storybook/component-coverage/ReportView.tsx
-  - component-coverage-install/template/src/storybook/component-coverage/component-coverage.css
-  - component-coverage-install/template/skills/component-coverage-analyze/SKILL.md
-  - component-coverage-install/template/src/storybook/component-coverage/CompositionPreview.tsx
-  - component-coverage-install/template/skills/component-coverage-implement/SKILL.md
-  - component-coverage-install/template/scripts/check-component-coverage-reports.mjs
+  - storybook-tools-install/template/scripts/check-component-coverage-preview-contract.mjs
+  - storybook-tools-install/template/src/storybook/component-coverage/coverageTypes.ts
+  - storybook-tools-install/SKILL.md
+  - storybook-tools-install/template/scripts/component-coverage/vite-plugin.mjs
+  - storybook-tools-install/template/src/storybook/component-coverage/ReportView.tsx
+  - storybook-tools-install/template/src/storybook/component-coverage/component-coverage.css
+  - storybook-tools-install/template/skills/component-coverage-analyze/SKILL.md
+  - storybook-tools-install/template/src/storybook/component-coverage/CompositionPreview.tsx
+  - storybook-tools-install/template/skills/component-coverage-implement/SKILL.md
+  - storybook-tools-install/template/scripts/check-component-coverage-reports.mjs
   - .spectra.yaml
-  - component-coverage-install/template/TEMPLATE_MANIFEST.json
-  - component-coverage-install/template/src/stories/tools/ComponentCoverageAnalyzer.stories.tsx
+  - storybook-tools-install/template/TEMPLATE_MANIFEST.json
+  - storybook-tools-install/template/src/stories/tools/ComponentCoverageAnalyzer.stories.tsx
 -->
 
 ---
@@ -208,19 +208,19 @@ The review form SHALL show only the panel title and the decision buttons while n
 source: improve-coverage-review-ux
 updated: 2026-08-04
 code:
-  - component-coverage-install/template/scripts/check-component-coverage-preview-contract.mjs
-  - component-coverage-install/template/src/storybook/component-coverage/coverageTypes.ts
-  - component-coverage-install/SKILL.md
-  - component-coverage-install/template/scripts/component-coverage/vite-plugin.mjs
-  - component-coverage-install/template/src/storybook/component-coverage/ReportView.tsx
-  - component-coverage-install/template/src/storybook/component-coverage/component-coverage.css
-  - component-coverage-install/template/skills/component-coverage-analyze/SKILL.md
-  - component-coverage-install/template/src/storybook/component-coverage/CompositionPreview.tsx
-  - component-coverage-install/template/skills/component-coverage-implement/SKILL.md
-  - component-coverage-install/template/scripts/check-component-coverage-reports.mjs
+  - storybook-tools-install/template/scripts/check-component-coverage-preview-contract.mjs
+  - storybook-tools-install/template/src/storybook/component-coverage/coverageTypes.ts
+  - storybook-tools-install/SKILL.md
+  - storybook-tools-install/template/scripts/component-coverage/vite-plugin.mjs
+  - storybook-tools-install/template/src/storybook/component-coverage/ReportView.tsx
+  - storybook-tools-install/template/src/storybook/component-coverage/component-coverage.css
+  - storybook-tools-install/template/skills/component-coverage-analyze/SKILL.md
+  - storybook-tools-install/template/src/storybook/component-coverage/CompositionPreview.tsx
+  - storybook-tools-install/template/skills/component-coverage-implement/SKILL.md
+  - storybook-tools-install/template/scripts/check-component-coverage-reports.mjs
   - .spectra.yaml
-  - component-coverage-install/template/TEMPLATE_MANIFEST.json
-  - component-coverage-install/template/src/stories/tools/ComponentCoverageAnalyzer.stories.tsx
+  - storybook-tools-install/template/TEMPLATE_MANIFEST.json
+  - storybook-tools-install/template/src/stories/tools/ComponentCoverageAnalyzer.stories.tsx
 -->
 
 ---
@@ -242,17 +242,17 @@ The template release SHALL keep the review contract mirrors synchronized in the 
 source: improve-coverage-review-ux
 updated: 2026-08-04
 code:
-  - component-coverage-install/template/scripts/check-component-coverage-preview-contract.mjs
-  - component-coverage-install/template/src/storybook/component-coverage/coverageTypes.ts
-  - component-coverage-install/SKILL.md
-  - component-coverage-install/template/scripts/component-coverage/vite-plugin.mjs
-  - component-coverage-install/template/src/storybook/component-coverage/ReportView.tsx
-  - component-coverage-install/template/src/storybook/component-coverage/component-coverage.css
-  - component-coverage-install/template/skills/component-coverage-analyze/SKILL.md
-  - component-coverage-install/template/src/storybook/component-coverage/CompositionPreview.tsx
-  - component-coverage-install/template/skills/component-coverage-implement/SKILL.md
-  - component-coverage-install/template/scripts/check-component-coverage-reports.mjs
+  - storybook-tools-install/template/scripts/check-component-coverage-preview-contract.mjs
+  - storybook-tools-install/template/src/storybook/component-coverage/coverageTypes.ts
+  - storybook-tools-install/SKILL.md
+  - storybook-tools-install/template/scripts/component-coverage/vite-plugin.mjs
+  - storybook-tools-install/template/src/storybook/component-coverage/ReportView.tsx
+  - storybook-tools-install/template/src/storybook/component-coverage/component-coverage.css
+  - storybook-tools-install/template/skills/component-coverage-analyze/SKILL.md
+  - storybook-tools-install/template/src/storybook/component-coverage/CompositionPreview.tsx
+  - storybook-tools-install/template/skills/component-coverage-implement/SKILL.md
+  - storybook-tools-install/template/scripts/check-component-coverage-reports.mjs
   - .spectra.yaml
-  - component-coverage-install/template/TEMPLATE_MANIFEST.json
-  - component-coverage-install/template/src/stories/tools/ComponentCoverageAnalyzer.stories.tsx
+  - storybook-tools-install/template/TEMPLATE_MANIFEST.json
+  - storybook-tools-install/template/src/stories/tools/ComponentCoverageAnalyzer.stories.tsx
 -->

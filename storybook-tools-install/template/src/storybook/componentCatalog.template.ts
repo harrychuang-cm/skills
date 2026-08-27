@@ -2,7 +2,7 @@
  * Component catalog — the Component Coverage Analyzer's source of truth about
  * this project's reusable components.
  *
- * GENERATED PER PROJECT by the component-coverage-install skill: this file is
+ * GENERATED PER PROJECT by the storybook-tools-install skill: this file is
  * a skeleton, not a verbatim template. The installer scans the target
  * project's components and stories, replaces the example entries below with
  * real ones, and saves the result as `src/storybook/componentCatalog.ts`.

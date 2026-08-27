@@ -1050,12 +1050,12 @@
           note: "修的順序是 token → 共用元件 → 組裝 → 這個畫面，不會直接貼一段只能用一次的樣式。",
         },
         {
-          tag: "$component-coverage-install",
+          tag: "$storybook-tools-install",
           group: "裝工具進專案",
-          when: "我想知道這個專案的元件被用得夠不夠",
-          give: "目標專案路徑（React + Vite 的 Storybook 專案）",
-          get: "Storybook 裡的覆蓋率工具頁、檢查腳本、配套 skill",
-          note: "裝好之後，走「UI 圖或需求 → 覆蓋率報告 → 審查 → 實作」這條流程。",
+          when: "我想在 Storybook 裡加上通用工具頁（元件覆蓋率、元件時間軸）",
+          give: "目標專案路徑（React + Vite 的 Storybook 專案），可指定只裝其中一個工具",
+          get: "Storybook 裡的覆蓋率工具頁、元件時間軸頁、檢查腳本、配套 skill",
+          note: "覆蓋率走「UI 圖或需求 → 覆蓋率報告 → 審查 → 實作」；時間軸依 git 歷史呈現每個元件何時誕生。",
         },
         {
           tag: "$design-automation-hub-install",
