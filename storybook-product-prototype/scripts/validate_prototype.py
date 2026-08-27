@@ -901,8 +901,14 @@ TRANSITION_BACK_BEHAVIOR_VALUES = {"pop", "popToRoot", "dismiss", "none"}
 def app_target_in_scope(handoff_text: str) -> bool:
     """True when Target Surfaces declares an app surface that is in scope."""
     section = extract_doc_section(handoff_text, "Target Surfaces")
+    # The surface label is routinely bolded (`- **App**: ...`). Without the
+    # optional emphasis wrapper the match fails, app_target_in_scope returns
+    # False, and the presentation check below is skipped in silence — the
+    # handoff looks clean precisely because nothing was checked.
     match = re.search(
-        r"^\s*[-*]\s*App\s*:\s*(.+)$", section, re.MULTILINE | re.IGNORECASE
+        r"^\s*[-*]\s+(?:\*{1,2}|_{1,2})?App(?:\*{1,2}|_{1,2})?\s*:\s*(.+)$",
+        section,
+        re.MULTILINE | re.IGNORECASE,
     )
     if not match:
         return False

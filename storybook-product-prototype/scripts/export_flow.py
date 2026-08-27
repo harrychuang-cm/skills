@@ -45,6 +45,7 @@ PARAM_TYPE_TO_SWIFT = {"string": "String", "number": "Double", "boolean": "Bool"
 PARAM_TYPE_TO_KOTLIN = {"string": "String", "number": "Double", "boolean": "Boolean"}
 
 PRESENTATION_ORDER = ("push", "modal", "sheet", "fullscreen", "replace")
+UNSPECIFIED_PRESENTATION = "unspecified (return edge — follow backBehavior)"
 
 
 def to_pascal(route_id: str) -> str:
@@ -144,9 +145,18 @@ def build_flow_document(flow_text: str, feature: str) -> dict:
 
 
 def group_transitions_by_presentation(transitions: list[dict]) -> list[tuple[str, list[dict]]]:
+    """Group edges by presentation, keeping unspecified ones unasserted.
+
+    A `return` edge may legitimately carry no presentation — the contract only
+    requires it on non-`return` edges. Defaulting those to "push" would tell a
+    native receiver to push a destination for what is actually a dismiss or a
+    pop, so they get their own bucket labelled as unspecified instead.
+    """
     grouped: dict[str, list[dict]] = {}
     for transition in transitions:
-        grouped.setdefault(transition.get("presentation", "push"), []).append(transition)
+        grouped.setdefault(
+            transition.get("presentation") or UNSPECIFIED_PRESENTATION, []
+        ).append(transition)
     ordered = [(key, grouped[key]) for key in PRESENTATION_ORDER if key in grouped]
     ordered.extend(
         (key, value) for key, value in sorted(grouped.items()) if key not in PRESENTATION_ORDER
