@@ -1,10 +1,4 @@
-# implementation-validation Specification
-
-## Purpose
-
-TBD - created by archiving change 'prototype-production-readiness'. Update Purpose after archive.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Implementation map contract
 
@@ -19,20 +13,6 @@ The frontend-product-implementation verification-reporting reference SHALL requi
 
 - **WHEN** the handoff provides no component inventory
 - **THEN** the Component Map section contains `- source: none` and no table rows, and the map still satisfies the contract
-
-
-<!-- @trace
-source: add-component-reuse-map
-updated: 2026-08-28
-code:
-  - frontend-product-implementation/references/verification-reporting.md
-  - native-product-implementation/references/implementation-workflow.md
-  - native-product-implementation/SKILL.md
-  - frontend-product-implementation/references/implementation-workflow.md
-  - frontend-product-implementation/SKILL.md
-  - frontend-product-implementation/scripts/validate_implementation.py
-  - native-product-implementation/references/verification-reporting.md
--->
 
 ---
 ### Requirement: Machine audit of the implementation map
@@ -73,16 +53,3 @@ A stdlib-only script, frontend-product-implementation/scripts/validate_implement
 | reused row Evidence path absent from repo | error |
 | created row with empty Notes | error |
 | `- source: none` with no rows | pass |
-
-<!-- @trace
-source: add-component-reuse-map
-updated: 2026-08-28
-code:
-  - frontend-product-implementation/references/verification-reporting.md
-  - native-product-implementation/references/implementation-workflow.md
-  - native-product-implementation/SKILL.md
-  - frontend-product-implementation/references/implementation-workflow.md
-  - frontend-product-implementation/SKILL.md
-  - frontend-product-implementation/scripts/validate_implementation.py
-  - native-product-implementation/references/verification-reporting.md
--->
