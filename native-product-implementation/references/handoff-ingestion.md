@@ -42,7 +42,7 @@ The handoff ships platform-neutral carriers; read them instead of re-deriving th
 | `docs/TOKENS.json` | Token values and their layered names (W3C DTCG). The prototype CSS is not your token source. |
 | `fixtures/*.json` | Deterministic fixture data for mock adapters, loadable directly on both platforms. |
 | `DATA_SPEC.md` JSON Schema blocks | Entity/request/response/error shapes for generating `Codable` or `kotlinx.serialization` types. |
-| `docs/flow.json` when present | Routes, nodes, and transitions with navigation semantics and no layout fields. |
+| `docs/flow.json` when present | Routes, nodes, and transitions with navigation semantics and no layout fields. Consumers MUST tolerate the optional top-level `viewport` object (`formFactor`, `width`, `height`) and optional per-route `viewport` overrides — the review viewport the prototype was designed at; absent means phone 375x812. |
 | `docs/HANDOFF_MANIFEST.json` | The consumed handoff version and drift detection. |
 
 When a carrier is absent, fall back to the corresponding doc section and record the fallback in the implementation map.

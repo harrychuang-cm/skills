@@ -11,7 +11,7 @@ The default story should:
 - Attach the meta object to `parameters.prototype`.
 - Support `prototypeFlowPreview=true` for compact iframe preview styling.
 - Support `prototypeRoute=<route-id>` so UI Flow route cards can render the correct route.
-- Add `data-prototype-route-preview="true"` to the route preview shell for template-compatible iframe measurement.
+- Add `data-prototype-route-preview="true"` to the route preview shell for template-compatible iframe measurement. Width is declared (the shell sets the preview-size CSS variables inline from `flow.viewport`, per-route override first) while height is still measured from the rendered content — declaration and measurement split the two axes.
 - Keep `data-prototype-root="true"` on the prototype root for backward-compatible viewers.
 
 The Static Flow story should:
@@ -152,3 +152,5 @@ The bundled addon reads `parameters.prototype` and provides a Storybook toolbar 
 - `Open Static Flow`: when `parameters.prototype.figmaExport.flowStoryId` is present, open the Figma-ready static flow story that uses the same saved layout.
 
 UI Flow route cards also carry a compact component strip/badge sourced from the same `meta.components` data. The `Components` mode and route-card strip ship with the bundled addon: an existing install picks them up by re-running `install_prototype_inspector.mjs --force`.
+
+Preview-size resolution for inspector installs: each card resolves `route.viewport` → `flow.viewport` → the form-factor tier CSS tokens → the built-in 375x812 constants. The tier tokens are read on the `.prototype-inspector` element first and `:root` second, so both the documented `--sbt-sys-size-viewport-*` bridge and legacy `:root`-level overrides work. Compatibility notes: the compact pair (`--prototype-inspector-viewport-compact-width/height`) keeps its phone semantics and remains the project-global default; the medium (`768px/1024px`) and wide (`1280px/800px`) pairs serve tablet and desktop form factors; the inspector sets `--prototype-inspector-active-viewport-width/height` inline per prototype so stylesheet layout caps follow the active prototype without redefining `compact`. Cards of prototypes that declare a viewport show a formFactor badge (for example `desktop · 1280x800`); legacy prototypes show none and keep their exact pre-viewport behavior.

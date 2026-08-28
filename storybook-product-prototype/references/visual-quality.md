@@ -25,7 +25,17 @@ All design values enter through one alias block on the feature root classes (the
 - Inputs and selects: bordered, focus ring, disabled state.
 - Loading, empty, and error state blocks styled and reachable through fixtures (`state` field on route content).
 - Transitions animate transform/opacity/background at 120-180ms, wrapped in `@media (prefers-reduced-motion: no-preference)`.
-- At least one responsive adjustment (e.g. a `min-width: 768px` block) when the surface targets web.
+- Layout verified at the declared viewport width (`flow.viewport`): phone prototypes keep the 720px wide-screen cap, tablet/desktop prototypes go fluid, and at least one responsive adjustment (e.g. a `min-width: 768px` block) exists for web-surface prototypes.
+
+## Desktop Minimum Bar
+
+Required in addition to the App-Shell Minimum Bar when the declared formFactor is `desktop` (and recommended for `tablet`):
+
+- A maximum content width with explicit gutters — desktop screens are never a phone column stretched to 1280px, and never edge-to-edge text.
+- Hover states on every interactive element (desktop is pointer-first), alongside the `:focus-visible` ring the App-Shell bar already requires.
+- Wide-surface density: tables, multi-column layouts, or side-by-side panels where the product calls for them — information density is the reason the desktop viewport was declared.
+- Full keyboard reachability: every action reachable by Tab order, with a visible focus path across columns and panels.
+- Overflow behavior decided per region (scroll, wrap, truncate with title) instead of letting the browser pick.
 
 ## Hardcoded Value Rule
 

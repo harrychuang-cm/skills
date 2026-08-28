@@ -5,7 +5,12 @@ Reads a prototype folder's ``*PrototypeFlow.ts`` and writes ``docs/flow.json``:
 the routes, flow-only nodes, and transitions with their navigation semantics
 (``params``, ``deepLink``, ``presentation``, ``backBehavior``) and without the
 canvas layout fields (``flowPosition``, ``sourceAnchor``, ``flowLine``), which
-mean nothing outside the Storybook UI Flow board.
+mean nothing outside the Storybook UI Flow board. When the flow declares a
+viewport, the document carries it too — a top-level ``viewport`` object
+(``formFactor``, ``width``, ``height``) plus per-route ``viewport`` overrides.
+The viewport is product semantics (which device class the flow was designed
+and reviewed at), not canvas layout, so it is exported rather than stripped;
+flows without one omit the key entirely and consumers assume phone 375x812.
 
 With ``--swift`` / ``--kotlin`` it also generates navigation skeletons — a Swift
 route enum and a Kotlin sealed class — so a native implementation starts from
@@ -28,6 +33,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from validate_prototype import (  # noqa: E402
     extract_array_body,
+    extract_flow_viewport,
+    extract_route_viewport,
     extract_string_property,
     extract_transition_objects,
     find_one,
@@ -100,6 +107,13 @@ def build_flow_document(flow_text: str, feature: str) -> dict:
         params = extract_params(obj)
         if params:
             route["params"] = params
+        route_viewport = extract_route_viewport(obj)
+        if (
+            route_viewport
+            and route_viewport["width"] is not None
+            and route_viewport["height"] is not None
+        ):
+            route["viewport"] = route_viewport
         routes.append(route)
 
     nodes: list[dict] = []
@@ -136,13 +150,17 @@ def build_flow_document(flow_text: str, feature: str) -> dict:
                 transition[key] = value
         transitions.append(transition)
 
-    return {
+    document = {
         "flowSchemaVersion": FLOW_SCHEMA_VERSION,
         "feature": feature,
         "routes": routes,
         "nodes": nodes,
         "transitions": transitions,
     }
+    flow_viewport = extract_flow_viewport(flow_text)
+    if flow_viewport and all(value is not None for value in flow_viewport.values()):
+        document["viewport"] = flow_viewport
+    return document
 
 
 def group_transitions_by_presentation(transitions: list[dict]) -> list[tuple[str, list[dict]]]:

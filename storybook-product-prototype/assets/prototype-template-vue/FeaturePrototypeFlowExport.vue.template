@@ -3,12 +3,14 @@ import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 
 import {
   getPrototypeFlowLayoutStorageKey,
+  getPrototypeFlowLayoutViewportSignature,
   readPrototypeFlowLayoutPositions,
   type PrototypeFlowLayoutPositions,
 } from "../prototypeFlowLayout";
 import "./__FEATURE_KEBAB__.css";
 import __FEATURE_PASCAL__ from "./__FEATURE_PASCAL__.vue";
 import {
+  __FEATURE_CAMEL__Flow,
   __FEATURE_CAMEL__FlowNodes,
   __FEATURE_CAMEL__Routes,
   __FEATURE_CAMEL__Transitions,
@@ -19,12 +21,15 @@ import {
 } from "./__FEATURE_CAMEL__Flow";
 import { __FEATURE_CAMEL__Meta } from "./__FEATURE_CAMEL__Meta";
 
-const routePreviewWidth = 375;
+// Preview size comes from the flow contract at runtime; hand-edits to
+// Flow.viewport apply without re-scaffolding. Absent viewport means phone.
+const flowViewport = __FEATURE_CAMEL__Flow.viewport ?? {
+  formFactor: "phone" as const,
+  height: 812,
+  width: 375,
+};
 const routeHeaderHeight = 64;
-const routePreviewHeight = 812;
 const routeFrameSize = 2;
-const routeWidth = routePreviewWidth + routeFrameSize;
-const routeHeight = routeHeaderHeight + routePreviewHeight + routeFrameSize;
 const decisionNodeSize = 220;
 const stateNodeWidth = 308;
 const stateNodeHeight = 124;
@@ -85,14 +90,67 @@ function readStoredFlowExportLayoutPositions(): FlowExportLayoutPositions {
   return readPrototypeFlowLayoutPositions(
     getFlowExportStorageKey(),
     flowExportNodeIds,
+    getPrototypeFlowLayoutViewportSignature(flowViewport),
   );
 }
 
+function getRoutePreviewSize(route: __FEATURE_PASCAL__Route) {
+  return {
+    height: route.viewport?.height ?? flowViewport.height,
+    width: route.viewport?.width ?? flowViewport.width,
+  };
+}
+
+function getRouteFrameSize(route: __FEATURE_PASCAL__Route) {
+  const preview = getRoutePreviewSize(route);
+
+  return {
+    height: routeHeaderHeight + preview.height + routeFrameSize,
+    width: preview.width + routeFrameSize,
+  };
+}
+
+const fallbackRouteFrame = {
+  height: routeHeaderHeight + flowViewport.height + routeFrameSize,
+  width: flowViewport.width + routeFrameSize,
+};
+// Derived gutters reproduce the pre-viewport 560x980 pitch exactly at phone.
+const fallbackColumnPitch = fallbackRouteFrame.width + 183;
+const fallbackRowPitch = fallbackRouteFrame.height + 102;
+// Frames this wide would overlap in the 3-column grid; use one row per flowGroup.
+const wideFallbackThreshold = 900;
+const wideFallbackGap = 160;
+
 function getFallbackPosition(index: number) {
   return {
-    x: (index % 3) * 560,
-    y: Math.floor(index / 3) * 980,
+    x: (index % 3) * fallbackColumnPitch,
+    y: Math.floor(index / 3) * fallbackRowPitch,
   };
+}
+
+function getWideFallbackPositions() {
+  const positions = new Map<
+    __FEATURE_PASCAL__FlowTargetId,
+    { x: number; y: number }
+  >();
+  const groupOrder: string[] = [];
+  const groupColumns = new Map<string, number>();
+
+  for (const entry of [...__FEATURE_CAMEL__Routes, ...__FEATURE_CAMEL__FlowNodes]) {
+    const group = entry.flowGroup ?? "flow";
+    if (!groupColumns.has(group)) {
+      groupColumns.set(group, 0);
+      groupOrder.push(group);
+    }
+    const column = groupColumns.get(group) ?? 0;
+    groupColumns.set(group, column + 1);
+    positions.set(entry.id, {
+      x: column * (fallbackRouteFrame.width + wideFallbackGap),
+      y: groupOrder.indexOf(group) * (fallbackRouteFrame.height + wideFallbackGap),
+    });
+  }
+
+  return positions;
 }
 
 function getFlowNodeSize(node: __FEATURE_PASCAL__FlowNode) {
@@ -110,17 +168,26 @@ function getFlowNodeSize(node: __FEATURE_PASCAL__FlowNode) {
 }
 
 function getItems(layoutPositions: FlowExportLayoutPositions): FlowItem[] {
+  const wideFallbackPositions =
+    fallbackRouteFrame.width >= wideFallbackThreshold
+      ? getWideFallbackPositions()
+      : null;
+
   return [
     ...__FEATURE_CAMEL__Routes.map((route, index) => {
+      const frame = getRouteFrameSize(route);
       const position =
-        layoutPositions[route.id] ?? route.flowPosition ?? getFallbackPosition(index);
+        layoutPositions[route.id] ??
+        route.flowPosition ??
+        wideFallbackPositions?.get(route.id) ??
+        getFallbackPosition(index);
 
       return {
-        height: routeHeight,
+        height: frame.height,
         id: route.id,
         kind: "route" as const,
         route,
-        width: routeWidth,
+        width: frame.width,
         x: position.x,
         y: position.y,
       };
@@ -132,6 +199,7 @@ function getItems(layoutPositions: FlowExportLayoutPositions): FlowItem[] {
       const position =
         layoutPositions[node.id as __FEATURE_PASCAL__FlowTargetId] ??
         node.flowPosition ??
+        wideFallbackPositions?.get(node.id) ??
         getFallbackPosition(index + __FEATURE_CAMEL__Routes.length);
 
       return {
@@ -421,8 +489,8 @@ onBeforeUnmount(() => {
     :style="{
       '--prototype-flow-height': `${canvas.height}px`,
       '--prototype-flow-route-header-height': `${routeHeaderHeight}px`,
-      '--prototype-flow-route-preview-height': `${routePreviewHeight}px`,
-      '--prototype-flow-route-preview-width': `${routePreviewWidth}px`,
+      '--prototype-flow-route-preview-height': `${flowViewport.height}px`,
+      '--prototype-flow-route-preview-width': `${flowViewport.width}px`,
       '--prototype-flow-width': `${canvas.width}px`,
     }"
   >
@@ -470,6 +538,12 @@ onBeforeUnmount(() => {
           '--prototype-flow-item-width': `${item.width}px`,
           '--prototype-flow-item-x': `${itemMap.get(item.id)!.x}px`,
           '--prototype-flow-item-y': `${itemMap.get(item.id)!.y}px`,
+          ...(item.route
+            ? {
+                '--prototype-flow-route-preview-height': `${getRoutePreviewSize(item.route).height}px`,
+                '--prototype-flow-route-preview-width': `${getRoutePreviewSize(item.route).width}px`,
+              }
+            : {}),
         }"
       >
         <template v-if="item.route">
@@ -478,6 +552,12 @@ onBeforeUnmount(() => {
               <span>{{ item.route.flowGroup ?? item.route.navigationId }}</span>
               <h2>{{ item.route.title }}</h2>
             </div>
+            <span
+              class="__FEATURE_CSS_CLASS__-flow-export__route-viewport"
+              data-figma-text-auto-width="true"
+            >
+              {{ flowViewport.formFactor }} · {{ getRoutePreviewSize(item.route).width }}x{{ getRoutePreviewSize(item.route).height }}
+            </span>
             <code>{{ item.route.id }}</code>
           </header>
           <div class="__FEATURE_CSS_CLASS__-flow-export__route-preview">

@@ -61,7 +61,11 @@ State whether the production target is:
 - shared component package used by web and app
 - unknown or pending decision
 
+Add a required `Primary viewport` line mirroring `flow.viewport` — formFactor plus size, for example `Primary viewport: desktop 1280x800`. The prose here mirrors the typed declarations (`meta.surface.target` and `flow.viewport`); `validate_prototype.py` reads the typed fields first and falls back to this section's prose only for legacy prototypes that predate them.
+
 If the target is unknown, write the safest known assumptions and list the blocking decision in `Open Product Decisions`.
+
+Known follow-up for desktop prototypes composing storybook-template components: several `tokens-comp.css` component tokens still alias `--sbt-sys-size-viewport-compact-width`, so wide components (tables, calendars, order books) stay capped at 375px until that token pass lands — note affected regions in `Open Product Decisions` when it matters.
 
 ## Prototype To Frontend Map
 
@@ -113,7 +117,7 @@ Document web-specific needs when the surface may ship on web:
 
 - URL route, query params, and deep-link behavior
 - rendering mode when known: SPA, SSR, SSG, server components, or embedded widget
-- responsive breakpoints and layout changes
+- responsive breakpoints and layout changes, using the declared formFactor (`flow.viewport`) as the baseline the prototype was reviewed at — breakpoints describe how production departs from that baseline
 - keyboard behavior, focus management, and ARIA requirements
 - browser storage, cache, or session behavior
 - analytics events and feature flag exposure

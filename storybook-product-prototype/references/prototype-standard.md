@@ -37,7 +37,7 @@ Adapt the root path if the project uses `src/screens`, `app`, `packages/ui`, or 
 ## Document Responsibilities
 
 - `PRD.md`: product problem, users, goals, non-goals, journeys, requirements, AI implementation scope, dependencies.
-- `FLOW_SPEC.md`: route ids, flow-only nodes, transitions, triggers, state rules, navigation mappings.
+- `FLOW_SPEC.md`: route ids, flow-only nodes, transitions, triggers, state rules, navigation mappings, and the declared primary viewport (`flow.viewport`).
 - `UI_SPEC.md`: shell layout, composition, visual states, interaction rules, responsive behavior, accessibility, design-system constraints, component map with import paths, component gap list, token binding.
 - `DATA_SPEC.md`: deterministic fixtures, field meanings, data invariants, API replacement points.
 - `PRODUCTION_HANDOFF.md`: web/app target surfaces, prototype-to-frontend mapping, reusable boundaries, API/data contracts, integration ownership, handoff acceptance, open decisions.
@@ -77,4 +77,5 @@ Adapt the root path if the project uses `src/screens`, `app`, `packages/ui`, or 
 - `PRODUCTION_HANDOFF.md` `Review Status` is `confirmed` by the team demo review before the docs are used as an implementation brief.
 - Team-confirmed, recurring gap components are promoted into the hub's shared component library, or recorded as `local` promotion candidates with file paths.
 - Storybook route previews support `prototypeRoute`, expose `data-prototype-route-preview`, and keep `data-prototype-root`.
+- `flow.viewport` declares the primary review viewport and `meta.surface.target` the platform decision; every renderer derives preview sizes from the flow contract at runtime.
 - Static Flow story uses the same `parameters.prototype` and saved `prototypeFlowLayout.ts` layout as the Storybook UI Flow runtime.

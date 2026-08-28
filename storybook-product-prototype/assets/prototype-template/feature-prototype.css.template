@@ -76,8 +76,8 @@
   display: grid;
   box-sizing: border-box;
   gap: var(--proto-space-4);
-  inline-size: min(100%, var(--prototype-flow-route-preview-width, 375px));
-  min-block-size: var(--prototype-flow-route-preview-height, 812px);
+  inline-size: min(100%, var(--prototype-flow-route-preview-width, __VIEWPORT_WIDTH__px));
+  min-block-size: var(--prototype-flow-route-preview-height, __VIEWPORT_HEIGHT__px);
   margin-inline: auto;
   padding: var(--proto-space-4);
   background: var(--proto-surface);
@@ -340,11 +340,12 @@
   }
 }
 
-/* Responsive: widen the shell when the surface targets web. */
+/* Responsive: widen the shell on wide screens. Phone scaffolds keep the
+   720px cap; tablet/desktop scaffolds go fluid (__SHELL_WIDE_CAP__). */
 @media (min-width: 768px) {
   .__FEATURE_CSS_CLASS__:not(.__FEATURE_CSS_CLASS__--flow-preview)
     .__FEATURE_CSS_CLASS____shell {
-    inline-size: min(100%, 720px);
+    inline-size: min(100%, __SHELL_WIDE_CAP__);
   }
 }
 
@@ -515,6 +516,18 @@
   color: var(--proto-text-muted);
   font-size: var(--proto-font-xs-size);
   line-height: var(--proto-font-xs-line);
+}
+
+.__FEATURE_CSS_CLASS__-flow-export__route-viewport {
+  flex-shrink: 0;
+  padding: 2px var(--proto-space-2);
+  color: var(--proto-text-muted);
+  font-size: var(--proto-font-xs-size);
+  line-height: var(--proto-font-xs-line);
+  white-space: nowrap;
+  background: var(--proto-surface);
+  border: 1px solid var(--proto-border);
+  border-radius: var(--proto-radius-sm);
 }
 
 .__FEATURE_CSS_CLASS__-flow-export__route-preview {

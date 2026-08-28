@@ -2,11 +2,20 @@
 """Smoke test: scaffold a prototype per framework and validate the result.
 
 Runs scaffold_prototype.py with an explicit --framework value for react and
-vue, then runs validate_prototype.py on each produced folder. Fails when a
-round produces files of the other framework's component format, when expected
-output files are missing, when the validator misclassifies a folder, when
-missing-file errors occur, or when the vue round's validator output is not
-equivalent to the react round's baseline.
+vue, then runs validate_prototype.py on each produced folder, and repeats the
+matrix with viewport rounds (--viewport desktop, --viewport tablet,
+--viewport 1440x900). Fails when a round produces files of the other
+framework's component format, when expected output files are missing, when
+the validator misclassifies a folder, when missing-file errors occur, when
+the vue round's validator output is not equivalent to the react round's
+baseline, when the no-flags round deviates from the phone-default baseline
+(flow viewport phone 375x812, meta surface web, 720px shell wide cap), when a
+viewport round's generated flow does not declare the expected formFactor and
+dimensions or fails validation, when the half-converted fixture does not trip
+its warning, when flow.json viewport emission is wrong (present for a
+declaring flow, absent for a legacy one), or when the inspector runtime
+copies (preview.js, prototype-inspector.css) differ between the skill asset
+and the design-system-to-storybook storybook-template .storybook copy.
 """
 
 from __future__ import annotations
@@ -53,6 +62,21 @@ EXPECTED_FRAMEWORK_FILES = {
 
 FORBIDDEN_COMPONENT_SUFFIX = {"react": ".vue", "vue": ".tsx"}
 FRAMEWORK_WORDING = {"react": "*Prototype.tsx", "vue": "*Prototype.vue"}
+
+FLOW_FILE_NAME = "portfolioAlertsPrototypeFlow.ts"
+META_FILE_NAME = "portfolioAlertsPrototypeMeta.ts"
+CSS_FILE_NAME = "portfolio-alerts-prototype.css"
+
+# (round key, extra scaffold args, expected formFactor/width/height)
+VIEWPORT_ROUNDS = [
+    ("desktop", ["--viewport", "desktop"], ("desktop", 1280, 800)),
+    ("tablet", ["--viewport", "tablet"], ("tablet", 768, 1024)),
+    ("custom-1440x900", ["--viewport", "1440x900"], ("desktop", 1440, 900)),
+]
+
+# Inspector runtime files that must stay byte-identical between the skill
+# asset and the storybook-template .storybook copy.
+INSPECTOR_COPY_FILES = ("preview.js", "prototype-inspector.css")
 
 
 def run_round(framework: str, base_dir: Path) -> tuple[list[str], int, str]:
@@ -138,8 +162,252 @@ def run_round(framework: str, base_dir: Path) -> tuple[list[str], int, str]:
     return failures, validate.returncode, output
 
 
+def check_phone_baseline(prototype_dir: Path, round_label: str) -> list[str]:
+    """The no-flags round must keep the phone-default template state."""
+    failures: list[str] = []
+    flow_text = (prototype_dir / FLOW_FILE_NAME).read_text()
+    for needle in ('formFactor: "phone"', "width: 375", "height: 812"):
+        if needle not in flow_text:
+            failures.append(
+                f"{round_label}: no-flags flow deviates from the phone baseline "
+                f"— missing {needle!r} in {FLOW_FILE_NAME}"
+            )
+    meta_text = (prototype_dir / META_FILE_NAME).read_text()
+    if 'target: "web"' not in meta_text:
+        failures.append(
+            f"{round_label}: no-flags meta does not declare surface target web "
+            f"in {META_FILE_NAME}"
+        )
+    css_text = (prototype_dir / CSS_FILE_NAME).read_text()
+    for needle in ("375px", "812px", "min(100%, 720px)"):
+        if needle not in css_text:
+            failures.append(
+                f"{round_label}: no-flags stylesheet deviates from the phone "
+                f"baseline — missing {needle!r} in {CSS_FILE_NAME}"
+            )
+    return failures
+
+
+def run_viewport_round(
+    framework: str,
+    base_dir: Path,
+    round_key: str,
+    extra_args: list[str],
+    expected: tuple[str, int, int],
+) -> list[str]:
+    """Scaffold with a viewport flag, assert declared values, validate clean."""
+    failures: list[str] = []
+    label = f"{framework}/{round_key}"
+    form_factor, width, height = expected
+    target_root = base_dir / framework / round_key / "src" / "pages" / "prototypes"
+    target_root.mkdir(parents=True)
+
+    scaffold = subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPTS_DIR / "scaffold_prototype.py"),
+            FEATURE_NAME,
+            "--target-root",
+            str(target_root),
+            "--framework",
+            framework,
+            *extra_args,
+        ],
+        capture_output=True,
+        text=True,
+    )
+    if scaffold.returncode != 0:
+        failures.append(
+            f"{label}: scaffold failed with exit {scaffold.returncode}: "
+            f"{scaffold.stderr.strip() or scaffold.stdout.strip()}"
+        )
+        return failures
+    if f"viewport: {form_factor} {width}x{height}" not in scaffold.stdout:
+        failures.append(
+            f"{label}: scaffold summary did not report "
+            f"'viewport: {form_factor} {width}x{height}'"
+        )
+
+    prototype_dir = target_root / PROTOTYPE_DIR_NAME
+    flow_text = (prototype_dir / FLOW_FILE_NAME).read_text()
+    for needle in (
+        f'formFactor: "{form_factor}"',
+        f"width: {width}",
+        f"height: {height}",
+    ):
+        if needle not in flow_text:
+            failures.append(
+                f"{label}: generated flow does not declare {needle!r}"
+            )
+
+    validate = subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPTS_DIR / "validate_prototype.py"),
+            str(prototype_dir),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    if validate.returncode != 0:
+        failures.append(
+            f"{label}: validator failed with exit {validate.returncode}: "
+            f"{validate.stdout.strip()}"
+        )
+    return failures
+
+
+def check_viewport_contracts() -> list[str]:
+    """flow.json viewport emission and the half-converted warning."""
+    import json
+    import re
+
+    failures: list[str] = []
+    with tempfile.TemporaryDirectory(prefix="viewport-contract-") as temp_dir:
+        base = Path(temp_dir)
+        target_root = base / "src" / "pages" / "prototypes"
+        target_root.mkdir(parents=True)
+        scaffold = subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPTS_DIR / "scaffold_prototype.py"),
+                FEATURE_NAME,
+                "--target-root",
+                str(target_root),
+                "--framework",
+                "react",
+                "--viewport",
+                "desktop",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        if scaffold.returncode != 0:
+            failures.append(
+                f"viewport contracts: desktop scaffold failed: "
+                f"{scaffold.stderr.strip() or scaffold.stdout.strip()}"
+            )
+            return failures
+        prototype_dir = target_root / PROTOTYPE_DIR_NAME
+
+        export = subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPTS_DIR / "export_flow.py"),
+                str(prototype_dir),
+            ],
+            capture_output=True,
+            text=True,
+        )
+        if export.returncode != 0:
+            failures.append("viewport contracts: export_flow.py failed on desktop scaffold")
+            return failures
+        document = json.loads((prototype_dir / "docs" / "flow.json").read_text())
+        if document.get("viewport") != {
+            "formFactor": "desktop",
+            "width": 1280,
+            "height": 800,
+        }:
+            failures.append(
+                "viewport contracts: desktop flow.json viewport is "
+                f"{document.get('viewport')!r}, expected desktop 1280x800"
+            )
+        if document.get("flowSchemaVersion") != 1:
+            failures.append("viewport contracts: flowSchemaVersion changed from 1")
+
+        # Half-converted: the flow declares a viewport but the Static Flow
+        # export never reads Flow.viewport → warning names the state.
+        export_file = prototype_dir / "PortfolioAlertsPrototypeFlowExport.tsx"
+        original_export = export_file.read_text()
+        export_file.write_text(
+            re.sub(r"\w+Flow\.viewport", "({}).legacyRead", original_export)
+        )
+        validate = subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPTS_DIR / "validate_prototype.py"),
+                str(prototype_dir),
+            ],
+            capture_output=True,
+            text=True,
+        )
+        if "never reads Flow.viewport" not in validate.stdout:
+            failures.append(
+                "viewport contracts: half-converted fixture did not trip the "
+                "'never reads Flow.viewport' warning"
+            )
+        export_file.write_text(original_export)
+
+        # Legacy flow (no viewport declaration) → flow.json omits the key at
+        # every level.
+        flow_file = prototype_dir / FLOW_FILE_NAME
+        flow_text = flow_file.read_text()
+        flow_text = re.sub(
+            r"export const \w+Viewport = \{[^}]*\} satisfies \w+Viewport;\n\n",
+            "",
+            flow_text,
+        )
+        flow_text = re.sub(r"\n  viewport: \w+Viewport,", "", flow_text)
+        flow_file.write_text(flow_text)
+        export = subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPTS_DIR / "export_flow.py"),
+                str(prototype_dir),
+            ],
+            capture_output=True,
+            text=True,
+        )
+        if export.returncode != 0:
+            failures.append("viewport contracts: export_flow.py failed on legacy fixture")
+        else:
+            raw = (prototype_dir / "docs" / "flow.json").read_text()
+            if "viewport" in raw:
+                failures.append(
+                    "viewport contracts: legacy flow.json still contains a "
+                    "viewport key"
+                )
+    return failures
+
+
+def check_inspector_copies() -> list[str]:
+    """The skill asset and storybook-template inspector copies must match."""
+    skill_root = SCRIPTS_DIR.parent
+    asset_dir = skill_root / "assets" / "prototype-inspector"
+    template_dir = (
+        skill_root.parent
+        / "design-system-to-storybook"
+        / "storybook-template"
+        / ".storybook"
+        / "prototype-inspector"
+    )
+    if not template_dir.is_dir():
+        # Standalone skill installs do not carry the storybook-template tree;
+        # the parity check is only meaningful in the monorepo.
+        print(
+            "inspector copies: storybook-template copy not present — skipping "
+            "byte comparison"
+        )
+        return []
+    failures: list[str] = []
+    for name in INSPECTOR_COPY_FILES:
+        if (asset_dir / name).read_bytes() != (template_dir / name).read_bytes():
+            failures.append(
+                f"inspector copies: {name} differs between the skill asset and "
+                "design-system-to-storybook/storybook-template/.storybook — "
+                "mirror the edit on both sides in the same commit"
+            )
+    if not failures:
+        print(
+            "inspector copies: skill asset and storybook-template copies are "
+            "byte-identical"
+        )
+    return failures
+
+
 def main() -> int:
     failures: list[str] = []
+    round_summaries: list[str] = []
     with tempfile.TemporaryDirectory(prefix="prototype-smoke-") as temp_dir:
         base_dir = Path(temp_dir)
         react_failures, react_exit, react_output = run_round("react", base_dir)
@@ -161,9 +429,31 @@ def main() -> int:
                     "after framework-wording normalization"
                 )
 
+        for framework in ("react", "vue"):
+            prototype_dir = (
+                base_dir / framework / "src" / "pages" / "prototypes" / PROTOTYPE_DIR_NAME
+            )
+            if prototype_dir.is_dir():
+                failures.extend(
+                    check_phone_baseline(prototype_dir, f"{framework}/no-flags")
+                )
+            for round_key, extra_args, expected in VIEWPORT_ROUNDS:
+                round_failures = run_viewport_round(
+                    framework, base_dir, round_key, extra_args, expected
+                )
+                failures.extend(round_failures)
+                if not round_failures:
+                    form_factor, width, height = expected
+                    round_summaries.append(
+                        f"{framework}/{round_key}: scaffold + validate passed "
+                        f"({form_factor} {width}x{height})"
+                    )
+
     failures.extend(check_flow_parsing())
     failures.extend(check_handoff_contracts())
     failures.extend(check_flow_export())
+    failures.extend(check_viewport_contracts())
+    failures.extend(check_inspector_copies())
 
     if failures:
         print("Scaffold/validate smoke test failed:")
@@ -171,11 +461,14 @@ def main() -> int:
             print(f"- {failure}")
         return 1
 
-    print("react: scaffold + validate passed")
+    print("react: scaffold + validate passed (phone baseline held)")
     print("vue: scaffold + validate passed (output equivalent to react baseline)")
+    for summary in round_summaries:
+        print(summary)
     print("flow parsing: nested objects and both id layers resolve")
     print("handoff contracts: manifest roundtrip, drift, acceptance ids, dual scope")
     print("flow export: layout fields stripped, Swift enum and Kotlin sealed class generated")
+    print("viewport contracts: flow.json emission, legacy omission, half-converted warning")
     return 0
 
 

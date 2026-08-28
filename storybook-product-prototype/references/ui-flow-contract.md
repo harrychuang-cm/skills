@@ -15,6 +15,38 @@ Each route should define:
 - `flowPosition`: optional stable `{ x, y }` coordinate.
 - `params`: optional array of `{ name, type }` route parameters production navigation needs (URL params on web, destination arguments on iOS/Android). Declare them here so codegen and the receiving implementation never re-derive them from fixtures.
 - `deepLink`: optional direct-entry pattern for the route (for example `/alerts/:alertId` or `app://alerts/:alertId`). Declare it when the route is a deep-link target.
+- `viewport`: optional `{ width, height }` preview-size override for this route only, for mixed flows (for example one desktop admin screen inside a phone flow). Falls back to the flow-level viewport.
+
+## Viewport
+
+The flow object carries the primary review viewport as a first-class field:
+
+```ts
+viewport: { formFactor: "phone" | "tablet" | "desktop", width: number, height: number }
+```
+
+Every renderer — Static Flow export, the prototype shell, and the Prototype Inspector — reads this value at runtime, so editing `flow.viewport` by hand resizes the prototype without re-scaffolding. A flow that declares no viewport resolves to phone 375x812 in every consumer, which keeps existing prototypes working untouched.
+
+Presets are pinned to the storybook-template `--sbt` viewport token tier:
+
+| Preset | formFactor | Size | Token tier |
+| --- | --- | --- | --- |
+| `phone` | phone | 375x812 | `--sbt-sys-size-viewport-compact-*` |
+| `tablet` | tablet | 768x1024 | `--sbt-sys-size-viewport-medium-*` |
+| `desktop` | desktop | 1280x800 | `--sbt-sys-size-viewport-wide-*` |
+
+Scaffold with `--viewport {phone|tablet|desktop|<W>x<H>}` (custom sizes classify their formFactor by width: >=1024 desktop, >=600 tablet, else phone; sides must be 240-3840). The Prototype Inspector resolves each card's preview size in this order:
+
+1. `route.viewport` (per-route override)
+2. `flow.viewport`
+3. the form-factor tier CSS tokens (`--prototype-inspector-viewport-compact/medium/wide-*`, read on the `.prototype-inspector` element first, then `:root`)
+4. the built-in phone constants 375x812
+
+`flowPosition` values are authored against the declared frame size. Saved drag layouts (localStorage payload version 2) carry a viewport signature (`<formFactor>:<width>x<height>`); when a prototype's declared viewport changes, saved positions with a mismatched signature are ignored with a console.info notice and the fallback layout is used — a one-time re-drag instead of phone-era coordinates rendering desktop frames as an overlapping pile. Unsigned version-1 payloads keep applying for phone 375x812 prototypes.
+
+Static Flow export fallback placement scales with the frame: below 900px-wide frames it uses the derived grid pitch (identical to the historical 560x980 at phone); at 900px or wider each `flowGroup` becomes its own horizontal row so desktop frames never overlap. Route cards show a formFactor badge (for example `desktop · 1280x800`).
+
+`export_flow.py` includes the resolved viewport in `docs/flow.json` (top-level `viewport` plus per-route overrides; omitted entirely for flows that declare none, `flowSchemaVersion` stays 1) while still stripping the canvas-layout fields — the viewport is product semantics, not layout.
 
 ## Flow-Only Nodes
 
@@ -94,5 +126,6 @@ Keep route ids stable across prototype docs and handoff docs so engineers and AI
 - The prototype supports `prototypeFlowPreview=true` for compact embedded rendering.
 - The route preview shell exposes `data-prototype-route-preview="true"` for template-compatible iframe measurement.
 - The prototype root keeps `data-prototype-root="true"` for backward-compatible iframe height measurement.
-- Static Flow export reads saved layout from `prototypeFlowLayout.ts` using the same storage key as the Prototype Inspector.
+- Static Flow export reads saved layout from `prototypeFlowLayout.ts` using the same storage key as the Prototype Inspector, passing the resolved viewport signature so mismatched saved layouts are cleanly ignored.
+- The Static Flow export derives frame sizes from `Flow.viewport` at runtime (never baked constants), and the prototype shell sets the preview-size CSS variables inline from the same source.
 - Production handoff maps every route and branch node that must become a web/app surface, service decision, API/data contract expectation, or shared state.

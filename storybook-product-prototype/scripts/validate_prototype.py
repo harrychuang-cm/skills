@@ -280,6 +280,78 @@ def extract_string_property(object_text: str, key: str) -> str | None:
     return match.group(2) if match else None
 
 
+def extract_int_property(object_text: str, key: str) -> int | None:
+    match = re.search(rf"\b{re.escape(key)}\s*:\s*(\d+)\b", object_text)
+    return int(match.group(1)) if match else None
+
+
+def extract_route_viewport(object_text: str) -> dict | None:
+    """``viewport: { width, height }`` of one route object, or None when absent.
+
+    Returns the raw parse — width/height may be None when the declaration is
+    malformed; callers decide whether that is an error (validator) or a skip
+    (exporter).
+    """
+    match = re.search(r"\bviewport\s*:\s*\{", object_text)
+    if not match:
+        return None
+    start = object_text.rindex("{", match.start(), match.end())
+    end = scan_matching_bracket(object_text, start)
+    if end == -1:
+        return None
+    body = object_text[start + 1 : end - 1]
+    return {
+        "width": extract_int_property(body, "width"),
+        "height": extract_int_property(body, "height"),
+    }
+
+
+def _parse_viewport_body(body: str) -> dict:
+    return {
+        "formFactor": extract_string_property(body, "formFactor"),
+        "width": extract_int_property(body, "width"),
+        "height": extract_int_property(body, "height"),
+    }
+
+
+def extract_flow_viewport(flow_text: str) -> dict | None:
+    """The flow-level viewport declaration, or None for legacy flows.
+
+    Scaffolded flows export a ``<feature>Viewport`` const referenced from the
+    Flow object; hand-authored flows may inline ``viewport: { ... }`` on the
+    Flow object instead. The exported type alias also matches the ``Viewport =
+    {`` pattern, but its body (``width: number``) parses to all-None and is
+    skipped. Returned fields may individually be None for malformed
+    declarations — callers decide whether that is an error or a skip.
+    """
+    for match in re.finditer(r"Viewport\s*=\s*\{", flow_text):
+        start = flow_text.rindex("{", match.start(), match.end())
+        end = scan_matching_bracket(flow_text, start)
+        if end == -1:
+            continue
+        parsed = _parse_viewport_body(flow_text[start + 1 : end - 1])
+        if any(value is not None for value in parsed.values()):
+            return parsed
+
+    flow_match = re.search(r"Flow\s*=\s*\{", flow_text)
+    if flow_match:
+        start = flow_text.rindex("{", flow_match.start(), flow_match.end())
+        end = scan_matching_bracket(flow_text, start)
+        if end != -1:
+            body = flow_text[start + 1 : end - 1]
+            viewport_match = re.search(r"\bviewport\s*:\s*\{", body)
+            if viewport_match:
+                inner_start = body.rindex(
+                    "{", viewport_match.start(), viewport_match.end()
+                )
+                inner_end = scan_matching_bracket(body, inner_start)
+                if inner_end != -1:
+                    parsed = _parse_viewport_body(body[inner_start + 1 : inner_end - 1])
+                    if any(value is not None for value in parsed.values()):
+                        return parsed
+    return None
+
+
 def sanitize_meta_source(text: str) -> str:
     """Prepare meta TS source for brace-counting extraction.
 
@@ -915,18 +987,152 @@ def app_target_in_scope(handoff_text: str) -> bool:
     return "not in scope" not in match.group(1).strip().lower()
 
 
+def extract_meta_surface_target(meta_text: str) -> str | None:
+    """The typed `surface: { target }` declaration of the meta object."""
+    block = extract_brace_block(sanitize_meta_source(meta_text), "surface")
+    return extract_string_property(block, "target") if block else None
+
+
+def resolve_app_target_in_scope(
+    folder: Path, files: dict[str, Path | None]
+) -> bool:
+    """Whether an app target is in scope for app-only checks.
+
+    Prefers the typed meta `surface.target` (app/hybrid in scope, web/package
+    not); metas without one fall back to the legacy PRODUCTION_HANDOFF
+    Target Surfaces prose parse.
+    """
+    meta_path = files.get("meta")
+    if meta_path is not None and meta_path.is_file():
+        target = extract_meta_surface_target(read(meta_path))
+        if target in ("app", "hybrid"):
+            return True
+        if target in ("web", "package"):
+            return False
+    handoff = folder / "docs" / "PRODUCTION_HANDOFF.md"
+    return handoff.is_file() and app_target_in_scope(read(handoff))
+
+
+VIEWPORT_FORM_FACTORS = ("phone", "tablet", "desktop")
+VIEWPORT_SIDE_MIN = 240
+VIEWPORT_SIDE_MAX = 3840
+
+
+def validate_flow_viewport(
+    files: dict[str, Path | None],
+    errors: list[str],
+    warnings: list[str],
+    handoff_ready: bool,
+) -> None:
+    """Type/range checks for declared viewports; silence for legacy flows.
+
+    A declared flow viewport must name a known formFactor and keep both sides
+    within the accepted range (errors). A flow that declares a viewport while
+    its Static Flow export never reads Flow.viewport is half-converted and
+    would still render phone frames (warning; --strict-style promotes). Flows
+    declaring nothing skip every check, except a --handoff-ready reminder that
+    consumers will assume phone 375x812.
+    """
+    flow_path = files.get("flow")
+    if flow_path is None or not flow_path.is_file():
+        return
+    flow_text = read(flow_path)
+    viewport = extract_flow_viewport(flow_text)
+
+    if viewport is not None:
+        check(
+            viewport["formFactor"] in VIEWPORT_FORM_FACTORS,
+            "flow viewport formFactor must be one of phone, tablet, desktop "
+            f"(got {viewport['formFactor']!r})",
+            errors,
+        )
+        for side in ("width", "height"):
+            value = viewport[side]
+            check(
+                value is not None
+                and VIEWPORT_SIDE_MIN <= value <= VIEWPORT_SIDE_MAX,
+                f"flow viewport {side} must be an integer within "
+                f"{VIEWPORT_SIDE_MIN}-{VIEWPORT_SIDE_MAX} (got {value!r})",
+                errors,
+            )
+        export_path = files.get("static flow export")
+        # Code-shaped reference (`<camel>Flow.viewport`), so a template comment
+        # that merely mentions Flow.viewport cannot satisfy the check.
+        if (
+            export_path is not None
+            and export_path.is_file()
+            and re.search(r"\w+Flow\.viewport", read(export_path)) is None
+        ):
+            warnings.append(
+                "flow declares a viewport but the Static Flow export never reads "
+                "Flow.viewport, so it still renders the baked-in phone frames; "
+                "re-scaffold the export or port the runtime viewport read"
+            )
+    elif handoff_ready:
+        warnings.append(
+            "flow declares no viewport; downstream consumers assume phone "
+            "375x812 — declare flow.viewport (or scaffold with --viewport) "
+            "if this product is reviewed at another size"
+        )
+
+    for obj in split_top_level_objects(extract_array_body(flow_text, "Routes")):
+        route_viewport = extract_route_viewport(obj)
+        if route_viewport is None:
+            continue
+        route_id = extract_string_property(obj, "id") or "?"
+        for side in ("width", "height"):
+            value = route_viewport[side]
+            check(
+                value is not None
+                and VIEWPORT_SIDE_MIN <= value <= VIEWPORT_SIDE_MAX,
+                f"route '{route_id}' viewport {side} must be an integer within "
+                f"{VIEWPORT_SIDE_MIN}-{VIEWPORT_SIDE_MAX} (got {value!r})",
+                errors,
+            )
+
+
+def validate_surface_viewport_alignment(
+    files: dict[str, Path | None], warnings: list[str]
+) -> None:
+    """--handoff-ready nudge: a web-only product reviewed in phone frames.
+
+    Fires only when the meta declares surface.target web AND the resolved
+    formFactor is phone (declared phone, or undeclared and therefore implicit
+    phone). Warning-level: mobile-first web is a legitimate choice — the
+    point is to make it a deliberate one.
+    """
+    meta_path = files.get("meta")
+    if meta_path is None or not meta_path.is_file():
+        return
+    if extract_meta_surface_target(read(meta_path)) != "web":
+        return
+    flow_path = files.get("flow")
+    viewport = (
+        extract_flow_viewport(read(flow_path))
+        if flow_path is not None and flow_path.is_file()
+        else None
+    )
+    form_factor = viewport["formFactor"] if viewport else "phone"
+    if form_factor == "phone":
+        warnings.append(
+            "Target surface is web-only but the primary review viewport "
+            "resolves to phone (375x812); confirm mobile-first is intentional "
+            "or re-scaffold with --viewport desktop or tablet"
+        )
+
+
 def validate_transition_presentation(
     folder: Path, files: dict[str, Path | None], warnings: list[str]
 ) -> None:
     """App-bound handoffs need presentation semantics on navigation edges.
 
-    Runs only with --handoff-ready and only when the handoff declares an app
-    target. Warning-level (--strict-style promotes) so web-era prototypes keep
-    validating; without a presentation value a native receiver cannot tell a
-    push from a sheet from a dialog.
+    Runs only with --handoff-ready and only when an app target is in scope —
+    resolved from the typed meta surface first, PRODUCTION_HANDOFF prose as
+    legacy fallback. Warning-level (--strict-style promotes) so web-era
+    prototypes keep validating; without a presentation value a native
+    receiver cannot tell a push from a sheet from a dialog.
     """
-    handoff = folder / "docs" / "PRODUCTION_HANDOFF.md"
-    if not handoff.is_file() or not app_target_in_scope(read(handoff)):
+    if not resolve_app_target_in_scope(folder, files):
         return
     flow_path = files.get("flow")
     if flow_path is None or not flow_path.is_file():
@@ -1721,6 +1927,7 @@ def main() -> int:
             validate_viewer_compatibility(files, errors)
             validate_meta(files["meta"], errors)
             validate_flow(files["flow"], errors)
+            validate_flow_viewport(files, errors, warnings, args.handoff_ready)
             validate_component_usage(folder, files, warnings, framework)
             validate_components_meta(
                 folder,
@@ -1735,6 +1942,7 @@ def main() -> int:
                 validate_doc_code_consistency(folder, files, errors, warnings)
                 validate_fixture_json_consistency(folder, files, errors, warnings)
                 validate_transition_presentation(folder, files, warnings)
+                validate_surface_viewport_alignment(files, warnings)
 
     if args.strict_style:
         errors.extend(warnings)

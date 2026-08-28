@@ -61,5 +61,9 @@ export const __FEATURE_CAMEL__Meta = {
   id: "__FEATURE_KEBAB__",
   owner: "__OWNER__",
   status: "draft",
+  // Preview sizing lives on flow.viewport (reachable via parameters.prototype.flow.viewport); surface only records the target platform.
+  surface: {
+    target: "__TARGET_SURFACE__",
+  },
   title: "__FEATURE_TITLE__",
 };

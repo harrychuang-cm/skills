@@ -43,6 +43,7 @@ Before writing implementation files, confirm:
 - Primary user and problem.
 - Entry route and initial state.
 - Target production surfaces: web, native app, hybrid app, or shared component package.
+- Primary review viewport: phone (375x812), tablet (768x1024), desktop (1280x800), or a custom WxH. App targets default to phone; web-only products must choose deliberately — a desktop web product reviewed in phone frames hides its real information density. Both answers are serialized at scaffold time via `--target-surface` and `--viewport` (or set `flow.viewport` / `meta.surface` by hand on an existing prototype).
 - Required routes and branch states.
 - Which of those screens already ship in production and which are new in this change,
   and for each existing one whether it is being modified or only re-created as a
@@ -141,7 +142,7 @@ Create or update `docs/PRODUCTION_HANDOFF.md`.
 Rules:
 
 - Fill `Design System Continuity` with the token namespace record, the Component Map echo, the per-screen composition echo from `meta.components` (each route's components with origin and story id — format in `references/production-handoff.md`), and locally created promotion candidates.
-- State whether production is web, app, hybrid, or cross-platform.
+- State whether production is web, app, hybrid, or cross-platform, and record the primary review viewport (formFactor and size) next to it, mirroring `flow.viewport` and `meta.surface.target`.
 - Give every row of `Prototype To Frontend Map` a delivery scope before anything else:
   `A` existing (already ships; the prototype re-creates it so the new behavior can be
   judged at real information density — do not rebuild), `B` new, `C` Storybook-only, or
@@ -209,10 +210,13 @@ Use the scaffold script when creating a new prototype from scratch:
 ```sh
 python3 <skill-root>/scripts/scaffold_prototype.py "Portfolio Alerts" \
   --target-root src/pages/prototypes \
-  --owner "Product Team"
+  --owner "Product Team" \
+  --viewport desktop --target-surface web
 ```
 
-The scaffold creates a folder based on the feature name, adds `prototypeFlowLayout.ts` to the prototypes root when needed, and fills template tokens. It detects the target framework from the nearest `package.json` above the target root and prints the result; pass `--framework react` or `--framework vue` to override. Vue mode produces `.vue` components with `.stories.ts` stories from the bundled Vue overlay template set instead of the React `.tsx` files. After scaffolding, replace the generated bracketed guidance with concrete product content before implementation.
+The scaffold creates a folder based on the feature name, adds `prototypeFlowLayout.ts` to the prototypes root when needed, and fills template tokens. It detects the target framework from the nearest `package.json` above the target root and prints the result; pass `--framework react` or `--framework vue` to override. Vue mode produces `.vue` components with `.stories.ts` stories from the bundled Vue overlay template set instead of the React `.tsx` files. `--viewport {phone|tablet|desktop|<W>x<H>}` (default phone) declares the primary review viewport in `flow.viewport` and `--target-surface {web,app,hybrid,package}` (default web) records the platform decision in `meta.surface`; presets map to 375x812 / 768x1024 / 1280x800. After scaffolding, replace the generated bracketed guidance with concrete product content before implementation.
+
+Warning: `--force` re-scaffolds regenerate the flow file, so repeat `--viewport`/`--target-surface` on every `--force` run — a plain `--force` reverts the prototype to the phone/web defaults, which no validator can distinguish from an intentional phone scaffold (the visible tell is the Inspector's layout-signature notice when saved layouts stop applying).
 
 Run `python3 <skill-root>/scripts/test_scaffold_validate.py` after changing the templates or scripts; it scaffolds and validates one prototype per framework and fails when the two rounds diverge.
 
@@ -228,6 +232,7 @@ Run `python3 <skill-root>/scripts/test_scaffold_validate.py` after changing the 
 - Team-confirmed, recurring gap components are promoted into the hub's shared component library or recorded as `local` promotion candidates with file paths.
 - UI Flow is generated from route, flow-node, and transition metadata.
 - UI Flow route cards preview the correct route through `prototypeRoute` and `prototypeFlowPreview`.
+- `flow.viewport` matches the declared target surface: a desktop web product is never reviewed in phone frames, and the Static Flow export, shell, and Inspector all render the declared size.
 - Static Flow export uses the same metadata and saved inspector layout as the runtime UI Flow.
 - `figmaExport.flowStoryId` points to the `StaticFlow` story for future Figma export automation.
 - Fixture data is deterministic and local, mirrored in `fixtures/<group>.json`, and schema-documented in `DATA_SPEC.md`'s `Data Schemas (JSON Schema)` section.

@@ -8,9 +8,18 @@ import {
 } from "./__FEATURE_CAMEL__Data";
 import {
   get__FEATURE_PASCAL__Route,
+  __FEATURE_CAMEL__Flow,
   __FEATURE_CAMEL__RouteIds,
   type __FEATURE_PASCAL__RouteId,
 } from "./__FEATURE_CAMEL__Flow";
+
+// Preview size comes from the flow contract at runtime so hand-edits to
+// Flow.viewport resize the shell without re-scaffolding.
+const shellViewport = __FEATURE_CAMEL__Flow.viewport ?? {
+  formFactor: "phone" as const,
+  height: 812,
+  width: 375,
+};
 
 const props = withDefaults(
   defineProps<{
@@ -82,6 +91,10 @@ function goTo(nextRoute: __FEATURE_PASCAL__RouteId) {
     <section
       class="__FEATURE_CSS_CLASS____shell"
       data-prototype-route-preview="true"
+      :style="{
+        '--prototype-flow-route-preview-height': `${activeRoute.viewport?.height ?? shellViewport.height}px`,
+        '--prototype-flow-route-preview-width': `${activeRoute.viewport?.width ?? shellViewport.width}px`,
+      }"
     >
       <header class="__FEATURE_CSS_CLASS____header">
         <div>

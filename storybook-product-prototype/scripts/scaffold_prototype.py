@@ -37,6 +37,49 @@ REACT_ONLY_TEMPLATE_NAMES = {
     "index.ts",
 }
 
+# Preset values are pinned to the storybook-template --sbt viewport token tier
+# (compact/medium/wide); keep the two in sync.
+VIEWPORT_PRESETS = {
+    "phone": (375, 812),
+    "tablet": (768, 1024),
+    "desktop": (1280, 800),
+}
+
+VIEWPORT_MIN = 240
+VIEWPORT_MAX = 3840
+
+
+def viewport_argument(value: str) -> str:
+    if value in VIEWPORT_PRESETS:
+        return value
+    match = re.fullmatch(r"(\d+)x(\d+)", value)
+    if not match:
+        raise argparse.ArgumentTypeError(
+            f"expected phone, tablet, desktop, or <W>x<H> (got {value!r})"
+        )
+    width, height = (int(part) for part in match.groups())
+    if not all(VIEWPORT_MIN <= side <= VIEWPORT_MAX for side in (width, height)):
+        raise argparse.ArgumentTypeError(
+            f"viewport sides must be {VIEWPORT_MIN}-{VIEWPORT_MAX} (got {value!r})"
+        )
+    return value
+
+
+def classify_form_factor(width: int) -> str:
+    if width >= 1024:
+        return "desktop"
+    if width >= 600:
+        return "tablet"
+    return "phone"
+
+
+def resolve_viewport(viewport: str, form_factor: str | None) -> tuple[str, int, int]:
+    if viewport in VIEWPORT_PRESETS:
+        width, height = VIEWPORT_PRESETS[viewport]
+        return viewport, width, height
+    width, height = (int(part) for part in viewport.split("x"))
+    return form_factor or classify_form_factor(width), width, height
+
 
 def detect_framework(target_root: Path) -> tuple[str, str]:
     for directory in (target_root, *target_root.parents):
@@ -169,6 +212,16 @@ def scaffold(args: argparse.Namespace) -> Path:
         framework, framework_reason = args.framework, "explicit --framework value"
     print(f"framework: {framework} ({framework_reason})")
 
+    form_factor, viewport_width, viewport_height = resolve_viewport(
+        args.viewport, args.form_factor
+    )
+    print(f"viewport: {form_factor} {viewport_width}x{viewport_height}")
+    print(f"target surface: {args.target_surface}")
+    print(
+        "note: --force re-scaffolds regenerate the flow file; repeat "
+        "--viewport/--target-surface or the prototype reverts to the phone/web defaults."
+    )
+
     if prototype_dir.exists():
         if not args.force:
             raise FileExistsError(
@@ -186,7 +239,12 @@ def scaffold(args: argparse.Namespace) -> Path:
         "__FEATURE_PASCAL__": feature_pascal,
         "__FEATURE_STORY_ID__": f"{story_id_base}--static-flow",
         "__FEATURE_TITLE__": feature_title,
+        "__FORM_FACTOR__": form_factor,
         "__OWNER__": args.owner,
+        "__SHELL_WIDE_CAP__": "720px" if form_factor == "phone" else "100%",
+        "__TARGET_SURFACE__": args.target_surface,
+        "__VIEWPORT_HEIGHT__": str(viewport_height),
+        "__VIEWPORT_WIDTH__": str(viewport_width),
     }
 
     copy_flow_layout_helper(skill_root, target_root, args.force)
@@ -239,8 +297,33 @@ def main() -> None:
             "above the target root and falls back to react."
         ),
     )
+    parser.add_argument(
+        "--viewport",
+        type=viewport_argument,
+        default="phone",
+        help=(
+            "Primary review viewport: phone (375x812), tablet (768x1024), "
+            "desktop (1280x800), or a custom <W>x<H> within "
+            f"{VIEWPORT_MIN}-{VIEWPORT_MAX}. Custom sizes classify their form "
+            "factor by width (>=1024 desktop, >=600 tablet, else phone)."
+        ),
+    )
+    parser.add_argument(
+        "--form-factor",
+        choices=tuple(VIEWPORT_PRESETS),
+        help="Form-factor label for a custom <W>x<H> --viewport value.",
+    )
+    parser.add_argument(
+        "--target-surface",
+        choices=("web", "app", "hybrid", "package"),
+        default="web",
+        help="Target production surface recorded in the prototype meta.",
+    )
     parser.add_argument("--force", action="store_true", help="Overwrite existing template files.")
     args = parser.parse_args()
+
+    if args.form_factor and args.viewport in VIEWPORT_PRESETS:
+        parser.error("--form-factor only applies to a custom <W>x<H> --viewport value")
 
     prototype_dir = scaffold(args)
     print(prototype_dir)
