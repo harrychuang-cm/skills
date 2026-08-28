@@ -371,6 +371,8 @@
   --sbt-sys-size-viewport-medium-width: var(--sbt-ref-size-768);
   --sbt-sys-size-viewport-wide-width: var(--sbt-ref-size-1280);
   --sbt-sys-size-viewport-compact-height: var(--sbt-ref-size-812);
+  --sbt-sys-size-viewport-medium-height: var(--sbt-ref-size-1024);
+  --sbt-sys-size-viewport-wide-height: var(--sbt-ref-size-800);
   --sbt-sys-size-icon-micro: var(--sbt-ref-size-12);
   --sbt-sys-size-icon-info: var(--sbt-ref-size-14);
   --sbt-sys-size-icon-xxs: var(--sbt-ref-size-15);

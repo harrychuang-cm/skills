@@ -47,6 +47,10 @@
   --pi-sys-size-control-border-width-strong: var(--sbt-sys-size-control-border-width-strong, 2px);
   --pi-sys-size-viewport-compact-width: var(--sbt-sys-size-viewport-compact-width, 375px);
   --pi-sys-size-viewport-compact-height: var(--sbt-sys-size-viewport-compact-height, 812px);
+  --pi-sys-size-viewport-medium-width: var(--sbt-sys-size-viewport-medium-width, 768px);
+  --pi-sys-size-viewport-medium-height: var(--sbt-sys-size-viewport-medium-height, 1024px);
+  --pi-sys-size-viewport-wide-width: var(--sbt-sys-size-viewport-wide-width, 1280px);
+  --pi-sys-size-viewport-wide-height: var(--sbt-sys-size-viewport-wide-height, 800px);
   --pi-sys-shadow-raised-surface: var(--sbt-sys-shadow-raised-surface, 0 12px 28px rgba(15, 23, 42, 0.12));
   --pi-sys-state-opacity-annotation-medium: var(--sbt-sys-state-opacity-annotation-medium, 0.72);
   --pi-sys-state-opacity-annotation-strong: var(--sbt-sys-state-opacity-annotation-strong, 1);
@@ -136,6 +140,18 @@
   );
   --prototype-inspector-viewport-compact-height: var(
     --pi-sys-size-viewport-compact-height
+  );
+  --prototype-inspector-viewport-medium-width: var(
+    --pi-sys-size-viewport-medium-width
+  );
+  --prototype-inspector-viewport-medium-height: var(
+    --pi-sys-size-viewport-medium-height
+  );
+  --prototype-inspector-viewport-wide-width: var(
+    --pi-sys-size-viewport-wide-width
+  );
+  --prototype-inspector-viewport-wide-height: var(
+    --pi-sys-size-viewport-wide-height
   );
 
   box-sizing: border-box;
@@ -873,6 +889,16 @@
   border-radius: var(--pi-sys-shape-corner-pill);
 }
 
+.prototype-inspector__flow-card-viewport {
+  flex: 0 0 auto;
+  padding: var(--pi-sys-spacing-xxs) var(--pi-sys-spacing-xs);
+  text-transform: none;
+  white-space: nowrap;
+  background: var(--pi-sys-color-surface);
+  border: var(--pi-sys-spacing-hairline) solid var(--pi-sys-color-outline-low);
+  border-radius: var(--pi-sys-shape-corner-pill);
+}
+
 .prototype-inspector__flow-preview {
   display: grid;
   place-items: start center;
@@ -1089,7 +1115,10 @@
     minmax(var(--pi-ref-size-220), 1fr)
     minmax(
       var(--pi-ref-size-220),
-      var(--prototype-inspector-viewport-compact-width)
+      var(
+        --prototype-inspector-active-viewport-width,
+        var(--prototype-inspector-viewport-compact-width)
+      )
     );
   gap: var(--pi-sys-spacing-screen-gutter);
   align-items: start;
@@ -1240,7 +1269,10 @@
   box-sizing: border-box;
   block-size: calc(100vh - var(--pi-ref-size-80));
   max-block-size: calc(
-    var(--prototype-inspector-viewport-compact-height) +
+    var(
+        --prototype-inspector-active-viewport-height,
+        var(--prototype-inspector-viewport-compact-height)
+      ) +
       var(--pi-sys-spacing-screen-gutter) * 2
   );
   overflow: hidden;

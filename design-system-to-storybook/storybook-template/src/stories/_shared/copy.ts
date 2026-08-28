@@ -1194,7 +1194,8 @@ export const storybookCopy = {
     unknownValue: "Unknown token",
     rules: [
       "Size roles represent fixed evidence-backed dimensions. Do not substitute spacing tokens for width, height, or icon size slots.",
-      "Viewport and region sizes describe the mobile-first shell; they are not responsive breakpoint tokens.",
+      "Viewport sizes name three form-factor reference shells — compact (phone), medium (tablet), wide (desktop) — consumed per prototype through its flow.viewport declaration; they are not responsive breakpoint tokens.",
+      "Region sizes describe the persistent shell regions of the compact reference shell.",
       "Icon sizes and control sizes are distinct roles. Keep icon glyph sizing separate from control hit-area sizing.",
       "Component layout sizes should stay in component slots when they describe a specific product component structure.",
     ],
@@ -1202,18 +1203,42 @@ export const storybookCopy = {
       {
         title: "Viewport And Regions",
         summary:
-          "Mobile viewport and persistent region dimensions define the compact trading shell and safe-area rhythm.",
+          "Three form-factor reference shells (compact = phone, medium = tablet, wide = desktop) plus the persistent region dimensions of the compact shell. Prototypes pick their shell through flow.viewport; these are reference sizes, not breakpoints.",
         roles: [
           {
-            label: "Compact viewport width",
+            label: "Compact viewport width (phone)",
             token: "--sbt-sys-size-viewport-compact-width",
-            guidance: "Reference width for extracted mobile-first screens.",
+            guidance: "Reference width for phone-form-factor screens.",
             preview: "width",
           },
           {
-            label: "Compact viewport height",
+            label: "Compact viewport height (phone)",
             token: "--sbt-sys-size-viewport-compact-height",
-            guidance: "Reference height for compact mobile screen evidence.",
+            guidance: "Reference height for phone-form-factor screen evidence.",
+            preview: "height",
+          },
+          {
+            label: "Medium viewport width (tablet)",
+            token: "--sbt-sys-size-viewport-medium-width",
+            guidance: "Reference width for tablet-form-factor screens.",
+            preview: "width",
+          },
+          {
+            label: "Medium viewport height (tablet)",
+            token: "--sbt-sys-size-viewport-medium-height",
+            guidance: "Reference height for tablet-form-factor screens.",
+            preview: "height",
+          },
+          {
+            label: "Wide viewport width (desktop)",
+            token: "--sbt-sys-size-viewport-wide-width",
+            guidance: "Reference width for desktop-form-factor screens.",
+            preview: "width",
+          },
+          {
+            label: "Wide viewport height (desktop)",
+            token: "--sbt-sys-size-viewport-wide-height",
+            guidance: "Reference height for desktop-form-factor screens.",
             preview: "height",
           },
           {

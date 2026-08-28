@@ -14,6 +14,7 @@ import { addons } from "storybook/preview-api";
 import {
   createPrototypeFlowLayoutPayload,
   getPrototypeFlowLayoutStorageKey,
+  getPrototypeFlowLayoutViewportSignature,
   normalizePrototypeFlowLayoutPositions,
   readPrototypeFlowLayoutPositions,
   writePrototypeFlowLayoutPositions,
@@ -67,6 +68,26 @@ const previewHeightCssVariable =
   "--prototype-inspector-viewport-compact-height";
 const previewWidthCssVariable =
   "--prototype-inspector-viewport-compact-width";
+// Form-factor tier tokens: compact = phone, medium = tablet, wide = desktop.
+const formFactorCssVariables = {
+  desktop: {
+    height: "--prototype-inspector-viewport-wide-height",
+    width: "--prototype-inspector-viewport-wide-width",
+  },
+  phone: {
+    height: previewHeightCssVariable,
+    width: previewWidthCssVariable,
+  },
+  tablet: {
+    height: "--prototype-inspector-viewport-medium-height",
+    width: "--prototype-inspector-viewport-medium-width",
+  },
+};
+const formFactorFallbackSizes = {
+  desktop: { height: 800, width: 1280 },
+  phone: { height: 812, width: 375 },
+  tablet: { height: 1024, width: 768 },
+};
 const nodeWidth = 423;
 const nodeHeaderHeight = 64;
 const nodeFrameSize = 2;
@@ -146,7 +167,22 @@ function pascalToKebab(value) {
     .replace(/^-+|-+$/g, "");
 }
 
-function getRoutePosition(route, index) {
+// Card size the legacy 360x260 auto-grid pitch was tuned for (phone frame).
+const fallbackGridBaseSize = { height: 878, width: 377 };
+const fallbackGridBasePitch = { x: 360, y: 260 };
+
+function getFallbackGridPitch(cardSize) {
+  return {
+    x: Math.round(
+      (fallbackGridBasePitch.x * cardSize.width) / fallbackGridBaseSize.width,
+    ),
+    y: Math.round(
+      (fallbackGridBasePitch.y * cardSize.height) / fallbackGridBaseSize.height,
+    ),
+  };
+}
+
+function getRoutePosition(route, index, gridPitch = fallbackGridBasePitch) {
   const explicitPosition =
     route.flowPosition ?? route.position ?? route.layout?.position;
 
@@ -159,8 +195,8 @@ function getRoutePosition(route, index) {
   }
 
   return {
-    x: (index % 3) * 360,
-    y: Math.floor(index / 3) * 260,
+    x: (index % 3) * gridPitch.x,
+    y: Math.floor(index / 3) * gridPitch.y,
   };
 }
 
@@ -186,12 +222,24 @@ function normalizeRouteComponents(componentRoute) {
     : [];
 }
 
-function readStoredFlowLayoutPositions(storageKey, nodeIds) {
-  return readPrototypeFlowLayoutPositions(storageKey, nodeIds);
+function readStoredFlowLayoutPositions(storageKey, nodeIds, expectedViewport) {
+  return readPrototypeFlowLayoutPositions(storageKey, nodeIds, expectedViewport);
 }
 
-function writeStoredFlowLayout(storageKey, prototype, positions, nodeIds) {
-  writePrototypeFlowLayoutPositions(storageKey, prototype.id, positions, nodeIds);
+function writeStoredFlowLayout(
+  storageKey,
+  prototype,
+  positions,
+  nodeIds,
+  viewportSignature,
+) {
+  writePrototypeFlowLayoutPositions(
+    storageKey,
+    prototype.id,
+    positions,
+    nodeIds,
+    viewportSignature,
+  );
 }
 
 function getFlowLayoutPositions(routePositionMap) {
@@ -398,33 +446,92 @@ function getNodeHeight(node) {
   return node.height ?? defaultNodeHeight;
 }
 
-function getDefaultNodePreviewHeight() {
-  return getDefaultPreviewDimension(
-    previewHeightCssVariable,
-    defaultNodePreviewHeight,
-  );
-}
-
-function getDefaultNodePreviewWidth() {
-  return getDefaultPreviewDimension(
-    previewWidthCssVariable,
-    defaultNodePreviewWidth,
-  );
-}
-
 function getDefaultPreviewDimension(cssVariableName, fallbackValue) {
   if (typeof document === "undefined") {
     return fallbackValue;
   }
 
-  const tokenValue = getComputedStyle(document.documentElement)
-    .getPropertyValue(cssVariableName)
-    .trim();
-  const parsedValue = Number.parseFloat(tokenValue);
+  // The documented token bridge (--sbt-* → --pi-* → --prototype-inspector-*)
+  // lives on the .prototype-inspector scope; read it first so the bridge
+  // actually reaches iframe sizing, then fall back to :root for installs
+  // that set the variables on documentElement directly.
+  const elements = [
+    document.querySelector(".prototype-inspector"),
+    document.documentElement,
+  ];
 
-  return Number.isFinite(parsedValue) && parsedValue > 0
-    ? parsedValue
-    : fallbackValue;
+  for (const element of elements) {
+    if (!element) {
+      continue;
+    }
+
+    const tokenValue = getComputedStyle(element)
+      .getPropertyValue(cssVariableName)
+      .trim();
+    const parsedValue = Number.parseFloat(tokenValue);
+
+    if (Number.isFinite(parsedValue) && parsedValue > 0) {
+      return parsedValue;
+    }
+  }
+
+  return fallbackValue;
+}
+
+function normalizeDeclaredViewportSize(value) {
+  return isRecord(value) &&
+    Number.isFinite(value.width) &&
+    value.width > 0 &&
+    Number.isFinite(value.height) &&
+    value.height > 0
+    ? { height: value.height, width: value.width }
+    : null;
+}
+
+// Resolution chain: route.viewport → flow.viewport → form-factor tier CSS
+// tokens → the built-in phone constants. `declared` marks whether the
+// prototype names a viewport (drives the badge; legacy prototypes show none).
+function getPrototypeViewport(prototype, route) {
+  const flowViewportValue = prototype?.flow?.viewport;
+  const formFactor =
+    isRecord(flowViewportValue) &&
+    typeof flowViewportValue.formFactor === "string" &&
+    formFactorCssVariables[flowViewportValue.formFactor]
+      ? flowViewportValue.formFactor
+      : "phone";
+  const declaredSize =
+    normalizeDeclaredViewportSize(route?.viewport) ??
+    normalizeDeclaredViewportSize(flowViewportValue);
+
+  if (declaredSize) {
+    return { declared: true, formFactor, ...declaredSize };
+  }
+
+  const cssVariables = formFactorCssVariables[formFactor];
+  const fallbackSize = formFactorFallbackSizes[formFactor];
+
+  return {
+    declared: isRecord(flowViewportValue),
+    formFactor,
+    height: getDefaultPreviewDimension(cssVariables.height, fallbackSize.height),
+    width: getDefaultPreviewDimension(cssVariables.width, fallbackSize.width),
+  };
+}
+
+function getPrototypeViewportSignature(prototype) {
+  const viewport = getPrototypeViewport(prototype, null);
+
+  // Legacy prototypes (no declared viewport) keep their pre-signature
+  // behavior: no expectation on reads, unsigned payloads on writes.
+  return viewport.declared
+    ? getPrototypeFlowLayoutViewportSignature(viewport)
+    : null;
+}
+
+function getPrototypeViewportBadge(viewport) {
+  return viewport.declared
+    ? `${viewport.formFactor} · ${viewport.width}x${viewport.height}`
+    : null;
 }
 
 function getRouteBottom(route) {
@@ -2060,6 +2167,7 @@ function PrototypeRouteCard({
   previewHeight,
   previewWidth,
   route,
+  viewportBadge,
   width,
 }) {
   const previewSource = getRoutePreviewSource(route.id);
@@ -2159,6 +2267,13 @@ function PrototypeRouteCard({
             `⧉ ${componentCount}`,
           )
         : null,
+      viewportBadge
+        ? createElement(
+            "span",
+            { className: "prototype-inspector__flow-card-viewport" },
+            viewportBadge,
+          )
+        : null,
       createElement("code", null, route.id),
     ),
     createElement(
@@ -2219,8 +2334,9 @@ function PrototypeFlow({ prototype }) {
   const importInputRef = useRef(null);
   const isPanModifierActiveRef = useRef(false);
   const resetConfirmButtonRef = useRef(null);
+  const viewportSignature = getPrototypeViewportSignature(prototype);
   const [draggedPositions, setDraggedPositions] = useState(() =>
-    readStoredFlowLayoutPositions(layoutStorageKey, canvasNodeIds),
+    readStoredFlowLayoutPositions(layoutStorageKey, canvasNodeIds, viewportSignature),
   );
   const [dragState, setDragState] = useState(null);
   const [focusedRouteId, setFocusedRouteId] = useState(null);
@@ -2231,8 +2347,13 @@ function PrototypeFlow({ prototype }) {
   const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
   const [routePreviewSizes, setRoutePreviewSizes] = useState({});
   const [zoomMode, setZoomMode] = useState("fit");
-  const defaultPreviewHeight = getDefaultNodePreviewHeight();
-  const defaultPreviewWidth = getDefaultNodePreviewWidth();
+  const prototypeViewport = getPrototypeViewport(prototype, null);
+  const defaultPreviewHeight = prototypeViewport.height;
+  const defaultPreviewWidth = prototypeViewport.width;
+  const fallbackGridPitch = getFallbackGridPitch({
+    height: defaultPreviewHeight + nodeHeaderHeight + nodeFrameSize,
+    width: defaultPreviewWidth + nodeFrameSize,
+  });
   const setPanModifierActive = useCallback((isActive) => {
     isPanModifierActiveRef.current = isActive;
     setIsPanModifierActive(isActive);
@@ -2240,11 +2361,19 @@ function PrototypeFlow({ prototype }) {
   const hasCustomLayout = Object.keys(draggedPositions).length > 0;
   const flowExportStoryId = getPrototypeFlowExportStoryId(prototype);
   useEffect(() => {
-    setDraggedPositions(readStoredFlowLayoutPositions(layoutStorageKey, canvasNodeIds));
-  }, [canvasNodeIds, layoutStorageKey]);
+    setDraggedPositions(
+      readStoredFlowLayoutPositions(layoutStorageKey, canvasNodeIds, viewportSignature),
+    );
+  }, [canvasNodeIds, layoutStorageKey, viewportSignature]);
   useEffect(() => {
-    writeStoredFlowLayout(layoutStorageKey, prototype, draggedPositions, canvasNodeIds);
-  }, [canvasNodeIds, draggedPositions, layoutStorageKey, prototype]);
+    writeStoredFlowLayout(
+      layoutStorageKey,
+      prototype,
+      draggedPositions,
+      canvasNodeIds,
+      viewportSignature,
+    );
+  }, [canvasNodeIds, draggedPositions, layoutStorageKey, prototype, viewportSignature]);
   useEffect(() => {
     if (!hasCustomLayout) {
       setIsResetDialogOpen(false);
@@ -2276,10 +2405,13 @@ function PrototypeFlow({ prototype }) {
     const map = new Map();
 
     routes.forEach((route, index) => {
-      const position = draggedPositions[route.id] ?? getRoutePosition(route, index);
+      const position =
+        draggedPositions[route.id] ??
+        getRoutePosition(route, index, fallbackGridPitch);
+      const routeViewport = getPrototypeViewport(prototype, route);
       const previewSize = routePreviewSizes[route.id] ?? {};
-      const previewHeight = previewSize.height ?? defaultPreviewHeight;
-      const previewWidth = previewSize.width ?? defaultPreviewWidth;
+      const previewHeight = previewSize.height ?? routeViewport.height;
+      const previewWidth = previewSize.width ?? routeViewport.width;
 
       map.set(route.id, {
         ...position,
@@ -2287,6 +2419,7 @@ function PrototypeFlow({ prototype }) {
         nodeType: "route",
         previewHeight,
         previewWidth,
+        viewportBadge: getPrototypeViewportBadge(routeViewport),
         width: previewWidth + nodeFrameSize,
       });
     });
@@ -2294,7 +2427,8 @@ function PrototypeFlow({ prototype }) {
     flowNodes.forEach((node, index) => {
       const size = getFlowMetadataNodeSize(node);
       const position =
-        draggedPositions[node.id] ?? getRoutePosition(node, routes.length + index);
+        draggedPositions[node.id] ??
+        getRoutePosition(node, routes.length + index, fallbackGridPitch);
 
       map.set(node.id, {
         ...position,
@@ -2313,7 +2447,10 @@ function PrototypeFlow({ prototype }) {
     defaultPreviewHeight,
     defaultPreviewWidth,
     draggedPositions,
+    fallbackGridPitch.x,
+    fallbackGridPitch.y,
     flowNodes,
+    prototype,
     routePreviewSizes,
     routes,
   ]);
@@ -2614,6 +2751,7 @@ function PrototypeFlow({ prototype }) {
     const payload = createPrototypeFlowLayoutPayload(
       prototype.id,
       getFlowLayoutPositions(routePositionMap),
+      viewportSignature,
     );
     const blob = new Blob([`${JSON.stringify(payload, null, 2)}\n`], {
       type: "application/json",
@@ -2674,7 +2812,13 @@ function PrototypeFlow({ prototype }) {
 
   return createElement(
     "div",
-    { className: "prototype-inspector prototype-inspector--flow" },
+    {
+      className: "prototype-inspector prototype-inspector--flow",
+      style: {
+        "--prototype-inspector-active-viewport-height": `${defaultPreviewHeight}px`,
+        "--prototype-inspector-active-viewport-width": `${defaultPreviewWidth}px`,
+      },
+    },
     createElement(
       "div",
       {
@@ -2987,6 +3131,7 @@ function PrototypeFlow({ prototype }) {
                 ...route,
                 position,
               },
+              viewportBadge: position.viewportBadge ?? null,
               width,
             });
           }),
@@ -3668,8 +3813,15 @@ function PrototypeComponents({ prototype }) {
     [components, selectedSection],
   );
   const previewSource = getRoutePreviewSource(normalizedRouteId);
-  const previewViewportHeight = getDefaultNodePreviewHeight();
-  const previewViewportWidth = getDefaultNodePreviewWidth();
+  const componentsPreviewRoute =
+    railRoutes.find((section) => section.route.id === normalizedRouteId)
+      ?.route ?? null;
+  const componentsViewport = getPrototypeViewport(
+    prototype,
+    componentsPreviewRoute,
+  );
+  const previewViewportHeight = componentsViewport.height;
+  const previewViewportWidth = componentsViewport.width;
   const previewPaneRef = useRef(null);
   const previewRef = useRef(null);
   const [highlightedIndex, setHighlightedIndex] = useState(null);
@@ -3932,7 +4084,13 @@ function PrototypeComponents({ prototype }) {
 
   return createElement(
     "div",
-    { className: "prototype-inspector prototype-inspector--components" },
+    {
+      className: "prototype-inspector prototype-inspector--components",
+      style: {
+        "--prototype-inspector-active-viewport-height": `${previewViewportHeight}px`,
+        "--prototype-inspector-active-viewport-width": `${previewViewportWidth}px`,
+      },
+    },
     createElement(PrototypeHeader, {
       eyebrow: prototype.id,
       title: "Prototype Components",
