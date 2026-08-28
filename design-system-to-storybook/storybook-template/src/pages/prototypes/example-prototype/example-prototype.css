@@ -29,6 +29,13 @@
   border-radius: var(--sbt-sys-shape-corner-none);
 }
 
+/* Defensive backstop: even if markup still renders the prototype chrome,
+   flow preview must show the bare route only. */
+.sbt-example-prototype--flow-preview .sbt-example-prototype__topbar,
+.sbt-example-prototype--flow-preview .sbt-example-prototype__tabs {
+  display: none;
+}
+
 .sbt-example-prototype__topbar {
   display: flex;
   align-items: center;

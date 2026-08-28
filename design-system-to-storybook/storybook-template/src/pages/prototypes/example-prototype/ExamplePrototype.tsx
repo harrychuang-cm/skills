@@ -23,6 +23,17 @@ function getRouteFromLocation(): ExamplePrototypeRouteId | null {
     : null;
 }
 
+function getFlowPreviewFromLocation() {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  return (
+    new URLSearchParams(window.location.search).get("prototypeFlowPreview") ===
+    "true"
+  );
+}
+
 function getRouteTitle(routeId: ExamplePrototypeRouteId) {
   return (
     examplePrototypeRoutes.find((route) => route.id === routeId)?.title ??
@@ -46,6 +57,8 @@ export function ExamplePrototype({
     return "Draft";
   }, [visibleRoute]);
 
+  const isEmbeddedFlowPreview = isFlowPreview || getFlowPreviewFromLocation();
+
   const goTo = (nextRoute: ExamplePrototypeRouteId) => {
     if (!previewRoute) {
       setRouteId(nextRoute);
@@ -56,7 +69,7 @@ export function ExamplePrototype({
     <main
       className={[
         "sbt-example-prototype",
-        isFlowPreview ? "sbt-example-prototype--flow-preview" : "",
+        isEmbeddedFlowPreview ? "sbt-example-prototype--flow-preview" : "",
       ]
         .filter(Boolean)
         .join(" ")}
@@ -67,26 +80,33 @@ export function ExamplePrototype({
         className="sbt-example-prototype__shell"
         data-prototype-route-preview="true"
       >
-        <header className="sbt-example-prototype__topbar">
-          <div>
-            <p>{examplePrototypeRequest.id}</p>
-            <h1>{routeTitle}</h1>
-          </div>
-          <span>{statusLabel}</span>
-        </header>
+        {/* Prototype chrome (topbar + route tabs) is review tooling, not
+            product UI — flow preview must render the bare route so UI Flow
+            cards and iframe previews match the real page. */}
+        {!isEmbeddedFlowPreview && (
+          <>
+            <header className="sbt-example-prototype__topbar">
+              <div>
+                <p>{examplePrototypeRequest.id}</p>
+                <h1>{routeTitle}</h1>
+              </div>
+              <span>{statusLabel}</span>
+            </header>
 
-        <nav className="sbt-example-prototype__tabs" aria-label="Prototype routes">
-          {examplePrototypeRoutes.map((route) => (
-            <button
-              aria-current={visibleRoute === route.id ? "page" : undefined}
-              key={route.id}
-              onClick={() => goTo(route.id)}
-              type="button"
-            >
-              {route.title}
-            </button>
-          ))}
-        </nav>
+            <nav className="sbt-example-prototype__tabs" aria-label="Prototype routes">
+              {examplePrototypeRoutes.map((route) => (
+                <button
+                  aria-current={visibleRoute === route.id ? "page" : undefined}
+                  key={route.id}
+                  onClick={() => goTo(route.id)}
+                  type="button"
+                >
+                  {route.title}
+                </button>
+              ))}
+            </nav>
+          </>
+        )}
 
         <section className="sbt-example-prototype__body">
           {visibleRoute === "intake" ? (

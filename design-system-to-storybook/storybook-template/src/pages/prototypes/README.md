@@ -181,6 +181,7 @@ The story must:
 - Render the interactive prototype as the default story.
 - Attach the complete meta object to `parameters.prototype`.
 - Support UI Flow iframe previews when `prototypeFlowPreview=true` is present in the story URL.
+- In flow preview mode (the `isFlowPreview` prop or `prototypeFlowPreview=true` in the URL), hide the prototype's own chrome — its header/topbar and route navigation — so flow cards and iframe previews show only real page content.
 - Place `data-prototype-route-preview="true"` on the actual route UI boundary so UI Flow can auto-fit the iframe width and height to the rendered surface.
 - When adding a Static Flow export, read the same saved UI Flow layout positions and reserve the same route UI width and height as the marked UI Flow preview surface; headers, borders, and flow labels should be outer chrome.
 - Keep Static Flow visually equivalent to UI Flow: dotted canvas, route card chrome, flow-only node shapes, dashed edges, color variants, arrowheads, and label pills should match the interactive review canvas.
