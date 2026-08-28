@@ -10,6 +10,10 @@ For designers, [`docs/designer-guide-storybook-to-production.html`](docs/designe
 
 `agent-automation-orchestrate` is the automation entry point. Every other skill describes work to be done; that skill is what schedules it, runs it, and proves it finished.
 
+Prototype-to-production work is split across **three ownership stages**, one skill per stage: `storybook-product-prototype` owns UI behavior, flow, fixtures, and contract expectations; `frontend-product-implementation` (web) or `native-product-implementation` (iOS/Android) assembles the real screens and delivers typed DataSource seams with mock implementations, never real data; `production-data-integration` wires real APIs, auth, cache, and persistence behind those seams. The Production Handoff names the third stage in its `Data Integration Ownership` field — an unknown owner is recorded as an open decision with someone assigned to resolve it, not guessed (a legacy handoff without the field is flagged as a warning).
+
+Those stages expand into a **six-station pipeline** documented in `storybook-product-prototype/references/pipeline-stations.md`: prototype authoring → team demo confirmation → handoff finalization → frontend assembly in mock mode → data integration → visual and acceptance QA. Station 2 is a human stop that no automation can pass. Stations 1–3 are platform-neutral, so the web/native split happens only from station 4, and both branches emit the same `IMPLEMENTATION_MAP.md` format — stations 5 and 6 never need to know which branch ran. That reference also carries a ready-to-adapt `agent-automation-orchestrate` orchestration example.
+
 ### `agent-automation-orchestrate`
 
 Bootstrap, guide, validate, run, resume, and inspect reusable engineering automation across repositories, keeping repository-specific instructions, verification, artifacts, and domain decisions in a project contract instead of the shared runner:
@@ -121,26 +125,69 @@ Use this when components or pages exported with the `design-system-to-storybook`
 
 ### `storybook-product-prototype`
 
-Create PRD-led product prototypes and frontend handoff docs in Storybook:
+Create PRD-led product prototypes and implementation handoff docs — for web and native targets alike — in Storybook:
 
 1. Turn a product idea into PRD, Flow Spec, UI Spec, Data Spec, Production Handoff, and Acceptance Criteria.
-2. Scaffold a prototype folder with typed route metadata, deterministic fixtures, and Storybook story files.
+2. Scaffold a prototype folder with typed route metadata, deterministic fixtures, and Storybook story files. Every fixture group is written twice — as `.ts` and as `fixtures/<group>.json` — so native platforms and mock adapters read the JSON directly instead of hand-translating it.
 3. Attach `parameters.prototype` metadata for Story, Docs, Data, and UI Flow review.
 4. Validate that docs, frontend handoff, flow routes, transition metadata, fixtures, and story wiring stay consistent.
+5. Freeze a versioned handoff: on a fully passing run, `--handoff-ready` writes `docs/HANDOFF_MANIFEST.json` (per-doc sha256, route/fixture snapshot, Review Status, an incrementing changelog version annotated with `--changelog "<summary>"`), and `--verify-manifest` catches docs edited after the team confirmed the demo — it lists the drifted files and exits non-zero.
+6. Export machine-readable contracts: `scripts/export_prototype_contracts.py` turns the CSS `--proto-*` alias block into `docs/TOKENS.json` (W3C DTCG) for downstream token codegen, and `scripts/export_flow.py` writes `docs/flow.json` (canvas layout fields stripped) and can generate a Swift route `enum` (`--swift`) or Kotlin sealed class (`--kotlin`) navigation skeleton.
 
-Use this when a team wants a clickable Storybook prototype and frontend implementation handoff before production repo work.
+Acceptance criteria carry stable IDs across all three stages — `AC-S-*` (Storybook), `AC-H-*` (handoff), and a new `AC-P-*` product section whose entries are tagged `(assembly)` when mock mode can verify them or `(integration)` when they need real data. The validator checks ID format and uniqueness.
+
+Flow contracts gained four optional fields — Route `params` and `deepLink`, Transition `presentation` (push/modal/sheet/fullscreen/replace) and `backBehavior` (pop/popToRoot/dismiss/none) — which promote the Flow Spec's Production Navigation Map to a Route id × Web path × iOS destination × Android route table; existing prototypes need no changes. For multi-platform handoff, `meta.components` takes an optional `targets` field (web/ios/android, `null` meaning "needs building") and the Prototype To Frontend Map supports split `Scope(web)` / `Scope(app)` columns. API contracts gained a `Semantics` column covering pagination, sort/filter, freshness, mutation (idempotency, optimistic updates), and error taxonomy.
+
+Use this when a team wants a clickable Storybook prototype and an implementation handoff before production repo work.
 
 ### `frontend-product-implementation`
 
 Implement frontend products and features from handoff docs:
 
-1. Read PRD, Flow Spec, UI Spec, Data Spec, Production Handoff, Acceptance, and Implementation Guide docs.
+1. Read PRD, Flow Spec, UI Spec, Data Spec, Production Handoff, Acceptance, and Implementation Guide docs, checking the Review Status gate first — a `pending` status or a missing section stops the work with a question, doubling up with the prototype-side validator.
 2. Inspect the target repo to detect routes/screens, design tokens, shared components, Storybook, i18n, data patterns, and tests.
 3. Follow `design-system-governance` (an external skill — see Notes): reuse tokens/components first, and stop for approval before creating missing tokens or shared components.
-4. Build greenfield products or add features to existing products with deterministic fixtures and mock data adapters when real integration is out of scope.
-5. Verify with the repo's typecheck, tests, build, Storybook, or app preview commands.
+4. Build greenfield products or add features to existing products behind mock data adapters — a `<Feature>DataSource` interface with a `Mock<Feature>DataSource` implementation, one method per fixture group.
+5. Accept in mock mode at the flow level: the primary journey and every branch state must run in the product environment on mock adapters, with every transition interactively reachable, before the work counts as done.
+6. Write `IMPLEMENTATION_MAP.md` with its four fixed sections (Consumed Manifest, Route Outcomes, Acceptance Traceability, Data Adapter Seams) and audit it with `scripts/validate_implementation.py` — route outcome coverage, evidence paths that actually exist, resolved AC-P `(assembly)` entries, and consumed manifest hashes that have not drifted.
+7. Verify with the repo's typecheck, tests, build, Storybook, or app preview commands.
 
-Use this after `storybook-product-prototype` or any equivalent handoff when you want the docs to become frontend product code while preserving design-system governance.
+Real data is never wired here, under any circumstance — the earlier "unless the user asks" exception is gone. Once the DataSource interfaces and mocks are delivered, the replacement work and its contracts are handed to the named third stage (`production-data-integration`, or the team the handoff names).
+
+Visual parity covers **every Scope B (newly built) screen**, each compared side by side with the prototype, not just newly built components. Scope A (already shipped) screens are explicitly excluded — prototype fidelity is not a reason to change a live screen. Token bootstrapping now looks at `docs/TOKENS.json` (DTCG) first, and its output format table adds SwiftUI and Jetpack Compose rows.
+
+Use this after `storybook-product-prototype` or any equivalent handoff when you want the docs to become frontend product code while preserving design-system governance. This skill keeps the web targets; native targets go to `native-product-implementation`.
+
+### `native-product-implementation`
+
+Implement the same handoff docs on native targets — iOS SwiftUI and Android Jetpack Compose. It is the sibling of `frontend-product-implementation`: identical handoff contracts and identical gates, different execution layer.
+
+1. Resolve the native architecture from repo evidence — `.xcodeproj` / `.xcworkspace` / `Package.swift`, or `settings.gradle(.kts)` / `AndroidManifest.xml` — inheriting a clear existing app without re-asking, and never re-platforming on a feature request.
+2. Inherit the shared contracts verbatim: doc reading order, the Review Status gate, Scope A/B/C/U classification, the Consumed Manifest record, the four `IMPLEMENTATION_MAP.md` sections, and acceptance-ID traceability.
+3. Generate tokens from `docs/TOKENS.json` into SwiftUI `Color`/`Font` extensions or a Compose theme object.
+4. Map flow navigation semantics onto the platform: every `presentation` value has both a SwiftUI and a Jetpack Compose counterpart — `push` is a `NavigationStack` path append or `navController.navigate(route)`, `modal` a blocking modal presentation or a dialog destination, `sheet` a `.sheet` or a Material bottom sheet, `fullscreen` a `.fullScreenCover` or a full-screen dialog destination, and `replace` a path-root replacement or `navigate` with `popUpTo(...) { inclusive = true }`. `backBehavior` (pop / popToRoot / dismiss / none) has its own two-platform table; both tables live in `references/implementation-workflow.md`.
+5. Verify with `xcodebuild build` / `test` and `swiftlint`, or `gradlew assembleDebug` / `test` / `lint` and `detekt`, plus a simulator or emulator smoke run.
+
+As with the web sibling, real data wiring is out of scope: it delivers a `<Feature>DataSource` protocol/interface with a Mock implementation reading `fixtures/*.json`, and hands the replacement to the named data-integration owner.
+
+Maturity note: the mechanism is complete, but this skill has **not yet been run end to end against a real Xcode or Gradle project**.
+
+### `production-data-integration`
+
+Stage 3 of the prototype-to-production chain: replace the mock adapters the assembly stage delivered with real API clients, auth/session, cache, storage, persistence, and environment configuration, then prove the swap with contract tests. Previously the prototype pointed real integration at the "receiving implementation" while `frontend-product-implementation` declared it out of scope, so nobody owned it; this skill fills that gap.
+
+Four fixed inputs:
+
+1. The Production Handoff's API And Data Contracts table, including its Adapter interface and Semantics columns.
+2. The Implementation Map's Data Adapter Seams table.
+3. `fixtures/*.json`.
+4. The Data Spec's `Data Schemas (JSON Schema)` section.
+
+Contract tests are the gate, one set per fixture group: validate real responses against the JSON Schema, assert the UI error-state mapping for every error-taxonomy class (retryable / non-retryable / needs re-auth), cover each Semantics entry with at least one behavioral assertion, and use `fixtures/*.json` as the golden shape reference — comparing field types, not values. It reuses the project's existing test framework and introduces no new one.
+
+The boundary is strict: it never changes UI behavior, route flow, components, or tokens. When a contract and the real API disagree it reports back and amends the handoff docs rather than patching the UI in place, and when an endpoint or auth scheme is unknown it stops and asks the named owner instead of inventing one.
+
+Use this after `frontend-product-implementation` or `native-product-implementation`, or whenever a Production Handoff names a data-integration owner.
 
 ### `storybook-tools-install`
 
@@ -372,6 +419,15 @@ The generated report is a static HTML + CSS artifact, usually under `reports/des
 ├── frontend-product-implementation/
 │   ├── SKILL.md
 │   ├── agents/
+│   ├── references/
+│   └── scripts/
+├── native-product-implementation/
+│   ├── SKILL.md
+│   ├── agents/
+│   └── references/
+├── production-data-integration/
+│   ├── SKILL.md
+│   ├── agents/
 │   └── references/
 ├── pipeline-board/
 │   ├── SKILL.md
@@ -389,8 +445,16 @@ The generated report is a static HTML + CSS artifact, usually under `reports/des
 │   ├── SKILL.md
 │   ├── agents/
 │   ├── assets/
+│   │   ├── prototype-flow-layout/
+│   │   ├── prototype-inspector/
+│   │   ├── prototype-template/
+│   │   │   └── fixtures/
+│   │   └── prototype-template-vue/
 │   ├── references/
+│   │   └── pipeline-stations.md
 │   └── scripts/
+│       ├── export_flow.py
+│       └── export_prototype_contracts.py
 ├── task-board/
 │   ├── README.md
 │   ├── control-plane/

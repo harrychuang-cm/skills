@@ -308,7 +308,7 @@
   <a class="brand" href="#/"><span class="brand-dot"></span><span>從 Storybook 到上線</span></a>
   <nav class="tabs" id="tabs" aria-label="主導覽">
     <a href="#/" data-tab="start">找路線</a>
-    <a href="#/journey" data-tab="journey">六站旅程</a>
+    <a href="#/journey" data-tab="journey">七站旅程</a>
     <a href="#/route-a" data-tab="route-a">路線 A</a>
     <a href="#/route-b" data-tab="route-b">路線 B</a>
     <a href="#/gates" data-tab="gates">紅綠燈</a>
@@ -332,7 +332,7 @@
 
   const footer = `
     <p class="endnote">
-      cm-skills · designer guide · 路線 A：storybook-product-prototype → frontend-product-implementation · 路線 B：元件庫 → frontend-product-implementation<br>
+      cm-skills · designer guide · 路線 A：storybook-product-prototype → frontend-product-implementation（原生 App 換成 native-product-implementation）→ production-data-integration · 路線 B：元件庫 → frontend-product-implementation → production-data-integration<br>
       更多旅程與工具：<a href="skills-guide.html">CM Skills 使用指南</a>
     </p>`;
 
@@ -370,28 +370,28 @@
     "proto|feature": {
       route: "a", badge: "ROUTE A", title: "路線 A：帶著交接文件進產品",
       why: "原型和文件都齊了，這是最順的一條路——交接包就是 AI 的施工圖。",
-      steps: ["打開交接文件 PRODUCTION_HANDOFF，確認目標頁面寫對", "到產品專案，用下面這句話開工", "AI 盤點後動工，缺什麼會先問你", "完成後用 ui-compare-to-reference 驗收"],
+      steps: ["打開交接文件 PRODUCTION_HANDOFF，確認目標頁面寫對、「真實資料由誰接」那一欄沒有空著", "到產品專案，用下面這句話開工", "AI 盤點後動工，缺什麼會先問你——做出來的畫面是用假資料跑的", "請交接文件裡記名的負責人（或 production-data-integration）把假資料換成真的", "完成後用 ui-compare-to-reference 驗收"],
       say: "請用 frontend-product-implementation，依原型的 handoff 文件把這個功能實作進產品。",
       jump: "#/route-a", jumpText: "看路線 A 完整步驟 →",
     },
     "proto|screen": {
       route: "a", badge: "ROUTE A・輕量", title: "路線 A（輕量版）：小東西也走交接文件",
       why: "既然原型和文件都有了，照走 A 但份量小——AI 只會動需要的那個畫面。",
-      steps: ["跟 AI 確認交接文件（handoff）裡這個畫面的範圍", "到產品專案，用下面這句話開工", "完成後用 ui-compare-to-reference 驗收"],
+      steps: ["跟 AI 確認交接文件（handoff）裡這個畫面的範圍，順便看「真實資料由誰接」那一欄沒有空著", "到產品專案，用下面這句話開工——做出來的畫面是用假資料跑的", "請記名的負責人（或 production-data-integration）把假資料換成真的", "完成後用 ui-compare-to-reference 驗收"],
       say: "請用 frontend-product-implementation，依 handoff 文件實作〇〇這個畫面就好，其他不動。",
       jump: "#/route-a", jumpText: "看路線 A 完整步驟 →",
     },
     "mockup|feature": {
       route: "a", badge: "ROUTE A・從原型站進入", title: "建議先補原型，再走路線 A",
       why: "多畫面的功能直接進產品風險高——先花一點時間把設計稿變成可點擊原型和交接文件，流程和狀態先驗證過，之後的實作幾乎不會返工。",
-      steps: ["用下面這句話，把設計稿變成原型＋文件", "在 Storybook 點過每條流程，確認無誤", "接著照路線 A 的步驟 1–5 走"],
+      steps: ["用下面這句話，把設計稿變成原型＋文件", "在 Storybook 點過每條流程，確認無誤", "接著照路線 A 的步驟 1–6 走"],
       say: "請用 storybook-product-prototype，把這組設計稿變成可點擊原型和交接文件。",
       jump: "#/route-a", jumpText: "之後進產品時：路線 A 完整步驟 →",
     },
     "mockup|screen": {
       route: "b", badge: "ROUTE B", title: "路線 B：讓 AI 認積木，直接組裝",
       why: "單一畫面、設計稿已定案——不用原型，直接請 AI 盤點畫面上的元件、對應元件庫、拼進產品。",
-      steps: ["把設計稿（Figma 連結或截圖）給 AI", "用下面這句話開工", "AI 盤點元件庫後組裝，缺積木會先問你", "完成後用 ui-pixel-align-report 出比對報告"],
+      steps: ["把設計稿（Figma 連結或截圖）給 AI", "用下面這句話開工", "AI 盤點元件庫後組裝，缺積木會先問你；做出來的畫面是用假資料跑的", "要抓真實資料的話，請記名的負責人（或 production-data-integration）接上去", "完成後用 ui-pixel-align-report 出比對報告"],
       say: "請用 ui-screenshot-to-storybook-product，用我們的元件庫實作這張設計稿。",
       jump: "#/route-b", jumpText: "看路線 B 完整步驟 →",
     },
@@ -405,7 +405,7 @@
     "idea|screen": {
       route: "b", badge: "ROUTE B", title: "路線 B：直接描述需求，用現成元件做",
       why: "小畫面不需要文件儀式——把需求說清楚（在哪個頁面、做什麼、成功長怎樣），AI 用元件庫現成的積木直接拼。",
-      steps: ["想好三件事：哪個頁面、加什麼、成功的樣子", "用下面這句話開工", "AI 先盤點元件庫再動工", "完成後請 AI 截圖給你確認"],
+      steps: ["想好三件事：哪個頁面、加什麼、成功的樣子", "用下面這句話開工", "AI 先盤點元件庫再動工；做出來的畫面是用假資料跑的", "要抓真實資料的話，請記名的負責人（或 production-data-integration）接上去", "完成後請 AI 截圖給你確認"],
       say: "請用 frontend-product-implementation，在產品的〇〇頁面加上〇〇功能，元件請用我們 Storybook 裡現成的。",
       jump: "#/route-b", jumpText: "看路線 B 完整步驟 →",
     },
@@ -476,7 +476,7 @@
       </section>`;
   }
 
-  /* ============================================================== 六站旅程 */
+  /* ============================================================== 七站旅程 */
 
   const stations = [
     {
@@ -497,19 +497,21 @@
     },
     {
       num: "03", title: "交接文件", gate: true,
-      you: "看一份文件就好：PRODUCTION_HANDOFF。確認「這個原型要放進產品的哪個頁面／畫面」寫對了。",
-      ai: "自動產出七份交接文件：需求、流程、介面規格、資料規格、驗收條件⋯⋯",
-      out: "工程師或 AI 不用問你就能接手的完整交接包。",
+      you: "看一份文件就好：PRODUCTION_HANDOFF。確認兩件事：「這個原型要放進產品的哪個頁面／畫面」寫對了，以及「真實資料由誰接」那一欄有交代（還沒定案也可以，但要寫成待決事項並指定誰去問清楚，不能整欄空白）。",
+      ai: "自動產出七份交接文件：需求、流程、介面規格、資料規格、驗收條件⋯⋯團隊點頭後定版，幫整包文件蓋上版本戳記。",
+      out: "工程師或 AI 不用問你就能接手的完整交接包，外加一個版本戳記——之後有人改了文件會被抓出來。",
       say: "用白話總結 PRODUCTION_HANDOFF 給我聽，我要確認目標頁面和要做的狀態。",
       sayLabel: null,
     },
     {
       num: "04", title: "進產品專案", gate: false,
       you: "請工程師幫你在正式產品的專案裡開好 AI 工具，然後說一句話請它依交接文件實作。",
-      ai: "自己搞懂產品用什麼技術、有哪些現成元件和 tokens，優先重用、不重造。",
-      out: "新功能的頁面／畫面，先用假資料跑起來。",
+      ai: "自己搞懂產品用什麼技術、有哪些現成元件和 tokens，優先重用、不重造。產品是網頁或原生 App，換的只是下面那句話裡的技能名字。",
+      out: "新功能的頁面／畫面，先用假資料跑起來——看得到、點得動，但還沒接真實資料，所以還不能上線。（老實說一句：原生 App 這條路機制都備齊了，但還沒在真實的 iOS／Android 專案上完整跑過一次，第一次走要多留確認和來回修正的時間。）",
       say: "請用 frontend-product-implementation，依原型的 handoff 文件把這個功能實作進產品。",
-      sayLabel: null,
+      sayLabel: "產品是網頁時",
+      say2: "請用 native-product-implementation，依同一份 handoff 文件把這個功能實作成 iOS／Android 的畫面。",
+      sayLabel2: "產品是原生 App 時",
     },
     {
       num: "05", title: "核准時刻", gate: true,
@@ -520,7 +522,15 @@
       sayLabel: null,
     },
     {
-      num: "06", title: "視覺驗收", gate: false,
+      num: "06", title: "接真實資料", gate: false,
+      you: "確認交接文件上「真實資料由誰接」寫的那個名字真的有人認領——某個團隊、某位工程師，或直接交給 AI。接好之後回頭看畫面：文字變長、清單變空、載入變慢的時候，還是你要的樣子嗎？",
+      ai: "把假資料換成真的 API、登入、快取，並寫測試證明真實回來的資料和當初講好的長得一樣。只換資料，不動你確認過的畫面、流程、元件和 tokens。",
+      out: "跑在真實資料上的畫面。真實資料和當初講好的對不上時，AI 會回報並回頭改交接文件，不會偷偷改畫面來遷就。驗收表上標了 (integration) 的那幾條，也要等這一站做完才驗得了。",
+      say: "請用 production-data-integration，把這個功能的假資料換成真實 API，並補上契約測試。",
+      sayLabel: null,
+    },
+    {
+      num: "07", title: "視覺驗收", gate: false,
       you: "看比對報告，決定「這是跑版要修」還是「這是平台本來就該有的差異」。",
       ai: "把產品畫面和 Storybook 原型逐格比對，抓出間距、字級、顏色的偏差並修正。",
       out: "修好的畫面 ＋ 比對結果回報；要留存附截圖證據的報告，請 AI 再用 ui-pixel-align-report 產出。",
@@ -541,6 +551,7 @@
         <div class="lane"><span class="lane-t">產出物</span><span>${esc(s.out)}</span></div>
       </div>
       ${s.say ? say(s.say, s.sayLabel) : ""}
+      ${s.say2 ? say(s.say2, s.sayLabel2) : ""}
       <div class="panel-nav">
         <button type="button" id="pn-prev" ${currentStation === 0 ? "disabled" : ""}>← 上一站</button>
         <button type="button" id="pn-next" ${currentStation === stations.length - 1 ? "disabled" : ""}>下一站 →</button>
@@ -562,13 +573,15 @@
           <span class="pipe-arrow">→</span>
           <div class="pipe-node"><b>產品實作</b><span>搬進正式 App／網站</span></div>
           <span class="pipe-arrow">→</span>
+          <div class="pipe-node"><b>接真實資料</b><span>把假資料換成真的</span></div>
+          <span class="pipe-arrow">→</span>
           <div class="pipe-node"><b>視覺驗收</b><span>比對有沒有跑版</span></div>
         </div>
-        <p style="margin-top:18px; color:var(--muted); font-size:14.5px;"><a href="#/route-a">路線 A</a> 走完整條線；<a href="#/route-b">路線 B</a> 從「Storybook 元件庫」直接跳到「產品實作」，跳過原型那一站。</p>
+        <p style="margin-top:18px; color:var(--muted); font-size:14.5px;"><a href="#/route-a">路線 A</a> 走完整條線；<a href="#/route-b">路線 B</a> 從「Storybook 元件庫」直接跳到「產品實作」，跳過原型那一站。<br>「產品實作」那一格會依你的產品分岔：網頁一種做法、iOS／Android 原生 App 另一種做法，但前後每一步、每個要你點頭的地方都一樣（原生 App 這條路還沒在真實專案上完整跑過一次，細節看<a href="#/route-a">路線 A 的說明</a>）。而不管走哪一條，實作出來的畫面都是<strong style="color:var(--ink)">用假資料跑的</strong>，要再經過「接真實資料」才算能上線。</p>
       </section>
       <section>
         <span class="eyebrow">User Journey</span>
-        <h2>你的旅程：六站到上線</h2>
+        <h2>你的旅程：七站到上線</h2>
         <p class="section-intro">點每一站，看你要做什麼、AI 幫你做什麼、以及這一站你可以直接複製的說法。標了 <span class="gate-mark">等你點頭</span> 的站，代表 AI 一定會停下來問你，不會自己決定。</p>
         <div class="stations" role="group" aria-label="旅程站點">
           ${stations
@@ -597,7 +610,7 @@
               <span class="step-num">1</span>
               <div>
                 <h3>確認交接包完整</h3>
-                <p>在原型專案的 <code>docs/</code> 資料夾裡有七份文件。你只需重點看 <code>PRODUCTION_HANDOFF.md</code>：目標頁面寫對了嗎？哪些狀態（載入中、錯誤、空白）要做？沒把握就請 AI 唸給你聽。</p>
+                <p>在原型專案的 <code>docs/</code> 資料夾裡有七份文件。你只需重點看 <code>PRODUCTION_HANDOFF.md</code>：目標頁面寫對了嗎？哪些狀態（載入中、錯誤、空白）要做？「真實資料由誰接」那一欄有交代嗎？（還沒定案也可以，但要寫成待決事項並指定誰去問清楚，不能整欄空白。）沒把握就請 AI 唸給你聽。</p>
                 ${say("幫我檢查這個原型的交接文件是否完整，用白話總結 PRODUCTION_HANDOFF 給我聽。")}
               </div>
             </li>
@@ -613,7 +626,7 @@
               <span class="step-num">3</span>
               <div>
                 <h3>AI 先盤點，再動工</h3>
-                <p>動工前 AI 會先掃一遍產品：有哪些 tokens、哪些現成元件、文字放在哪裡管理。原則是「先用現成的」，拼不出來才會問你要不要新增。真實 API 和資料先用假資料代替，等工程師接手。</p>
+                <p>動工前 AI 會先掃一遍產品：有哪些 tokens、哪些現成元件、文字放在哪裡管理。原則是「先用現成的」，拼不出來才會問你要不要新增。這一棒<strong style="color:var(--ink)">不接真實資料</strong>：畫面先用假資料跑，同時留好一個可替換的插座，真實 API 留給步驟 5 記名的人接。</p>
               </div>
             </li>
             <li class="step">
@@ -626,12 +639,22 @@
             <li class="step">
               <span class="step-num">5</span>
               <div>
+                <h3>接真實資料</h3>
+                <p>步驟 4 做出來的畫面是<strong style="color:var(--ink)">用假資料跑的</strong>——看起來完成了，但還不能上線。這一步才把假資料換成真的 API、登入、快取，並寫測試證明真實回來的資料和當初講好的一樣。做這件事的是交接文件裡記名的<a href="#/glossary">資料串接負責人</a>：某個團隊、某位工程師，或用下面這句話交給 AI。這一步只換資料，不會動你確認過的畫面、流程和元件；發現真實資料和契約對不上，會回報並回頭改交接文件，而不是偷偷改畫面來遷就。</p>
+                ${say("請用 production-data-integration，把這個功能的假資料換成真實 API，並補上契約測試。")}
+              </div>
+            </li>
+            <li class="step">
+              <span class="step-num">6</span>
+              <div>
                 <h3>驗收</h3>
-                <p>請 AI 把做好的產品畫面和 Storybook 原型比一輪，跑版就修；要留下附截圖證據的報告，請它再用 ui-pixel-align-report 產出。</p>
+                <p>請 AI 把做好的產品畫面和 Storybook 原型比一輪，跑版就修；要留下附截圖證據的報告，請它再用 ui-pixel-align-report 產出。交接文件裡的驗收表每一條都有<a href="#/glossary">編號</a>：標了 (assembly) 的用假資料就驗得了，標了 (integration) 的要等步驟 5 接上真實資料才驗得了——走到這裡，兩種都該能一條一條打勾。</p>
                 ${say("請用 ui-compare-to-reference，以 Storybook 原型為準比對產品畫面並修正差異。")}
               </div>
             </li>
           </ol>
+          <div class="fit"><b>如果產品是原生 App（iOS／Android）：</b>同一份交接文件也能做成原生 App。上面六個步驟、每個要你點頭的地方完全一樣，只有步驟 2 那句話要換一個技能名字——把 frontend-product-implementation 換成 native-product-implementation，AI 就會用 iOS／Android 的做法產出畫面。老實說一句：這條路的機制都備齊了，但還沒有在真實的 iOS／Android 專案上完整跑過一次，第一次走請多留一點確認和來回修正的時間。</div>
+          ${say("請用 native-product-implementation，依同一份 handoff 文件把這個功能實作成 iOS／Android 的畫面。", "產品是原生 App 時，步驟 2 改說這句")}
         </div>
         <p class="rule"><b>一句話判斷：</b>需要「說服別人或驗證想法」→ 路線 A；只是「把定案的東西做出來」→ 路線 B。中途發現 B 越做越大，隨時可以回頭補原型和文件，兩條路不衝突。</p>
         <div class="next-links">
@@ -671,7 +694,7 @@
               <span class="step-num">3</span>
               <div>
                 <h3>AI 用現成元件拼裝</h3>
-                <p>和路線 A 一樣，AI 會先盤點元件庫再動工，不會為了一張稿另起爐灶做重複的按鈕。畫面上的顏色間距全部走 tokens，不寫死。</p>
+                <p>和路線 A 一樣，AI 會先盤點元件庫再動工，不會為了一張稿另起爐灶做重複的按鈕。畫面上的顏色間距全部走 tokens，不寫死。如果這個畫面要抓資料，AI 一樣只做到「假資料先跑起來」並留好插座，真實 API 交給記名的<a href="#/glossary">資料串接負責人</a>——這條規則兩條路線都一樣。</p>
               </div>
             </li>
             <li class="step">
@@ -700,7 +723,7 @@
       <section>
         <span class="eyebrow amber">Approval Gates</span>
         <h2>紅綠燈：AI 什麼時候會停下來等你</h2>
-        <p class="section-intro">不管走哪條路線，遇到下面這幾種情況——三個紅綠燈，加一個最壞情況的備案——AI 都會停下來問你，不會自作主張。展開「看模擬對話」，先預覽 AI 會怎麼問、你可以怎麼回——實際遇到時就不會慌。</p>
+        <p class="section-intro">不管走哪條路線，遇到下面這幾種情況——三個紅綠燈，加一個版本檢查和一個最壞情況的備案——AI 都會停下來問你，不會自作主張。展開「看模擬對話」，先預覽 AI 會怎麼問、你可以怎麼回——實際遇到時就不會慌。</p>
         <div class="gates">
           <div class="gate">
             <span class="g-label">GATE 1</span>
@@ -735,6 +758,18 @@
               <div class="dialog">
                 <div class="msg ai">這個專案同時存在 SCSS variables 和 CSS custom properties 兩套寫法，各佔約一半，判斷不出主流。新建立的 tokens 要走哪一套？</div>
                 <div class="msg reply-set"><span class="rl">你可以這樣回</span><span class="reply-chip">我問一下工程師再回你</span><span class="reply-chip">先列出兩套各用在哪些地方</span></div>
+              </div>
+            </details>
+          </div>
+          <div class="gate">
+            <span class="g-label">VERSION CHECK</span>
+            <h3>你確認過的那一版，被改了</h3>
+            <p>團隊 demo 點頭的那一刻，AI 會幫整包交接文件蓋上一個<a href="#/glossary">版本戳記</a>。之後只要有人動過文件——補一段規格、改一條流程——實作交件前會再檢查一次（前提是還搆得到原型資料夾），對不上就會把被改過的檔案攤開給你看，不會默默照著新版交件。你只要決定：重新確認一次定新版，還是把改動退回、照原版做。</p>
+            <details>
+              <summary>看模擬對話</summary>
+              <div class="dialog">
+                <div class="msg ai">交接文件版本檢查沒過：有 2 份文件在團隊確認之後被改過（UI_SPEC.md、FLOW_SPEC.md），和當初蓋戳記的那一版不一致。要先請團隊重新確認、重新定版嗎？</div>
+                <div class="msg reply-set"><span class="rl">你可以這樣回</span><span class="reply-chip">列出改了哪些地方給我看</span><span class="reply-chip">這是小修，重新定版就好</span><span class="reply-chip">先退回改動，照原版做</span></div>
               </div>
             </details>
           </div>
@@ -789,7 +824,23 @@
           </div>
           <div class="term">
             <dt>Fixture（假資料）</dt>
-            <dd>寫死的示範資料，讓畫面在真實 API 接上之前就能完整展示。工程師之後把它換成真資料，畫面不用重做。</dd>
+            <dd>寫死的示範資料，讓畫面在真實 API 接上之前就能完整展示。之後把它換成真資料，畫面不用重做。</dd>
+          </div>
+          <div class="term">
+            <dt>版本戳記（HANDOFF_MANIFEST）</dt>
+            <dd>團隊 demo 點頭的那一刻，AI 幫整包交接文件蓋的一個章，記下每份文件當時的樣子。之後有人動過文件，再檢查一次就會列出被改的檔案並提醒你——避免別人照著舊版做，或你確認過的版本被悄悄換掉。</dd>
+          </div>
+          <div class="term">
+            <dt>驗收編號（AC-S／AC-H／AC-P）</dt>
+            <dd>驗收條件的每一條都有編號，方便對帳誰做完了、誰還沒。AC-S 是在 Storybook 原型就要驗的、AC-H 是交接當下要驗的、AC-P 是產品做出來要驗的。AC-P 還會標註 (assembly)＝用假資料就能驗，或 (integration)＝要等真實資料接上才驗得了。</dd>
+          </div>
+          <div class="term">
+            <dt>假資料接縫（DataSource／mock）</dt>
+            <dd>畫面拿資料的那個插座。組裝階段先插「假資料」這個插頭，畫面就能完整跑；之後接真實資料時只換插頭，畫面、流程、元件都不用重做——這就是為什麼「先用假資料」不是偷懶。</dd>
+          </div>
+          <div class="term">
+            <dt>資料串接負責人（Data Integration Ownership）</dt>
+            <dd>交接文件裡一定要寫出「真實資料由誰接」：某個團隊、某個系統、某位工程師，或交給 production-data-integration 這個 AI 技能。還不知道就會被記成待決事項，並指定誰負責去問清楚，不會變成沒人管的空窗。</dd>
           </div>
           <div class="term">
             <dt>ref → sys → comp</dt>
@@ -806,7 +857,7 @@
 
   const views = {
     "start": { render: renderStart, title: "從 Storybook 到上線" },
-    "journey": { render: renderJourney, title: "六站旅程 — 從 Storybook 到上線" },
+    "journey": { render: renderJourney, title: "七站旅程 — 從 Storybook 到上線" },
     "route-a": { render: renderRouteA, title: "路線 A — 從 Storybook 到上線" },
     "route-b": { render: renderRouteB, title: "路線 B — 從 Storybook 到上線" },
     "gates": { render: renderGates, title: "紅綠燈 — 從 Storybook 到上線" },

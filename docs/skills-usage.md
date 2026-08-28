@@ -38,7 +38,9 @@ Read <cm-skills path>/frontend-product-implementation/SKILL.md and follow that w
 | 把設計系統文件做成 Storybook 元件庫 | `$design-system-to-storybook` | 把 tokens、components、stories 落地到產品 repo。 |
 | 從一張畫面拆成可重用 Storybook 元件 | `$ui-screenshot-to-storybook-product` | 適合只有截圖或單一畫面時，先做元件化再組畫面。 |
 | 建立產品流程 prototype 和前端 handoff 文件 | `$storybook-product-prototype` | 產出 PRD、Flow、UI Spec、Data Spec、Frontend Handoff 和 clickable prototype。 |
-| 根據 handoff 文件實作前端產品功能 | `$frontend-product-implementation` | 把 handoff docs 變成產品 repo 裡的 routes、screens、states、fixtures、mock adapters。 |
+| 根據 handoff 文件實作前端產品功能（web） | `$frontend-product-implementation` | 把 handoff docs 變成產品 repo 裡的 routes、screens、states、fixtures、mock adapters。 |
+| 用同一份 handoff 文件做 iOS / Android 版 | `$native-product-implementation` | `$frontend-product-implementation` 的姊妹 skill：一樣的文件與把關，執行層換成 SwiftUI 與 Jetpack Compose。（機制完備，尚未對真實原生專案實戰過） |
+| 把 mock 資料換成真的 API、auth、cache | `$production-data-integration` | prototype → production 的第三棒：接上真實資料並用 contract test 證明，不動 UI。 |
 | 確保 UI 開發遵循設計系統規則 | `$design-system-governance` | 搭配實作類 skill 使用，先檢查 tokens、元件庫、i18n，缺 token/元件要先問。（外部 skill，不在本 repo） |
 | 把畫面修成跟參考來源一致 | `$ui-compare-to-reference` | 參考來源可以是 Figma、設計圖，或另一個平台的原始碼（網頁 ↔ App 互為標準）。修在 token 或共用元件上，不是修在單一畫面。 |
 | 產出設計落差稽核報告 | `$ui-pixel-align-report` | 兩邊都抽成同一份規格再比對，產出截圖證據、嚴重度、歸屬層級的離線 HTML 報告與 `findings.json`。 |
@@ -139,11 +141,20 @@ Use $ui-screenshot-to-storybook-product on reference/dashboard.png and implement
 - `ACCEPTANCE.md`
 - `IMPLEMENTATION_GUIDE.md`
 - typed route metadata
-- deterministic fixtures
+- deterministic fixtures（`.ts` 之外同時寫 `fixtures/<group>.json`，原生平台和 mock adapter 可直接讀）
+- `docs/TOKENS.json`（W3C DTCG token 交換格式，由 `scripts/export_prototype_contracts.py` 從 CSS 的 `--proto-*` alias 匯出）
+- `docs/flow.json`（由 `scripts/export_flow.py` 匯出，可加 `--swift` / `--kotlin` 生成 Swift route enum 與 Kotlin sealed class 導航骨架）
+- `docs/HANDOFF_MANIFEST.json`（`--handoff-ready` 全數通過時產出）
 - Storybook prototype
 - Static Flow export
 
-注意：這個 skill 不負責接真實 API。它會寫清楚 API/data contract 和 fixtures，真實資料來源由接手的工程師或 AI coding agent 處理。
+交接定版與漂移偵測：`--handoff-ready` 全數通過時會產出 `docs/HANDOFF_MANIFEST.json`，記錄每份文件的 sha256、route/fixture 快照、Review Status 和 changelog 版本（可用 `--changelog "摘要"` 標註）。之後用 `--verify-manifest` 可以偵測「團隊 demo 確認後又改了文件」，列出漂移的檔案並以非零 exit code 結束。
+
+驗收 ID 三層貫穿：`ACCEPTANCE.md` 每條都有穩定 ID — `AC-S-*`（Storybook 驗收）、`AC-H-*`（交接驗收）、`AC-P-*`（產品驗收）。`AC-P-*` 會標記 `(assembly)`（組裝階段用 mock 就能驗）或 `(integration)`（要等真實串接才能驗），讓後面兩棒各自知道要對哪些條目負責。
+
+多平台交接：flow 契約新增 `params`、`deepLink`、`presentation`（push/modal/sheet/fullscreen/replace）、`backBehavior`（pop/popToRoot/dismiss/none）四個 optional 欄位，FLOW_SPEC 的 Production Navigation Map 升級成「Route id × Web path × iOS destination × Android route」表格；`meta.components` 可加 `targets` 欄分別標 web/ios/android，Prototype To Frontend Map 的 Scope 欄支援 `Scope(web)` / `Scope(app)` 雙欄。舊 prototype 不需改動。
+
+注意：這個 skill 不負責接真實 API。它會寫清楚 API/data contract（契約新增 pagination、sort/filter、freshness、mutation、error taxonomy 五個語意欄位，在模板表以 `Semantics` 欄用 `key: value` 分號簡記）和 fixtures，並在 handoff 文件的 `Data Integration Ownership` 欄位寫明真實串接由誰承接（團隊、系統、人，或 `$production-data-integration`）；不知道就記成 open decision 並指定負責釐清的人。
 
 範例：
 
@@ -153,30 +164,93 @@ Use $storybook-product-prototype to create a checkout flow prototype with PRD, U
 
 ### `$frontend-product-implementation`
 
-用途：把 handoff docs 實作成產品 repo 裡的前端功能。
+用途：把 handoff docs 實作成產品 repo 裡的前端功能（web 目標；原生目標請改用 `$native-product-implementation`）。
 
 適合情境：
 
-- 已經有 `$storybook-product-prototype` 產出的 docs。
+- 已經有 `$storybook-product-prototype` 產出的 docs，且團隊已經確認過 demo。
 - 想從 0 到 1 建立 frontend product。
 - 想在既有產品中新增 route、screen、feature。
-- 真實 API 還沒準備好，但前端可以先用 fixtures/mock adapter。
+- 要在 mock 模式下把前端全流程走通 — 這一棒只交付 fixtures/mock adapter，真實 API 是否就緒都不改變這個邊界。
 
 會做的事：
 
 - 讀 `PRODUCTION_HANDOFF.md`，再 cross-check PRD、Flow、UI、Data、Acceptance。
+- 先檢查交接文件的 Review Status；`pending` 或缺章節就停下來問，與 prototype 端的 validator 形成雙重防護。
 - 判斷是 greenfield 還是 existing product。
 - 掃描 target repo 的 routes、screens、tokens、component library、Storybook、i18n、data pattern。
 - 遵循 `$design-system-governance`。
 - 優先重用現有 tokens 和 shared components。
-- 如果缺 token 或 shared component，先問使用者。
-- 建立 typed contracts、fixtures、mock adapters。
+- 如果缺 token 或 shared component，先問使用者。需要建立 token 時，來源優先序以 `docs/TOKENS.json`（DTCG）為第一位。
+- 建立 typed contracts、fixtures，以及 `<Feature>DataSource` 介面加 `Mock<Feature>DataSource` 實作（每個 fixture group 一個方法）。
+- 在產品環境用 mock adapter 走完主要旅程與全部分支狀態，每個 transition 都能互動觸發，才算完工。
+- 產出 `IMPLEMENTATION_MAP.md`（Consumed Manifest、Route Outcomes、Acceptance Traceability、Data Adapter Seams 四個固定章節），用 `scripts/validate_implementation.py` 稽核 route 終態覆蓋、evidence path 存在、`AC-P-*` `(assembly)` 條目已解決、consumed manifest hash 未漂移。
+- 把全部 Scope B（新建）畫面逐一與 prototype 並排比對；Scope A（已上線）畫面明文排除 — prototype 逼真度不是修改已上線畫面的理由。
 - 跑 typecheck、tests、build 或 Storybook/app preview。
+
+注意：資料邊界是硬性的 — 任何情況都不接真實資料，沒有例外條款。交付 DataSource 介面加 Mock 之後，把替換工作連同契約轉交 handoff 文件裡記名的第三棒（`$production-data-integration`，或指定的團隊/系統）。
 
 範例：
 
 ```text
 Use $frontend-product-implementation to implement the checkout flow from ./src/pages/prototypes/checkout-flow-prototype/docs into ./apps/web. Follow $design-system-governance.
+```
+
+### `$native-product-implementation`
+
+用途：把同一份 handoff docs 實作成 iOS（SwiftUI、Xcode、SPM）或 Android（Jetpack Compose、Gradle、Kotlin）的原生功能。
+
+適合情境：
+
+- 交接文件的目標平台是 App，不是網頁。
+- 已經有 `$storybook-product-prototype` 產出的 docs — web 和原生共用同一份，不必重寫。
+- 想在既有的 Xcode / Gradle 專案中新增畫面或功能。
+- 要在 mock 模式下把 App 全流程走通 — App 一樣只交付 fixtures/mock，真實串接不在 scope。
+
+它是 `$frontend-product-implementation` 的姊妹 skill：文件讀取順序、Review Status 閘門、Scope A/B/C/U 分類、Consumed Manifest 紀錄、`IMPLEMENTATION_MAP.md` 四章節、驗收 ID traceability 全部相同語意，只有執行層換成原生。機器稽核也沿用同一支 `frontend-product-implementation/scripts/validate_implementation.py`（原生 skill 底下沒有自己的 `scripts/`），所以做原生目標時要一併安裝 `$frontend-product-implementation` 的 skill 資料夾。
+
+會做的事：
+
+- 從 repo 證據判斷原生架構（`.xcodeproj` / `.xcworkspace` / `Package.swift` / `settings.gradle(.kts)` / `AndroidManifest.xml`），繼承既有 app 就不再追問，也不因為一個功能需求就換平台。
+- 遵循 `$design-system-governance`：動 UI 之前先盤點原生 theme/token 與共用元件，能組合就不新建，缺 token 或元件要先問。
+- 把 `docs/TOKENS.json` 生成 SwiftUI 的 `Color` / `Font` extension，或 Compose 的 theme object。
+- 把 flow 的 `presentation` / `backBehavior` 對映到 NavigationStack push、`.sheet`、`.fullScreenCover`，或 NavHost 的 navigate 與 `popUpTo`。
+- 交付 `<Feature>DataSource` protocol/interface 加上讀 `fixtures/*.json` 的 Mock 實作。
+- 跑 `xcodebuild build/test`、`swiftlint`，或 `gradlew assembleDebug/test/lint`、`detekt`，並在模擬器/模擬機做冒煙測試。
+
+注意：這個 skill 一樣不接真實資料，只交付可替換的 DataSource 接縫，真實串接交給記名的第三棒。另外，它的機制已經完備，但尚未對真實 Xcode / Gradle 專案跑過一次完整交付 — 第一次使用請預留驗證時間。
+
+範例：
+
+```text
+Use $native-product-implementation to implement the checkout flow from ./src/pages/prototypes/checkout-flow-prototype/docs into ./apps/ios. Follow $design-system-governance.
+```
+
+### `$production-data-integration`
+
+用途：把前一棒交付的 mock adapter 換成真實的 API client、auth/session、cache、storage、persistence 和環境設定，並用 contract test 證明真實回應符合文件寫的契約。這是 prototype → production 鏈的第三棒。
+
+適合情境：
+
+- 功能已經用 mock adapter 走通，要接上後端。
+- `PRODUCTION_HANDOFF.md` 的 `Data Integration Ownership` 指名由這個 skill 承接。
+- 要證明真實 API 的回應與 `DATA_SPEC.md` 的 schema 一致。
+
+四項固定輸入：
+
+- `PRODUCTION_HANDOFF.md` 的 API And Data Contracts（含 Adapter interface 欄與 Semantics 欄）
+- `IMPLEMENTATION_MAP.md` 的 Data Adapter Seams 表
+- `fixtures/*.json`
+- `DATA_SPEC.md` 的 JSON Schema
+
+contract test 的要求：每個 fixture group 一組 — 用 JSON Schema 驗真實回應、error taxonomy 逐類斷言 UI 錯誤態對映、每個 Semantics 條目至少一條行為斷言、`fixtures/*.json` 當 shape 的黃金參考（比欄位型別，不比值）。沿用專案既有的測試框架，不引入新框架。
+
+邊界：不改 UI 行為、route flow、元件或 token。發現契約和真實 API 不符時，回報並回寫 handoff 文件，而不是就地改 UI；endpoint 或 auth 方式不明時停下來問記名 owner，不自行發明。
+
+範例：
+
+```text
+Use $production-data-integration to replace the mock adapters for the checkout flow in ./apps/web with real API clients, using the contracts in ./src/pages/prototypes/checkout-flow-prototype/docs.
 ```
 
 ### `$design-system-governance`
@@ -191,6 +265,7 @@ Use $frontend-product-implementation to implement the checkout flow from ./src/p
 - `$ui-screenshot-to-storybook-product`
 - `$storybook-product-prototype`
 - `$frontend-product-implementation`
+- `$native-product-implementation`
 
 它會要求先檢查：
 
@@ -381,23 +456,49 @@ $design-system-extractor
 2. 再把 tokens 和 components 做進 Storybook。
 3. 最後比對實作和參考圖。
 
-### 工作流 2：從產品想法到前端功能
+### 工作流 2：從產品想法到前端功能（web）
 
 適合：你有產品需求，但還沒開始做 production frontend。
 
 ```text
 $storybook-product-prototype
+-> 團隊 demo 確認（人類）
 -> $frontend-product-implementation
+-> $production-data-integration
 -> $ui-compare-to-reference
 ```
 
 說明：
 
-1. 先用 prototype skill 產出 PRD、Flow、Data Spec、Frontend Handoff。
-2. 再用 frontend implementation skill 把 docs 實作到產品 repo。
-3. 最後用 compare skill 做視覺校正。
+1. 先用 prototype skill 產出 PRD、Flow、Data Spec、Production Handoff，再用 `--handoff-ready` 定版並產出 `HANDOFF_MANIFEST.json`。
+2. 團隊看過 demo、把 Review Status 改成 confirmed — 這一站沒有自動化能代勞。
+3. 再用 frontend implementation skill 把 docs 實作到產品 repo，在 mock 模式下走通全流程。
+4. 接著用 data integration skill 把 mock adapter 換成真實 API、auth、cache，並補上 contract test。
+5. 最後用 compare skill 做視覺校正。
 
-### 工作流 3：從單張畫面開始做產品頁
+### 工作流 3：用同一份交接文件做原生 App
+
+適合：產品要出 iOS 或 Android 版，而 prototype 已經做好。
+
+```text
+$storybook-product-prototype
+-> 團隊 demo 確認（人類）
+-> $native-product-implementation
+-> $production-data-integration
+-> $ui-compare-to-reference
+```
+
+說明：
+
+1. 先用 prototype skill 產出同一份 handoff 文件，再用 `--handoff-ready` 定版 — 原型製作、團隊 demo 確認、交接定版這三站平台中立，平台分岔點在交接定版之後（web 走 `$frontend-product-implementation`，原生走 `$native-product-implementation`）。
+2. 團隊看過 demo、把 Review Status 改成 confirmed — 這一站一樣沒有自動化能代勞。
+3. 用 native implementation skill 在 mock 模式下把畫面和流程做出來，產出與 web 同格式的 `IMPLEMENTATION_MAP.md`。
+4. 資料串接同樣交給 data integration skill，不因平台分成兩套 — 兩條線的對照表格式相同，這一站不需要知道是哪一條做的。
+5. 最後用 compare skill 做視覺校正，過程中保留合理的平台適配差異。
+
+注意：`$native-product-implementation` 的機制已完備，但尚未對真實 Xcode / Gradle 專案跑過一次完整交付，第一次使用要預留驗證時間。
+
+### 工作流 4：從單張畫面開始做產品頁
 
 適合：你只有一張 screenshot 或 Figma export。
 
@@ -421,12 +522,13 @@ $design-system-extractor
 -> $ui-screenshot-to-storybook-product
 ```
 
-### 工作流 4：既有產品新增功能
+### 工作流 5：既有產品新增功能
 
 適合：產品 repo 已經存在，只是要新增一個頁面或功能。
 
 ```text
 $frontend-product-implementation + $design-system-governance
+-> $production-data-integration
 -> $ui-compare-to-reference
 ```
 
@@ -434,10 +536,11 @@ $frontend-product-implementation + $design-system-governance
 
 1. 先讀既有 repo 的 routes、tokens、shared components、i18n、tests。
 2. 依照 design-system governance 重用現有元件。
-3. 真實 API 不在 scope 時，用 typed contracts、fixtures、mock adapters。
-4. 最後比對畫面。
+3. 真實 API 一律不在這一棒的 scope：用 typed contracts、fixtures、mock adapters，真實串接交給記名的第三棒。
+4. 由記名的第三棒接上真實資料並補 contract test。
+5. 最後比對畫面。
 
-### 工作流 5：設計 QA 和交付報告
+### 工作流 6：設計 QA 和交付報告
 
 適合：你想要一份可交付的設計差異報告。
 
@@ -451,7 +554,7 @@ $ui-pixel-align-report
 1. 先產生 pixel alignment report。
 2. 再根據 report 修正 UI。
 
-### 工作流 6：把流程變成可重複的自動化
+### 工作流 7：把流程變成可重複的自動化
 
 適合：上面某個工作流已經做過幾次，想讓它可以重複執行。
 
@@ -467,14 +570,20 @@ $agent-automation-orchestrate
 2. 驗證契約，先 dry run 看執行計畫，再實際執行。
 3. 每次執行結束後檢查驗證指令和必要產物，需要時用 `resume` 續跑。
 
+如果要自動化的是 prototype 到 production 這條鏈，`storybook-product-prototype/references/pipeline-stations.md` 有一份可直接改用的編排範例：六站分工、把關條件，團隊 demo 確認保持人類停點，後面幾站以交接定版的 manifest 為前置條件。
+
 ## 哪些 Skill 常常搭配使用
 
 | 上游 skill | 下游 skill | 為什麼搭配 |
 |---|---|---|
 | `$design-system-extractor` | `$design-system-to-storybook` | 先有設計系統文件，再落地成元件庫。 |
 | `$design-system-to-storybook` | `$storybook-product-prototype` | 有元件庫後，prototype 可以重用 shared components。 |
-| `$storybook-product-prototype` | `$frontend-product-implementation` | prototype docs 會成為 production frontend 實作輸入。 |
+| `$storybook-product-prototype` | `$frontend-product-implementation` | prototype docs 會成為 web production frontend 的實作輸入。 |
+| `$storybook-product-prototype` | `$native-product-implementation` | 同一份 prototype docs 也能交給原生目標，交接定版之前不必為平台分岔。 |
+| `$frontend-product-implementation` | `$production-data-integration` | 前端只交付可替換的 DataSource 接縫，真實 API、auth、cache 由第三棒接上。 |
+| `$native-product-implementation` | `$production-data-integration` | 原生組裝同樣只交付 mock 接縫，資料串接不因平台而分成兩套。 |
 | `$frontend-product-implementation` | `$ui-compare-to-reference` | 功能做完後，用參考圖檢查視覺偏差。 |
+| `$native-product-implementation` | `$ui-compare-to-reference` | App 畫面同樣要跟 prototype 或設計來源比對，且會保留合理的平台適配差異。 |
 | `$ui-pixel-align-report` | `$ui-compare-to-reference` | 先產出差異報告，再修正畫面。 |
 | `$figma-sync-back` | `$ui-compare-to-reference` | 分流報告裡的視覺差異，交給它以 Figma 節點為標準修正。 |
 | `$figma-sync-back` | `$design-system-extractor` | 分流報告裡的 token 差異，走 Late-Arriving Authoritative Source Pass 裁決。 |
@@ -508,6 +617,18 @@ Use $storybook-product-prototype to create a prototype for <feature name>. Inclu
 
 ```text
 Use $frontend-product-implementation to implement <feature name> from <handoff docs path> into <product repo path>. Follow $design-system-governance. Real API integration is out of scope; use typed contracts, fixtures, and mock adapters.
+```
+
+### 實作到原生 App
+
+```text
+Use $native-product-implementation to implement <feature name> from <handoff docs path> into <iOS or Android app path>. Follow $design-system-governance. Real data wiring is out of scope; deliver typed DataSource interfaces with mock implementations reading fixtures/*.json.
+```
+
+### 把 mock 換成真實資料
+
+```text
+Use $production-data-integration to replace the mock adapters for <feature name> in <product repo path> with real API clients, using the contracts in <handoff docs path> and the Data Adapter Seams table in IMPLEMENTATION_MAP.md. Add contract tests and do not change UI behavior, routes, components, or tokens.
 ```
 
 ### 比對畫面
@@ -545,7 +666,9 @@ Use $agent-automation-orchestrate to run the <task id> task in <repo path>, with
 - 如果是 UI 實作，優先使用 `$design-system-governance`。
 - 如果沒有 design system，先不要直接做產品畫面，先決定是否要建立設計系統。
 - 如果缺 token 或 shared component，要先問使用者。
-- 如果真實 API 還沒準備好，可以先做 API/data contract、fixtures、mock adapter。
+- 前端和原生的組裝永遠不接真實資料：只交付 typed DataSource 介面加 mock 實作，真實 API、auth、cache 由 handoff 文件裡記名的第三棒（`$production-data-integration`，或指定的團隊/系統）承接。
+- 如果還不知道第三棒是誰，就在 handoff 文件的 `Data Integration Ownership` 記成 open decision 並指定負責釐清的人，不要讓資料串接無人認領。
+- 團隊 demo 確認是人類的站，沒有自動化能通過；Review Status 還是 `pending` 就不要開始實作。
 - 如果只是想確認產品流程，先用 `$storybook-product-prototype`，不要急著進 production repo。
 - 如果畫面已經做完，再用 `$ui-compare-to-reference` 或 `$ui-pixel-align-report` 做 QA。
 - 如果同一件事要重複做，用 `$agent-automation-orchestrate` 收成契約，不要每次重寫一次流程。
