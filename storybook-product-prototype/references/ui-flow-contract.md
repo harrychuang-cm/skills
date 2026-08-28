@@ -124,6 +124,7 @@ Keep route ids stable across prototype docs and handoff docs so engineers and AI
 - UI Flow canvas uses key transitions; Transition Index uses the full transition list.
 - The prototype supports `prototypeRoute=<route-id>` for route-specific iframe previews.
 - The prototype supports `prototypeFlowPreview=true` for compact embedded rendering.
+- In flow preview mode (`isFlowPreview` prop or `prototypeFlowPreview=true`), the prototype hides its own chrome — the prototype header and the route navigation — so flow cards and iframe previews show only what the real page shows.
 - The route preview shell exposes `data-prototype-route-preview="true"` for template-compatible iframe measurement.
 - The prototype root keeps `data-prototype-root="true"` for backward-compatible iframe height measurement.
 - Static Flow export reads saved layout from `prototypeFlowLayout.ts` using the same storage key as the Prototype Inspector, passing the resolved viewport signature so mismatched saved layouts are cleanly ignored.

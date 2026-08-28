@@ -1425,11 +1425,18 @@ def validate_static_flow_export(path: Path | None, errors: list[str]) -> None:
 def validate_viewer_compatibility(files: dict[str, Path | None], errors: list[str]) -> None:
     component_path = files.get("component")
     story_path = files.get("story")
-    text = ""
+    component_text = ""
     if component_path is not None and component_path.is_file():
-        text += read(component_path)
+        component_text = read(component_path)
+    text = component_text
     if story_path is not None and story_path.is_file():
         text += "\n" + read(story_path)
+    if component_text:
+        check(
+            "!isEmbeddedFlowPreview" in component_text,
+            "prototype must hide its own chrome (header/route nav) in flow preview mode via !isEmbeddedFlowPreview",
+            errors,
+        )
 
     check(
         "prototypeFlowPreview" in text,

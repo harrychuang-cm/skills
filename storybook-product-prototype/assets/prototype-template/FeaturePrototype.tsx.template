@@ -135,28 +135,35 @@ export function __FEATURE_PASCAL__({
           ["--prototype-flow-route-preview-width" as string]: `${activeRoute.viewport?.width ?? __FEATURE_CAMEL__ShellViewport.width}px`,
         }}
       >
-        <header className="__FEATURE_CSS_CLASS____header">
-          <div>
-            <p className="__FEATURE_CSS_CLASS____eyebrow">Prototype</p>
-            <h1>{activeRoute.title}</h1>
-          </div>
-        </header>
+        {/* Prototype chrome (header + route nav) is review tooling, not product
+            UI — flow preview must render the bare route so UI Flow cards and
+            iframe previews match the real page. */}
+        {!isEmbeddedFlowPreview && (
+          <>
+            <header className="__FEATURE_CSS_CLASS____header">
+              <div>
+                <p className="__FEATURE_CSS_CLASS____eyebrow">Prototype</p>
+                <h1>{activeRoute.title}</h1>
+              </div>
+            </header>
 
-        <nav className="__FEATURE_CSS_CLASS____nav" aria-label="Prototype routes">
-          {__FEATURE_CAMEL__RouteIds.map((id) => {
-            const route = get__FEATURE_PASCAL__Route(id);
-            return (
-              <button
-                key={id}
-                type="button"
-                aria-pressed={visibleRoute === id}
-                onClick={() => goTo(id)}
-              >
-                {route.title}
-              </button>
-            );
-          })}
-        </nav>
+            <nav className="__FEATURE_CSS_CLASS____nav" aria-label="Prototype routes">
+              {__FEATURE_CAMEL__RouteIds.map((id) => {
+                const route = get__FEATURE_PASCAL__Route(id);
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    aria-pressed={visibleRoute === id}
+                    onClick={() => goTo(id)}
+                  >
+                    {route.title}
+                  </button>
+                );
+              })}
+            </nav>
+          </>
+        )}
 
         <RoutePanel route={routeContent} />
       </section>

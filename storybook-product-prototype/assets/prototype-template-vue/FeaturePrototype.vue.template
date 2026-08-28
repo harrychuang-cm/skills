@@ -96,14 +96,26 @@ function goTo(nextRoute: __FEATURE_PASCAL__RouteId) {
         '--prototype-flow-route-preview-width': `${activeRoute.viewport?.width ?? shellViewport.width}px`,
       }"
     >
-      <header class="__FEATURE_CSS_CLASS____header">
+      <!--
+        Prototype chrome (header + route nav) is review tooling, not product
+        UI — flow preview must render the bare route so UI Flow cards and
+        iframe previews match the real page.
+      -->
+      <header
+        v-if="!isEmbeddedFlowPreview"
+        class="__FEATURE_CSS_CLASS____header"
+      >
         <div>
           <p class="__FEATURE_CSS_CLASS____eyebrow">Prototype</p>
           <h1>{{ activeRoute.title }}</h1>
         </div>
       </header>
 
-      <nav class="__FEATURE_CSS_CLASS____nav" aria-label="Prototype routes">
+      <nav
+        v-if="!isEmbeddedFlowPreview"
+        class="__FEATURE_CSS_CLASS____nav"
+        aria-label="Prototype routes"
+      >
         <button
           v-for="route in routes"
           :key="route.id"

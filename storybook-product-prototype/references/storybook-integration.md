@@ -9,7 +9,7 @@ The default story should:
 - Use `layout: "fullscreen"` when rendering a full product surface.
 - Render a clickable prototype, not a static screenshot.
 - Attach the meta object to `parameters.prototype`.
-- Support `prototypeFlowPreview=true` for compact iframe preview styling.
+- Support `prototypeFlowPreview=true` for compact iframe preview styling; in this mode the prototype must hide its own chrome (prototype header and route navigation) so previews show only real page content.
 - Support `prototypeRoute=<route-id>` so UI Flow route cards can render the correct route.
 - Add `data-prototype-route-preview="true"` to the route preview shell for template-compatible iframe measurement. Width is declared (the shell sets the preview-size CSS variables inline from `flow.viewport`, per-route override first) while height is still measured from the rendered content — declaration and measurement split the two axes.
 - Keep `data-prototype-root="true"` on the prototype root for backward-compatible viewers.

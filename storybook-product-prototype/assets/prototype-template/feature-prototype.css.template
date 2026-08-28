@@ -90,6 +90,13 @@
   border-radius: 0;
 }
 
+/* Defensive backstop: even if markup still renders the prototype chrome,
+   flow preview must show the bare route only. */
+.__FEATURE_CSS_CLASS__--flow-preview .__FEATURE_CSS_CLASS____header,
+.__FEATURE_CSS_CLASS__--flow-preview .__FEATURE_CSS_CLASS____nav {
+  display: none;
+}
+
 /* Type scale — every text role has an explicit size and line-height. */
 .__FEATURE_CSS_CLASS__ h1 {
   margin: 0;

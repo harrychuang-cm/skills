@@ -129,7 +129,7 @@ Rules:
 - Keep prototype-only CSS scoped under a feature root class.
 - Write CSS per `references/visual-quality.md`: one `--proto-*` alias block bound to the Token Binding record; raw values only as alias fallbacks; interactive controls ship hover/focus-visible/active/disabled states; in-scope routes render loading/empty/error fixtures.
 - Attach the complete meta object to `parameters.prototype`.
-- Support `prototypeFlowPreview=true` and `prototypeRoute=<route-id>` query modes for iframe route previews.
+- Support `prototypeFlowPreview=true` and `prototypeRoute=<route-id>` query modes for iframe route previews. Flow preview mode (the `isFlowPreview` prop or that query) must hide the prototype's own chrome — the prototype header and route navigation — so flow cards show only real page content; the validator rejects components without this conditional.
 - Add `data-prototype-route-preview="true"` on the route preview shell. Keep `data-prototype-root="true"` on the prototype root for older viewers.
 - Create `<FeaturePrototypeFlowExport>.tsx` and `<FeaturePrototypeFlowExport>.stories.tsx` with `StaticFlow`, reading layout from `../prototypeFlowLayout` and rendering route cards from the same flow metadata.
 - Add `figmaExport.flowStoryId` to the prototype meta object so export tools can locate the Static Flow story.
