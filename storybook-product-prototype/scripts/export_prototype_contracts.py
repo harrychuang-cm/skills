@@ -14,6 +14,13 @@ var()-bound aliases export the raw fallback as ``$value`` and record the
 bound project token in ``$extensions``; direct-value aliases export the raw
 value. Native platforms (SwiftUI, Compose) and Style Dictionary consume the
 DTCG file instead of the CSS carrier.
+
+The ``--proto-*`` block covers the Static Flow palette, but a feature's
+critical tokens usually live in the project token files (component tokens,
+scale factors). ``--token-css <path>`` (repeatable) loads those files and
+``--extra-prefix <name>`` (repeatable) exports every custom property whose
+name starts with ``--<name>`` as an additional DTCG group, resolving var()
+chains down to literal values so native codegen never has to re-derive them.
 """
 
 from __future__ import annotations
@@ -47,6 +54,18 @@ def infer_type(value: str) -> str:
     return "string"
 
 
+def dtcg_value(value: str, token_type: str):
+    """DTCG $value: numbers as JSON numbers, everything else verbatim.
+
+    Strict DTCG validators reject "$type": "number" carrying a JSON string;
+    emit int when the float is integral so 1 stays 1, not 1.0.
+    """
+    if token_type != "number":
+        return value
+    number = float(value)
+    return int(number) if number.is_integer() else number
+
+
 def strip_comments(css_text: str) -> str:
     return re.sub(r"/\*.*?\*/", " ", css_text, flags=re.DOTALL)
 
@@ -63,7 +82,7 @@ def extract_tokens(css_text: str) -> dict[str, dict]:
             fallback = (binding.group(2) or "").strip()
             value = fallback if fallback else value
         token_type = infer_type(value)
-        token: dict = {"$type": token_type, "$value": value}
+        token: dict = {"$type": token_type, "$value": dtcg_value(value, token_type)}
         if token_type == "string":
             token["$description"] = f"raw value preserved verbatim: {value}"
         if source_token:
@@ -74,6 +93,76 @@ def extract_tokens(css_text: str) -> dict[str, dict]:
                     "tokenPrefix": prefix_match.group(1) if prefix_match else None,
                 }
             }
+        tokens[role] = token
+    return tokens
+
+
+CUSTOM_PROP_PATTERN = re.compile(r"(--[A-Za-z0-9-]+)\s*:\s*([^;]+);")
+VAR_USE_PATTERN = re.compile(r"var\(\s*(--[A-Za-z0-9-]+)\s*(?:,\s*([^()]*))?\)")
+
+
+def build_definition_map(css_paths: list[Path]) -> dict[str, str]:
+    """Custom-property definitions across the given files (later files win)."""
+    definitions: dict[str, str] = {}
+    for path in css_paths:
+        for name, raw_value in CUSTOM_PROP_PATTERN.findall(
+            strip_comments(path.read_text(errors="replace"))
+        ):
+            definitions[name] = raw_value.strip()
+    return definitions
+
+
+def resolve_value(raw_value: str, definitions: dict[str, str]) -> tuple[str, list[str]]:
+    """Substitute var() references until literal; returns (value, chain).
+
+    The chain records every custom property traversed, outermost first, so the
+    DTCG consumer can trace a resolved literal back to its authoring token.
+    Unresolvable references fall back to their declared fallback or stay
+    verbatim; a depth cap guards against definition cycles.
+    """
+    value = raw_value
+    chain: list[str] = []
+    for _ in range(20):
+        match = VAR_USE_PATTERN.search(value)
+        if not match:
+            break
+        name, fallback = match.group(1), (match.group(2) or "").strip()
+        target = definitions.get(name)
+        if target is None:
+            replacement = fallback if fallback else match.group(0)
+            if not fallback:
+                chain.append(f"{name} (unresolved)")
+                value = value[: match.start()] + replacement + value[match.end() :]
+                break
+        else:
+            replacement = target
+            chain.append(name)
+        value = value[: match.start()] + replacement + value[match.end() :]
+    return value.strip(), chain
+
+
+def extract_extra_group(
+    prefix: str, definitions: dict[str, str]
+) -> dict[str, dict]:
+    """DTCG tokens for every custom property named ``--<prefix>*``."""
+    tokens: dict[str, dict] = {}
+    marker = f"--{prefix}"
+    for name in sorted(definitions):
+        if not name.startswith(marker):
+            continue
+        remainder = name[len(marker) :].lstrip("-")
+        role = remainder or prefix
+        resolved, chain = resolve_value(definitions[name], definitions)
+        token_type = infer_type(resolved)
+        token: dict = {"$type": token_type, "$value": dtcg_value(resolved, token_type)}
+        if token_type == "string":
+            token["$description"] = f"raw value preserved verbatim: {resolved}"
+        token["$extensions"] = {
+            EXTENSION_KEY: {
+                "sourceToken": name,
+                "resolutionPath": chain,
+            }
+        }
         tokens[role] = token
     return tokens
 
@@ -121,6 +210,22 @@ def main() -> int:
         action="store_true",
         help="Skip normalizing fixtures/*.json formatting.",
     )
+    parser.add_argument(
+        "--token-css",
+        type=Path,
+        action="append",
+        default=[],
+        help="Project token CSS file to resolve --extra-prefix tokens from "
+        "(repeatable; e.g. tokens/tokens-ref.css tokens/tokens-sys.css).",
+    )
+    parser.add_argument(
+        "--extra-prefix",
+        action="append",
+        default=[],
+        help="Custom-property prefix (without leading --) to export as an "
+        "additional DTCG group, var() chains resolved to literals "
+        "(repeatable; e.g. cm-comp-font-size-setting).",
+    )
     args = parser.parse_args()
 
     folder = Path(args.prototype_folder).resolve()
@@ -145,19 +250,44 @@ def main() -> int:
         )
         return 1
 
+    extra_groups: dict[str, dict[str, dict]] = {}
+    if args.extra_prefix:
+        missing = [path for path in args.token_css if not path.is_file()]
+        if missing:
+            print(f"--token-css files not found: {', '.join(map(str, missing))}")
+            return 1
+        definitions = build_definition_map(list(args.token_css) + [css_path])
+        for prefix in args.extra_prefix:
+            group = extract_extra_group(prefix, definitions)
+            if not group:
+                print(
+                    f"--extra-prefix {prefix} matched no custom property in the "
+                    "given --token-css files; check the prefix spelling."
+                )
+                return 1
+            extra_groups[prefix] = group
+    elif args.token_css:
+        print("--token-css has no effect without at least one --extra-prefix.")
+        return 1
+
     out_path = args.out or (folder / "docs" / "TOKENS.json")
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    document = {
-        "$description": (
-            f"Design tokens exported from {css_path.name} --proto-* alias block "
-            "by storybook-product-prototype/scripts/export_prototype_contracts.py. "
-            "W3C Design Tokens (DTCG) format; feed to Style Dictionary or "
-            "platform codegen instead of consuming the CSS carrier."
-        ),
-        "proto": tokens,
-    }
+    description = (
+        f"Design tokens exported from {css_path.name} --proto-* alias block "
+        "by storybook-product-prototype/scripts/export_prototype_contracts.py. "
+        "W3C Design Tokens (DTCG) format; feed to Style Dictionary or "
+        "platform codegen instead of consuming the CSS carrier."
+    )
+    if extra_groups:
+        description += (
+            " Additional groups export project token prefixes with var() "
+            "chains resolved to literals: " + ", ".join(sorted(extra_groups)) + "."
+        )
+    document: dict = {"$description": description, "proto": tokens}
+    document.update(extra_groups)
     out_path.write_text(json.dumps(document, indent=2, ensure_ascii=False) + "\n")
-    print(f"Wrote {out_path} ({len(tokens)} tokens).")
+    total = len(tokens) + sum(len(group) for group in extra_groups.values())
+    print(f"Wrote {out_path} ({total} tokens).")
 
     if not args.no_fixtures:
         for path in normalize_fixtures(folder):

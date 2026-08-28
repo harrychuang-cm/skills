@@ -90,9 +90,10 @@ def build_flow_document(flow_text: str, feature: str) -> dict:
         route: dict = {
             "id": route_id,
             "title": extract_string_property(obj, "title") or route_id,
-            "navigationId": extract_string_property(obj, "navigationId") or route_id,
         }
-        for key in ("component", "description", "deepLink"):
+        # navigationId is optional in the source contract; fabricating it as a
+        # copy of the id makes the JSON claim something the flow never said.
+        for key in ("navigationId", "component", "description", "deepLink"):
             value = extract_string_property(obj, key)
             if value:
                 route[key] = value
@@ -129,7 +130,7 @@ def build_flow_document(flow_text: str, feature: str) -> dict:
             "trigger": extract_string_property(obj, "trigger") or "",
             "label": extract_string_property(obj, "label") or "",
         }
-        for key in ("kind", "presentation", "backBehavior"):
+        for key in ("kind", "presentation", "backBehavior", "note"):
             value = extract_string_property(obj, key)
             if value:
                 transition[key] = value
@@ -206,10 +207,11 @@ def render_swift(document: dict, folder_name: str) -> str:
     for presentation, transitions in group_transitions_by_presentation(document["transitions"]):
         lines.append(f"//   {presentation}:")
         for transition in transitions:
-            back = transition.get("backBehavior", "pop")
+            back = transition.get("backBehavior")
+            suffix = f"  back: {back}" if back else ""
             lines.append(
                 f"//     {transition['from']} -> {transition['to']}"
-                f"  trigger: {transition['trigger']}  back: {back}"
+                f"  trigger: {transition['trigger']}{suffix}"
             )
     if not document["transitions"]:
         lines.append("//   (no transitions declared)")
@@ -253,10 +255,11 @@ def render_kotlin(document: dict, folder_name: str) -> str:
     for presentation, transitions in group_transitions_by_presentation(document["transitions"]):
         lines.append(f"//   {presentation}:")
         for transition in transitions:
-            back = transition.get("backBehavior", "pop")
+            back = transition.get("backBehavior")
+            suffix = f"  back: {back}" if back else ""
             lines.append(
                 f"//     {transition['from']} -> {transition['to']}"
-                f"  trigger: {transition['trigger']}  back: {back}"
+                f"  trigger: {transition['trigger']}{suffix}"
             )
     if not document["transitions"]:
         lines.append("//   (no transitions declared)")
