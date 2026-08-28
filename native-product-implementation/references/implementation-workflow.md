@@ -65,8 +65,8 @@ Before any UI implementation:
 
 1. Apply `$design-system-governance` Phase 0 discovery against the native theme sources found above.
 2. List existing tokens and shared UI components relevant to the handoff.
-3. Attempt composition from existing shared components before creating new ones.
-4. Stop and ask when a required token or shared component is missing.
+3. Draft and resolve the Component Reuse Map per the shared contract (`frontend-product-implementation/references/implementation-workflow.md`, Component Reuse Map): row sources, the five-value resolution vocabulary, and targets-seed verification are identical. Resolve each row against the native component sources Repo Discovery located — attempting composition from existing shared components before creating new ones — and record evidence as repo-relative paths inside the owning native module (a local Swift package, a Gradle module such as `:core:ui`). For `targets` metadata, read the implementing platform's key (`ios` / `android`).
+4. Stop and ask when a required token or shared component is missing: an unresolved row raises the Composition Gate ask — or the Token Gate ask when the blocker is a missing token — before any UI code for the affected surfaces is written. The completed map becomes the `## Component Map` section of `IMPLEMENTATION_MAP.md` (`verification-reporting.md`).
 
 Do not add hardcoded color, spacing, corner-radius, typography, or motion values, and do not put display text outside the platform's localization source when the module has one. When discovery finds no localization source at all, take the ask gate in SKILL.md's Implementation Rules rather than treating in-place strings as an unfixable violation.
 

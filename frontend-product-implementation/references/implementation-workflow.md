@@ -63,8 +63,32 @@ Before any UI implementation:
 
 1. Apply `$design-system-governance` Phase 0 discovery.
 2. List existing tokens and shared components relevant to the handoff.
-3. Attempt composition from existing shared components.
-4. Stop and ask if a required token or shared component is missing.
+3. Draft the Component Reuse Map (below) and resolve every row, attempting composition from existing shared components first.
+4. Stop and ask if a required token or shared component is missing: an unresolved row raises the Composition Gate ask — or the Token Gate ask when the blocker is a missing token — before any UI code for the affected surfaces is written.
+
+### Component Reuse Map
+
+The map is the gate's product: one row per in-scope handoff component, resolved against the production repo before UI code. The completed map is carried into `IMPLEMENTATION_MAP.md` as the `## Component Map` section (`verification-reporting.md`).
+
+Row source — the first available source wins:
+
+1. The `PRODUCTION_HANDOFF.md` Per-screen composition echo: the deduplicated set of components named for in-scope routes (Scope `B` rows, plus `U` rows resolved into work).
+2. When the handoff has no composition echo: the `UI_SPEC.md` per-route component composition.
+3. When neither source exists: record the literal lead-in bullet `- source: none`; row-level obligations are waived.
+
+Components belonging only to Scope `A` routes never produce rows. A component discovered during implementation that no source listed is appended as a row marked source `discovered`; the audit does not distinguish row sources.
+
+Resolution — each row resolves to exactly one of five terminal values:
+
+- `reused` — an existing production component is used directly.
+- `composed` — the surface is assembled from existing production components, including the case where a prototype-local component becomes feature-local code composed from existing shared components.
+- `extended` — an existing shared component gains an approved variant or state.
+- `created` — a new shared component is created with approval, following Approved Component Porting (below) when a prototype counterpart exists.
+- `deferred` — the component is not built in this pass, with a reason.
+
+`extended` and `created` rows exist only after the user approved them through the governance gates. At completion, no row may remain unresolved.
+
+Targets seed — when a component's `meta.components` entry carries a `targets` value naming a production component for the implementing platform, treat that name as a candidate: verify the named component exists under the production root and record its repo-relative path as the row's evidence. A stale or wrong name is resolved by repo search, never copied as evidence. An explicit `null` targets value for the platform pre-signals that the row requires the `created` path, which still requires the Composition Gate approval.
 
 When discovery finds no token system in the target root and the user approves establishing one, read `token-bootstrap.md` and follow its procedure before continuing UI implementation. When a token system exists, this gate proceeds unchanged.
 

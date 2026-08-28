@@ -55,8 +55,9 @@ Read only the reference needed for the current step:
    - Multiple roots, conflicting evidence, or a requested re-platform: stop and ask for the unresolved decision or migration approval.
 7. Load and apply `$design-system-governance` before any UI implementation.
 8. Inspect the selected root's design-system and product patterns before writing code: routes/screens, component library, tokens, i18n, data/API patterns, tests, and Storybook.
-9. Build an implementation map that contains the runtime architecture decision record and maps handoff routes/states/data contracts to the selected repo files and components.
-10. Stop for user approval at design-system governance gates before creating missing tokens or shared components.
+9. Draft the Component Reuse Map before writing any UI code: resolve every in-scope handoff component against the production repo to `reused`, `composed`, `extended`, `created`, or `deferred` per the Component Reuse Map contract in `references/implementation-workflow.md`. A row that cannot be resolved raises the Composition Gate ask (or the Token Gate ask when the blocker is a missing token) before any UI code for the affected surfaces is written, and no non-terminal row may remain at completion.
+10. Build an implementation map that contains the runtime architecture decision record and maps handoff routes/states/data contracts to the selected repo files and components.
+11. Stop for user approval at design-system governance gates before creating missing tokens or shared components.
 
 ## Implementation Rules
 

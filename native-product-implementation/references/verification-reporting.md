@@ -110,7 +110,7 @@ The implementation is not complete while the walkthrough is unrecorded or failin
 
 ## Implementation Map File
 
-Write `IMPLEMENTATION_MAP.md` where the repo keeps implementation notes (or next to the feature module), with the same four sections the `frontend-product-implementation` contract defines:
+Write `IMPLEMENTATION_MAP.md` where the repo keeps implementation notes (or next to the feature module), with the same five sections the `frontend-product-implementation` contract defines:
 
 - `## Consumed Manifest` — `- docsDigest: <sha256>` and `- version: <n>` from the consumed `HANDOFF_MANIFEST.json`, or `- docsDigest: unversioned`.
 - `## Route Outcomes` — columns `Route id`, `Outcome`, `Evidence`; one row per handoff route id. `Outcome` is one of four terminal values:
@@ -120,6 +120,7 @@ Write `IMPLEMENTATION_MAP.md` where the repo keeps implementation notes (or next
   - `not-applicable` — the route is out of scope on this platform, and `Evidence` names the Production Navigation Map cell that says so (for example `FLOW_SPEC.md Production Navigation Map, iOS destination: Not in scope`). Never record such a route as `deferred`: the manifest's route ids cover every platform, and `deferred` would promise native work nobody intends to do.
 - `## Acceptance Traceability` — columns `AC id`, `Target`, `Result`, `Notes`; `AC-P (assembly)` settled by the walkthrough, `AC-P (integration)` deferred to the named data-integration owner.
 - `## Data Adapter Seams` — columns `Fixture group`, `Interface`, `Mock implementation`, `Injection site`; one row per in-scope fixture group. The injection site is the single place the data-integration owner swaps, recorded in the form the app uses (environment or composition-local key, view-model initializer parameter, or DI module registration). A replacement point that belongs to no fixture group — a permission-status provider, for example — takes a row with `—` in the `Fixture group` column rather than being left out of the table.
+- `## Component Map` — the shape the sibling contract defines (optional `- source:` lead-in bullet; columns `Handoff component`, `Resolution`, `Production component`, `Evidence`, `Notes`; `Resolution` one of `reused` / `composed` / `extended` / `created` / `deferred`), with `Evidence` holding repo-relative paths inside the owning native module.
 
 Audit it before claiming completion by running the shared script from the `frontend-product-implementation` skill — it reads the handoff and the map and resolves evidence paths under `--repo`, so it is platform-agnostic:
 
@@ -130,7 +131,7 @@ python3 <frontend-product-implementation-skill-root>/scripts/validate_implementa
 
 **Known gap: `not-applicable` and the shared script.** That script accepts only `implemented`, `existing-verified`, and `deferred`, so a `not-applicable` row comes back as a failing row — `route '<id>' has outcome 'not-applicable'; expected implemented, existing-verified, or deferred` — and the run exits non-zero. The row still counts toward the manifest's route coverage, so it produces that one invalid-outcome message and no separate missing-outcome message. That is a known divergence between the native contract and the shared script, not a defect in the map. Do not edit the script — it belongs to `frontend-product-implementation` and changing it is outside this work — and do not relabel the row as `deferred` to turn the audit green. Instead, in the final report: list every `not-applicable` row the audit flagged, quote the navigation-map cell justifying each one, and record that the other audit conditions were confirmed by hand for those rows. An audit whose only failures are `not-applicable` rows is reported as passed with that known gap named; any other failure in the same run is a real failure and is fixed, not explained away.
 
-When that sibling skill is not installed in this environment, do not skip the check: verify the same four conditions by hand — every manifest route id has a terminal outcome (`not-applicable` counts as one here), every `existing-verified` evidence path exists, every `AC-P (assembly)` id is present and not deferred, and the consumed `docsDigest` still matches the current manifest — and record in the final report that the audit was manual.
+When that sibling skill is not installed in this environment, do not skip the check: verify the same conditions by hand — every manifest route id has a terminal outcome (`not-applicable` counts as one here), every `existing-verified` evidence path exists, every `AC-P (assembly)` id is present and not deferred, the consumed `docsDigest` still matches the current manifest, and the `## Component Map` section passes its row checks (five-value `Resolution`, `Evidence` paths resolving inside the native target root, non-empty `Notes` on `created` and `deferred` rows, or `- source: none` with no rows) — and record in the final report that the audit was manual.
 
 ## Final Response Contract
 
@@ -141,7 +142,7 @@ Report:
 - platform, minimum OS/SDK, UI framework, navigation system, language version, dependency management, state/DI approach
 - architecture decision sources, confidence, unresolved or not-applicable fields, and approved deviations
 - design-system governance findings: token source, theme layer, shared components, localization
-- existing components reused, as a prototype-to-native component map with name mappings
+- existing components reused: reference and summarize the `IMPLEMENTATION_MAP.md` `## Component Map` section as the single source of the prototype-to-native mapping rather than restating an independent list; any discrepancy between response text and map rows resolves in favor of the map
 - new components created only with approval, each with prototype source evidence and its parity result or recorded divergences
 - routes/screens implemented, with their navigation destinations and presentation semantics
 - data contracts implemented as typed DataSources and mocks, with the replacement points and the named integration owner

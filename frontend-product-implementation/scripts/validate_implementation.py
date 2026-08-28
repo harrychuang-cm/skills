@@ -13,6 +13,12 @@ Checks the durable implementation record against the consumed handoff:
    than ``deferred``.
 4. The consumed ``docsDigest`` recorded in the map equals the current
    manifest's ``docsDigest``.
+5. The ``Component Map`` section exists, and — unless it records
+   ``- source: none`` with no table rows — every row's ``Resolution`` is one
+   of ``reused``, ``composed``, ``extended``, ``created``, or ``deferred``;
+   every comma-separated ``Evidence`` path on ``reused``, ``composed``,
+   ``extended``, and ``created`` rows exists under the production repo root;
+   and ``created`` and ``deferred`` rows carry a non-empty ``Notes`` cell.
 
 Every failed check is listed with its subject; any failure exits non-zero.
 Standard library only.
@@ -31,9 +37,20 @@ REQUIRED_SECTIONS = [
     "Route Outcomes",
     "Acceptance Traceability",
     "Data Adapter Seams",
+    "Component Map",
 ]
 
 OUTCOME_VALUES = {"implemented", "existing-verified", "deferred"}
+
+RESOLUTION_VALUES = {"reused", "composed", "extended", "created", "deferred"}
+
+RESOLUTIONS_NEEDING_EVIDENCE = {"reused", "composed", "extended", "created"}
+
+RESOLUTIONS_NEEDING_NOTES = {"created", "deferred"}
+
+SOURCE_NONE_PATTERN = re.compile(
+    r"^\s*[-*]\s+source\s*:\s*`?none`?\s*$", re.MULTILINE
+)
 
 AC_P_ASSEMBLY_PATTERN = re.compile(
     r"^\s*[-*]\s+(AC-P-\d{3})\s*\((assembly|integration)\)", re.MULTILINE
@@ -194,6 +211,51 @@ def main() -> int:
                 )
     else:
         notes.append("no ACCEPTANCE.md in the handoff dir; AC-P coverage was skipped")
+
+    # --- Component Map --------------------------------------------------
+    component_section = extract_section(map_text, "Component Map")
+    if component_section:
+        component_rows = table_rows(component_section)
+        component_body = component_rows[1:] if component_rows else []
+        if SOURCE_NONE_PATTERN.search(component_section) and not component_body:
+            notes.append(
+                "Component Map records source: none; the handoff has no "
+                "component inventory and row-level checks were skipped"
+            )
+        for row in component_body:
+            if not row:
+                continue
+            component = clean_cell(row[0])
+            if not component:
+                continue
+            resolution = clean_cell(row[1]).lower() if len(row) > 1 else ""
+            evidence = clean_cell(row[3]) if len(row) > 3 else ""
+            notes_cell = clean_cell(row[4]) if len(row) > 4 else ""
+            if resolution not in RESOLUTION_VALUES:
+                failures.append(
+                    f"component '{component}' has resolution "
+                    f"'{resolution or '(empty)'}'; expected reused, composed, "
+                    "extended, created, or deferred"
+                )
+                continue
+            if resolution in RESOLUTIONS_NEEDING_EVIDENCE:
+                paths = [p.strip() for p in evidence.split(",") if p.strip()]
+                if not paths:
+                    failures.append(
+                        f"component '{component}' is {resolution} but has no "
+                        "evidence path"
+                    )
+                for path in paths:
+                    if not (args.repo / path).exists():
+                        failures.append(
+                            f"component '{component}' evidence path '{path}' "
+                            f"does not exist under {args.repo}"
+                        )
+            if resolution in RESOLUTIONS_NEEDING_NOTES and not notes_cell:
+                failures.append(
+                    f"component '{component}' is {resolution} but has an "
+                    "empty Notes cell"
+                )
 
     # --- Consumed digest ------------------------------------------------
     consumed_section = extract_section(map_text, "Consumed Manifest")

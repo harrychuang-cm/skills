@@ -70,12 +70,13 @@ The implementation is not complete while the walkthrough is unrecorded or failin
 
 ## Implementation Map File
 
-Alongside the final response, write `IMPLEMENTATION_MAP.md` in the location the repo keeps implementation notes (or next to the feature). It is the durable, machine-audited record of what the implementation actually did with the handoff, with four fixed sections:
+Alongside the final response, write `IMPLEMENTATION_MAP.md` in the location the repo keeps implementation notes (or next to the feature). It is the durable, machine-audited record of what the implementation actually did with the handoff, with five fixed sections:
 
 - `## Consumed Manifest` — bullet lines `- docsDigest: <sha256>` and `- version: <n>` copied from the consumed `HANDOFF_MANIFEST.json`, or `- docsDigest: unversioned` when the handoff had no manifest.
 - `## Route Outcomes` — a table with columns `Route id`, `Outcome`, `Evidence`: one row per handoff route id. `Outcome` is `implemented`, `existing-verified` (repo-relative evidence path in `Evidence`), or `deferred` (reason in `Evidence`).
 - `## Acceptance Traceability` — a table with columns `AC id`, `Target`, `Result`, `Notes`: the same rows the Final Response Contract reports (`pass` / `deferred` / `not-applicable`).
 - `## Data Adapter Seams` — a table with columns `Fixture group`, `Interface`, `Mock implementation`: one row per fixture group.
+- `## Component Map` — an optional lead-in bullet `- source: <description or none>` followed by a table with columns `Handoff component`, `Resolution`, `Production component`, `Evidence`, `Notes`: one row per in-scope handoff component, per the Component Reuse Map contract in `implementation-workflow.md`. `Resolution` is one of `reused`, `composed`, `extended`, `created`, or `deferred`. `Evidence` holds repo-relative paths separated by commas; no path may contain a comma. `created` rows record the approval and prototype source in `Notes`; `deferred` rows record the reason in `Notes`. When the handoff provides no component inventory, the section contains `- source: none` and no table rows.
 
 Audit it before reporting completion:
 
@@ -84,7 +85,7 @@ python3 <skill-root>/scripts/validate_implementation.py \
   --handoff <handoff-docs-dir> --map IMPLEMENTATION_MAP.md --repo <production-root>
 ```
 
-The audit fails on: a manifest route id with no terminal outcome, an `existing-verified` evidence path that does not exist under the production root, an AC-P `(assembly)` criterion missing or recorded `deferred`, and a consumed `docsDigest` that no longer matches the current manifest.
+The audit fails on: a manifest route id with no terminal outcome, an `existing-verified` evidence path that does not exist under the production root, an AC-P `(assembly)` criterion missing or recorded `deferred`, a consumed `docsDigest` that no longer matches the current manifest, a missing `## Component Map` section, a Component Map row whose `Resolution` is outside the five values, a `reused`/`composed`/`extended`/`created` row with an `Evidence` path that does not exist under the production root, and a `created` or `deferred` row with an empty `Notes` cell. A Component Map section holding `- source: none` and no table rows passes with row-level checks skipped.
 
 ## Final Response Contract
 
@@ -96,7 +97,7 @@ Report:
 - selected routing, state, data, i18n, styling/design-system, tests, and Storybook approach
 - architecture decision sources, confidence, unresolved/not-applicable fields, and approved deviations
 - design-system governance findings: token system, shared components, i18n, Storybook
-- existing components reused; when the handoff comes from a prototype, report them as a prototype-to-production component map covering each handoff component in scope: reused production component (with name mapping), newly created with approval, or deferred with reason
+- existing components reused: reference and summarize the `IMPLEMENTATION_MAP.md` `## Component Map` section as the single source of the prototype-to-production mapping rather than restating an independent list; any discrepancy between response text and map rows resolves in favor of the map
 - tokens reused or new token decisions requested
 - new components created only with approval — each with its prototype source evidence and parity check result or recorded divergences when a prototype counterpart exists — or missing-component blockers
 - routes/screens/features implemented

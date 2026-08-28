@@ -17,7 +17,8 @@ The following contracts are shared with `frontend-product-implementation` and ca
 - The Review Status gate: `pending` or missing status stops ingestion until the user confirms the team demo happened.
 - Verbatim Scope consumption: `A`/`B`/`C`/`U` copied from the Prototype To Frontend Map, never re-derived; for multi-target maps, read the `Scope(app)` column. `A` needs repo evidence, `U` is a blocking question.
 - The Consumed Manifest record: the `HANDOFF_MANIFEST.json` `docsDigest` and changelog version recorded at ingestion, `unversioned` when absent.
-- The `IMPLEMENTATION_MAP.md` four-section contract (Consumed Manifest, Route Outcomes, Acceptance Traceability, Data Adapter Seams) and its machine audit.
+- The `IMPLEMENTATION_MAP.md` five-section contract (Consumed Manifest, Route Outcomes, Acceptance Traceability, Data Adapter Seams, Component Map) and its machine audit.
+- The Component Reuse Map contract: same `## Component Map` section name, same table columns (`Handoff component`, `Resolution`, `Production component`, `Evidence`, `Notes`), same five-value resolution vocabulary (`reused` / `composed` / `extended` / `created` / `deferred`), same machine audit — resolved here against the native component sources Repo Discovery locates, with evidence paths inside the native modules.
 - Acceptance Traceability against `AC-S-*`/`AC-H-*`/`AC-P-*` ids; `AC-P (assembly)` criteria are settled by the mock-mode flow walkthrough.
 
 ## Required Companion Skill
@@ -66,8 +67,9 @@ Read only the reference needed for the current step:
 6. Resolve the native architecture decision record from repo evidence; stop at the migration gate for any implied re-platform.
 7. Read the Scope column (or `Scope(app)`) of every map row and carry it verbatim into the implementation map; verify `A` rows against the native repo with evidence paths.
 8. Load `$design-system-governance` and run its Phase 0 discovery per `## Required Companion Skill` before writing any UI: native design-token and theme sources, shared component modules, localization source, navigation setup, and test conventions.
-9. Build the implementation map: routes from the `FLOW_SPEC.md` Production Navigation Map's iOS/Android columns, transitions with their `kind`, `presentation`, and `backBehavior` semantics, fixture groups with their JSON Schemas.
-10. Implement per `references/implementation-workflow.md`; stop for approval before creating new shared components or token sets.
+9. Draft the Component Reuse Map before writing any UI code: resolve every in-scope handoff component against the native component modules discovery located to `reused`, `composed`, `extended`, `created`, or `deferred` per the inherited contract (`references/implementation-workflow.md` Design-System Governance Gate). A row that cannot be resolved raises the Composition Gate ask (or the Token Gate ask when the blocker is a missing token) before any UI code for the affected surfaces is written, and no non-terminal row may remain at completion.
+10. Build the implementation map: routes from the `FLOW_SPEC.md` Production Navigation Map's iOS/Android columns, transitions with their `kind`, `presentation`, and `backBehavior` semantics, fixture groups with their JSON Schemas.
+11. Implement per `references/implementation-workflow.md`; stop for approval before creating new shared components or token sets.
 
 ## Implementation Rules
 
