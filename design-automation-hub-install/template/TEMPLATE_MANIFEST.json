@@ -25,13 +25,13 @@
       "source": "figma/design-automation-hub/ui.html",
       "target": "figma/design-automation-hub/ui.html",
       "ownership": "managed",
-      "sha256": "a6999cc0a9662dda8d1f0f69ab3fdb93d520e7ddb64e85c7268408abd4ead287"
+      "sha256": "61cac3b8392a2efe3986a4fdff56100d55b79c9557eb77a2a6692809ae19758a"
     },
     {
       "source": "gitignore.fragment",
       "target": ".gitignore",
       "ownership": "merge",
-      "sha256": "8c54802f2eb8a83b7b1956efe5b26b539b35635a18cfe985daa05447b3b1244b"
+      "sha256": "5ab47f19100170d8d64fc12397188c931a1b67e02d6e17f746a279bc3e4f5057"
     },
     {
       "source": "project-profile.example.json",
@@ -70,6 +70,12 @@
       "sha256": "c892ef2c1c7ea095f733892f3dd0102234a14544360fc97f67c39eded1140d76"
     },
     {
+      "source": "scripts/design-automation-hub/dispatch.mjs",
+      "target": "scripts/design-automation-hub/dispatch.mjs",
+      "ownership": "managed",
+      "sha256": "d07c1eb393b56d80b396cf200b91d5110631021043ce225c9f0daffbb474309a"
+    },
+    {
       "source": "scripts/design-automation-hub/host.mjs",
       "target": "scripts/design-automation-hub/host.mjs",
       "ownership": "managed",
@@ -79,19 +85,31 @@
       "source": "scripts/design-automation-hub/server.mjs",
       "target": "scripts/design-automation-hub/server.mjs",
       "ownership": "managed",
-      "sha256": "e546803512e324bb1b2d409be7355eef375be0984bd7164437985eafb21b7f57"
+      "sha256": "6baf38cb9ce3116aea271cf6cd0cb4abd90db0f82cfaf3c4818471bd88798163"
     },
     {
       "source": "scripts/design-automation-hub/standalone.mjs",
       "target": "scripts/design-automation-hub/standalone.mjs",
       "ownership": "managed",
-      "sha256": "9b08eb57e166c542f2c5f2f8fb029e7612708a7f91d8feb6953c5ceb968186da"
+      "sha256": "05c0bb588b85823712c94db1530fbef37b1d1b53fd58179bcf24dbe1ceceebf6"
     },
     {
       "source": "scripts/design-automation-hub/store.mjs",
       "target": "scripts/design-automation-hub/store.mjs",
       "ownership": "managed",
       "sha256": "82918300bd8d59b452bca6f5970d4dd9f627fedbc4889f0b41c8396ee9f1da03"
+    },
+    {
+      "source": "scripts/design-automation-hub/task-board-binding.mjs",
+      "target": "scripts/design-automation-hub/task-board-binding.mjs",
+      "ownership": "managed",
+      "sha256": "13cd03580bb8036bcf34cc790bcff6969cc82e1507c18000a314d52849fd49cd"
+    },
+    {
+      "source": "scripts/design-automation-hub/task-board-client.mjs",
+      "target": "scripts/design-automation-hub/task-board-client.mjs",
+      "ownership": "managed",
+      "sha256": "0a4631397c40b0a5f261346b81674b78de8b1abc1141a6948b639fab37fbd04f"
     },
     {
       "source": "skills/figma-design-automation/agents/openai.yaml",
@@ -148,7 +166,7 @@
       {
         "templatePath": "figma/design-automation-hub/ui.html",
         "productPath": "figma/design-automation-hub/ui.html",
-        "sha256": "a6999cc0a9662dda8d1f0f69ab3fdb93d520e7ddb64e85c7268408abd4ead287"
+        "sha256": "61cac3b8392a2efe3986a4fdff56100d55b79c9557eb77a2a6692809ae19758a"
       }
     ]
   }

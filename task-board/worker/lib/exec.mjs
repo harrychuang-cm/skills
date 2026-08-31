@@ -2,14 +2,34 @@
 // spawn 子程序 → 心跳維持 lease → 捕捉輸出遮罩後分塊上傳 → 以 stateDir 最新
 // run summary 為結果權威回報終態。orchestrate 的腳本與 schema 一律不修改。
 import { spawn } from "node:child_process";
-import { readFile, readdir } from "node:fs/promises";
+import { readFile, readdir, realpath, stat } from "node:fs/promises";
 import path from "node:path";
+import { hubInputPath } from "./hub-inputs.mjs";
 import { createMasker } from "./mask.mjs";
 import { savePendingReport } from "./pending.mjs";
 
 const SUMMARY_POLL_MS = 500;
 const LOG_FLUSH_MS = 1000;
 const START_GRACE_MS = 1000;
+
+/**
+ * Hub 派工卡的執行前硬保險：卡片指向的 input.json 必須存在、是一般檔案、
+ * 且解析後仍在專案根之內。資格過濾是輪詢當下的快照，領卡後檔案仍可能消失
+ * （人工清理、換分支），所以這一關不能省。
+ *
+ * @returns {Promise<boolean>} 可以執行為 true
+ */
+async function hubInputReadable(projectRoot, automationTaskId) {
+  const target = hubInputPath(projectRoot, automationTaskId);
+  try {
+    const info = await stat(target);
+    if (!info.isFile()) return false;
+    const [realRoot, realTarget] = await Promise.all([realpath(projectRoot), realpath(target)]);
+    return realTarget === realRoot || realTarget.startsWith(`${realRoot}${path.sep}`);
+  } catch {
+    return false;
+  }
+}
 
 async function readProjectConfig(projectRoot) {
   const raw = await readFile(path.join(projectRoot, ".agent-automation", "config.json"), "utf8");
@@ -60,6 +80,24 @@ export async function executeClaimedCard({ config, api, card, projects, log = ()
   const configured = Array.isArray(projectConfig.tasks?.[card.taskId]?.verification)
     ? projectConfig.tasks[card.taskId].verification.length
     : 0;
+
+  // Hub 派工卡：讀不到清理輸入就完全不 spawn，回報帶原因的終態讓卡進需要處理
+  if (card.hubAutomationTaskId && !(await hubInputReadable(project.root, card.hubAutomationTaskId))) {
+    const payload = {
+      leaseId: card.leaseId,
+      runId: `local-${Date.now()}`,
+      phase: "exhausted",
+      attentionReason: "hub-input-missing",
+      resumedFrom: card.resume?.previousRunId ?? undefined,
+    };
+    try {
+      await api.report(payload);
+    } catch {
+      await savePendingReport(config.workerStateDir, payload);
+    }
+    log(`這台機器讀不到清理輸入，未執行：${card.hubAutomationTaskId}`);
+    return { phase: payload.phase, runId: payload.runId, attentionReason: payload.attentionReason };
+  }
 
   const args = [config.runTaskScript, "--project-root", project.root, "--task", card.taskId];
   if (card.resume?.previousRunId) args.push("--resume", card.resume.previousRunId);

@@ -458,6 +458,14 @@ a.card-project:hover {
   color: var(--stop);
 }
 
+/* Hub 派工卡的待確認提示：下一步在 Figma Plugin，不是在看板 */
+.card-hub-hint {
+  font-size: 0.8rem;
+  color: var(--warn);
+  margin: 0;
+  line-height: 1.45;
+}
+
 .card-note {
   font-size: 0.85rem;
   color: var(--text-dim);

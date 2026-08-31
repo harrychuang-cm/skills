@@ -18,7 +18,24 @@ const REASON_LABELS: Record<string, string> = {
   "possibly-stopped": "可能已停止（心跳中斷）",
   "verification-failed": "完成檢查沒通過",
   exhausted: "所有 AI 工具都失敗",
+  "hub-input-missing": "這台機器讀不到清理輸入（請由送出者的機器領取）",
+  "hub-apply-failed": "Figma Plugin 套用失敗",
 };
+
+const ORIGIN_LABELS: Record<string, string> = {
+  PIPELINE_CHAIN: "接棒",
+  DESIGN_AUTOMATION_HUB: "Figma Hub",
+};
+
+/**
+ * Hub 派工卡的待確認文案：AI 只跑到「產出清理計畫」，Figma 的實際修改只在 Plugin 發生。
+ * 看板在 Hub 回報套用完成之前，不得把這張卡說成已完成的工程任務。
+ */
+const HUB_REVIEW_HINT = "AI 只產出了清理計畫，Figma 還沒有被修改。請到 Figma Plugin 確認並套用計畫；套用完成後這張卡會自動結案。";
+
+function isHubCard(card: { origin: string } | null): boolean {
+  return card?.origin === "DESIGN_AUTOMATION_HUB";
+}
 
 /** 拖曳指令表：合法的 (來源欄, 目的欄) → 指令；不在表上的方向一律不可放。 */
 function dropCommandFor(fromColumn: string, toColumn: string): "rerun" | "approve" | null {
@@ -142,6 +159,7 @@ export default function Board({ initial }: { initial: BoardState }) {
       {COLUMNS.map((column) => {
         const cards = state.cards.filter((card) => card.column === column.key);
         const legalCmd = dragging ? dropCommandFor(dragging.from, column.key) : null;
+        const draggedCard = dragging ? state.cards.find((card) => card.id === dragging.id) ?? null : null;
         return (
           <section
             key={column.key}
@@ -168,7 +186,9 @@ export default function Board({ initial }: { initial: BoardState }) {
               {column.inbox && <span className="inbox-tag">等你處理</span>}
             </header>
             {legalCmd && (
-              <div className="drop-hint">放開＝{legalCmd === "rerun" ? "附說明重跑" : "批准完成"}</div>
+              <div className="drop-hint">
+                放開＝{legalCmd === "rerun" ? "附說明重跑" : isHubCard(draggedCard) ? "標記結案" : "批准完成"}
+              </div>
             )}
             <div className="cards">
               {cards.map((card) => (
@@ -215,12 +235,13 @@ function CommandModal({
   return (
     <div className="modal-scrim" onClick={onCancel}>
       <div className="modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
-        <h3>{cmd === "rerun" ? "附說明重跑" : "批准完成"}</h3>
+        <h3>{cmd === "rerun" ? "附說明重跑" : isHubCard(card) ? "標記結案" : "批准完成"}</h3>
         {card && (
           <p className="modal-card-ref">
             {card.projectName} · {card.taskId}
           </p>
         )}
+        {cmd === "approve" && isHubCard(card) && <p className="modal-hint">{HUB_REVIEW_HINT}</p>}
         {cmd === "rerun" ? (
           <>
             <textarea
@@ -241,7 +262,7 @@ function CommandModal({
             取消
           </button>
           <button className="btn btn-ok" onClick={() => onConfirm(note.trim() || undefined)} autoFocus={cmd === "approve"}>
-            {cmd === "rerun" ? "確定重跑" : "確定批准"}
+            {cmd === "rerun" ? "確定重跑" : isHubCard(card) ? "確定結案" : "確定批准"}
           </button>
         </div>
       </div>
@@ -317,7 +338,7 @@ function Card({
         {card.taskId}
       </a>
       <div className="card-badges">
-        <span className="badge">{card.origin === "PIPELINE_CHAIN" ? "接棒" : "手動"}</span>
+        <span className="badge">{ORIGIN_LABELS[card.origin] ?? "手動"}</span>
         {card.reviewGate && <span className="badge">需 review</span>}
         {!card.approved && card.column === "CLAIMABLE" && <span className="badge badge-warn">待放行</span>}
         {draggable && <span className="badge badge-drag">⠿ 可拖曳</span>}
@@ -341,6 +362,7 @@ function Card({
       {card.attentionReason && (
         <div className="card-reason">{REASON_LABELS[card.attentionReason] ?? card.attentionReason}</div>
       )}
+      {isHubCard(card) && card.column === "AWAITING_REVIEW" && <p className="card-hub-hint">{HUB_REVIEW_HINT}</p>}
       {card.note && <p className="card-note">{card.note}</p>}
       {!card.approved && card.column === "CLAIMABLE" && (
         <button className="btn" onClick={() => onApprove(card.id)}>
@@ -354,8 +376,12 @@ function Card({
             附說明重跑
           </button>
           {card.column === "AWAITING_REVIEW" && (
-            <button className="btn btn-ok" onClick={() => onCommand(card.id, "approve")}>
-              批准完成
+            <button
+              className="btn btn-ok"
+              title={isHubCard(card) ? HUB_REVIEW_HINT : undefined}
+              onClick={() => onCommand(card.id, "approve")}
+            >
+              {isHubCard(card) ? "標記結案" : "批准完成"}
             </button>
           )}
         </div>

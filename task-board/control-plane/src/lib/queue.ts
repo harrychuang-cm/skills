@@ -2,7 +2,7 @@
 // 函式接收 PrismaClient 參數（依賴注入），route 是薄包裝，node --test 可直接對 dev DB 測。
 import type { PrismaClient } from "@prisma/client";
 import { applyCardEvent } from "./card-transitions.ts";
-import { phaseToEvent } from "./card-state.ts";
+import { isAttentionReason, phaseToEvent } from "./card-state.ts";
 
 export const LEASE_TTL_MS = Number(process.env.LEASE_TTL_SECONDS ?? 90) * 1000;
 
@@ -19,6 +19,7 @@ export type ClaimedCard = {
   projectSlug: string;
   taskId: string;
   note: string | null;
+  hubAutomationTaskId: string | null; // Hub 派工卡：worker 執行前要驗證這個 runtime input 存在
   resume: { previousRunId: string | null; note: string | null } | null;
   leaseTtlSeconds: number;
 };
@@ -49,11 +50,15 @@ export async function registerMachine(
 /**
  * 領卡：在 advertise 的專案中找最早的可領卡（auto-run 或已放行），
  * 以 revision CAS 搶佔——同卡併發恰一成功。
+ *
+ * localInputs 是這台機器讀得到的 Hub automation task id 清單。Hub 派工卡的 snapshot
+ * 只存在產生它的機器上（gitignored runtime 目錄），所以讀不到的機器連候選都不該拿到——
+ * 卡片因此停在待領取，而不是被錯的機器領走再假裝派工。缺席或空清單＝排除所有 Hub 卡。
  */
 export async function claimCard(
   db: PrismaClient,
   identity: WorkerIdentity,
-  input: { machineId: string; projects: string[]; runnerId?: string },
+  input: { machineId: string; projects: string[]; runnerId?: string; localInputs?: string[] },
 ): Promise<ClaimResult> {
   const machine = await db.machine.findUnique({ where: { machineId: input.machineId } });
   if (!machine || machine.memberId !== identity.memberId) {
@@ -64,8 +69,12 @@ export async function claimCard(
       column: "CLAIMABLE",
       project: { slug: { in: input.projects } },
       OR: [{ autoRun: true }, { approvedById: { not: null } }],
-      // 復原寬限期內的卡不發放：倒數期間 member 的復原保證成功
-      AND: [{ OR: [{ undoUntil: null }, { undoUntil: { lte: new Date() } }] }],
+      AND: [
+        // 復原寬限期內的卡不發放：倒數期間 member 的復原保證成功
+        { OR: [{ undoUntil: null }, { undoUntil: { lte: new Date() } }] },
+        // 非 Hub 卡（null）照舊；Hub 卡只發給申報得出該 input 的機器
+        { OR: [{ hubAutomationTaskId: null }, { hubAutomationTaskId: { in: input.localInputs ?? [] } }] },
+      ],
     },
     include: { project: true },
     orderBy: { createdAt: "asc" },
@@ -84,6 +93,7 @@ export async function claimCard(
           projectSlug: card.project.slug,
           taskId: card.taskId,
           note: card.note,
+          hubAutomationTaskId: card.hubAutomationTaskId,
           resume: card.resumePreviousRunId || card.resumeNote
             ? { previousRunId: card.resumePreviousRunId, note: card.resumeNote }
             : null,
@@ -159,6 +169,7 @@ export type ReportInput = {
   runnerId?: string;
   verification?: unknown;
   resumedFrom?: string;
+  attentionReason?: string; // 封閉集合；只在結果欄位是需要處理時採用
 };
 
 export type ReportResult = { status: "recorded" | "idempotent"; cardColumn: string };
@@ -170,6 +181,9 @@ export async function reportRun(
   input: ReportInput,
   hooks: { onCardDone?: (tx: Parameters<Parameters<PrismaClient["$transaction"]>[0]>[0], cardId: string) => Promise<void> } = {},
 ): Promise<ReportResult> {
+  if (input.attentionReason !== undefined && !isAttentionReason(input.attentionReason)) {
+    throw new QueueError("invalid-attention-reason", "attentionReason 不在封閉集合內");
+  }
   const lease = await db.lease.findUnique({ where: { id: input.leaseId }, include: { card: true, machine: true } });
   if (!lease || lease.memberId !== identity.memberId) {
     throw new QueueError("unknown-lease", "lease 不存在或不屬於此成員");
@@ -210,7 +224,9 @@ export async function reportRun(
     });
     const event = phaseToEvent(input.phase, lease.card.reviewGate);
     if (!event) return lease.card.column;
-    const updated = await applyCardEvent(tx, lease.cardId, event, { type: "worker", id: lease.machine.machineId });
+    const updated = await applyCardEvent(tx, lease.cardId, event, { type: "worker", id: lease.machine.machineId }, {
+      attentionReason: input.attentionReason,
+    });
     if (updated.column === "DONE" && hooks.onCardDone) {
       await hooks.onCardDone(tx, lease.cardId);
     }

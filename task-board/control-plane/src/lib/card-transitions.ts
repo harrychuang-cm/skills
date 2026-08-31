@@ -11,7 +11,7 @@ export class IllegalTransitionError extends Error {
   }
 }
 
-export type TransitionActor = { type: "system" | "member" | "worker"; id?: string };
+export type TransitionActor = { type: "system" | "member" | "worker" | "hub"; id?: string };
 
 /** 重跑的復原寬限期：期限內 worker 不領卡、member 可復原；期限後相反。 */
 export const UNDO_GRACE_MS = Number(process.env.UNDO_GRACE_SECONDS ?? 10) * 1000;
@@ -25,7 +25,7 @@ export async function applyCardEvent(
   cardId: string,
   event: CardEventName,
   actor: TransitionActor,
-  options: { note?: string; resumePreviousRunId?: string } = {},
+  options: { note?: string; resumePreviousRunId?: string; attentionReason?: string } = {},
 ) {
   const card = await tx.card.findUniqueOrThrow({ where: { id: cardId } });
   const current = card.column as CardColumn;
@@ -37,8 +37,13 @@ export async function applyCardEvent(
   const attentionReason = attentionReasonFor(event);
   // 原因的生命週期：進需要處理時寫入；重跑時保留（undo 可恢復、待領取欄可顯示重跑原因）；
   // 開始新執行或結案時清除
+  // 呼叫端提供的原因優先（worker 說得比事件推導更精確，例如 hub-input-missing）
   const nextAttentionReason =
-    to === "NEEDS_ATTENTION" ? attentionReason : event === "HUMAN_RERUN" ? card.attentionReason : null;
+    to === "NEEDS_ATTENTION"
+      ? (options.attentionReason ?? attentionReason)
+      : event === "HUMAN_RERUN"
+        ? card.attentionReason
+        : null;
   const updated = await tx.card.update({
     where: { id: cardId },
     data: {

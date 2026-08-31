@@ -52,6 +52,9 @@ export function createDesignAutomationHubServer({
   core,
   authenticate,
   hostRegistration = null,
+  // 派工模式：Plugin 明確送出的清理任務改交團隊看板。這不是萃取佇列——
+  // 沒有掃描端點、沒有待萃取集合，工作只來自 Plugin 的單筆送出。
+  dispatch = false,
   scheduleTask = (taskId) => {
     Promise.resolve().then(() => core.analyzeTask(taskId)).catch(() => {});
   },
@@ -68,7 +71,7 @@ export function createDesignAutomationHubServer({
         return;
       }
       if (request.method === "GET" && url.pathname === "/healthz") {
-        sendJson(response, 200, { status: "ok", schemaVersion: 1, extractionQueue: false });
+        sendJson(response, 200, { status: "ok", schemaVersion: 1, extractionQueue: false, dispatch: Boolean(dispatch) });
         return;
       }
       const member = authenticate(request.headers.authorization);
@@ -86,7 +89,7 @@ export function createDesignAutomationHubServer({
       }
 
       if (request.method === "GET" && url.pathname === "/v1/automation/tasks") {
-        const tasks = core.listTasks({ member, fileKey: url.searchParams.get("fileKey") });
+        const tasks = await core.listTasks({ member, fileKey: url.searchParams.get("fileKey") });
         sendJson(response, 200, {
           workflowOverview: {
             counts: { completed: 0, active: tasks.items.filter((task) => ["queued", "analyzing", "applying"].includes(task.status)).length, needsReview: 0, blocked: tasks.items.filter((task) => task.status === "blocked").length, stale: tasks.items.filter((task) => task.status === "stale").length, waiting: tasks.items.filter((task) => task.status === "plan-ready").length },
@@ -99,7 +102,7 @@ export function createDesignAutomationHubServer({
 
       const taskId = request.method === "GET" ? taskRoute(url.pathname) : null;
       if (taskId) {
-        sendJson(response, 200, core.taskDetail({ member, taskId }));
+        sendJson(response, 200, await core.taskDetail({ member, taskId }));
         return;
       }
 

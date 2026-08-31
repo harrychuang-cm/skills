@@ -18,6 +18,7 @@ type Detail = {
   projectName: string;
   taskId: string;
   column: string;
+  origin: string;
   note: string | null;
   attentionReason: string | null;
   resumeNote: string | null;
@@ -39,6 +40,17 @@ const PHASE_LABELS: Record<string, string> = {
   "verification-failed": "完成檢查沒通過",
   exhausted: "所有 AI 工具都失敗",
 };
+
+const REASON_LABELS: Record<string, string> = {
+  "possibly-stopped": "可能已停止（心跳中斷）",
+  "verification-failed": "完成檢查沒通過",
+  exhausted: "所有 AI 工具都失敗",
+  "hub-input-missing": "這台機器讀不到清理輸入（請由送出者的機器領取）",
+  "hub-apply-failed": "Figma Plugin 套用失敗",
+};
+
+// 與看板卡片同一段文案：AI 只到 plan-ready，Figma 的修改只在 Plugin 發生
+const HUB_REVIEW_HINT = "AI 只產出了清理計畫，Figma 還沒有被修改。請到 Figma Plugin 確認並套用計畫；套用完成後這張卡會自動結案。";
 
 export default function CardDetail({ initial }: { initial: Detail }) {
   const [detail, setDetail] = useState(initial);
@@ -81,6 +93,18 @@ export default function CardDetail({ initial }: { initial: Detail }) {
 
   return (
     <div className="detail">
+      {detail.origin === "DESIGN_AUTOMATION_HUB" && detail.column === "AWAITING_REVIEW" && (
+        <section className="panel">
+          <h2>下一步在 Figma Plugin</h2>
+          <p className="card-hub-hint">{HUB_REVIEW_HINT}</p>
+        </section>
+      )}
+      {detail.attentionReason && (
+        <section className="panel">
+          <h2>需要處理的原因</h2>
+          <p className="card-reason">{REASON_LABELS[detail.attentionReason] ?? detail.attentionReason}</p>
+        </section>
+      )}
       <section className="panel">
         <h2>執行紀錄</h2>
         {detail.runs.length === 0 && <p className="empty">還沒有任何執行</p>}

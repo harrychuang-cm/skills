@@ -2,6 +2,7 @@
 import { setTimeout as sleep } from "node:timers/promises";
 import { createApi } from "./api.mjs";
 import { executeClaimedCard } from "./exec.mjs";
+import { collectLocalHubInputs } from "./hub-inputs.mjs";
 import { flushPendingReports } from "./pending.mjs";
 import { validateProjects } from "./projects.mjs";
 import { createSyncScheduler } from "./status-sync.mjs";
@@ -16,9 +17,16 @@ export function createWorkerLoop({ config, api, projects, execute }) {
   async function tick() {
     await flushPendingReports(api, config.workerStateDir).catch(() => {});
     if (busy) return "busy";
+    // Hub 派工卡只能由讀得到其 runtime input 的機器領取，所以每輪申報本機現有的 id
+    const localInputs = await collectLocalHubInputs(projects).catch(() => []);
     let res;
     try {
-      res = await api.claim({ machineId: config.machineId, projects: slugs, runnerId: config.runners[0] });
+      res = await api.claim({
+        machineId: config.machineId,
+        projects: slugs,
+        runnerId: config.runners[0],
+        localInputs,
+      });
     } catch {
       return "unreachable";
     }

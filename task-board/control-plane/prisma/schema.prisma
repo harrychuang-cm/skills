@@ -22,6 +22,7 @@ enum CardColumn {
 enum CardOrigin {
   MEMBER
   PIPELINE_CHAIN
+  DESIGN_AUTOMATION_HUB
 }
 
 model Member {
@@ -135,7 +136,10 @@ model Card {
   origin              CardOrigin
   autoRun             Boolean    @default(false)
   reviewGate          Boolean    @default(true)
-  note                String? // 建卡時的指示說明
+  note                String? // 建卡時的指示說明（Hub 卡片＝run-task 的 --request 字串）
+  // Hub 派工卡的 automation task id：兼作建卡冪等鍵與「哪台機器讀得到 input」的資格鍵。
+  // 非 Hub 卡為 null——Postgres 唯一索引不互斥 null，所以 member／chain 卡不受影響。
+  hubAutomationTaskId String?
   attentionReason     String? // 進入需要處理欄的原因（possibly-stopped 等）
   resumePreviousRunId String? // 人工拖回時帶的前次 runId
   resumeNote          String? // 人工拖回時附的調整說明
@@ -153,6 +157,7 @@ model Card {
   logChunks           LogChunk[]
   events              CardEvent[]
 
+  @@unique([projectId, hubAutomationTaskId])
   @@index([column])
   @@index([projectId, taskId])
   @@map("cards")
@@ -165,7 +170,7 @@ model CardEvent {
   event      String // card-state.ts 封閉事件集合
   fromColumn CardColumn
   toColumn   CardColumn
-  actorType  String // system | member | worker
+  actorType  String // system | member | worker | hub
   actorId    String? // memberId 或 machineId
   note       String?
   createdAt  DateTime   @default(now())

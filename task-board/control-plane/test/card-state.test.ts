@@ -25,6 +25,8 @@ test("轉移表全部合法轉移", () => {
     ["AWAITING_REVIEW", "HUMAN_APPROVE", "DONE"],
     ["CLAIMABLE", "HUMAN_UNDO_TO_ATTENTION", "NEEDS_ATTENTION"],
     ["CLAIMABLE", "HUMAN_UNDO_TO_REVIEW", "AWAITING_REVIEW"],
+    ["AWAITING_REVIEW", "HUB_APPLY_COMPLETED", "DONE"],
+    ["AWAITING_REVIEW", "HUB_APPLY_FAILED", "NEEDS_ATTENTION"],
   ];
   // 轉移表是封閉集合：上面列的 case 必須恰好覆蓋整張表
   const tableSize = Object.values(TRANSITIONS).reduce((n, rule) => n + rule.from.length, 0);
@@ -47,6 +49,9 @@ test("非法轉移被拒：事件在錯誤起點", () => {
   assert.equal(nextColumn("DONE", "RUN_VERIFICATION_FAILED"), null, "已完成不能失敗");
   assert.equal(nextColumn("AWAITING_REVIEW", "LEASE_EXPIRED"), null, "待確認沒有 lease");
   assert.equal(nextColumn("NEEDS_ATTENTION", "HUMAN_APPROVE"), null, "需要處理只能重跑，不能直接批准結案");
+  assert.equal(nextColumn("RUNNING", "HUB_APPLY_COMPLETED"), null, "Hub 回寫只在待確認時移動卡片");
+  assert.equal(nextColumn("CLAIMABLE", "HUB_APPLY_FAILED"), null, "Hub 回寫只在待確認時移動卡片");
+  assert.equal(nextColumn("NEEDS_ATTENTION", "HUB_APPLY_COMPLETED"), null, "已在收件匣的卡不因 Hub 回寫結案");
 });
 
 test("封閉集合：DONE 是終態、CLAIMABLE 只出不進（除 HUMAN_RERUN 迴路）", () => {
@@ -74,5 +79,7 @@ test("需要處理欄的原因詞彙", () => {
   assert.equal(attentionReasonFor("LEASE_EXPIRED"), "possibly-stopped");
   assert.equal(attentionReasonFor("RUN_VERIFICATION_FAILED"), "verification-failed");
   assert.equal(attentionReasonFor("RUN_EXHAUSTED"), "exhausted");
+  assert.equal(attentionReasonFor("HUB_APPLY_FAILED"), "hub-apply-failed");
   assert.equal(attentionReasonFor("RUN_COMPLETED"), null);
+  assert.equal(attentionReasonFor("HUB_APPLY_COMPLETED"), null);
 });

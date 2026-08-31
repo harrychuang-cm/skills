@@ -5,7 +5,10 @@ import { fileURLToPath } from "node:url";
 
 import { DesignAutomationError } from "./contract.mjs";
 import { DesignAutomationHubCore } from "./core.mjs";
+import { createDispatchCore, createDispatchScheduler } from "./dispatch.mjs";
 import { createDesignAutomationHubServer } from "./server.mjs";
+import { loadTaskBoardBinding } from "./task-board-binding.mjs";
+import { createTaskBoardClient } from "./task-board-client.mjs";
 
 export function parseStandaloneMembers(serialized = process.env.DESIGN_AUTOMATION_MEMBERS_JSON) {
   let values;
@@ -49,12 +52,29 @@ export function startStandalone({ projectRoot = process.cwd(), port = Number(pro
   const resolvedRoot = fs.realpathSync(projectRoot);
   const core = new DesignAutomationHubCore({ projectRoot: resolvedRoot });
   const members = parseStandaloneMembers();
+  const log = (message) => process.stdout.write(`${message}\n`);
+
+  // 綁定缺席＝未派工：不注入任何東西，走與今天完全相同的本機分析路徑。
+  const binding = loadTaskBoardBinding(resolvedRoot);
+  const dispatch = binding
+    ? (() => {
+        const client = createTaskBoardClient(binding);
+        return {
+          core: createDispatchCore({ core, binding, client, log }),
+          scheduleTask: createDispatchScheduler({ core, binding, client, log }),
+        };
+      })()
+    : null;
+
   const server = createDesignAutomationHubServer({
-    core,
+    core: dispatch ? dispatch.core : core,
     authenticate: createStandaloneAuthenticator(members),
+    dispatch: Boolean(dispatch),
+    ...(dispatch ? { scheduleTask: dispatch.scheduleTask } : {}),
   });
   server.listen(port, "127.0.0.1", () => {
-    process.stdout.write(`Design Automation Hub Coordinator: http://127.0.0.1:${port}\n`);
+    log(`Design Automation Hub Coordinator: http://127.0.0.1:${server.address().port}`);
+    if (binding) log(`派工模式：清理任務會送到團隊看板的專案 ${binding.projectSlug} 等待放行。`);
   });
   return server;
 }

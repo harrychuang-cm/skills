@@ -54,6 +54,18 @@ after(async () => {
   await db.$disconnect();
 });
 
+/**
+ * 釋放測試領走的 lease。沒有跑到終態 report 的測試必須自己釋放——
+ * 留下 active lease 會讓後續執行的逾時掃描測試掃到不屬於它的卡。
+ */
+async function releaseLease(result: Awaited<ReturnType<typeof claimCard>>) {
+  if (result.status !== "claimed") return;
+  await db.lease.updateMany({
+    where: { id: result.card.leaseId, active: true },
+    data: { active: false, releasedAt: new Date() },
+  });
+}
+
 let leaseId = "";
 
 test("CAS：同一張卡快照兩方搶佔，恰一成功", async () => {
@@ -124,4 +136,103 @@ test("report 冪等：同 runId 終態重送不產生重複轉移", async () => 
 test("report 後 heartbeat 回 stale", async () => {
   const result = await heartbeatLease(db, identity, { leaseId });
   assert.equal(result.status, "stale");
+});
+
+test("Hub 卡資格過濾：未申報 input 的機器領不到，卡仍在待領取", async () => {
+  const project = await db.project.findFirstOrThrow({ where: { slug: "proj-test" } });
+  const hubCard = await db.card.create({
+    data: {
+      projectId: project.id,
+      taskId: "figma-cleanup",
+      column: "CLAIMABLE",
+      origin: "DESIGN_AUTOMATION_HUB",
+      autoRun: false,
+      reviewGate: true,
+      hubAutomationTaskId: "runtime-task-1",
+      approvedById: identity.memberId, // 已放行，只剩資格這一關
+      note: "Read .design-automation/runtime/runtime-task-1/input.json and write exactly one result to .design-automation/runtime/runtime-task-1/result.json.",
+    },
+  });
+
+  // 未申報：連候選都不該拿到
+  const blind = await claimCard(db, identity, { machineId: machineB, projects: ["proj-test"] });
+  assert.equal(blind.status, "empty");
+  // 申報別的 id 也一樣
+  const wrong = await claimCard(db, identity, {
+    machineId: machineB,
+    projects: ["proj-test"],
+    localInputs: ["runtime-task-other"],
+  });
+  assert.equal(wrong.status, "empty");
+  assert.equal((await db.card.findUniqueOrThrow({ where: { id: hubCard.id } })).column, "CLAIMABLE");
+
+  // 申報得出來的機器才領得到
+  const ok = await claimCard(db, identity, {
+    machineId: machineB,
+    projects: ["proj-test"],
+    localInputs: ["runtime-task-1"],
+  });
+  assert.equal(ok.status, "claimed");
+  assert.equal(ok.status === "claimed" && ok.card.hubAutomationTaskId, "runtime-task-1");
+  assert.equal(ok.status === "claimed" && ok.card.cardId, hubCard.id);
+  await releaseLease(ok);
+});
+
+test("非 Hub 卡不受資格清單影響：空清單仍可領", async () => {
+  const project = await db.project.findFirstOrThrow({ where: { slug: "proj-test" } });
+  const memberCard = await db.card.create({
+    data: {
+      projectId: project.id,
+      taskId: "member-task",
+      column: "CLAIMABLE",
+      origin: "MEMBER",
+      autoRun: true,
+      reviewGate: false,
+    },
+  });
+  const claimed = await claimCard(db, identity, { machineId: machineA, projects: ["proj-test"], localInputs: [] });
+  assert.equal(claimed.status, "claimed");
+  assert.equal(claimed.status === "claimed" && claimed.card.cardId, memberCard.id);
+  assert.equal(claimed.status === "claimed" && claimed.card.hubAutomationTaskId, null);
+  await releaseLease(claimed);
+});
+
+test("report 的 attentionReason：封閉集合內被記錄、越界值被拒且卡片不動", async () => {
+  const project = await db.project.findFirstOrThrow({ where: { slug: "proj-test" } });
+  const card = await db.card.create({
+    data: {
+      projectId: project.id,
+      taskId: "figma-cleanup",
+      column: "CLAIMABLE",
+      origin: "DESIGN_AUTOMATION_HUB",
+      autoRun: false,
+      reviewGate: true,
+      hubAutomationTaskId: "runtime-task-2",
+      approvedById: identity.memberId,
+    },
+  });
+  const claimed = await claimCard(db, identity, {
+    machineId: machineA,
+    projects: ["proj-test"],
+    localInputs: ["runtime-task-2"],
+  });
+  assert.equal(claimed.status, "claimed");
+  const lease = claimed.status === "claimed" ? claimed.card.leaseId : "";
+
+  // 越界值：整筆拒絕，卡片留在執行中
+  await assert.rejects(
+    () => reportRun(db, identity, { leaseId: lease, runId: "run-bad-reason", phase: "exhausted", attentionReason: "made-up" }),
+    (error: { code?: string }) => error.code === "invalid-attention-reason",
+  );
+  assert.equal((await db.card.findUniqueOrThrow({ where: { id: card.id } })).column, "RUNNING");
+
+  // 封閉集合內：卡進需要處理且原因照 worker 說的記
+  const reported = await reportRun(db, identity, {
+    leaseId: lease,
+    runId: "run-missing-input",
+    phase: "exhausted",
+    attentionReason: "hub-input-missing",
+  });
+  assert.equal(reported.cardColumn, "NEEDS_ATTENTION");
+  assert.equal((await db.card.findUniqueOrThrow({ where: { id: card.id } })).attentionReason, "hub-input-missing");
 });

@@ -9,6 +9,7 @@ export async function POST(req: Request) {
     machineId?: string;
     projects?: string[];
     runnerId?: string;
+    localInputs?: string[];
   } | null;
   if (!body?.machineId || !Array.isArray(body.projects)) {
     return Response.json({ error: "invalid-body" }, { status: 400 });
@@ -18,6 +19,9 @@ export async function POST(req: Request) {
       machineId: body.machineId,
       projects: body.projects,
       runnerId: body.runnerId,
+      localInputs: Array.isArray(body.localInputs)
+        ? body.localInputs.filter((id): id is string => typeof id === "string")
+        : undefined,
     });
     if (result.status === "claimed") return Response.json(result.card);
     if (result.status === "conflict") return Response.json({ error: "conflict" }, { status: 409 });

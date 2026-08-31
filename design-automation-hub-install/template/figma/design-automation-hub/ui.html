@@ -470,6 +470,13 @@
         affectedNodeSeparator: "、",
         unnamedLayer: "未命名圖層",
         workflowTaskFailure: "目前無法載入設計任務，已保留畫面中的進度。",
+        dispatchAwaitingApproval: "已送到團隊看板，等待成員按「放行執行」。",
+        dispatchWaitingClaim: "已放行，等待有空的機器領取。",
+        dispatchRunning: "已被機器領取，AI 正在分析。",
+        dispatchNeedsAttention: "看板上的卡片需要有人處理，請到看板查看。",
+        dispatchClosed: "看板上的卡片已結案。",
+        dispatchStalled: "尚無機器領取。只有讀得到本專案 runtime 目錄的機器可以領這張卡——通常就是送出這次整理的這台電腦，請確認它的 worker 正在執行。",
+        dispatchCardRef: "看板卡片：{{cardId}}",
         taskStatusQueued: "等待中",
         taskStatusAnalyzing: "分析中",
         taskStatusPlanReady: "等待確認",
@@ -741,6 +748,21 @@
         return messages[status] || COPY.cleanupBlocked;
       }
 
+      function dispatchMessage(dispatch) {
+        if (!dispatch.approved) return COPY.dispatchAwaitingApproval;
+        if (dispatch.boardColumn === "RUNNING") return COPY.dispatchRunning;
+        if (dispatch.boardColumn === "NEEDS_ATTENTION") return COPY.dispatchNeedsAttention;
+        if (dispatch.boardColumn === "DONE") return COPY.dispatchClosed;
+        return dispatch.stalled ? COPY.dispatchStalled : COPY.dispatchWaitingClaim;
+      }
+
+      /** 派工任務的看板狀態行；未派工的任務回空字串（standalone 畫面完全不變）。 */
+      function renderDispatchStatus(task) {
+        if (!task || !task.dispatch || !task.dispatch.cardId) return "";
+        return '<p class="task-meta">' + escapeHtml(dispatchMessage(task.dispatch)) + '</p>'
+          + '<p class="task-meta">' + escapeHtml(copy("dispatchCardRef", { cardId: task.dispatch.cardId })) + '</p>';
+      }
+
       function cleanupSelectionError(errorCode) {
         if (errorCode === "cleanup-scope-required") return COPY.cleanupScopeRequired;
         if (errorCode === "overlapping-cleanup-scope") return COPY.cleanupScopeOverlapping;
@@ -929,6 +951,7 @@
           : '';
         return '<section class="cleanup-status"><span class="task-status">' + escapeHtml(cleanupStatusLabel(task.status)) + '</span><strong>'
           + escapeHtml(cleanupStatusMessage(task.status)) + completionMark + '</strong>'
+          + renderDispatchStatus(task)
           + completion + (action ? '<div class="cleanup-actions">' + action + '</div>' : '') + '</section>';
       }
 
@@ -1088,6 +1111,7 @@
             + '<span class="task-status">' + escapeHtml(cleanupStatusLabel(task.status)) + '</span>'
             + '<p>' + escapeHtml(task.scopeName || COPY.cleanupTitle) + '</p>'
             + '<p class="task-meta">' + escapeHtml(copy("workflowUpdatedAt", { time: formatWorkflowTime(task.updatedAt) })) + '</p>'
+            + renderDispatchStatus(task)
             + (canOpen ? '<div class="workflow-task-actions"><button' + (isPrimary ? ' data-primary-action="true"' : ' class="secondary"')
               + ' id="openWorkflowTask' + index + '" type="button">' + escapeHtml(COPY.cleanupViewPlan) + '</button></div>' : '')
             + '</article>';

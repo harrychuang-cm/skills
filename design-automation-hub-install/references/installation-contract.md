@@ -62,6 +62,32 @@ The portable runtime stores task state below `.design-automation/state/` and tas
 
 The generic project task id is `figma-cleanup`, and it loads `figma-design-automation`. Generic runner selection, fallback, timeout, summary, and verification remain owned by `agent-automation-orchestrate`.
 
+## Optional task board dispatch binding
+
+Dispatch is an opt-in, per-project binding that lives outside the project
+profile: environment variables, or the untracked file
+`.design-automation/task-board.json`. The installer's gitignore merge fragment
+covers that path. The installer never creates, requests, or infers the binding,
+never records it in the receipt, and never emits the control plane URL or token
+in command output. Installed-project validation passes with or without a binding
+and never contacts the control plane.
+
+With a complete binding, task creation materializes the task-scoped input under
+`.design-automation/runtime/<automation-task-id>/` and creates one board card
+instead of starting the generic runner locally; the cleanup task stays queued
+until durable evidence (a validated `result.json`) or the card's own state moves
+it. With no binding, task creation schedules local analysis exactly as before.
+
+In both configurations `standalone` mode exposes only cleanup and workflow
+status with review false, `GET /healthz` reports `extractionQueue: false`, and
+the runtime creates no extraction queue endpoint or state. The health response
+additionally reports a boolean `dispatch` flag stating whether a complete
+binding is active.
+
+The cleanup snapshot never leaves the machine that produced it: no Figma file
+key and no snapshot content is sent to the control plane. Only a worker that can
+read the task-scoped input is offered the card.
+
 ## CLI result
 
 JSON output is a single schema-versioned object containing only stable summaries, issue codes, the absolute manifest path, manual actions, and next actions. It never includes access codes, credential values, raw prompts, expanded runner arguments, model output, or environment values.

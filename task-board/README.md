@@ -101,6 +101,71 @@ node --test test/*.test.mjs   # worker 測試（零依賴）
 卡片完成進入「完成」欄時，鏈上的下一個任務會自動建卡（origin = pipeline-chain、auto-run）。
 手動建卡與接棒卡預設自動執行；其他來源需在看板按「放行執行」。
 
+## Figma Hub 派工（Design Automation Hub）
+
+已安裝 `design-automation-hub-install` 的專案可以選擇把 Figma Plugin 送出的 `figma-cleanup`
+交給看板，而不是在送出者機器上立刻開跑。**沒有設定綁定的專案行為完全不變**——送出即本機分析。
+
+### 何時在本機跑、何時進看板
+
+| 情境 | 誰執行 | 何時放行 |
+| --- | --- | --- |
+| 專案沒有綁定設定 | 送出者機器上的 Coordinator，當下就跑 | 不需要放行 |
+| 專案有綁定設定 | 領到卡的機器上的 worker（spawn `run-task.mjs`） | 需要成員在看板按「放行執行」 |
+
+外部觸發的卡預設 **不自動執行**（`autoRun: false`）：Figma 一次送出多個範圍時，不會瞬間燒掉全隊 AI 額度。
+
+### 設定綁定（每個專案各自 opt-in）
+
+在**目標專案**建立 `.design-automation/task-board.json`（安裝器的 gitignore 片段已涵蓋這個路徑，
+不會被 commit）：
+
+```json
+{
+  "schemaVersion": 1,
+  "controlPlaneUrl": "https://<你的網域>",
+  "token": "wtk_...",
+  "projectSlug": "app-alpha"
+}
+```
+
+- `token` 就是 worker token（在看板 `POST /api/tokens` 簽發，明文只出現一次）。**不要**寫進
+  `.design-automation/project.json`——那個檔案的驗證會因為 credential-like key 直接拒絕整包設定。
+- `projectSlug` 可省略，預設由專案根目錄名推導，規則與 worker 的 slug 完全相同。
+- 環境變數逐欄覆寫：`DESIGN_AUTOMATION_TASK_BOARD_URL`、`DESIGN_AUTOMATION_TASK_BOARD_TOKEN`、
+  `DESIGN_AUTOMATION_TASK_BOARD_PROJECT`、`DESIGN_AUTOMATION_TASK_BOARD_STALL_SECONDS`。
+- URL 與 token 任一缺席即視為未綁定，Coordinator 走原本的本機路徑。
+- 確認綁定生效：`curl http://127.0.0.1:8787/healthz` 的 `dispatch` 為 `true`（`extractionQueue`
+  在兩種模式下都是 `false`——派工不是萃取佇列）。
+
+### 誰領得到這張卡（v1 的同機約束）
+
+Hub 把 snapshot 落地在專案的 `.design-automation/runtime/<automation-task-id>/input.json`，
+那個目錄是 gitignored 的，**別台機器的 working tree 看不到它**。所以：
+
+- worker 每次輪詢會申報「本機讀得到哪些 automation task id」，控制平面只把對得上的 Hub 卡發給它。
+- 讀不到的機器連候選都拿不到，卡片就停在**待領取**——不會被錯的機器領走再假裝是派工。
+- 實務上這代表：**送出整理的那台電腦要有 worker 在跑**。Plugin 在卡片久未被領取時會直接這樣說。
+- snapshot 不上雲：控制平面不儲存 Figma file key、不儲存 snapshot 內容。真正的跨機搬運留待後續 change。
+
+### 卡片走完之後：到 Plugin 確認
+
+`figma-cleanup` 的 AI 步驟只到 **產出清理計畫**，Figma 一個像素都還沒被改。所以：
+
+1. worker 跑完 → 卡片進**待確認**，卡片上明說「到 Figma Plugin 確認清理計畫」。
+2. 設計師回到 Figma Plugin 勾選要套用的操作並執行——**看板的「標記結案」不等於已套用**。
+3. Plugin 套用完成／失敗後，Coordinator 回寫看板：完成 → 卡片結案；失敗 → 卡片進需要處理。
+   回寫是盡力而為，Coordinator 沒開著時卡片就留在待確認，由成員自行處理。
+
+### 失敗時看到什麼
+
+| 情況 | 看板 | Plugin |
+| --- | --- | --- |
+| 控制平面不可達（建卡失敗） | 沒有卡片 | 任務 `blocked`，可重新送出 |
+| 沒有機器讀得到 input | 卡片停在待領取 | 「尚無機器領取」與領卡資格說明 |
+| 領到卡但 input 已消失 | 卡片進需要處理，原因 `hub-input-missing` | 任務 `blocked` |
+| run-task 驗證失敗 | 卡片進需要處理 | 任務 `blocked` |
+
 ## log 與隱私
 
 - worker 端捕捉 run-task 子程序的合併輸出，**在本機遮罩後**分塊上傳：
