@@ -136,7 +136,7 @@ If the target project already has a prototype inspector, match its parameter nam
 
 ## Bundled Prototype Inspector
 
-The bundled addon reads `parameters.prototype` and provides a Storybook toolbar with:
+The bundled addon reads `parameters.prototype` and provides a Storybook toolbar with the modes below. The toolbar tool renders only while the selected story (or its autodocs page) declares `parameters.prototype`; on every other story it is hidden entirely. Visibility is parameter-driven — sidebar category naming (`Prototypes/`, `Flows/`, ...) carries no meaning.
 
 - `Story`: the original story.
 - `Docs`: PRD, UI Spec, Flow Spec, Data Spec, Frontend Handoff, Implementation Guide, and Acceptance markdown.

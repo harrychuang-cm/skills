@@ -5,7 +5,12 @@ import {
   TooltipLinkList,
   WithTooltip,
 } from "storybook/internal/components";
-import { addons, types, useGlobals } from "storybook/manager-api";
+import {
+  addons,
+  types,
+  useGlobals,
+  useParameter,
+} from "storybook/manager-api";
 
 const prototypeInspectorModes = [
   { id: "story", label: "Story" },
@@ -16,6 +21,7 @@ const prototypeInspectorModes = [
 ];
 
 const defaultPrototypeModeGlobalName = "prototypeMode";
+const defaultPrototypeParameterName = "prototype";
 const prototypeInspectorAddonId = "storybook/prototype-inspector";
 
 function getPrototypeMode(value) {
@@ -25,12 +31,20 @@ function getPrototypeMode(value) {
 }
 
 function PrototypeInspectorToolbar({ options }) {
+  const prototype = useParameter(options.parameterName, null);
   const [globals, updateGlobals] = useGlobals();
   const selectedMode = getPrototypeMode(globals[options.globalName]);
   const selectedModeDefinition =
     prototypeInspectorModes.find((mode) => mode.id === selectedMode) ??
     prototypeInspectorModes[0];
   const title = `${options.toolTitle}: ${selectedModeDefinition.label}`;
+
+  // Visibility follows the same contract as the preview decorator: a story
+  // (or its docs page) opts in by declaring the prototype parameter. Sidebar
+  // category naming carries no meaning here.
+  if (!prototype) {
+    return null;
+  }
 
   return createElement(WithTooltip, {
     closeOnOutsideClick: true,
@@ -72,6 +86,7 @@ function registerPrototypeInspectorTool(options = {}) {
   const resolvedOptions = {
     addonId: options.addonId ?? prototypeInspectorAddonId,
     globalName: options.globalName ?? defaultPrototypeModeGlobalName,
+    parameterName: options.parameterName ?? defaultPrototypeParameterName,
     toolTitle: options.toolTitle ?? "Prototype",
   };
   const toolId = `${resolvedOptions.addonId}/tool`;
