@@ -1,7 +1,12 @@
 {
   "schemaVersion": 1,
-  "templateVersion": "1.0.0",
+  "templateVersion": "1.1.0",
   "minimumAgentAutomationVersion": "1.0.0",
+  "modules": {
+    "task-board-dispatch": {
+      "optional": true
+    }
+  },
   "files": [
     {
       "source": "agent-automation-task.fragment.json",
@@ -73,6 +78,7 @@
       "source": "scripts/design-automation-hub/dispatch.mjs",
       "target": "scripts/design-automation-hub/dispatch.mjs",
       "ownership": "managed",
+      "module": "task-board-dispatch",
       "sha256": "d07c1eb393b56d80b396cf200b91d5110631021043ce225c9f0daffbb474309a"
     },
     {
@@ -91,7 +97,7 @@
       "source": "scripts/design-automation-hub/standalone.mjs",
       "target": "scripts/design-automation-hub/standalone.mjs",
       "ownership": "managed",
-      "sha256": "05c0bb588b85823712c94db1530fbef37b1d1b53fd58179bcf24dbe1ceceebf6"
+      "sha256": "93b0cddf4f4e5be26f12509e35bc2fee58b1aa984d2d02f1c2126792c5a90dbe"
     },
     {
       "source": "scripts/design-automation-hub/store.mjs",
@@ -103,12 +109,14 @@
       "source": "scripts/design-automation-hub/task-board-binding.mjs",
       "target": "scripts/design-automation-hub/task-board-binding.mjs",
       "ownership": "managed",
+      "module": "task-board-dispatch",
       "sha256": "13cd03580bb8036bcf34cc790bcff6969cc82e1507c18000a314d52849fd49cd"
     },
     {
       "source": "scripts/design-automation-hub/task-board-client.mjs",
       "target": "scripts/design-automation-hub/task-board-client.mjs",
       "ownership": "managed",
+      "module": "task-board-dispatch",
       "sha256": "0a4631397c40b0a5f261346b81674b78de8b1abc1141a6948b639fab37fbd04f"
     },
     {

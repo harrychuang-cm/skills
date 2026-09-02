@@ -72,6 +72,10 @@ never records it in the receipt, and never emits the control plane URL or token
 in command output. Installed-project validation passes with or without a binding
 and never contacts the control plane.
 
+Agents MUST NOT surface dispatch proactively: a project with no binding is
+reported without any board mention, and install, update, and check reports MUST
+NOT include the task board unless the user explicitly asked for it.
+
 With a complete binding, task creation materializes the task-scoped input under
 `.design-automation/runtime/<automation-task-id>/` and creates one board card
 instead of starting the generic runner locally; the cleanup task stays queued

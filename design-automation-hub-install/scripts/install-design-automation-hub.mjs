@@ -20,6 +20,9 @@ const COMPANION_SKILL = "figma-design-automation";
 const SKILL_SURFACES = Object.freeze([".agents/skills", ".claude/skills", ".cursor/skills"]);
 const SHA_PATTERN = /^[a-f0-9]{64}$/;
 const OWNERSHIP = new Set(["managed", "merge", "generated"]);
+const CORE_MODULE = "core";
+// Maps each optional module to the CLI option that opts in to installing it.
+const MODULE_OPTION_FLAGS = Object.freeze({ "task-board-dispatch": "withTaskBoardDispatch" });
 const CREDENTIAL_PATTERN = /(token|secret|password|credential|authorization|bearer|api.?key|private.?key)/i;
 const RESULT_KEYS = [
   "schemaVersion",
@@ -133,6 +136,19 @@ export function validateTemplate({ root = templateRoot, manifestFile = path.join
     || !Array.isArray(manifest.manualActions)
   ) throw new InstallerError("unsupported-template-schema", "Template manifest schema is unsupported.");
 
+  const declaredModules = manifest.modules ?? {};
+  if (
+    typeof declaredModules !== "object"
+    || Array.isArray(declaredModules)
+    || Object.entries(declaredModules).some(([name, config]) =>
+      typeof name !== "string"
+      || name === ""
+      || !config
+      || typeof config !== "object"
+      || Array.isArray(config)
+      || (config.optional !== undefined && typeof config.optional !== "boolean"))
+  ) throw new InstallerError("unsupported-template-schema", "Template modules declaration is unsupported.");
+
   const sources = new Set();
   const targets = new Set();
   const normalizedFiles = manifest.files.map((entry) => {
@@ -147,6 +163,9 @@ export function validateTemplate({ root = templateRoot, manifestFile = path.join
     targets.add(target);
     if (!OWNERSHIP.has(entry.ownership)) {
       throw new InstallerError("unknown-template-ownership", "Template ownership is unsupported.", { path: source });
+    }
+    if (entry.module !== undefined && (typeof entry.module !== "string" || (entry.module !== CORE_MODULE && !Object.hasOwn(declaredModules, entry.module)))) {
+      throw new InstallerError("unknown-template-module", "Template file entry references an undeclared module.", { path: source });
     }
     if (!SHA_PATTERN.test(entry.sha256 || "")) {
       throw new InstallerError("invalid-template-digest", "Template digest is malformed.", { path: source });
@@ -284,9 +303,50 @@ function relativeFiles(root) {
   return walkFiles(root).filter((item) => ![".DS_Store"].includes(path.basename(item)));
 }
 
-function expectedManagedInventory({ manifest, genericRoot }) {
+function allModuleNames(manifest) {
+  const names = new Set([CORE_MODULE, ...Object.keys(manifest.modules ?? {})]);
+  for (const entry of manifest.files) if (entry.module) names.add(entry.module);
+  return names;
+}
+
+function entryModule(entry) {
+  return entry.module || CORE_MODULE;
+}
+
+// A fresh install selects core plus every non-optional module, adding optional
+// modules only when their CLI flag opts in. A receipt-recorded selection wins
+// (unknown names are dropped so a rewritten receipt always passes check);
+// a receipt that predates module recording selects all modules, and a receipt
+// whose modules field is present but not an array is corrupt and fails loudly.
+function moduleSelection({ manifest, options = {}, receipt = null }) {
+  const declared = manifest.modules ?? {};
+  const known = allModuleNames(manifest);
+  let recorded = null;
+  if (receipt) {
+    if (receipt.modules === undefined) recorded = [...known];
+    else if (Array.isArray(receipt.modules)) {
+      recorded = receipt.modules.filter((name) => typeof name === "string" && known.has(name));
+    } else {
+      throw new InstallerError("invalid-install-receipt", "Install receipt module selection is corrupt.", { path: RECEIPT_PATH });
+    }
+  }
+  const selection = new Set(
+    recorded ?? [
+      CORE_MODULE,
+      ...Object.keys(declared).filter((name) => !declared[name].optional),
+    ],
+  );
+  selection.add(CORE_MODULE);
+  for (const [name, optionKey] of Object.entries(MODULE_OPTION_FLAGS)) {
+    if (options[optionKey] && Object.hasOwn(declared, name)) selection.add(name);
+  }
+  return selection;
+}
+
+function expectedManagedInventory({ manifest, genericRoot, modules = null }) {
+  const selection = modules ?? allModuleNames(manifest);
   const expected = {};
-  for (const entry of manifest.files.filter((item) => item.ownership === "managed")) {
+  for (const entry of manifest.files.filter((item) => item.ownership === "managed" && selection.has(entryModule(item)))) {
     const targets = entry.source.startsWith("skills/figma-design-automation/")
       ? SKILL_SURFACES.map((surface) =>
           `${surface}/${COMPANION_SKILL}/${entry.source.slice("skills/figma-design-automation/".length)}`)
@@ -624,8 +684,9 @@ export async function createInstallPlan(options) {
   const profile = loadRequestedProfile(options, projectRoot, hostDescriptor, {
     allowPlaceholder: options.dryRun || options.inspect,
   });
+  const modules = moduleSelection({ manifest, options, receipt: plan.receipt });
 
-  for (const entry of manifest.files.filter((item) => item.ownership === "managed")) {
+  for (const entry of manifest.files.filter((item) => item.ownership === "managed" && modules.has(entryModule(item)))) {
     const sourcePath = path.join(root, entry.source);
     const targets = entry.source.startsWith("skills/figma-design-automation/")
       ? SKILL_SURFACES.map((surface) =>
@@ -735,7 +796,9 @@ export async function createInstallPlan(options) {
   plan.expectedManagedFiles = expectedManagedInventory({
     manifest,
     genericRoot: source.genericRoot,
+    modules,
   });
+  plan.modules = [...modules].sort();
   plan.generatedFiles = { [PROFILE_PATH]: sha256(profileBytes) };
   plan.mergeFragments = mergeContract.receiptEntries;
   plan.profile = profile;
@@ -792,6 +855,7 @@ export function commitInstallPlan(plan, { failureAfter = Infinity } = {}) {
     schemaVersion: 1,
     templateVersion: plan.templateVersion,
     hostMode: plan.hostMode,
+    modules: plan.modules,
     managedFiles: plan.expectedManagedFiles,
     generatedFiles: plan.generatedFiles,
     mergeFragments: plan.mergeFragments,
@@ -883,6 +947,20 @@ export async function checkInstalledProject({ projectRoot, skillsSourceRoot } = 
   if (receiptError) addIssue(receiptError.code || "invalid-install-receipt", RECEIPT_PATH);
   else if (!receipt) addIssue("missing-install-receipt", RECEIPT_PATH);
 
+  const knownModules = allModuleNames(manifest);
+  const receiptModulesValid = (
+    receipt?.modules === undefined
+    || (
+      Array.isArray(receipt.modules)
+      && receipt.modules.length > 0
+      && receipt.modules.every((name) => typeof name === "string" && knownModules.has(name))
+      && receipt.modules.includes(CORE_MODULE)
+    )
+  );
+  const modules = receipt && receiptModulesValid
+    ? moduleSelection({ manifest, receipt })
+    : knownModules;
+
   let source = null;
   let expectedManagedFiles = null;
   try {
@@ -890,6 +968,7 @@ export async function checkInstalledProject({ projectRoot, skillsSourceRoot } = 
     expectedManagedFiles = expectedManagedInventory({
       manifest,
       genericRoot: source.genericRoot,
+      modules,
     });
   } catch (error) {
     addIssue(error.code || "invalid-agent-automation-source");
@@ -910,6 +989,7 @@ export async function checkInstalledProject({ projectRoot, skillsSourceRoot } = 
     if (
       receipt.templateVersion !== manifest.templateVersion
       || !["standalone", "compatible"].includes(receipt.hostMode)
+      || !receiptModulesValid
       || (expectedManagedFiles && !exactDigestInventory(receipt.managedFiles, expectedManagedFiles))
       || !generatedInventoryValid
       || !exactMergeFragments(receipt.mergeFragments, mergeContract.receiptEntries)
@@ -1056,6 +1136,7 @@ export function normalizeOptions(input = {}) {
     update: Boolean(input.update),
     check: Boolean(input.check),
     forceManaged: Boolean(input.forceManaged),
+    withTaskBoardDispatch: Boolean(input.withTaskBoardDispatch),
     json: Boolean(input.json),
   };
 }
@@ -1081,7 +1162,7 @@ export async function executeInstall(input, hooks = {}) {
 }
 
 function parseCli(argv) {
-  const booleanFlags = new Set(["dry-run", "update", "force-managed", "json", "inspect", "check", "help"]);
+  const booleanFlags = new Set(["dry-run", "update", "force-managed", "with-task-board-dispatch", "json", "inspect", "check", "help"]);
   const valueFlags = new Set([
     "project-root",
     "host-mode",
@@ -1114,7 +1195,7 @@ function parseCli(argv) {
 function printUsage() {
   process.stdout.write(`Usage:
   node design-automation-hub-install/scripts/install-design-automation-hub.mjs --project-root <absolute-root> --host-mode standalone --dry-run --json
-  node design-automation-hub-install/scripts/install-design-automation-hub.mjs --project-root <absolute-root> --host-mode standalone --project-id <id> --project-name <name> --figma-file-key <key> --json
+  node design-automation-hub-install/scripts/install-design-automation-hub.mjs --project-root <absolute-root> --host-mode standalone --project-id <id> --project-name <name> --figma-file-key <key> [--with-task-board-dispatch] --json
   node design-automation-hub-install/scripts/install-design-automation-hub.mjs --project-root <absolute-root> --host-mode compatible --host-adapter <relative-module> --update --json
 `);
 }

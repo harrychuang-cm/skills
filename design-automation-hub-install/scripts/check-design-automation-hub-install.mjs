@@ -360,6 +360,18 @@ function checkManifestFixtures() {
   record("manifest-hashes");
   record("manifest-ownership");
 
+  assert.deepEqual(manifest.modules, { "task-board-dispatch": { optional: true } });
+  assert.deepEqual(
+    manifest.files.filter((entry) => entry.module).map((entry) => entry.source),
+    [
+      "scripts/design-automation-hub/dispatch.mjs",
+      "scripts/design-automation-hub/task-board-binding.mjs",
+      "scripts/design-automation-hub/task-board-client.mjs",
+    ],
+  );
+  assert.ok(manifest.files.filter((entry) => entry.module).every((entry) => entry.module === "task-board-dispatch"));
+  record("manifest-module-partition");
+
   const manualAcceptance = JSON.parse(fs.readFileSync(manualAcceptancePath, "utf8"));
   validateManualAcceptance(manifest, manualAcceptance);
   const releaseManifest = { ...manifest, templateVersion: "1.0.0" };
@@ -447,6 +459,20 @@ function checkManifestFixtures() {
   });
   expectCode(() => validateTemplate({ root }), "template-symlink-escape");
   fs.rmSync(root, { recursive: true, force: true });
+
+  root = mutate(({ manifest: value }) => {
+    value.files.find((entry) => entry.source === "scripts/design-automation-hub/dispatch.mjs").module = "undeclared-module";
+  });
+  expectCode(() => validateTemplate({ root }), "unknown-template-module");
+  fs.rmSync(root, { recursive: true, force: true });
+
+  // 原型鏈名稱（toString 等）不得因 `in` 語意而被誤放行。
+  root = mutate(({ manifest: value }) => {
+    value.files.find((entry) => entry.source === "scripts/design-automation-hub/dispatch.mjs").module = "toString";
+  });
+  expectCode(() => validateTemplate({ root }), "unknown-template-module");
+  fs.rmSync(root, { recursive: true, force: true });
+  record("undeclared-module-rejected");
 }
 
 function checkPluginTemplate() {
@@ -859,6 +885,79 @@ export const designAutomationHubHostAdapter = {
   const installedCheck = await checkInstalledProject({ projectRoot: realRoot, skillsSourceRoot: skillsRoot });
   assert.equal(installedCheck.result, "valid", JSON.stringify(installedCheck.issues));
   record("installed-project-validation");
+
+  // 預設安裝排除派工模組；realRoot 一路 install → update 都不得出現派工檔案。
+  const dispatchModuleFiles = [
+    "scripts/design-automation-hub/dispatch.mjs",
+    "scripts/design-automation-hub/task-board-binding.mjs",
+    "scripts/design-automation-hub/task-board-client.mjs",
+  ];
+  for (const target of dispatchModuleFiles) {
+    assert.equal(fs.existsSync(path.join(realRoot, target)), false, `${target} must not be installed by default`);
+  }
+  const realReceipt = JSON.parse(fs.readFileSync(path.join(realRoot, ".design-automation/install.json"), "utf8"));
+  assert.deepEqual(realReceipt.modules, ["core"]);
+  record("default-install-excludes-task-board-dispatch");
+  record("update-preserves-module-exclusion");
+
+  const dispatchRoot = createProject();
+  const dispatchInstall = await executeInstall(installOptions(dispatchRoot, { withTaskBoardDispatch: true }));
+  assert.equal(dispatchInstall.result, "installed");
+  for (const target of dispatchModuleFiles) {
+    assert.ok(fs.existsSync(path.join(dispatchRoot, target)), `${target} must be installed with the flag`);
+  }
+  const dispatchReceiptPath = path.join(dispatchRoot, ".design-automation/install.json");
+  const dispatchReceipt = JSON.parse(fs.readFileSync(dispatchReceiptPath, "utf8"));
+  assert.deepEqual(dispatchReceipt.modules, ["core", "task-board-dispatch"]);
+  for (const target of dispatchModuleFiles) {
+    assert.match(dispatchReceipt.managedFiles[target] || "", /^[a-f0-9]{64}$/, `${target} digest must be in the receipt`);
+  }
+  const dispatchCheck = await checkInstalledProject({ projectRoot: dispatchRoot, skillsSourceRoot: skillsRoot });
+  assert.equal(dispatchCheck.result, "valid", JSON.stringify(dispatchCheck.issues));
+  record("flagged-install-carries-task-board-dispatch");
+
+  // 選裝模組的缺檔仍是 drift：收據記錄了就要完整驗證。
+  fs.rmSync(path.join(dispatchRoot, dispatchModuleFiles[1]));
+  const dispatchDrift = await checkInstalledProject({ projectRoot: dispatchRoot, skillsSourceRoot: skillsRoot });
+  assert.equal(dispatchDrift.result, "failed");
+  assert.ok(dispatchDrift.issues.some((item) =>
+    item.code === "managed-file-drift" && item.path === dispatchModuleFiles[1]));
+  record("selected-module-missing-file-drift");
+
+  // 無 modules 欄位的舊收據視為選了全部模組：全檔案在場時 check 必須照舊通過。
+  fs.writeFileSync(
+    path.join(dispatchRoot, dispatchModuleFiles[1]),
+    fs.readFileSync(path.join(templateRoot, "scripts/design-automation-hub/task-board-binding.mjs")),
+  );
+  const legacyReceipt = JSON.parse(fs.readFileSync(dispatchReceiptPath, "utf8"));
+  delete legacyReceipt.modules;
+  writeJson(dispatchReceiptPath, legacyReceipt);
+  const legacyCheck = await checkInstalledProject({ projectRoot: dispatchRoot, skillsSourceRoot: skillsRoot });
+  assert.equal(legacyCheck.result, "valid", JSON.stringify(legacyCheck.issues));
+  record("legacy-receipt-full-module-selection");
+
+  // 收據帶未知模組名：update 過濾後重寫收據，隨後 check 必須通過。
+  const ghostReceipt = JSON.parse(fs.readFileSync(dispatchReceiptPath, "utf8"));
+  ghostReceipt.modules = ["core", "task-board-dispatch", "ghost-module"];
+  writeJson(dispatchReceiptPath, ghostReceipt);
+  const ghostUpdate = await executeInstall(installOptions(dispatchRoot, { update: true }));
+  assert.equal(ghostUpdate.result, "updated");
+  const healedReceipt = JSON.parse(fs.readFileSync(dispatchReceiptPath, "utf8"));
+  assert.deepEqual(healedReceipt.modules, ["core", "task-board-dispatch"]);
+  const healedCheck = await checkInstalledProject({ projectRoot: dispatchRoot, skillsSourceRoot: skillsRoot });
+  assert.equal(healedCheck.result, "valid", JSON.stringify(healedCheck.issues));
+  record("unknown-receipt-module-filtered-on-update");
+
+  // 收據 modules 欄位毀損（非陣列）：update 必須大聲失敗，不得靜默擴張模組範圍。
+  const corruptReceipt = JSON.parse(fs.readFileSync(dispatchReceiptPath, "utf8"));
+  corruptReceipt.modules = null;
+  writeJson(dispatchReceiptPath, corruptReceipt);
+  await expectCodeAsync(
+    () => executeInstall(installOptions(dispatchRoot, { update: true })),
+    "invalid-install-receipt",
+  );
+  record("corrupt-receipt-modules-loud-failure");
+  fs.rmSync(dispatchRoot, { recursive: true, force: true });
 
   const integrityRoot = createProject();
   await executeInstall(installOptions(integrityRoot));

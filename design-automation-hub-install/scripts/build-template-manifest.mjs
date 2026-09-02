@@ -27,6 +27,15 @@ const ownershipFor = (source) => {
   return "managed";
 };
 
+const TASK_BOARD_DISPATCH_SOURCES = new Set([
+  "scripts/design-automation-hub/dispatch.mjs",
+  "scripts/design-automation-hub/task-board-binding.mjs",
+  "scripts/design-automation-hub/task-board-client.mjs",
+]);
+
+// Deterministic module membership: entries without a module field are core.
+const moduleFor = (source) => (TASK_BOARD_DISPATCH_SOURCES.has(source) ? "task-board-dispatch" : null);
+
 const files = [];
 const visit = (directory, prefix = "") => {
   for (const entry of fs.readdirSync(directory, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
@@ -35,10 +44,12 @@ const visit = (directory, prefix = "") => {
     const absolutePath = path.join(directory, entry.name);
     if (entry.isDirectory()) visit(absolutePath, relativePath);
     else if (entry.isFile()) {
+      const module = moduleFor(relativePath);
       files.push({
         source: relativePath,
         target: targetFor(relativePath),
         ownership: ownershipFor(relativePath),
+        ...(module ? { module } : {}),
         sha256: crypto.createHash("sha256").update(fs.readFileSync(absolutePath)).digest("hex"),
       });
     } else {
@@ -60,8 +71,11 @@ const sourceSync = [
 
 const manifest = {
   schemaVersion: 1,
-  templateVersion: "1.0.0",
+  templateVersion: "1.1.0",
   minimumAgentAutomationVersion: "1.0.0",
+  modules: {
+    "task-board-dispatch": { optional: true },
+  },
   files,
   manualActions: [
     {

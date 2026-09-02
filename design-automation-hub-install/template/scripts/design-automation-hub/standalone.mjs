@@ -1,14 +1,29 @@
 #!/usr/bin/env node
 
 import fs from "node:fs";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { DesignAutomationError } from "./contract.mjs";
 import { DesignAutomationHubCore } from "./core.mjs";
-import { createDispatchCore, createDispatchScheduler } from "./dispatch.mjs";
 import { createDesignAutomationHubServer } from "./server.mjs";
-import { loadTaskBoardBinding } from "./task-board-binding.mjs";
-import { createTaskBoardClient } from "./task-board-client.mjs";
+
+// 派工模組是可選安裝：這裡絕不靜態 import，缺檔時 Coordinator 必須照常啟動。
+const DISPATCH_MODULE_FILES = ["dispatch.mjs", "task-board-binding.mjs", "task-board-client.mjs"];
+
+function dispatchPreconditionHolds(resolvedRoot) {
+  // URL 或 TOKEN 只要「有定義」就成立（含空值）：設定錯誤必須大聲失敗或警告，
+  // 不得因為值不完整就靜默退回本機分析。
+  return (
+    fs.existsSync(path.join(resolvedRoot, ".design-automation", "task-board.json"))
+    || process.env.DESIGN_AUTOMATION_TASK_BOARD_URL !== undefined
+    || process.env.DESIGN_AUTOMATION_TASK_BOARD_TOKEN !== undefined
+  );
+}
+
+function dispatchModulesInstalled() {
+  return DISPATCH_MODULE_FILES.every((name) => fs.existsSync(fileURLToPath(new URL(`./${name}`, import.meta.url))));
+}
 
 export function parseStandaloneMembers(serialized = process.env.DESIGN_AUTOMATION_MEMBERS_JSON) {
   let values;
@@ -48,23 +63,36 @@ export function createStandaloneAuthenticator(members) {
   };
 }
 
-export function startStandalone({ projectRoot = process.cwd(), port = Number(process.env.PORT || 8787) } = {}) {
+export async function startStandalone({ projectRoot = process.cwd(), port = Number(process.env.PORT || 8787) } = {}) {
   const resolvedRoot = fs.realpathSync(projectRoot);
   const core = new DesignAutomationHubCore({ projectRoot: resolvedRoot });
   const members = parseStandaloneMembers();
   const log = (message) => process.stdout.write(`${message}\n`);
 
-  // 綁定缺席＝未派工：不注入任何東西，走與今天完全相同的本機分析路徑。
-  const binding = loadTaskBoardBinding(resolvedRoot);
-  const dispatch = binding
-    ? (() => {
+  // 前置條件不成立＝未派工：不讀綁定檔、不載入派工模組，走與今天完全相同的本機分析路徑。
+  // 前置條件成立但模組未安裝：出聲警告後照常以 standalone 運作，絕不因此拒絕啟動。
+  let binding = null;
+  let dispatch = null;
+  if (dispatchPreconditionHolds(resolvedRoot)) {
+    if (!dispatchModulesInstalled()) {
+      log("警告：偵測到派工綁定，但看板派工模組未安裝；任務將在本機分析。");
+    } else {
+      const [{ createDispatchCore, createDispatchScheduler }, { loadTaskBoardBinding }, { createTaskBoardClient }] =
+        await Promise.all([
+          import("./dispatch.mjs"),
+          import("./task-board-binding.mjs"),
+          import("./task-board-client.mjs"),
+        ]);
+      binding = loadTaskBoardBinding(resolvedRoot);
+      if (binding) {
         const client = createTaskBoardClient(binding);
-        return {
+        dispatch = {
           core: createDispatchCore({ core, binding, client, log }),
           scheduleTask: createDispatchScheduler({ core, binding, client, log }),
         };
-      })()
-    : null;
+      }
+    }
+  }
 
   const server = createDesignAutomationHubServer({
     core: dispatch ? dispatch.core : core,

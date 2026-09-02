@@ -73,8 +73,7 @@ scripts/
 | 使用者 | 關係 |
 | --- | --- |
 | `design-automation-hub-install` | 在既有契約上**合併**一個 `figma-cleanup` task ＋ `figma-design-automation` 配套 skill，不裝第二套 runner。 |
-| `task-board` | 每台設計師機器上的 worker daemon 包著 `scripts/run-task.mjs`，用該機自己的 AI 帳號跑卡片。 |
-| `pipeline-board` / `portfolio-dashboard` | 唯讀地消費這裡寫出的 durable run summaries，渲染設計師看的狀態板。 |
+| 外部 tracker 或狀態工具 | 唯讀地消費 stateDir 中的 durable run summaries（原子寫入、已消毒的 JSON）；本 skill 不指定也不推薦特定工具。 |
 | 各契約裡的配套 skill | task 的 `skill` 欄位指名的 skill 擁有領域規則與核可關卡；runner 保持通用。 |
 
 ## 維護
