@@ -1607,3 +1607,612 @@
     line-height: var(--pi-sys-typescale-title-lg-line-height);
   }
 }
+
+/* 方案 toolbar：pills＋不符警告的容器；用 padding 而非 margin 收尾，
+   讓 updatePreviewScale 量到的高度完整、預覽縮放能扣掉它。 */
+.prototype-inspector__components-preview-toolbar {
+  display: grid;
+  gap: var(--pi-sys-spacing-xs);
+  justify-self: stretch;
+  padding-block-end: var(--pi-sys-spacing-sm);
+}
+
+/* Composition pills：方案對照切換（default＋宣告方案），掛在預覽窗頂端。 */
+.prototype-inspector__composition-pills {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: var(--pi-sys-spacing-xs);
+  justify-self: stretch;
+}
+
+.prototype-inspector__composition-pill {
+  display: grid;
+  gap: var(--pi-sys-spacing-hairline);
+  padding: var(--pi-sys-spacing-xxs) var(--pi-sys-spacing-md);
+  color: var(--pi-sys-color-on-surface-medium);
+  background: var(--pi-sys-color-surface);
+  border: 1px solid var(--pi-sys-color-outline);
+  border-radius: var(--pi-sys-shape-corner-pill);
+  font-size: var(--pi-sys-typescale-caption-sm-size);
+  line-height: var(--pi-sys-typescale-caption-sm-line-height);
+  text-align: start;
+  cursor: pointer;
+}
+
+.prototype-inspector__composition-pill[aria-pressed="true"] {
+  color: var(--pi-sys-color-on-primary-container);
+  background: var(--pi-sys-color-primary-container);
+  border-color: var(--pi-sys-color-primary);
+  font-weight: var(--pi-sys-weight-semibold);
+}
+
+.prototype-inspector__composition-pill-swaps {
+  color: var(--pi-sys-color-on-surface-subtle);
+  font-size: var(--pi-sys-typescale-metadata-xs-size);
+  font-weight: normal;
+  line-height: var(--pi-sys-typescale-metadata-xs-line-height);
+}
+
+/* requested vs rendered 方案不符（宣告了但 prototype 沒接線）。 */
+.prototype-inspector__composition-warning {
+  justify-self: stretch;
+  margin: var(--pi-sys-spacing-none);
+  padding: var(--pi-sys-spacing-xs) var(--pi-sys-spacing-md);
+  color: var(--pi-sys-color-error);
+  background: var(--pi-sys-color-surface);
+  border: 1px solid var(--pi-sys-color-error);
+  border-radius: var(--pi-sys-shape-corner-xs);
+  font-size: var(--pi-sys-typescale-caption-sm-size);
+  line-height: var(--pi-sys-typescale-caption-sm-line-height);
+}
+
+/* Review bar：決策進度、未儲存數、儲存／補齊／confirm、唯讀與過期提示。 */
+.prototype-inspector__review-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--pi-sys-spacing-xs) var(--pi-sys-spacing-md);
+  margin-block-end: var(--pi-sys-spacing-l);
+  padding: var(--pi-sys-spacing-sm) var(--pi-sys-spacing-md);
+  background: var(--pi-sys-color-surface);
+  border: 1px solid var(--pi-sys-color-outline-low);
+  border-radius: var(--pi-sys-shape-corner-md);
+}
+
+.prototype-inspector__review-stat {
+  color: var(--pi-sys-color-on-surface-strong);
+  font-size: var(--pi-sys-typescale-caption-sm-size);
+  font-weight: var(--pi-sys-weight-semibold);
+  line-height: var(--pi-sys-typescale-caption-sm-line-height);
+}
+
+.prototype-inspector__review-chip {
+  padding: var(--pi-sys-spacing-xxs) var(--pi-sys-spacing-xs);
+  color: var(--pi-sys-color-on-primary-container);
+  background: var(--pi-sys-color-primary-container);
+  border-radius: var(--pi-sys-shape-corner-pill);
+  font-size: var(--pi-sys-typescale-metadata-xs-size);
+  font-weight: var(--pi-sys-weight-semibold);
+  line-height: var(--pi-sys-typescale-metadata-xs-line-height);
+  white-space: nowrap;
+}
+
+.prototype-inspector__review-chip--confirmed {
+  color: var(--pi-sys-color-on-surface-medium);
+  background: var(--pi-sys-color-surface-raised);
+}
+
+.prototype-inspector__review-spacer {
+  flex: 1 1 auto;
+}
+
+.prototype-inspector__review-action {
+  padding: var(--pi-sys-spacing-xxs) var(--pi-sys-spacing-md);
+  color: var(--pi-sys-color-on-surface-strong);
+  background: var(--pi-sys-color-surface);
+  border: 1px solid var(--pi-sys-color-outline);
+  border-radius: var(--pi-sys-shape-corner-pill);
+  font-size: var(--pi-sys-typescale-caption-sm-size);
+  line-height: var(--pi-sys-typescale-caption-sm-line-height);
+  cursor: pointer;
+}
+
+.prototype-inspector__review-action:disabled {
+  color: var(--pi-sys-color-on-surface-subtle);
+  cursor: not-allowed;
+}
+
+.prototype-inspector__review-action--confirm:not(:disabled) {
+  color: var(--pi-sys-color-on-primary);
+  background: var(--pi-sys-color-primary);
+  border-color: var(--pi-sys-color-primary);
+  font-weight: var(--pi-sys-weight-semibold);
+}
+
+.prototype-inspector__review-note {
+  color: var(--pi-sys-color-on-surface-subtle);
+  font-size: var(--pi-sys-typescale-metadata-xs-size);
+  line-height: var(--pi-sys-typescale-metadata-xs-line-height);
+}
+
+.prototype-inspector__review-warning {
+  flex-basis: 100%;
+  color: var(--pi-sys-color-error);
+  font-size: var(--pi-sys-typescale-caption-sm-size);
+  line-height: var(--pi-sys-typescale-caption-sm-line-height);
+}
+
+/* 卡片決策 chip 與抽屜（keep / swap / flag）。 */
+.prototype-inspector__decision-chip {
+  padding: var(--pi-sys-spacing-xxs) var(--pi-sys-spacing-xs);
+  color: var(--pi-sys-color-on-surface-medium);
+  background: var(--pi-sys-color-surface-raised);
+  border-radius: var(--pi-sys-shape-corner-pill);
+  font-size: var(--pi-sys-typescale-metadata-xs-size);
+  line-height: var(--pi-sys-typescale-metadata-xs-line-height);
+  white-space: nowrap;
+}
+
+.prototype-inspector__decision-chip--draft {
+  color: var(--pi-sys-color-on-primary-container);
+  background: var(--pi-sys-color-primary-container-subtle);
+  border: 1px dashed var(--pi-sys-color-primary);
+}
+
+.prototype-inspector__components-decision {
+  display: grid;
+  gap: var(--pi-sys-spacing-xs);
+  justify-items: start;
+}
+
+.prototype-inspector__decision-toggle {
+  padding: var(--pi-sys-spacing-xxs) var(--pi-sys-spacing-md);
+  color: var(--pi-sys-color-on-surface-medium);
+  background: var(--pi-sys-color-surface);
+  border: 1px solid var(--pi-sys-color-outline-low);
+  border-radius: var(--pi-sys-shape-corner-pill);
+  font-size: var(--pi-sys-typescale-metadata-xs-size);
+  line-height: var(--pi-sys-typescale-metadata-xs-line-height);
+  cursor: pointer;
+}
+
+.prototype-inspector__decision-toggle[aria-expanded="true"] {
+  color: var(--pi-sys-color-on-primary-container);
+  background: var(--pi-sys-color-primary-container-subtle);
+  border-color: var(--pi-sys-color-primary);
+}
+
+.prototype-inspector__decision-body {
+  display: grid;
+  gap: var(--pi-sys-spacing-xs);
+  justify-self: stretch;
+  padding: var(--pi-sys-spacing-sm);
+  background: var(--pi-sys-color-background);
+  border: 1px solid var(--pi-sys-color-outline-low);
+  border-radius: var(--pi-sys-shape-corner-xs);
+}
+
+.prototype-inspector__decision-verbs {
+  display: flex;
+  gap: var(--pi-sys-spacing-xxs);
+}
+
+.prototype-inspector__decision-verb {
+  padding: var(--pi-sys-spacing-xxs) var(--pi-sys-spacing-md);
+  color: var(--pi-sys-color-on-surface-medium);
+  background: var(--pi-sys-color-surface);
+  border: 1px solid var(--pi-sys-color-outline);
+  border-radius: var(--pi-sys-shape-corner-pill);
+  font-size: var(--pi-sys-typescale-caption-sm-size);
+  line-height: var(--pi-sys-typescale-caption-sm-line-height);
+  cursor: pointer;
+}
+
+.prototype-inspector__decision-verb[aria-pressed="true"] {
+  color: var(--pi-sys-color-on-primary-container);
+  background: var(--pi-sys-color-primary-container);
+  border-color: var(--pi-sys-color-primary);
+  font-weight: var(--pi-sys-weight-semibold);
+}
+
+.prototype-inspector__decision-verb:disabled {
+  color: var(--pi-sys-color-on-surface-subtle);
+  cursor: not-allowed;
+}
+
+.prototype-inspector__decision-empty {
+  margin: var(--pi-sys-spacing-none);
+  color: var(--pi-sys-color-on-surface-subtle);
+  font-size: var(--pi-sys-typescale-metadata-xs-size);
+  line-height: var(--pi-sys-typescale-metadata-xs-line-height);
+}
+
+.prototype-inspector__decision-field {
+  display: grid;
+  gap: var(--pi-sys-spacing-xxs);
+  color: var(--pi-sys-color-on-surface-medium);
+  font-size: var(--pi-sys-typescale-metadata-xs-size);
+  line-height: var(--pi-sys-typescale-metadata-xs-line-height);
+}
+
+.prototype-inspector__decision-field select,
+.prototype-inspector__decision-field textarea {
+  padding: var(--pi-sys-spacing-xxs) var(--pi-sys-spacing-xs);
+  color: var(--pi-sys-color-on-surface-strong);
+  background: var(--pi-sys-color-surface);
+  border: 1px solid var(--pi-sys-color-outline);
+  border-radius: var(--pi-sys-shape-corner-xs);
+  font: inherit;
+  font-size: var(--pi-sys-typescale-caption-sm-size);
+  line-height: var(--pi-sys-typescale-caption-sm-line-height);
+}
+
+.prototype-inspector__decision-hint {
+  margin: var(--pi-sys-spacing-none);
+  color: var(--pi-sys-color-on-surface-subtle);
+  font-size: var(--pi-sys-typescale-metadata-xs-size);
+  line-height: var(--pi-sys-typescale-metadata-xs-line-height);
+}
+
+.prototype-inspector__decision-scope {
+  display: flex;
+  align-items: center;
+  gap: var(--pi-sys-spacing-xs);
+  color: var(--pi-sys-color-on-surface-medium);
+  font-size: var(--pi-sys-typescale-metadata-xs-size);
+  line-height: var(--pi-sys-typescale-metadata-xs-line-height);
+}
+
+.prototype-inspector__decision-apply {
+  padding: var(--pi-sys-spacing-xxs) var(--pi-sys-spacing-md);
+  color: var(--pi-sys-color-on-primary);
+  background: var(--pi-sys-color-primary);
+  border: 1px solid var(--pi-sys-color-primary);
+  border-radius: var(--pi-sys-shape-corner-pill);
+  font-size: var(--pi-sys-typescale-caption-sm-size);
+  font-weight: var(--pi-sys-weight-semibold);
+  line-height: var(--pi-sys-typescale-caption-sm-line-height);
+  cursor: pointer;
+}
+
+.prototype-inspector__decision-apply:disabled {
+  color: var(--pi-sys-color-on-surface-subtle);
+  background: var(--pi-sys-color-surface-raised);
+  border-color: var(--pi-sys-color-outline-low);
+  cursor: not-allowed;
+}
+
+/* ── 批二：審閱彈性強化（build tag、過濾、徽章、總覽、草稿、試調） ── */
+
+.prototype-inspector__build-tag {
+  margin: calc(var(--pi-sys-spacing-l) * -1) var(--pi-sys-spacing-none)
+    var(--pi-sys-spacing-xs);
+  color: var(--pi-sys-color-on-surface-subtle);
+  font-size: var(--pi-sys-typescale-metadata-xs-size);
+  line-height: var(--pi-sys-typescale-metadata-xs-line-height);
+}
+
+.prototype-inspector__filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--pi-sys-spacing-xxs);
+  margin-block-end: var(--pi-sys-spacing-sm);
+}
+
+.prototype-inspector__filter-pill {
+  padding: var(--pi-sys-spacing-xxs) var(--pi-sys-spacing-md);
+  color: var(--pi-sys-color-on-surface-medium);
+  background: var(--pi-sys-color-surface);
+  border: 1px solid var(--pi-sys-color-outline);
+  border-radius: var(--pi-sys-shape-corner-pill);
+  font-size: var(--pi-sys-typescale-metadata-xs-size);
+  line-height: var(--pi-sys-typescale-metadata-xs-line-height);
+  cursor: pointer;
+}
+
+.prototype-inspector__filter-pill[aria-pressed="true"] {
+  color: var(--pi-sys-color-on-primary-container);
+  background: var(--pi-sys-color-primary-container);
+  border-color: var(--pi-sys-color-primary);
+  font-weight: var(--pi-sys-weight-semibold);
+}
+
+.prototype-inspector__rail-progress {
+  margin-inline-start: var(--pi-sys-spacing-xs);
+  padding: var(--pi-sys-spacing-none) var(--pi-sys-spacing-xxs);
+  color: var(--pi-sys-color-on-surface-subtle);
+  background: var(--pi-sys-color-surface-raised);
+  border-radius: var(--pi-sys-shape-corner-pill);
+  font-size: var(--pi-sys-typescale-metadata-xs-size);
+  line-height: var(--pi-sys-typescale-metadata-xs-line-height);
+}
+
+.prototype-inspector__rail-progress--done {
+  color: var(--pi-sys-color-on-primary-container);
+  background: var(--pi-sys-color-primary-container);
+}
+
+.prototype-inspector__rail-flag {
+  display: inline-block;
+  inline-size: var(--pi-sys-spacing-xs);
+  block-size: var(--pi-sys-spacing-xs);
+  margin-inline-start: var(--pi-sys-spacing-xxs);
+  background: var(--pi-sys-color-error);
+  border-radius: var(--pi-sys-shape-corner-full);
+}
+
+/* 決策總覽 modal（唯讀）。 */
+.prototype-inspector__overview-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  padding: var(--pi-sys-spacing-screen-gutter);
+  background: var(--pi-sys-color-outline-inverse);
+}
+
+.prototype-inspector__overview {
+  inline-size: min(720px, 100%);
+  max-block-size: 80vh;
+  overflow: auto;
+  padding: var(--pi-sys-spacing-l) var(--pi-sys-spacing-screen-gutter);
+  background: var(--pi-sys-color-surface);
+  border: 1px solid var(--pi-sys-color-outline-low);
+  border-radius: var(--pi-sys-shape-corner-md);
+}
+
+.prototype-inspector__overview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-block-end: var(--pi-sys-spacing-sm);
+}
+
+.prototype-inspector__overview-header h3 {
+  margin: var(--pi-sys-spacing-none);
+  color: var(--pi-sys-color-on-surface-strong);
+  font-size: var(--pi-sys-typescale-title-sm-size);
+  line-height: var(--pi-sys-typescale-title-sm-line-height);
+}
+
+.prototype-inspector__overview-section {
+  margin-block-end: var(--pi-sys-spacing-l);
+}
+
+.prototype-inspector__overview-section h4 {
+  margin: var(--pi-sys-spacing-none) var(--pi-sys-spacing-none)
+    var(--pi-sys-spacing-xs);
+  color: var(--pi-sys-color-on-surface-medium);
+  font-size: var(--pi-sys-typescale-caption-sm-size);
+  line-height: var(--pi-sys-typescale-caption-sm-line-height);
+}
+
+.prototype-inspector__overview-undecided {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--pi-sys-spacing-xxs);
+}
+
+.prototype-inspector__overview-jump {
+  padding: var(--pi-sys-spacing-xxs) var(--pi-sys-spacing-md);
+  color: var(--pi-sys-color-on-surface-strong);
+  background: var(--pi-sys-color-surface-raised);
+  border: 1px solid var(--pi-sys-color-outline);
+  border-radius: var(--pi-sys-shape-corner-pill);
+  font-size: var(--pi-sys-typescale-caption-sm-size);
+  line-height: var(--pi-sys-typescale-caption-sm-line-height);
+  cursor: pointer;
+}
+
+.prototype-inspector__overview-complete {
+  margin: var(--pi-sys-spacing-none) var(--pi-sys-spacing-none)
+    var(--pi-sys-spacing-l);
+  color: var(--pi-sys-color-on-surface-medium);
+  font-size: var(--pi-sys-typescale-caption-sm-size);
+}
+
+.prototype-inspector__overview-table {
+  inline-size: 100%;
+  border-collapse: collapse;
+  font-size: var(--pi-sys-typescale-caption-sm-size);
+  line-height: var(--pi-sys-typescale-caption-sm-line-height);
+}
+
+.prototype-inspector__overview-table th,
+.prototype-inspector__overview-table td {
+  padding: var(--pi-sys-spacing-xxs) var(--pi-sys-spacing-xs);
+  color: var(--pi-sys-color-on-surface);
+  border-block-end: 1px solid var(--pi-sys-color-outline-low);
+  text-align: start;
+}
+
+.prototype-inspector__overview-table th {
+  color: var(--pi-sys-color-on-surface-subtle);
+  font-size: var(--pi-sys-typescale-metadata-xs-size);
+  font-weight: var(--pi-sys-weight-semibold);
+}
+
+.prototype-inspector__overview-table tr[data-decision="flag"] td {
+  color: var(--pi-sys-color-error);
+}
+
+/* 草稿視覺分層：琥珀（error 系 token 的暖側不可得，用 primary 虛線＋左緣）。 */
+.prototype-inspector__components-card[data-draft] {
+  border-inline-start: 3px dashed var(--pi-sys-color-primary);
+}
+
+.prototype-inspector__draft-restore {
+  padding: var(--pi-sys-spacing-none) var(--pi-sys-spacing-xs);
+  color: var(--pi-sys-color-on-surface-subtle);
+  background: none;
+  border: 1px dashed var(--pi-sys-color-outline);
+  border-radius: var(--pi-sys-shape-corner-pill);
+  font-size: var(--pi-sys-typescale-metadata-xs-size);
+  line-height: var(--pi-sys-typescale-metadata-xs-line-height);
+  cursor: pointer;
+}
+
+.prototype-inspector__review-action--confirming {
+  color: var(--pi-sys-color-error);
+  border-color: var(--pi-sys-color-error);
+  font-weight: var(--pi-sys-weight-semibold);
+}
+
+/* 被替換卡片：左緣色條＋徽章＋一鍵 swap。 */
+.prototype-inspector__components-card[data-replaced] {
+  border-inline-start: 3px solid var(--pi-sys-color-primary);
+}
+
+.prototype-inspector__replaced {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--pi-sys-spacing-xs);
+}
+
+.prototype-inspector__replaced-badge {
+  padding: var(--pi-sys-spacing-xxs) var(--pi-sys-spacing-xs);
+  color: var(--pi-sys-color-on-primary-container);
+  background: var(--pi-sys-color-primary-container-subtle);
+  border-radius: var(--pi-sys-shape-corner-pill);
+  font-size: var(--pi-sys-typescale-metadata-xs-size);
+  line-height: var(--pi-sys-typescale-metadata-xs-line-height);
+}
+
+/* 方案 diff 摘要列。 */
+.prototype-inspector__composition-diff {
+  display: grid;
+  gap: var(--pi-sys-spacing-xxs);
+  justify-self: stretch;
+  padding: var(--pi-sys-spacing-xs) var(--pi-sys-spacing-md);
+  background: var(--pi-sys-color-surface);
+  border: 1px solid var(--pi-sys-color-outline-low);
+  border-radius: var(--pi-sys-shape-corner-xs);
+}
+
+.prototype-inspector__composition-diff-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--pi-sys-spacing-xs);
+  margin: var(--pi-sys-spacing-none);
+  color: var(--pi-sys-color-on-surface-medium);
+  font-size: var(--pi-sys-typescale-metadata-xs-size);
+  line-height: var(--pi-sys-typescale-metadata-xs-line-height);
+}
+
+.prototype-inspector__composition-diff-row strong {
+  color: var(--pi-sys-color-on-surface-strong);
+}
+
+.prototype-inspector__composition-diff-scope {
+  color: var(--pi-sys-color-on-surface-subtle);
+}
+
+/* 決策抽屜補充：寫入層指示與外部變更提示。 */
+.prototype-inspector__decision-layer {
+  margin: var(--pi-sys-spacing-none);
+  color: var(--pi-sys-color-on-surface-subtle);
+  font-size: var(--pi-sys-typescale-metadata-xs-size);
+  font-weight: var(--pi-sys-weight-semibold);
+  line-height: var(--pi-sys-typescale-metadata-xs-line-height);
+}
+
+.prototype-inspector__decision-external {
+  margin: var(--pi-sys-spacing-none);
+  color: var(--pi-sys-color-error);
+  font-size: var(--pi-sys-typescale-metadata-xs-size);
+  line-height: var(--pi-sys-typescale-metadata-xs-line-height);
+}
+
+/* 樣式試調段。 */
+.prototype-inspector__token-sandbox {
+  display: grid;
+  gap: var(--pi-sys-spacing-xs);
+  justify-items: start;
+}
+
+.prototype-inspector__token-body {
+  display: grid;
+  gap: var(--pi-sys-spacing-sm);
+  justify-self: stretch;
+  padding: var(--pi-sys-spacing-sm);
+  background: var(--pi-sys-color-background);
+  border: 1px solid var(--pi-sys-color-outline-low);
+  border-radius: var(--pi-sys-shape-corner-xs);
+}
+
+.prototype-inspector__token-row {
+  display: grid;
+  gap: var(--pi-sys-spacing-xxs);
+  color: var(--pi-sys-color-on-surface-medium);
+  font-size: var(--pi-sys-typescale-metadata-xs-size);
+  line-height: var(--pi-sys-typescale-metadata-xs-line-height);
+}
+
+.prototype-inspector__token-row select {
+  padding: var(--pi-sys-spacing-xxs) var(--pi-sys-spacing-xs);
+  color: var(--pi-sys-color-on-surface-strong);
+  background: var(--pi-sys-color-surface);
+  border: 1px solid var(--pi-sys-color-outline);
+  border-radius: var(--pi-sys-shape-corner-xs);
+  font: inherit;
+  font-size: var(--pi-sys-typescale-caption-sm-size);
+}
+
+.prototype-inspector__token-label {
+  display: flex;
+  align-items: center;
+  gap: var(--pi-sys-spacing-xs);
+  color: var(--pi-sys-color-on-surface-strong);
+  font-weight: var(--pi-sys-weight-semibold);
+}
+
+.prototype-inspector__token-swatch {
+  display: inline-block;
+  inline-size: var(--pi-sys-spacing-md);
+  block-size: var(--pi-sys-spacing-md);
+  border: 1px solid var(--pi-sys-color-outline);
+  border-radius: var(--pi-sys-shape-corner-xs);
+}
+
+.prototype-inspector__token-value {
+  color: var(--pi-sys-color-on-surface-subtle);
+  font-weight: normal;
+}
+
+.prototype-inspector__token-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--pi-sys-spacing-xs);
+}
+
+.prototype-inspector__token-readonly {
+  margin: var(--pi-sys-spacing-none);
+  color: var(--pi-sys-color-on-surface-subtle);
+  font-size: var(--pi-sys-typescale-metadata-xs-size);
+  line-height: var(--pi-sys-typescale-metadata-xs-line-height);
+}
+
+/* 試調 banner（沙盒生效中／切換攔截確認）。 */
+.prototype-inspector__token-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--pi-sys-spacing-xs);
+  justify-self: stretch;
+  padding: var(--pi-sys-spacing-xs) var(--pi-sys-spacing-md);
+  color: var(--pi-sys-color-on-primary-container);
+  background: var(--pi-sys-color-primary-container-subtle);
+  border: 1px solid var(--pi-sys-color-primary);
+  border-radius: var(--pi-sys-shape-corner-xs);
+  font-size: var(--pi-sys-typescale-caption-sm-size);
+  line-height: var(--pi-sys-typescale-caption-sm-line-height);
+}
+
+.prototype-inspector__token-banner--confirm {
+  color: var(--pi-sys-color-error);
+  border-color: var(--pi-sys-color-error);
+  background: var(--pi-sys-color-surface);
+}
