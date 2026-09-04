@@ -19,6 +19,7 @@ import {
   readPrototypeFlowLayoutPositions,
   writePrototypeFlowLayoutPositions,
 } from "../../src/pages/prototypes/prototypeFlowLayout";
+import { computeFingerprint } from "../../scripts/prototype-review/fingerprint.mjs";
 
 import "./prototype-inspector.css";
 
@@ -1520,7 +1521,7 @@ function PrototypeHeader({ eyebrow, title, description }) {
   );
 }
 
-function getRoutePreviewSource(routeId, compositionId) {
+function getRoutePreviewSource(routeId, compositionId, propOverrides) {
   if (typeof window === "undefined") {
     return "";
   }
@@ -1540,6 +1541,10 @@ function getRoutePreviewSource(routeId, compositionId) {
 
   if (typeof compositionId === "string" && compositionId !== "default") {
     params.set("prototypeComposition", compositionId);
+  }
+
+  if (propOverrides && Object.keys(propOverrides).length > 0) {
+    params.set("prototypePropOverrides", JSON.stringify(propOverrides));
   }
 
   return `${window.location.pathname}?${params.toString()}`;
@@ -1753,8 +1758,27 @@ function normalizePrototypeComponentDefaults(components) {
             entry.label.trim(),
         )
       : [];
+    const propSlots = Array.isArray(value.propSlots)
+      ? value.propSlots.filter(
+          (entry) =>
+            isRecord(entry) &&
+            typeof entry.prop === "string" &&
+            entry.prop &&
+            typeof entry.label === "string" &&
+            entry.label.trim() &&
+            Array.isArray(entry.options),
+        )
+      : [];
 
-    defaults[name] = { alternatives, tokenSlots };
+    defaults[name] = {
+      alternatives,
+      propSlots,
+      propSlotsNote:
+        typeof value.propSlotsNote === "string" && value.propSlotsNote.trim()
+          ? value.propSlotsNote.trim()
+          : "",
+      tokenSlots,
+    };
   });
 
   return defaults;
@@ -3794,6 +3818,60 @@ function applyPreviewTokenOverrides(iframe, slotMap) {
   }
 }
 
+const prototypePropWhitelistPath = "/prop-slot-whitelist.json";
+
+/**
+ * 讀取預覽文件根節點的 data-prop-overrides 誠實戳記。
+ * null＝未就緒（再試）；否則為 {applied, rendered} 物件（缺戳記＝空物件）。
+ */
+function readPreviewPropOverridesStamp(iframe) {
+  const doc = getPreviewHighlightDocument(iframe);
+
+  if (!doc || !isPreviewHighlightDocumentReady(doc)) {
+    return null;
+  }
+
+  try {
+    const raw = doc
+      .querySelector("[data-prototype-root]")
+      ?.getAttribute("data-prop-overrides");
+
+    if (!raw) {
+      return { applied: {}, rendered: {} };
+    }
+
+    const parsed = JSON.parse(raw);
+
+    return {
+      applied: isRecord(parsed.applied) ? parsed.applied : {},
+      rendered: isRecord(parsed.rendered) ? parsed.rendered : {},
+    };
+  } catch (error) {
+    return { applied: {}, rendered: {} };
+  }
+}
+
+/** prop 白名單靜態產物：dev 與 static build 同路徑（tokens staticDir）。 */
+function usePrototypePropWhitelist(prototypeId) {
+  const [whitelist, setWhitelist] = useState(null);
+
+  useEffect(() => {
+    let isActive = true;
+
+    fetchPrototypeReviewJson(prototypePropWhitelistPath).then((data) => {
+      if (isActive && isRecord(data) && isRecord(data.prototypes)) {
+        setWhitelist(data.prototypes[prototypeId] ?? {});
+      }
+    });
+
+    return () => {
+      isActive = false;
+    };
+  }, [prototypeId]);
+
+  return whitelist;
+}
+
 /** 白名單靜態產物：dev 與 static build 同路徑（tokens staticDir）。 */
 function usePrototypeTokenWhitelist() {
   const [whitelist, setWhitelist] = useState(null);
@@ -3891,35 +3969,20 @@ const prototypeReviewDecisionVerbLabels = {
 };
 
 /**
- * meta 的 components＋compositions 區塊的穩定指紋（djb2）。
- * 帳本存這個值；重載時不符代表 metadata 已變更、決策可能過期——
- * 只顯示警告，永不清除決策。
+ * meta 的 components＋compositions 區塊的 canonical 指紋——實作在共用模組
+ * scripts/prototype-review/fingerprint.mjs（遞迴鍵排序後雜湊，瀏覽器與
+ * node 端同值）。帳本存這個值；重載時不符代表 metadata 已變更、決策可能
+ * 過期——只顯示警告，永不清除決策。
  */
 function computePrototypeMetaFingerprint(prototype) {
-  let source = "";
-
-  try {
-    source = JSON.stringify({
-      components: prototype.components ?? null,
-      compositions: prototype.compositions ?? null,
-    });
-  } catch (error) {
-    source = "";
-  }
-
-  let hash = 5381;
-
-  for (let index = 0; index < source.length; index += 1) {
-    hash = ((hash << 5) + hash + source.charCodeAt(index)) >>> 0;
-  }
-
-  return `djb2-${hash.toString(16)}`;
+  return computeFingerprint(prototype);
 }
 
 function createEmptyPrototypeReviewLedger(prototypeId, metaFingerprint) {
   return {
     confirm: { status: "pending" },
     defaults: {},
+    history: [],
     metaFingerprint,
     prototypeId,
     routes: {},
@@ -3953,8 +4016,8 @@ function normalizeReviewDecisionEntry(value) {
     entry.decidedAt = value.decidedAt;
   }
 
-  // 與 server sanitizer 同步的欄位白名單：keep 條目的 tokenOverrides
-  // 必須收下，否則重載／儲存回讀會被靜默剝除（design: 三處白名單同步）。
+  // 與 server sanitizer 同步的欄位白名單：keep 條目的 tokenOverrides 與
+  // propOverrides 必須收下，否則重載／儲存回讀會被靜默剝除（三處同步）。
   if (entry.decision === "keep" && Array.isArray(value.tokenOverrides)) {
     entry.tokenOverrides = value.tokenOverrides
       .filter(
@@ -3967,6 +4030,22 @@ function normalizeReviewDecisionEntry(value) {
       .map((override) => ({
         from: override.from,
         slot: override.slot,
+        to: override.to,
+      }));
+  }
+
+  if (entry.decision === "keep" && Array.isArray(value.propOverrides)) {
+    entry.propOverrides = value.propOverrides
+      .filter(
+        (override) =>
+          isRecord(override) &&
+          typeof override.prop === "string" &&
+          typeof override.from === "string" &&
+          typeof override.to === "string",
+      )
+      .map((override) => ({
+        from: override.from,
+        prop: override.prop,
         to: override.to,
       }));
   }
@@ -4025,6 +4104,11 @@ function normalizePrototypeReviewLedger(value, prototypeId, metaFingerprint) {
           }
         : { status: "pending" },
     defaults: normalizeReviewDecisionMap(value.defaults),
+    // history 唯讀顯示用（applied 徽章）；寫回時 server 一律忽略 body 的
+    // history 並自磁碟續傳（server-authoritative）。
+    history: Array.isArray(value.history)
+      ? value.history.filter(isRecord)
+      : [],
     metaFingerprint:
       typeof value.metaFingerprint === "string"
         ? value.metaFingerprint
@@ -4106,7 +4190,9 @@ function areReviewDecisionsEqual(a, b) {
     (a.swapToCompositionId ?? "") === (b.swapToCompositionId ?? "") &&
     (a.note ?? "") === (b.note ?? "") &&
     JSON.stringify(a.tokenOverrides ?? []) ===
-      JSON.stringify(b.tokenOverrides ?? [])
+      JSON.stringify(b.tokenOverrides ?? []) &&
+    JSON.stringify(a.propOverrides ?? []) ===
+      JSON.stringify(b.propOverrides ?? [])
   );
 }
 
@@ -4412,6 +4498,26 @@ function usePrototypeReviewLedger(prototype) {
         );
 
         if (!response.ok) {
+          let errorBody = null;
+
+          try {
+            errorBody = await response.json();
+          } catch (parseError) {
+            errorBody = null;
+          }
+
+          if (errorBody?.code === "EXECUTION_ACTIVE") {
+            throw new Error(
+              `EXECUTION_ACTIVE:執行請求 ${errorBody.requestId ?? ""} 進行中，帳本暫停寫入——執行完成後重新整理`,
+            );
+          }
+
+          if (errorBody?.error?.includes?.("PROP_WHITELIST_STALE")) {
+            throw new Error(
+              "PROP_STALE:變體白名單過期或選項未宣告——請重跑 npm run build:prop-whitelist",
+            );
+          }
+
           throw new Error(`PUT failed with status ${response.status}`);
         }
 
@@ -4434,8 +4540,13 @@ function usePrototypeReviewLedger(prototype) {
         writePrototypeReviewDrafts(prototypeId, { defaults: {}, routes: {} });
         return true;
       } catch (error) {
+        const message = String(error?.message ?? "");
+
         setSaveError(
-          "儲存決策帳本失敗——請確認 Storybook dev server 是否在執行。",
+          message.startsWith("EXECUTION_ACTIVE:") ||
+            message.startsWith("PROP_STALE:")
+            ? message.split(":").slice(1).join(":")
+            : "儲存決策帳本失敗——請確認 Storybook dev server 是否在執行。",
         );
         return false;
       } finally {
@@ -4476,6 +4587,7 @@ function usePrototypeReviewLedger(prototype) {
     isReadOnly,
     isSaving,
     isStale,
+    history: ledger.history ?? [],
     ledgerView: { defaults: ledger.defaults, routes: ledger.routes },
     markRemainingKeep,
     prototypeId,
@@ -4599,7 +4711,7 @@ function PrototypeCompositionPills({
   );
 }
 
-function PrototypeReviewBar({ nameRoutes, onOpenOverview, review }) {
+function PrototypeReviewBar({ executionPlan, nameRoutes, onExecute, onOpenOverview, review }) {
   const undecided = getUndecidedReviewComponents(review.view, nameRoutes);
   const total = nameRoutes.size;
   const decidedCount = total - undecided.length;
@@ -4608,6 +4720,10 @@ function PrototypeReviewBar({ nameRoutes, onOpenOverview, review }) {
   // 執行；點擊 bar 上其他任何位置取消。不用原生 confirm()。
   const [confirming, setConfirming] = useState(null);
   const draftEntries = listUnsavedReviewDrafts(review);
+  const latestRound =
+    review.history.length > 0
+      ? review.history[review.history.length - 1]
+      : null;
   const describeDrafts = draftEntries
     .map(
       (entry) =>
@@ -4653,6 +4769,21 @@ function PrototypeReviewBar({ nameRoutes, onOpenOverview, review }) {
               "prototype-inspector__review-chip prototype-inspector__review-chip--confirmed",
           },
           "已確認",
+        )
+      : null,
+    latestRound
+      ? createElement(
+          "a",
+          {
+            className: "prototype-inspector__applied-badge",
+            href: `${prototypeReviewStaticBasePath}/${latestRound.reportFile ?? ""}`,
+            rel: "noopener",
+            target: "_blank",
+            title: "開啟本輪執行報告",
+          },
+          `第 ${latestRound.round} 輪已套用・${String(
+            latestRound.appliedCommit ?? "",
+          ).slice(0, 7)}・${String(latestRound.appliedAt ?? "").slice(0, 10)}`,
         )
       : null,
     createElement("span", {
@@ -4748,6 +4879,35 @@ function PrototypeReviewBar({ nameRoutes, onOpenOverview, review }) {
             : "確認審閱",
         )
       : null,
+    !review.isReadOnly
+      ? createElement(
+          "button",
+          {
+            className:
+              confirming === "execute"
+                ? "prototype-inspector__review-action prototype-inspector__review-action--confirming"
+                : "prototype-inspector__review-action prototype-inspector__review-action--confirm",
+            "data-review-confirming":
+              confirming === "execute" ? "true" : undefined,
+            disabled: !isConfirmed || review.isSaving,
+            onClick: () => {
+              if (confirming === "execute") {
+                onExecute();
+                setConfirming(null);
+              } else {
+                setConfirming("execute");
+              }
+            },
+            title: !isConfirmed
+              ? "先完成「確認審閱」才能執行決策"
+              : undefined,
+            type: "button",
+          },
+          confirming === "execute"
+            ? `將執行 ${executionPlan.executable} 項可執行決策／${executionPlan.flags} 項標記轉人工跟進——確定建立執行請求？`
+            : "執行決策",
+        )
+      : null,
     review.isReadOnly
       ? createElement(
           "span",
@@ -4771,6 +4931,100 @@ function PrototypeReviewBar({ nameRoutes, onOpenOverview, review }) {
           "span",
           { className: "prototype-inspector__review-warning", role: "alert" },
           review.saveError,
+        )
+      : null,
+  );
+}
+
+/** 執行計畫計數：可執行＝swap＋帶 overrides 的 keep；flag 轉人工跟進。 */
+function getExecutionPlan(view) {
+  let executable = 0;
+  let flags = 0;
+
+  const countEntry = (entry) => {
+    if (entry.decision === "flag") {
+      flags += 1;
+    } else if (
+      entry.decision === "swap" ||
+      (entry.decision === "keep" &&
+        ((entry.tokenOverrides?.length ?? 0) > 0 ||
+          (entry.propOverrides?.length ?? 0) > 0))
+    ) {
+      executable += 1;
+    }
+  };
+
+  Object.values(view.defaults).forEach(countEntry);
+  Object.values(view.routes).forEach((decisions) =>
+    Object.values(decisions).forEach(countEntry),
+  );
+
+  return { executable, flags };
+}
+
+/**
+ * 執行請求常駐 banner（spec: A confirmed ledger can request execution）：
+ * request id、一鍵複製句、request 齡、取消；static 退化為只顯示複製句。
+ * 文案如實——執行發生在設計師自己開的 AI 會話，不是一鍵執行。
+ */
+function PrototypeExecutionBanner({ onCancel, prototypeId, state }) {
+  const copyPhrase = `執行 ${prototypeId} 的決策`;
+  const [isCopied, setIsCopied] = useState(false);
+  const handleCopy = () => {
+    try {
+      navigator.clipboard?.writeText(copyPhrase);
+      setIsCopied(true);
+      window.setTimeout(() => setIsCopied(false), 2000);
+    } catch (error) {
+      // clipboard 不可用時使用者可手動選取句子。
+    }
+  };
+
+  if (state.error) {
+    return createElement(
+      "div",
+      {
+        className:
+          "prototype-inspector__token-banner prototype-inspector__token-banner--confirm",
+        role: "alert",
+      },
+      createElement("span", null, state.error),
+    );
+  }
+
+  return createElement(
+    "div",
+    { className: "prototype-inspector__execution-banner", role: "status" },
+    createElement(
+      "span",
+      null,
+      state.copyOnly
+        ? "靜態版無法建立執行請求——請在你的 AI 會話貼上下方句子執行："
+        : `等待執行（請求 ${state.request.id}・${state.request.requestedAt.slice(0, 16).replace("T", " ")}）：請在你的 AI 會話貼上下方句子執行，完成後重新整理本頁。`,
+    ),
+    createElement(
+      "code",
+      { className: "prototype-inspector__execution-phrase" },
+      copyPhrase,
+    ),
+    createElement(
+      "button",
+      {
+        className: "prototype-inspector__review-action",
+        onClick: handleCopy,
+        type: "button",
+      },
+      isCopied ? "已複製" : "複製句子",
+    ),
+    !state.copyOnly && onCancel
+      ? createElement(
+          "button",
+          {
+            className: "prototype-inspector__review-action",
+            onClick: onCancel,
+            type: "button",
+          },
+          "取消請求",
         )
       : null,
   );
@@ -4980,6 +5234,194 @@ function PrototypeReviewOverview({ nameRoutes, onClose, onJump, review }) {
           : null,
       ),
     ),
+  );
+}
+
+/**
+ * 變體試調段（spec: Component cards offer a variant sandbox）：宣告槽
+ * only、選項下拉、切換走 iframe 重載（畫面狀態會重設——常駐說明）、
+ * requested-vs-rendered 由 data-prop-overrides 戳記誠實呈現、「採用」才
+ * 進 keep 決策草稿的 propOverrides。無任何自由值輸入。
+ */
+function PrototypeComponentPropSandbox({
+  adoptedProps,
+  appliedStamp,
+  componentName,
+  effectiveDecision,
+  isReadOnly,
+  isReplaced,
+  onAdopt,
+  onSelect,
+  propSlots,
+  replacedByName,
+  sandboxValues,
+  whitelistForComponent,
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [isConfirmingKeep, setIsConfirmingKeep] = useState(false);
+  const sandboxProps = Object.keys(sandboxValues);
+
+  if (isReadOnly) {
+    const savedOverrides = effectiveDecision?.propOverrides ?? [];
+
+    if (savedOverrides.length === 0) {
+      return null;
+    }
+
+    return createElement(
+      "div",
+      { className: "prototype-inspector__token-sandbox" },
+      createElement(
+        "p",
+        { className: "prototype-inspector__token-readonly" },
+        `已採用變體調整：${savedOverrides
+          .map((override) => `${override.prop}: ${override.from} → ${override.to}`)
+          .join("；")}`,
+      ),
+    );
+  }
+
+  const handleAdopt = () => {
+    if (sandboxProps.length === 0) {
+      return;
+    }
+
+    if (effectiveDecision?.decision !== "keep" && !isConfirmingKeep) {
+      setIsConfirmingKeep(true);
+      return;
+    }
+
+    const existing = (effectiveDecision?.decision === "keep"
+      ? (effectiveDecision.propOverrides ?? [])
+      : []
+    ).filter((override) => !(override.prop in sandboxValues));
+    const adopted = sandboxProps.map((prop) => ({
+      from: whitelistForComponent?.[prop]?.authoredDefault ?? "",
+      prop,
+      to: sandboxValues[prop],
+    }));
+
+    onAdopt([...existing, ...adopted]);
+    setIsConfirmingKeep(false);
+  };
+
+  return createElement(
+    "div",
+    { className: "prototype-inspector__token-sandbox" },
+    createElement(
+      "button",
+      {
+        "aria-expanded": isOpen,
+        className: "prototype-inspector__decision-toggle",
+        onClick: () => setIsOpen((open) => !open),
+        type: "button",
+      },
+      `變體試調（${propSlots.length}）${
+        sandboxProps.length > 0 ? `・${sandboxProps.length} 筆試調中` : ""
+      }`,
+    ),
+    isOpen
+      ? createElement(
+          "div",
+          { className: "prototype-inspector__token-body" },
+          createElement(
+            "p",
+            { className: "prototype-inspector__decision-hint" },
+            "切換變體會重載畫面（未儲存的畫面狀態會重設）。",
+          ),
+          isReplaced
+            ? createElement(
+                "p",
+                { className: "prototype-inspector__decision-empty" },
+                `此方案下 ${componentName} 由 ${replacedByName ?? "替代元件"} 渲染——變體覆寫已請求但未套用。`,
+              )
+            : null,
+          propSlots.map(({ label, prop }) => {
+            const info = whitelistForComponent?.[prop];
+
+            if (!info) {
+              return createElement(
+                "p",
+                { className: "prototype-inspector__decision-empty", key: prop },
+                `${label}：白名單缺此槽——請重跑 npm run build:prop-whitelist。`,
+              );
+            }
+
+            const baseValue = adoptedProps[prop] ?? info.authoredDefault;
+            const selectedValue = sandboxValues[prop] ?? baseValue;
+            const isUnapplied =
+              prop in sandboxValues &&
+              appliedStamp?.[prop] !== sandboxValues[prop];
+
+            return createElement(
+              "label",
+              { className: "prototype-inspector__token-row", key: prop },
+              createElement(
+                "span",
+                { className: "prototype-inspector__token-label" },
+                label,
+                isUnapplied
+                  ? createElement(
+                      "span",
+                      { className: "prototype-inspector__token-value" },
+                      "（已請求但未套用）",
+                    )
+                  : null,
+              ),
+              createElement(
+                "select",
+                {
+                  disabled: isReplaced,
+                  onChange: (event) => {
+                    const value = event.target.value;
+
+                    onSelect(prop, value === baseValue ? null : value);
+                  },
+                  value: selectedValue,
+                },
+                info.options.map((option) =>
+                  createElement(
+                    "option",
+                    { key: option, value: option },
+                    `${option}${option === info.authoredDefault ? "・現值" : ""}`,
+                  ),
+                ),
+              ),
+            );
+          }),
+          createElement(
+            "div",
+            { className: "prototype-inspector__token-actions" },
+            createElement(
+              "button",
+              {
+                className: "prototype-inspector__review-action",
+                disabled: sandboxProps.length === 0,
+                onClick: () => {
+                  sandboxProps.forEach((prop) => onSelect(prop, null));
+                  setIsConfirmingKeep(false);
+                },
+                type: "button",
+              },
+              "重設此卡",
+            ),
+            createElement(
+              "button",
+              {
+                className: isConfirmingKeep
+                  ? "prototype-inspector__decision-apply prototype-inspector__review-action--confirming"
+                  : "prototype-inspector__decision-apply",
+                disabled: sandboxProps.length === 0 || isReplaced,
+                onClick: handleAdopt,
+                type: "button",
+              },
+              isConfirmingKeep
+                ? `採用將同時把 ${componentName} 標記為保留——確定？`
+                : "採用此調整",
+            ),
+          ),
+        )
+      : null,
   );
 }
 
@@ -5655,6 +6097,29 @@ function PrototypeComponentCard({
           whitelist: review.tokenSandbox.whitelist,
         })
       : null,
+    review?.propSandbox
+      ? createElement(PrototypeComponentPropSandbox, {
+          adoptedProps: review.propSandbox.adoptedProps,
+          appliedStamp: review.propSandbox.appliedStamp,
+          componentName: review.componentName,
+          effectiveDecision: review.effectiveDecision,
+          isReadOnly: review.api.isReadOnly,
+          isReplaced: Boolean(review.replacedBy),
+          key: `props:${review.routeId}:${review.componentName}`,
+          onAdopt: review.propSandbox.onAdopt,
+          onSelect: review.propSandbox.onSelect,
+          propSlots: review.propSandbox.propSlots,
+          replacedByName: review.replacedBy?.name,
+          sandboxValues: review.propSandbox.sandboxValues,
+          whitelistForComponent: review.propSandbox.whitelistForComponent,
+        })
+      : review?.propSlotsNote
+        ? createElement(
+            "p",
+            { className: "prototype-inspector__decision-hint" },
+            review.propSlotsNote,
+          )
+        : null,
   );
 }
 
@@ -5724,23 +6189,111 @@ function PrototypeComponents({ prototype }) {
   const review = usePrototypeReviewLedger(prototype);
   const tokenWhitelist = usePrototypeTokenWhitelist();
   const tokenSandbox = usePrototypeTokenSandbox();
+  const propWhitelist = usePrototypePropWhitelist(review.prototypeId);
+  // 變體沙盒：component → prop → 候選值；選了即經 URL 重載真實渲染，
+  // 「採用」才進決策草稿。
+  const [propSandbox, setPropSandbox] = useState({});
+  const [renderedPropStamp, setRenderedPropStamp] = useState(null);
+  const setPropSandboxValue = useCallback((componentName, prop, value) => {
+    setPropSandbox((current) => {
+      const next = { ...current, [componentName]: { ...current[componentName] } };
+
+      if (value) {
+        next[componentName][prop] = value;
+      } else {
+        delete next[componentName][prop];
+      }
+
+      if (Object.keys(next[componentName]).length === 0) {
+        delete next[componentName];
+      }
+
+      return next;
+    });
+  }, []);
+  const propSandboxCount = Object.values(propSandbox).reduce(
+    (total, props) => total + Object.keys(props).length,
+    0,
+  );
   const [selectedCompositionId, setSelectedCompositionId] = useState("default");
   const [renderedCompositionStamp, setRenderedCompositionStamp] =
     useState(null);
   const [decisionFilter, setDecisionFilter] = useState("all");
   const [isOverviewOpen, setIsOverviewOpen] = useState(false);
-  // 切 route/composition 時有未採用試調 → 攔截確認（spec: token style
-  // sandbox）。pendingNav 保存確認後要執行的導航動作。
+  // 執行請求（session 內）：POST 成功→常駐 banner；static POST 失敗→
+  // 退化為複製句；409→顯示原因。
+  const [executionState, setExecutionState] = useState(null);
+  const executionPlan = useMemo(
+    () => getExecutionPlan(review.view),
+    [review.view],
+  );
+  const handleExecute = useCallback(async () => {
+    try {
+      const response = await fetch(
+        `${prototypeReviewApiBasePath}/${review.prototypeId}/execution-requests`,
+        { method: "POST" },
+      );
+
+      if (response.ok) {
+        setExecutionState({ request: await response.json() });
+        return;
+      }
+
+      let body = null;
+
+      try {
+        body = await response.json();
+      } catch (parseError) {
+        body = null;
+      }
+
+      if (body?.error) {
+        setExecutionState({ error: body.error });
+        return;
+      }
+
+      setExecutionState({ copyOnly: true });
+    } catch (error) {
+      setExecutionState({ copyOnly: true });
+    }
+  }, [review.prototypeId]);
+  const handleCancelExecution = useCallback(async () => {
+    const requestId = executionState?.request?.id;
+
+    if (!requestId) {
+      setExecutionState(null);
+      return;
+    }
+
+    try {
+      await fetch(
+        `${prototypeReviewApiBasePath}/${review.prototypeId}/execution-requests/${requestId}`,
+        {
+          body: JSON.stringify({ status: "cancelled" }),
+          headers: { "Content-Type": "application/json" },
+          method: "PATCH",
+        },
+      );
+    } catch (error) {
+      // 取消失敗時 banner 保留，使用者可重試。
+      return;
+    }
+
+    setExecutionState(null);
+  }, [executionState, review.prototypeId]);
+  // 切 route/composition 時有未採用試調（token 或變體）→ 攔截確認。
+  // pendingNav 保存確認後要執行的導航動作。
   const [pendingNav, setPendingNav] = useState(null);
+  const sandboxTotalCount = tokenSandbox.count + propSandboxCount;
   const guardNav = useCallback(
     (action) => {
-      if (tokenSandbox.count > 0) {
+      if (tokenSandbox.count + propSandboxCount > 0) {
         setPendingNav(() => action);
       } else {
         action();
       }
     },
-    [tokenSandbox.count],
+    [propSandboxCount, tokenSandbox.count],
   );
   const selectedEntries = useMemo(
     () =>
@@ -5808,9 +6361,50 @@ function PrototypeComponents({ prototype }) {
         : { ...adoptedTokenOverrides, ...tokenSandbox.overrides },
     [adoptedTokenOverrides, tokenSandbox.isComparing, tokenSandbox.overrides],
   );
+  // 已採用的變體覆寫（帳本＋草稿的 keep.propOverrides）與沙盒合併後
+  // 一起走 URL——已採用的在儲存後仍持續反映於預覽。
+  const adoptedPropOverrides = useMemo(() => {
+    const map = {};
+
+    normalizeRouteComponents(selectedSection?.componentRoute).forEach(
+      (component) => {
+        const name =
+          typeof component.name === "string" ? component.name : "";
+
+        if (!name) {
+          return;
+        }
+
+        const entry = resolveReviewDecision(review.view, normalizedRouteId, name);
+
+        if (entry?.decision !== "keep") {
+          return;
+        }
+
+        (entry.propOverrides ?? []).forEach((override) => {
+          map[name] = { ...map[name], [override.prop]: override.to };
+        });
+      },
+    );
+
+    return map;
+  }, [normalizedRouteId, review.view, selectedSection]);
+  const activePropOverrides = useMemo(() => {
+    const merged = {};
+
+    Object.entries(adoptedPropOverrides).forEach(([name, props]) => {
+      merged[name] = { ...props };
+    });
+    Object.entries(propSandbox).forEach(([name, props]) => {
+      merged[name] = { ...merged[name], ...props };
+    });
+
+    return merged;
+  }, [adoptedPropOverrides, propSandbox]);
   const previewSource = getRoutePreviewSource(
     normalizedRouteId,
     selectedCompositionId,
+    activePropOverrides,
   );
   const componentsPreviewRoute =
     railRoutes.find((section) => section.route.id === normalizedRouteId)
@@ -5971,7 +6565,51 @@ function PrototypeComponents({ prototype }) {
     setPreviewHoveredIndex(null);
     setMatchCounts({});
     setRenderedCompositionStamp(null);
+    setRenderedPropStamp(null);
   }, [normalizedRouteId, selectedCompositionId]);
+
+  // 變體覆寫誠實戳記輪詢（data-prop-overrides）——與 composition 戳記同款。
+  useEffect(() => {
+    const hasPropSlots = Object.values(componentDefaults).some(
+      (defaults) => defaults.propSlots.length > 0,
+    );
+
+    if (!hasPropSlots) {
+      return undefined;
+    }
+
+    let isActive = true;
+    let retryCount = 40;
+    let retryTimer = null;
+
+    const readStamp = () => {
+      if (!isActive) {
+        return;
+      }
+
+      const stamp = readPreviewPropOverridesStamp(previewRef.current);
+
+      if (stamp !== null) {
+        setRenderedPropStamp(stamp);
+        return;
+      }
+
+      if (retryCount > 0) {
+        retryCount -= 1;
+        retryTimer = window.setTimeout(readStamp, 250);
+      }
+    };
+
+    readStamp();
+
+    return () => {
+      isActive = false;
+
+      if (retryTimer) {
+        window.clearTimeout(retryTimer);
+      }
+    };
+  }, [componentDefaults, previewLoadCount, previewSource]);
 
   // 過濾在 route 切換時重置為全部（spec: filtered by decision state）。
   useEffect(() => {
@@ -6135,7 +6773,7 @@ function PrototypeComponents({ prototype }) {
     };
   }, [
     // toolbar 可能因 sandbox/pendingNav 出現或消失——重新掛 observer。
-    compositionsList.length > 0 || tokenSandbox.count > 0 || pendingNav !== null,
+    compositionsList.length > 0 || sandboxTotalCount > 0 || pendingNav !== null,
     previewSource,
     previewViewportHeight,
     previewViewportWidth,
@@ -6240,10 +6878,34 @@ function PrototypeComponents({ prototype }) {
                 `inspector ${prototypeInspectorBuildTag}`,
               ),
               createElement(PrototypeReviewBar, {
+                executionPlan,
                 nameRoutes,
+                onExecute: handleExecute,
                 onOpenOverview: () => setIsOverviewOpen(true),
                 review,
               }),
+              executionState
+                ? createElement(PrototypeExecutionBanner, {
+                    onCancel: handleCancelExecution,
+                    prototypeId: review.prototypeId,
+                    state: executionState,
+                  })
+                : null,
+              review.history.length > 0 &&
+                Object.keys(review.view.defaults).length === 0 &&
+                Object.keys(review.view.routes).length === 0 &&
+                review.confirm?.status !== "confirmed"
+                ? createElement(
+                    "p",
+                    {
+                      className: "prototype-inspector__round-handover",
+                      role: "status",
+                    },
+                    `第 ${
+                      review.history[review.history.length - 1].round
+                    } 輪決策已執行並歸檔——工作區已重置為新基準，接續審閱的是套用後的 prototype。`,
+                  )
+                : null,
               isOverviewOpen
                 ? createElement(PrototypeReviewOverview, {
                     nameRoutes,
@@ -6425,12 +7087,22 @@ function PrototypeComponents({ prototype }) {
                       );
                       const tokenSlots =
                         componentDefaults[componentName]?.tokenSlots ?? [];
+                      const propSlots =
+                        componentDefaults[componentName]?.propSlots ?? [];
+                      const propSlotsNote =
+                        componentDefaults[componentName]?.propSlotsNote ?? "";
                       const adoptedForCard = {};
+                      const adoptedPropsForCard = {};
 
                       if (effectiveDecision?.decision === "keep") {
                         (effectiveDecision.tokenOverrides ?? []).forEach(
                           (override) => {
                             adoptedForCard[override.slot] = override.to;
+                          },
+                        );
+                        (effectiveDecision.propOverrides ?? []).forEach(
+                          (override) => {
+                            adoptedPropsForCard[override.prop] = override.to;
                           },
                         );
                       }
@@ -6496,6 +7168,64 @@ function PrototypeComponents({ prototype }) {
                                   scopeRouteId,
                                 ),
                               replacedBy: alternative,
+                              propSandbox:
+                                propSlots.length > 0
+                                  ? {
+                                      adoptedProps: adoptedPropsForCard,
+                                      appliedStamp:
+                                        renderedPropStamp?.applied?.[
+                                          componentName
+                                        ] ?? {},
+                                      onAdopt: (overrides) => {
+                                        const adoptedEntry = {
+                                          decidedAt: new Date().toISOString(),
+                                          decision: "keep",
+                                          propOverrides: overrides,
+                                        };
+
+                                        if (
+                                          effectiveDecision?.decision ===
+                                          "keep"
+                                        ) {
+                                          if (effectiveDecision.note) {
+                                            adoptedEntry.note =
+                                              effectiveDecision.note;
+                                          }
+
+                                          if (
+                                            effectiveDecision.tokenOverrides
+                                          ) {
+                                            adoptedEntry.tokenOverrides =
+                                              effectiveDecision.tokenOverrides;
+                                          }
+                                        }
+
+                                        review.applyDraft(
+                                          componentName,
+                                          adoptedEntry,
+                                          "",
+                                        );
+                                        setPropSandbox((current) => {
+                                          const next = { ...current };
+
+                                          delete next[componentName];
+                                          return next;
+                                        });
+                                      },
+                                      onSelect: (prop, value) =>
+                                        setPropSandboxValue(
+                                          componentName,
+                                          prop,
+                                          value,
+                                        ),
+                                      propSlots,
+                                      sandboxValues:
+                                        propSandbox[componentName] ?? {},
+                                      whitelistForComponent:
+                                        propWhitelist?.[componentName],
+                                    }
+                                  : null,
+                              propSlotsNote,
                               routeId: normalizedRouteId,
                               tokenSandbox:
                                 tokenSlots.length > 0
@@ -6541,7 +7271,7 @@ function PrototypeComponents({ prototype }) {
                   ref: previewPaneRef,
                 },
                 compositionsList.length > 0 ||
-                tokenSandbox.count > 0 ||
+                sandboxTotalCount > 0 ||
                 pendingNav !== null
                   ? createElement(
                       "div",
@@ -6578,7 +7308,7 @@ function PrototypeComponents({ prototype }) {
                             }」。prototype adapter 尚未實作此方案。`,
                           )
                         : null,
-                      tokenSandbox.count > 0
+                      sandboxTotalCount > 0
                         ? createElement(
                             "div",
                             {
@@ -6589,7 +7319,7 @@ function PrototypeComponents({ prototype }) {
                             createElement(
                               "span",
                               null,
-                              `試調中：${tokenSandbox.count} 個覆寫生效`,
+                              `試調中：${sandboxTotalCount} 個覆寫生效（樣式 ${tokenSandbox.count}／變體 ${propSandboxCount}）`,
                             ),
                             createElement(
                               "button",
@@ -6615,7 +7345,10 @@ function PrototypeComponents({ prototype }) {
                               {
                                 className:
                                   "prototype-inspector__review-action",
-                                onClick: tokenSandbox.resetAll,
+                                onClick: () => {
+                                  tokenSandbox.resetAll();
+                                  setPropSandbox({});
+                                },
                                 type: "button",
                               },
                               "全部重設",
@@ -6633,7 +7366,7 @@ function PrototypeComponents({ prototype }) {
                             createElement(
                               "span",
                               null,
-                              `有 ${tokenSandbox.count} 筆未採用試調，切換將捨棄。`,
+                              `有 ${sandboxTotalCount} 筆未採用試調，切換將捨棄。`,
                             ),
                             createElement(
                               "button",
@@ -6642,6 +7375,7 @@ function PrototypeComponents({ prototype }) {
                                   "prototype-inspector__review-action",
                                 onClick: () => {
                                   tokenSandbox.resetAll();
+                                  setPropSandbox({});
                                   pendingNav();
                                   setPendingNav(null);
                                 },

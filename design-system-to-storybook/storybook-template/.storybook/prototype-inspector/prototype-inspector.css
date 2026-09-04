@@ -2216,3 +2216,53 @@
   border-color: var(--pi-sys-color-error);
   background: var(--pi-sys-color-surface);
 }
+
+/* 執行請求常駐 banner 與複製句。 */
+.prototype-inspector__execution-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--pi-sys-spacing-xs) var(--pi-sys-spacing-md);
+  margin-block-end: var(--pi-sys-spacing-l);
+  padding: var(--pi-sys-spacing-sm) var(--pi-sys-spacing-md);
+  color: var(--pi-sys-color-on-primary-container);
+  background: var(--pi-sys-color-primary-container-subtle);
+  border: 1px solid var(--pi-sys-color-primary);
+  border-radius: var(--pi-sys-shape-corner-md);
+  font-size: var(--pi-sys-typescale-caption-sm-size);
+  line-height: var(--pi-sys-typescale-caption-sm-line-height);
+}
+
+.prototype-inspector__execution-phrase {
+  padding: var(--pi-sys-spacing-xxs) var(--pi-sys-spacing-xs);
+  color: var(--pi-sys-color-on-surface-strong);
+  background: var(--pi-sys-color-surface);
+  border: 1px dashed var(--pi-sys-color-outline);
+  border-radius: var(--pi-sys-shape-corner-xs);
+  user-select: all;
+}
+
+/* applied 徽章與輪次交接 empty-state。 */
+.prototype-inspector__applied-badge {
+  padding: var(--pi-sys-spacing-xxs) var(--pi-sys-spacing-xs);
+  color: var(--pi-sys-color-on-primary-container);
+  background: var(--pi-sys-color-primary-container);
+  border-radius: var(--pi-sys-shape-corner-pill);
+  font-size: var(--pi-sys-typescale-metadata-xs-size);
+  font-weight: var(--pi-sys-weight-semibold);
+  line-height: var(--pi-sys-typescale-metadata-xs-line-height);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.prototype-inspector__round-handover {
+  justify-self: stretch;
+  margin-block-end: var(--pi-sys-spacing-sm);
+  padding: var(--pi-sys-spacing-xs) var(--pi-sys-spacing-md);
+  color: var(--pi-sys-color-on-surface-medium);
+  background: var(--pi-sys-color-surface);
+  border: 1px solid var(--pi-sys-color-outline-low);
+  border-radius: var(--pi-sys-shape-corner-xs);
+  font-size: var(--pi-sys-typescale-caption-sm-size);
+  line-height: var(--pi-sys-typescale-caption-sm-line-height);
+}
