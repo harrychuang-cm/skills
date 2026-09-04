@@ -39,22 +39,6 @@ The Coordinator SHALL start and serve every standalone feature when the task-boa
 - **THEN** the Coordinator wires dispatch exactly as the existing hub-dispatch contract defines, with no observable behavioral difference from the statically imported implementation
 - **AND** a malformed binding file in this configuration produces the same startup error as before
 
-
-<!-- @trace
-source: exclude-task-board-by-default
-updated: 2026-09-04
-code:
-  - design-system-to-storybook/storybook-template/scripts/prototype-review/fingerprint.mjs
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/prototype-inspector.css.orig
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/preview.js.orig
-  - storybook-product-prototype/assets/prototype-review/fingerprint.mjs
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/preview.js
-  - storybook-product-prototype/assets/prototype-inspector/preview.js.orig
-  - storybook-product-prototype/assets/prototype-inspector/prototype-inspector.css
-  - storybook-product-prototype/assets/prototype-inspector/preview.js
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/prototype-inspector.css
--->
-
 ---
 ### Requirement: Skill documentation keeps the task board silent unless explicitly requested
 
@@ -75,18 +59,3 @@ The install skill's mainline instructions SHALL NOT contain task-board setup ste
 
 - **WHEN** a reader consults the orchestration skill's documentation about downstream consumers
 - **THEN** external trackers and status tools are described only as read-only consumers of the durable run summaries in the state directory, without naming board skills as recommendations
-
-<!-- @trace
-source: exclude-task-board-by-default
-updated: 2026-09-04
-code:
-  - design-system-to-storybook/storybook-template/scripts/prototype-review/fingerprint.mjs
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/prototype-inspector.css.orig
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/preview.js.orig
-  - storybook-product-prototype/assets/prototype-review/fingerprint.mjs
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/preview.js
-  - storybook-product-prototype/assets/prototype-inspector/preview.js.orig
-  - storybook-product-prototype/assets/prototype-inspector/prototype-inspector.css
-  - storybook-product-prototype/assets/prototype-inspector/preview.js
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/prototype-inspector.css
--->

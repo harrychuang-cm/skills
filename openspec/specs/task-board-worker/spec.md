@@ -15,22 +15,6 @@ The worker daemon SHALL register with the control plane using a worker token iss
 - **WHEN** a worker starts with two configured project roots, one containing a valid .agent-automation/config.json and one without
 - **THEN** the registration advertises only the valid root and reports the invalid one as excluded
 
-
-<!-- @trace
-source: add-ai-task-board-platform
-updated: 2026-09-04
-code:
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/preview.js
-  - storybook-product-prototype/assets/prototype-review/fingerprint.mjs
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/prototype-inspector.css.orig
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/preview.js.orig
-  - design-system-to-storybook/storybook-template/scripts/prototype-review/fingerprint.mjs
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/prototype-inspector.css
-  - storybook-product-prototype/assets/prototype-inspector/prototype-inspector.css
-  - storybook-product-prototype/assets/prototype-inspector/preview.js
-  - storybook-product-prototype/assets/prototype-inspector/preview.js.orig
--->
-
 ---
 ### Requirement: Poll and claim within capacity
 
@@ -40,22 +24,6 @@ The worker SHALL poll the control plane over outbound HTTP only, SHALL attempt t
 
 - **WHEN** a worker is executing a claimed card and its poll returns additional claimable cards
 - **THEN** the worker claims nothing further until the current execution finishes
-
-
-<!-- @trace
-source: add-ai-task-board-platform
-updated: 2026-09-04
-code:
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/preview.js
-  - storybook-product-prototype/assets/prototype-review/fingerprint.mjs
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/prototype-inspector.css.orig
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/preview.js.orig
-  - design-system-to-storybook/storybook-template/scripts/prototype-review/fingerprint.mjs
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/prototype-inspector.css
-  - storybook-product-prototype/assets/prototype-inspector/prototype-inspector.css
-  - storybook-product-prototype/assets/prototype-inspector/preview.js
-  - storybook-product-prototype/assets/prototype-inspector/preview.js.orig
--->
 
 ---
 ### Requirement: Execution wraps run-task
@@ -67,22 +35,6 @@ The worker SHALL execute a claimed card by spawning the agent-automation-orchest
 - **WHEN** the run-task subprocess exits and the newest matching run summary records phase verification-failed
 - **THEN** the worker reports verification-failed with the summary's run id and verification counts, even though it also observed the subprocess exit code
 
-
-<!-- @trace
-source: add-ai-task-board-platform
-updated: 2026-09-04
-code:
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/preview.js
-  - storybook-product-prototype/assets/prototype-review/fingerprint.mjs
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/prototype-inspector.css.orig
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/preview.js.orig
-  - design-system-to-storybook/storybook-template/scripts/prototype-review/fingerprint.mjs
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/prototype-inspector.css
-  - storybook-product-prototype/assets/prototype-inspector/prototype-inspector.css
-  - storybook-product-prototype/assets/prototype-inspector/preview.js
-  - storybook-product-prototype/assets/prototype-inspector/preview.js.orig
--->
-
 ---
 ### Requirement: Heartbeats during execution
 
@@ -92,22 +44,6 @@ While executing a claimed card, the worker SHALL send heartbeats to the control 
 
 - **WHEN** a run lasts longer than the lease expiry window
 - **THEN** periodic heartbeats keep the card in Running for the entire execution
-
-
-<!-- @trace
-source: add-ai-task-board-platform
-updated: 2026-09-04
-code:
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/preview.js
-  - storybook-product-prototype/assets/prototype-review/fingerprint.mjs
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/prototype-inspector.css.orig
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/preview.js.orig
-  - design-system-to-storybook/storybook-template/scripts/prototype-review/fingerprint.mjs
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/prototype-inspector.css
-  - storybook-product-prototype/assets/prototype-inspector/prototype-inspector.css
-  - storybook-product-prototype/assets/prototype-inspector/preview.js
-  - storybook-product-prototype/assets/prototype-inspector/preview.js.orig
--->
 
 ---
 ### Requirement: Log capture and masking
@@ -127,22 +63,6 @@ The worker SHALL capture the combined stdout and stderr of the run-task subproce
 | "api_key=sk-abc123" | "api_key=[redacted]" |
 | ordinary build output | unchanged |
 
-
-<!-- @trace
-source: add-ai-task-board-platform
-updated: 2026-09-04
-code:
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/preview.js
-  - storybook-product-prototype/assets/prototype-review/fingerprint.mjs
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/prototype-inspector.css.orig
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/preview.js.orig
-  - design-system-to-storybook/storybook-template/scripts/prototype-review/fingerprint.mjs
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/prototype-inspector.css
-  - storybook-product-prototype/assets/prototype-inspector/prototype-inspector.css
-  - storybook-product-prototype/assets/prototype-inspector/preview.js
-  - storybook-product-prototype/assets/prototype-inspector/preview.js.orig
--->
-
 ---
 ### Requirement: Resilient reporting
 
@@ -152,18 +72,3 @@ When the control plane is unreachable, the worker SHALL retry heartbeats, log up
 
 - **WHEN** a run finishes while the control plane is unreachable and connectivity returns later
 - **THEN** the worker delivers the cached result exactly once and the card transitions according to the reported phase
-
-<!-- @trace
-source: add-ai-task-board-platform
-updated: 2026-09-04
-code:
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/preview.js
-  - storybook-product-prototype/assets/prototype-review/fingerprint.mjs
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/prototype-inspector.css.orig
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/preview.js.orig
-  - design-system-to-storybook/storybook-template/scripts/prototype-review/fingerprint.mjs
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/prototype-inspector.css
-  - storybook-product-prototype/assets/prototype-inspector/prototype-inspector.css
-  - storybook-product-prototype/assets/prototype-inspector/preview.js
-  - storybook-product-prototype/assets/prototype-inspector/preview.js.orig
--->

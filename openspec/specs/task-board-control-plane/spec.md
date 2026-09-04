@@ -31,22 +31,6 @@ The control plane SHALL present task cards in exactly five lifecycle columns: Cl
 - **WHEN** a member attempts to drag a card between Claimable, Running, and Done
 - **THEN** the board rejects the move and the card remains in its event-derived column
 
-
-<!-- @trace
-source: add-ai-task-board-platform
-updated: 2026-09-04
-code:
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/preview.js
-  - storybook-product-prototype/assets/prototype-review/fingerprint.mjs
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/prototype-inspector.css.orig
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/preview.js.orig
-  - design-system-to-storybook/storybook-template/scripts/prototype-review/fingerprint.mjs
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/prototype-inspector.css
-  - storybook-product-prototype/assets/prototype-inspector/prototype-inspector.css
-  - storybook-product-prototype/assets/prototype-inspector/preview.js
-  - storybook-product-prototype/assets/prototype-inspector/preview.js.orig
--->
-
 ---
 ### Requirement: Card origins
 
@@ -61,22 +45,6 @@ The control plane SHALL support card creation by an authenticated member and by 
 
 - **WHEN** a card reports completed and the project's task chain declares a successor task for it
 - **THEN** a new card for the successor task is created in Claimable with origin pipeline-chain and auto-run enabled
-
-
-<!-- @trace
-source: add-ai-task-board-platform
-updated: 2026-09-04
-code:
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/preview.js
-  - storybook-product-prototype/assets/prototype-review/fingerprint.mjs
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/prototype-inspector.css.orig
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/preview.js.orig
-  - design-system-to-storybook/storybook-template/scripts/prototype-review/fingerprint.mjs
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/prototype-inspector.css
-  - storybook-product-prototype/assets/prototype-inspector/prototype-inspector.css
-  - storybook-product-prototype/assets/prototype-inspector/preview.js
-  - storybook-product-prototype/assets/prototype-inspector/preview.js.orig
--->
 
 ---
 ### Requirement: Exclusive lease with attribution
@@ -93,22 +61,6 @@ The control plane SHALL expose a claim API that grants at most one active lease 
 - **WHEN** a worker polls for work while a card with auto-run disabled has no recorded approval
 - **THEN** that card is excluded from the worker's poll response
 
-
-<!-- @trace
-source: add-ai-task-board-platform
-updated: 2026-09-04
-code:
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/preview.js
-  - storybook-product-prototype/assets/prototype-review/fingerprint.mjs
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/prototype-inspector.css.orig
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/preview.js.orig
-  - design-system-to-storybook/storybook-template/scripts/prototype-review/fingerprint.mjs
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/prototype-inspector.css
-  - storybook-product-prototype/assets/prototype-inspector/prototype-inspector.css
-  - storybook-product-prototype/assets/prototype-inspector/preview.js
-  - storybook-product-prototype/assets/prototype-inspector/preview.js.orig
--->
-
 ---
 ### Requirement: Heartbeat expiry
 
@@ -118,22 +70,6 @@ Active leases SHALL require periodic worker heartbeats. When no heartbeat arrive
 
 - **WHEN** a Running card receives no heartbeat past the expiry window
 - **THEN** the card moves to Needs Attention with the expiry reason and the last known attribution triple still visible
-
-
-<!-- @trace
-source: add-ai-task-board-platform
-updated: 2026-09-04
-code:
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/preview.js
-  - storybook-product-prototype/assets/prototype-review/fingerprint.mjs
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/prototype-inspector.css.orig
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/preview.js.orig
-  - design-system-to-storybook/storybook-template/scripts/prototype-review/fingerprint.mjs
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/prototype-inspector.css
-  - storybook-product-prototype/assets/prototype-inspector/prototype-inspector.css
-  - storybook-product-prototype/assets/prototype-inspector/preview.js
-  - storybook-product-prototype/assets/prototype-inspector/preview.js.orig
--->
 
 ---
 ### Requirement: Human intervention as commands
@@ -165,22 +101,6 @@ Human actions on cards SHALL be interpreted as commands, not state edits, and SH
 - **WHEN** a member invokes undo-rerun after the grace window has elapsed or after a worker has claimed the card
 - **THEN** the command is rejected and the card stays where it is
 
-
-<!-- @trace
-source: add-ai-task-board-platform
-updated: 2026-09-04
-code:
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/preview.js
-  - storybook-product-prototype/assets/prototype-review/fingerprint.mjs
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/prototype-inspector.css.orig
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/preview.js.orig
-  - design-system-to-storybook/storybook-template/scripts/prototype-review/fingerprint.mjs
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/prototype-inspector.css
-  - storybook-product-prototype/assets/prototype-inspector/prototype-inspector.css
-  - storybook-product-prototype/assets/prototype-inspector/preview.js
-  - storybook-product-prototype/assets/prototype-inspector/preview.js.orig
--->
-
 ---
 ### Requirement: Authenticated access
 
@@ -191,22 +111,6 @@ All board pages and control plane APIs SHALL require an authenticated session vi
 - **WHEN** a Google account not on the allowlist completes the OAuth flow
 - **THEN** the control plane denies access and exposes no board data
 
-
-<!-- @trace
-source: add-ai-task-board-platform
-updated: 2026-09-04
-code:
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/preview.js
-  - storybook-product-prototype/assets/prototype-review/fingerprint.mjs
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/prototype-inspector.css.orig
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/preview.js.orig
-  - design-system-to-storybook/storybook-template/scripts/prototype-review/fingerprint.mjs
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/prototype-inspector.css
-  - storybook-product-prototype/assets/prototype-inspector/prototype-inspector.css
-  - storybook-product-prototype/assets/prototype-inspector/preview.js
-  - storybook-product-prototype/assets/prototype-inspector/preview.js.orig
--->
-
 ---
 ### Requirement: Run log visibility
 
@@ -216,18 +120,3 @@ The card detail view SHALL display uploaded log chunks for the active and past r
 
 - **WHEN** a worker uploads successive log chunks during a run
 - **THEN** a member viewing the card detail sees the chunks appended in order without reloading the page
-
-<!-- @trace
-source: add-ai-task-board-platform
-updated: 2026-09-04
-code:
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/preview.js
-  - storybook-product-prototype/assets/prototype-review/fingerprint.mjs
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/prototype-inspector.css.orig
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/preview.js.orig
-  - design-system-to-storybook/storybook-template/scripts/prototype-review/fingerprint.mjs
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/prototype-inspector.css
-  - storybook-product-prototype/assets/prototype-inspector/prototype-inspector.css
-  - storybook-product-prototype/assets/prototype-inspector/preview.js
-  - storybook-product-prototype/assets/prototype-inspector/preview.js.orig
--->

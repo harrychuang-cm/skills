@@ -20,22 +20,6 @@ For each advertised project, the worker SHALL produce a disk-evidence snapshot b
 - **WHEN** the worker syncs a project whose root has no .pipeline-board/pipeline.json
 - **THEN** the sync succeeds, the control plane records that the project has no definition, and the project page states that no pipeline definition exists
 
-
-<!-- @trace
-source: add-project-status-sync
-updated: 2026-09-04
-code:
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/preview.js
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/prototype-inspector.css.orig
-  - design-system-to-storybook/storybook-template/scripts/prototype-review/fingerprint.mjs
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/prototype-inspector.css
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/preview.js.orig
-  - storybook-product-prototype/assets/prototype-review/fingerprint.mjs
-  - storybook-product-prototype/assets/prototype-inspector/preview.js
-  - storybook-product-prototype/assets/prototype-inspector/preview.js.orig
-  - storybook-product-prototype/assets/prototype-inspector/prototype-inspector.css
--->
-
 ---
 ### Requirement: Worker reports external runs
 
@@ -45,22 +29,6 @@ The worker SHALL scan each advertised project's automation state directory for r
 
 - **WHEN** a run summary exists in a project's state directory for a run that was launched outside the board
 - **THEN** after the next sync the run appears in the project's external activity list with its task id, phase, and timestamps
-
-
-<!-- @trace
-source: add-project-status-sync
-updated: 2026-09-04
-code:
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/preview.js
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/prototype-inspector.css.orig
-  - design-system-to-storybook/storybook-template/scripts/prototype-review/fingerprint.mjs
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/prototype-inspector.css
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/preview.js.orig
-  - storybook-product-prototype/assets/prototype-review/fingerprint.mjs
-  - storybook-product-prototype/assets/prototype-inspector/preview.js
-  - storybook-product-prototype/assets/prototype-inspector/preview.js.orig
-  - storybook-product-prototype/assets/prototype-inspector/prototype-inspector.css
--->
 
 ---
 ### Requirement: Control plane deduplicates reported runs
@@ -77,22 +45,6 @@ The control plane SHALL ignore reported runs whose run id already exists among b
 - **WHEN** the worker reports the same external run in two consecutive syncs, the second time with an updated phase
 - **THEN** exactly one external run record exists for that run id and it shows the updated phase
 
-
-<!-- @trace
-source: add-project-status-sync
-updated: 2026-09-04
-code:
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/preview.js
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/prototype-inspector.css.orig
-  - design-system-to-storybook/storybook-template/scripts/prototype-review/fingerprint.mjs
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/prototype-inspector.css
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/preview.js.orig
-  - storybook-product-prototype/assets/prototype-review/fingerprint.mjs
-  - storybook-product-prototype/assets/prototype-inspector/preview.js
-  - storybook-product-prototype/assets/prototype-inspector/preview.js.orig
-  - storybook-product-prototype/assets/prototype-inspector/prototype-inspector.css
--->
-
 ---
 ### Requirement: Sync cadence
 
@@ -108,22 +60,6 @@ The worker SHALL sync each advertised project at three moments: upon successful 
 - **WHEN** a snapshot subprocess fails or the control plane rejects a sync upload
 - **THEN** the worker logs the failure locally and continues polling and executing normally
 
-
-<!-- @trace
-source: add-project-status-sync
-updated: 2026-09-04
-code:
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/preview.js
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/prototype-inspector.css.orig
-  - design-system-to-storybook/storybook-template/scripts/prototype-review/fingerprint.mjs
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/prototype-inspector.css
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/preview.js.orig
-  - storybook-product-prototype/assets/prototype-review/fingerprint.mjs
-  - storybook-product-prototype/assets/prototype-inspector/preview.js
-  - storybook-product-prototype/assets/prototype-inspector/preview.js.orig
-  - storybook-product-prototype/assets/prototype-inspector/prototype-inspector.css
--->
-
 ---
 ### Requirement: Project status page
 
@@ -138,18 +74,3 @@ The board SHALL provide a per-project page showing the latest snapshot's stage o
 
 - **WHEN** a member views an external run entry
 - **THEN** no rerun, approve, or undo action is offered on it
-
-<!-- @trace
-source: add-project-status-sync
-updated: 2026-09-04
-code:
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/preview.js
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/prototype-inspector.css.orig
-  - design-system-to-storybook/storybook-template/scripts/prototype-review/fingerprint.mjs
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/prototype-inspector.css
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/preview.js.orig
-  - storybook-product-prototype/assets/prototype-review/fingerprint.mjs
-  - storybook-product-prototype/assets/prototype-inspector/preview.js
-  - storybook-product-prototype/assets/prototype-inspector/preview.js.orig
-  - storybook-product-prototype/assets/prototype-inspector/prototype-inspector.css
--->

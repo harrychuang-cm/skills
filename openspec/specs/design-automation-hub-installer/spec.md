@@ -25,7 +25,6 @@ A `--dry-run --json` invocation SHALL return the same planned installed, updated
 - **THEN** the installer exits non-zero with `unsafe-project-root`
 - **AND** it performs zero writes
 
-
 <!-- @trace
 source: add-design-automation-hub-installer
 updated: 2026-07-31
@@ -217,7 +216,6 @@ The template checker MUST reject duplicate source or target entries, absolute pa
 - **WHEN** every regular template file is listed exactly once with its actual digest and a contained target
 - **THEN** template validation returns `valid`
 - **AND** it reports the manifest template version and file count
-
 
 <!-- @trace
 source: add-design-automation-hub-installer
@@ -416,7 +414,6 @@ Before target writes, the installer SHALL verify the sibling source's `SKILL.md`
 - **WHEN** an isolated installer is given an absolute `--skills-source-root` containing one valid canonical generic skill
 - **THEN** dependency preflight uses that source and reports its resolved root
 - **AND** it does not search the network or another checkout
-
 
 <!-- @trace
 source: add-design-automation-hub-installer
@@ -631,7 +628,6 @@ The installer SHALL stage all planned files inside the project root. If commit f
 - **WHEN** update writes two replacements and the third managed write raises `EIO`
 - **THEN** `main.js` is A, `ui.html` is B, and the receipt still reports `1.0.0`
 
-
 <!-- @trace
 source: add-design-automation-hub-installer
 updated: 2026-07-31
@@ -837,7 +833,6 @@ If the config is absent, the installer SHALL return `needs-agent-automation-boot
 - **THEN** installation fails with `conflicting-figma-cleanup-task`
 - **AND** the existing config remains byte-identical
 
-
 <!-- @trace
 source: add-design-automation-hub-installer
 updated: 2026-07-31
@@ -1029,7 +1024,6 @@ Project profile validation MUST reject empty identity, duplicate file keys, one 
 - **WHEN** initial install has project id and name but no Figma file key or profile file
 - **THEN** it returns `needs-project-profile` with result `needs-profile`
 - **AND** the target remains unchanged
-
 
 <!-- @trace
 source: add-design-automation-hub-installer
@@ -1236,7 +1230,6 @@ In `compatible` mode, the supplied project-relative host module SHALL export `de
 - **THEN** compatible-mode preflight fails with `incomplete-review-adapter`
 - **AND** the target remains unchanged
 
-
 <!-- @trace
 source: add-design-automation-hub-installer
 updated: 2026-07-31
@@ -1434,7 +1427,6 @@ A successful filesystem install SHALL include manual action `import-figma-manife
 - **GIVEN** environment values `session-secret-42` and `provider-secret-99`
 - **WHEN** install emits its JSON result
 - **THEN** neither literal value occurs in the serialized output
-
 
 <!-- @trace
 source: add-design-automation-hub-installer
@@ -1853,7 +1845,6 @@ The capture SHALL fail per scope, returning the successful scopes together with 
 | Section + text node | success | 1 | 1 |
 | 2 text nodes | failure, unsupported-scope code | 0 | 2 |
 
-
 <!-- @trace
 source: add-cleanup-batch-scope-and-dev-status-scan
 updated: 2026-08-10
@@ -1891,7 +1882,6 @@ The scan MUST NOT load, traverse, or report nodes on any page other than the cur
 - **WHEN** a traversed node exposes no Dev Mode status property
 - **THEN** that node is treated as not marked
 - **AND** the scan completes successfully for the remaining nodes
-
 
 <!-- @trace
 source: add-cleanup-batch-scope-and-dev-status-scan
@@ -2008,22 +1998,6 @@ Dispatch mode SHALL accept no scan request, SHALL maintain no set of pending ext
 - **WHEN** a manifest file entry omits the `module` field
 - **THEN** the entry is treated as belonging to `core` and is installed in every installation
 
-
-<!-- @trace
-source: exclude-task-board-by-default
-updated: 2026-09-04
-code:
-  - design-system-to-storybook/storybook-template/scripts/prototype-review/fingerprint.mjs
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/prototype-inspector.css.orig
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/preview.js.orig
-  - storybook-product-prototype/assets/prototype-review/fingerprint.mjs
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/preview.js
-  - storybook-product-prototype/assets/prototype-inspector/preview.js.orig
-  - storybook-product-prototype/assets/prototype-inspector/prototype-inspector.css
-  - storybook-product-prototype/assets/prototype-inspector/preview.js
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/prototype-inspector.css
--->
-
 ---
 ### Requirement: Default installation excludes the task-board dispatch module
 
@@ -2040,22 +2014,6 @@ A fresh installation invoked without module flags SHALL NOT copy any file belong
 - **WHEN** a project is installed with `--with-task-board-dispatch`
 - **THEN** all three module files are present with digests recorded in the receipt
 - **AND** the installed-project check verifies them as managed entries
-
-
-<!-- @trace
-source: exclude-task-board-by-default
-updated: 2026-09-04
-code:
-  - design-system-to-storybook/storybook-template/scripts/prototype-review/fingerprint.mjs
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/prototype-inspector.css.orig
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/preview.js.orig
-  - storybook-product-prototype/assets/prototype-review/fingerprint.mjs
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/preview.js
-  - storybook-product-prototype/assets/prototype-inspector/preview.js.orig
-  - storybook-product-prototype/assets/prototype-inspector/prototype-inspector.css
-  - storybook-product-prototype/assets/prototype-inspector/preview.js
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/prototype-inspector.css
--->
 
 ---
 ### Requirement: Receipt records the module selection and verification honors it
@@ -2086,18 +2044,3 @@ The install receipt SHALL record the set of modules installed. Installed-project
 | `core` only | none present | pass |
 | `core` only | none present, update was run | pass, update added nothing |
 | `core` + `task-board-dispatch` | one file deleted | `managed-file-drift` |
-
-<!-- @trace
-source: exclude-task-board-by-default
-updated: 2026-09-04
-code:
-  - design-system-to-storybook/storybook-template/scripts/prototype-review/fingerprint.mjs
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/prototype-inspector.css.orig
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/preview.js.orig
-  - storybook-product-prototype/assets/prototype-review/fingerprint.mjs
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/preview.js
-  - storybook-product-prototype/assets/prototype-inspector/preview.js.orig
-  - storybook-product-prototype/assets/prototype-inspector/prototype-inspector.css
-  - storybook-product-prototype/assets/prototype-inspector/preview.js
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/prototype-inspector.css
--->

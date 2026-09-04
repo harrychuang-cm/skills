@@ -25,22 +25,6 @@ The design-system-extractor skill SHALL resolve the report language before Input
 - **WHEN** `SESSION_STATE.md` exists but its Report Language line is absent or unrecognizable
 - **THEN** the skill treats the package as first-run, asks the user once, and records the answer
 
-
-<!-- @trace
-source: add-extractor-report-language
-updated: 2026-09-04
-code:
-  - storybook-product-prototype/assets/prototype-review/fingerprint.mjs
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/preview.js
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/prototype-inspector.css
-  - storybook-product-prototype/assets/prototype-inspector/prototype-inspector.css
-  - storybook-product-prototype/assets/prototype-inspector/preview.js.orig
-  - design-system-to-storybook/storybook-template/scripts/prototype-review/fingerprint.mjs
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/prototype-inspector.css.orig
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/preview.js.orig
-  - storybook-product-prototype/assets/prototype-inspector/preview.js
--->
-
 ---
 ### Requirement: Report language persistence in SESSION_STATE
 
@@ -55,22 +39,6 @@ The skill SHALL record the chosen report language in `design-system/SESSION_STAT
 
 - **WHEN** the user explicitly asks to switch the report language from 繁體中文 to English
 - **THEN** the skill updates the Report Language record, logs the switch in Key Design Decisions, and writes subsequently updated sections in English without rewriting untouched sections
-
-
-<!-- @trace
-source: add-extractor-report-language
-updated: 2026-09-04
-code:
-  - storybook-product-prototype/assets/prototype-review/fingerprint.mjs
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/preview.js
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/prototype-inspector.css
-  - storybook-product-prototype/assets/prototype-inspector/prototype-inspector.css
-  - storybook-product-prototype/assets/prototype-inspector/preview.js.orig
-  - design-system-to-storybook/storybook-template/scripts/prototype-review/fingerprint.mjs
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/prototype-inspector.css.orig
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/preview.js.orig
-  - storybook-product-prototype/assets/prototype-inspector/preview.js
--->
 
 ---
 ### Requirement: Bilingual annotated structure with English canonical forms
@@ -94,22 +62,6 @@ When the report language is not English, generated report files under `design-sy
 
 - **WHEN** the recorded report language is English
 - **THEN** generated reports contain no parenthetical annotations and match the current English-only format
-
-
-<!-- @trace
-source: add-extractor-report-language
-updated: 2026-09-04
-code:
-  - storybook-product-prototype/assets/prototype-review/fingerprint.mjs
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/preview.js
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/prototype-inspector.css
-  - storybook-product-prototype/assets/prototype-inspector/prototype-inspector.css
-  - storybook-product-prototype/assets/prototype-inspector/preview.js.orig
-  - design-system-to-storybook/storybook-template/scripts/prototype-review/fingerprint.mjs
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/prototype-inspector.css.orig
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/preview.js.orig
-  - storybook-product-prototype/assets/prototype-inspector/preview.js
--->
 
 ---
 ### Requirement: HTML docs default UI locale follows the report language
@@ -141,18 +93,3 @@ The `generate_docs_html.mjs` script SHALL accept an optional `--locale <zh-Hant|
 | en (English) | en |
 | ko (한국어) | en |
 | any other language | en |
-
-<!-- @trace
-source: add-extractor-report-language
-updated: 2026-09-04
-code:
-  - storybook-product-prototype/assets/prototype-review/fingerprint.mjs
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/preview.js
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/prototype-inspector.css
-  - storybook-product-prototype/assets/prototype-inspector/prototype-inspector.css
-  - storybook-product-prototype/assets/prototype-inspector/preview.js.orig
-  - design-system-to-storybook/storybook-template/scripts/prototype-review/fingerprint.mjs
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/prototype-inspector.css.orig
-  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/preview.js.orig
-  - storybook-product-prototype/assets/prototype-inspector/preview.js
--->
