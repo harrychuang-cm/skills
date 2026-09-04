@@ -1,6 +1,9 @@
 {
   "includeGitInstructions": false,
   "permissions": {
+    "additionalDirectories": [
+      "/dev"
+    ],
     "allow": [
       "Bash(md5 assets/figma-export-addon/src/visualComment.ts storybook-template/vendor/figma-export/src/visualComment.ts storybook-template/.storybook/vendor/figma-export-addon/src/visualComment.ts)",
       "Bash(awk '{print $6, $7, $8, $9, $NF}')",
@@ -78,9 +81,6 @@
       "Bash(git clone *)",
       "Bash(git -C /Users/a04-0214-0320/Public/works/cm-skills remote -v)",
       "Bash(git -C /Users/a04-0214-0320/Public/works/cm-skills log --oneline --all -- figma-m3-variables design-system-governance create-design-workspace)"
-    ],
-    "additionalDirectories": [
-      "/dev"
     ]
   }
 }
