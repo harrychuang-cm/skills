@@ -243,9 +243,9 @@ Use this when a designer watches several automated projects and needs one page a
 
 ### `executive-presentation`
 
-Generate an executive-ready presentation from meeting notes, source material, or a topic. [Skill instructions](executive-presentation/SKILL.md) apply BLUF and the Pyramid Principle: lead with the decision, support it with 2–3 MECE pillars, map evidence and risks, then close with 2–3 actions carrying owners, timelines, and deliverables.
+Help UIUX designers turn meeting notes, source material, or a feature idea into a plain-language product proposal. [Skill instructions](executive-presentation/SKILL.md) take a UIUX product director's perspective: explain the recommendation and product value, the user problem and priority, the proposed approach with reference cases, and the next steps with a way to check the improvement.
 
-The default output is four slides of Traditional Chinese Markdown content, ready to paste into a presentation tool. Missing data and proposed commitments are labeled; ROI requires traceable inputs and a consistent period. Explicit requests for another language, length, or file format override the defaults. File generation uses capabilities available in the host environment.
+The default output is four slides of Traditional Chinese Markdown content, ready to paste into a presentation tool. The skill checks support for key claims, uses available authorized search tools to fill evidence gaps, and aims to find one or two relevant cases with readable sources. It asks for missing screenshots or links while continuing independent drafting, respects source restrictions, and explains unavailable tools or documents. Design references are distinguished from measured outcomes; missing data and proposed commitments stay explicit. Explicit requests for another language, length, or file format override the defaults. File generation uses capabilities available in the host environment.
 
 Install only this skill for all three agents, from the repository root:
 
@@ -258,9 +258,9 @@ Invocation examples (append your topic or source material):
 
 | Agent | Prompt |
 |---|---|
-| Codex | `使用 $executive-presentation，將以下會議記錄整理成四頁主管簡報：…` |
-| Claude Code | `/executive-presentation 將以下會議記錄整理成四頁主管簡報：…` |
-| Cursor | `/executive-presentation 將以下會議記錄整理成四頁主管簡報：…` |
+| Codex | `使用 $executive-presentation，將以下新功能想法整理成白話的四頁產品提案，補找參考案例並說明產品價值：…` |
+| Claude Code | `/executive-presentation 將以下新功能想法整理成白話的四頁產品提案，補找參考案例並說明產品價值：…` |
+| Cursor | `/executive-presentation 將以下新功能想法整理成白話的四頁產品提案，補找參考案例並說明產品價值：…` |
 
 You can also ask the agent to use `executive-presentation` by name. If a running session does not discover the newly installed skill, start a new session or reference its `SKILL.md` directly.
 
