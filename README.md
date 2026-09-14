@@ -1,6 +1,6 @@
 # CM Skills
 
-Reusable Cursor / Claude Code skills for UI implementation workflows.
+Reusable Cursor / Codex / Claude Code skills for UI implementation, engineering automation, and executive presentations.
 
 Open the visual guide at [`docs/skills-guide.html`](docs/skills-guide.html) for a simple overview of each skill, when to use it, and common prompts.
 
@@ -241,6 +241,29 @@ A project whose root is missing or whose definition is invalid becomes an error 
 
 Use this when a designer watches several automated projects and needs one page answering which project is where and who is blocked.
 
+### `executive-presentation`
+
+Generate an executive-ready presentation from meeting notes, source material, or a topic. [Skill instructions](executive-presentation/SKILL.md) apply BLUF and the Pyramid Principle: lead with the decision, support it with 2–3 MECE pillars, map evidence and risks, then close with 2–3 actions carrying owners, timelines, and deliverables.
+
+The default output is four slides of Traditional Chinese Markdown content, ready to paste into a presentation tool. Missing data and proposed commitments are labeled; ROI requires traceable inputs and a consistent period. Explicit requests for another language, length, or file format override the defaults. File generation uses capabilities available in the host environment.
+
+Install only this skill for all three agents, from the repository root:
+
+```sh
+node scripts/install_agent_skills.mjs --agent all --scope user --skill executive-presentation --dry-run
+node scripts/install_agent_skills.mjs --agent all --scope user --skill executive-presentation
+```
+
+Invocation examples (append your topic or source material):
+
+| Agent | Prompt |
+|---|---|
+| Codex | `使用 $executive-presentation，將以下會議記錄整理成四頁主管簡報：…` |
+| Claude Code | `/executive-presentation 將以下會議記錄整理成四頁主管簡報：…` |
+| Cursor | `/executive-presentation 將以下會議記錄整理成四頁主管簡報：…` |
+
+You can also ask the agent to use `executive-presentation` by name. If a running session does not discover the newly installed skill, start a new session or reference its `SKILL.md` directly.
+
 ## Usage
 
 Install or reference these folders as agent skills in Claude Code, Codex, or Cursor. Each skill lives in its own directory and exposes a `SKILL.md` with frontmatter metadata and workflow instructions.
@@ -383,6 +406,10 @@ The generated report is a static HTML + CSS artifact, usually under `reports/des
 
 ```text
 .
+├── executive-presentation/
+│   ├── SKILL.md
+│   └── agents/
+│       └── openai.yaml
 ├── agent-automation-orchestrate/
 │   ├── SKILL.md
 │   ├── agents/
