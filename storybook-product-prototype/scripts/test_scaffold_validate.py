@@ -451,6 +451,7 @@ def main() -> int:
 
     failures.extend(check_flow_parsing())
     failures.extend(check_handoff_contracts())
+    failures.extend(check_authority_and_motion())
     failures.extend(check_flow_export())
     failures.extend(check_viewport_contracts())
     failures.extend(check_inspector_copies())
@@ -499,7 +500,7 @@ def check_flow_export() -> list[str]:
             "] satisfies AlertsPrototypeRoute[];\n"
             "export const alertsPrototypeTransitions: AlertsPrototypeTransition[] = [\n"
             '  { backBehavior: "dismiss", flowLine: "key", from: "alerts", label: "Open",\n'
-            '    presentation: "sheet", sourceAnchor: { x: 0.9, y: 0.4 }, to: "alert-detail",\n'
+            '    presentation: "sheet", motion: "custom", motionRef: "FLOW_SPEC.md#detail-motion", sourceAnchor: { x: 0.9, y: 0.4 }, to: "alert-detail",\n'
             '    trigger: "alertRow.click" },\n'
             "] satisfies AlertsPrototypeTransition[];\n"
         )
@@ -548,7 +549,7 @@ def check_flow_export() -> list[str]:
             )
         else:
             transition = document["transitions"][0]
-            for key, expected in (("presentation", "sheet"), ("backBehavior", "dismiss")):
+            for key, expected in (("presentation", "sheet"), ("backBehavior", "dismiss"), ("motion", "custom"), ("motionRef", "FLOW_SPEC.md#detail-motion")):
                 if transition.get(key) != expected:
                     failures.append(
                         f"flow.json transition {key} is {transition.get(key)!r}, expected {expected!r}"
@@ -563,6 +564,9 @@ def check_flow_export() -> list[str]:
             failures.append("Swift output does not type the alertId param as String")
 
         kotlin = kotlin_path.read_text()
+        for label, output in (("Swift", swift), ("Kotlin", kotlin)):
+            if "motion: custom" not in output or "motionRef: FLOW_SPEC.md#detail-motion" not in output:
+                failures.append(f"{label} navigation skeleton lost motion intent")
         if "sealed class AlertsRoute" not in kotlin:
             failures.append("Kotlin output has no AlertsRoute sealed class declaration")
         if "AlertDetail(val alertId: String)" not in kotlin:
@@ -638,6 +642,226 @@ def check_handoff_contracts() -> list[str]:
         if not any("smokeRoutes" in message for message in errors):
             failures.append("missing fixtures/<group>.json was not reported")
 
+    return failures
+
+
+def check_authority_and_motion() -> list[str]:
+    """Regressions from the handoff review: no silent authority or navigation defaults."""
+    import copy
+    import contextlib
+    import importlib.util
+    import io
+    import json
+    sys.path.insert(0, str(SCRIPTS_DIR))
+    import validate_prototype as vp
+
+    failures: list[str] = []
+    with tempfile.TemporaryDirectory(prefix="handoff-authority-") as temp:
+        folder = Path(temp)
+        docs = folder / "docs"
+        docs.mkdir()
+        for name in vp.REQUIRED_DOCS:
+            (docs / name).write_text(f"# {name}\ncontent\n")
+        (folder / "fixtures").mkdir()
+        fixture = folder / "fixtures" / "alertsRoutes.json"
+        fixture.write_text('[{"id":"entry","title":"Fake title"}]')
+        data = folder / "alertsPrototypeData.ts"
+        data.write_text('export const alertsRoutes = [{id: "entry", title: "Fake title"}];')
+        flow = folder / "alertsPrototypeFlow.ts"
+        meta = folder / "alertsPrototypeMeta.ts"
+        meta.write_text('export const meta = { surface: { target: "web" } };')
+        files = {"flow": flow, "data": data, "meta": meta}
+        data_doc = docs / "DATA_SPEC.md"
+        base = {"schemaVersion": 1, "fixtures": [{
+            "group": "alertsRoutes", "values": "fake", "schemaScope": "ui-model",
+            "status": "proposed", "source": None, "owner": "Product team",
+        }], "contracts": []}
+        source = {"reference": "approved-api.yaml", "revision": "r1", "confirmedBy": "RD team", "confirmedOn": "2026-09-14"}
+
+        def put_registry(registry: object) -> None:
+            data_doc.write_text("# Data Spec\n## Fake Data\nTest only.\n## Real Data Contract\nNot provided; RD owns integration.\n## Data Authority\n```json\n" + json.dumps(registry) + "\n```\n")
+
+        def audit_authority(expected_error: bool, label: str, ready: bool = True) -> None:
+            errors, warnings = [], []
+            vp.validate_data_authority(folder, files, errors, warnings, ready)
+            if bool(errors) != expected_error:
+                failures.append(f"authority {label}: errors={errors}, warnings={warnings}")
+
+        put_registry(base)
+        audit_authority(False, "Fake-only proposed")
+        for scope in ("ui-model", "transport"):
+            confirmed = copy.deepcopy(base)
+            confirmed["fixtures"][0].update(status="confirmed", schemaScope=scope, source=source)
+            put_registry(confirmed)
+            audit_authority(False, f"fake values with confirmed {scope}")
+            confirmed["fixtures"][0]["source"] = None
+            put_registry(confirmed)
+            audit_authority(True, f"confirmed {scope} without source")
+        for label, update in (
+            ("real fixture values", {"values": "real"}),
+            ("invalid scope type", {"schemaScope": {"value": "transport"}}),
+            ("invalid status type", {"status": []}),
+            ("empty owner", {"owner": ""}),
+            ("missing source", {"status": "confirmed", "source": {"reference": "api.yaml"}}),
+            ("unknown contract", {"contractId": "missing"}),
+            ("superseded fixture", {"status": "superseded"}),
+        ):
+            invalid = copy.deepcopy(base)
+            invalid["fixtures"][0].update(update)
+            put_registry(invalid)
+            audit_authority(True, label)
+        for label, registry in (
+            ("duplicate group", {**base, "fixtures": base["fixtures"] * 2}),
+            ("uncovered group", {**base, "fixtures": []}),
+            ("unsupported version", {**base, "schemaVersion": 2}),
+            ("boolean version", {**base, "schemaVersion": True}),
+            ("null registry", None),
+        ):
+            put_registry(registry)
+            audit_authority(True, label)
+        linked = copy.deepcopy(base)
+        linked["fixtures"][0]["contractId"] = "region-toggle"
+        linked["contracts"] = [{"id": "region-toggle", "kind": "remote-config", "status": "open", "source": None, "owner": "RD team"}]
+        put_registry(linked)
+        audit_authority(False, "text-only Remote Config")
+        linked["contracts"][0]["status"] = "superseded"
+        put_registry(linked)
+        audit_authority(True, "superseded referenced contract")
+        linked["contracts"] *= 2
+        put_registry(linked)
+        audit_authority(True, "duplicate contract id")
+        linked = copy.deepcopy(base)
+        linked["fixtures"][0]["contractId"] = "alerts-api"
+        linked["contracts"] = [{"id": "alerts-api", "kind": "api", "status": "confirmed", "source": source, "owner": "RD team"}]
+        put_registry(linked)
+        audit_authority(False, "independent confirmed API with proposed UI schema")
+        data_doc.write_text('## Data Authority\n```json\n{"schemaVersion": 1, "schemaVersion": 1}\n```\n')
+        audit_authority(True, "duplicate JSON key")
+        data_doc.write_text('## Data Authority\n```json\n{broken}\n```\n')
+        audit_authority(True, "malformed JSON")
+        data_doc.write_text("# Legacy Data Spec\n")
+        audit_authority(False, "legacy draft", ready=False)
+        audit_authority(True, "legacy handoff")
+        errors, warnings = [], []
+        vp.validate_data_authority(folder, files, errors, warnings, False)
+        if not warnings:
+            failures.append("legacy data did not report unverified authority")
+
+        review = ("## Review Status\n- Status: confirmed\n- Confirmed by: Product team\n"
+                  "- Confirmed on: 2026-09-14\n- Reviewed demo: alerts--prototype\n- Scope: UI behavior only; API not confirmed.\n"
+                  "## Semantic Review\n- Reviewed by: Reviewer\n- Reviewed on: 2026-09-14\n"
+                  "- Scope: Active docs, flow and fixtures\n- Result: passed\n"
+                  "- Related updates: No superseded endpoints or promoted suggestions remain.\n")
+        errors, warnings = [], []
+        vp.validate_review_status(review, errors, warnings)
+        if errors:
+            failures.append(f"complete review failed: {errors}")
+        for invalid in (
+            "", "## Review Status\n- Status: confirmed\n",
+            review.replace("Reviewer", "[Reviewer]"),
+            review.replace("2026-09-14", "yesterday"),
+            review.replace("2026-09-14", "20260914"),
+            review.replace("- Reviewed demo: alerts--prototype\n", ""),
+            review.replace("Confirmed by: Product team", "Confirmed by:"),
+            review.replace("Reviewed demo: alerts--prototype", "Reviewed demo:"),
+        ):
+            errors, warnings = [], []
+            vp.validate_review_status(invalid, errors, warnings)
+            if not errors:
+                failures.append("incomplete review evidence passed")
+        (docs / "PRODUCTION_HANDOFF.md").write_text(review)
+        put_registry(base)
+        audit_authority(False, "demo confirmation does not require transport confirmation")
+        if json.loads(vp.extract_doc_section(data_doc.read_text(), "Data Authority").split("```json\n")[1].split("```")[0])["fixtures"][0]["status"] != "proposed":
+            failures.append("demo confirmation mutated fixture authority")
+
+        (docs / "FLOW_SPEC.md").write_text('# Flow\n<a id="detail-motion"></a>\nEnter right; return left; use motion tokens; reduce motion uses none.\n')
+        def set_transition(fields: dict) -> None:
+            transition = {"from": "entry", "to": "detail", "trigger": "open.click", "label": "Open", **fields}
+            object_source = "{ " + ", ".join(f"{key}: {json.dumps(value)}" for key, value in transition.items()) + " }"
+            flow.write_text('export const alertsRouteIds = ["entry", "detail"] as const;\nexport const alertsFlowNodeIds = ["branch"] as const;\nexport const alertsTransitions = [' + object_source + '];\n')
+        for label, fields, expect_error in (
+            ("none", {"presentation": "push", "motion": "none"}, False),
+            ("platform-default", {"presentation": "sheet", "motion": "platform-default"}, False),
+            ("custom", {"presentation": "push", "motion": "custom", "motionRef": "FLOW_SPEC.md#detail-motion"}, False),
+            ("missing custom reference", {"presentation": "push", "motion": "custom"}, True),
+            ("unknown custom anchor", {"presentation": "push", "motion": "custom", "motionRef": "FLOW_SPEC.md#unknown"}, True),
+            ("missing motion", {"presentation": "push"}, True),
+            ("missing presentation", {"motion": "none"}, True),
+            ("return dismiss", {"kind": "return", "backBehavior": "dismiss", "motion": "none"}, False),
+            ("return without back", {"kind": "return", "motion": "none"}, True),
+            ("branch only", {"to": "branch"}, False),
+        ):
+            set_transition(fields)
+            errors = []
+            vp.validate_transition_presentation(folder, files, errors)
+            if bool(errors) != expect_error:
+                failures.append(f"motion {label}: {errors}")
+        set_transition({"presentation": "push", "motion": "none"})
+
+        for code_example in ('`<a id="example-only"></a>`', '```html\n<a id="example-only"></a>\n```'):
+            (docs / "FLOW_SPEC.md").write_text("# Flow\n" + code_example + "\n")
+            set_transition({"presentation": "push", "motion": "custom", "motionRef": "FLOW_SPEC.md#example-only"})
+            errors = []
+            vp.validate_transition_presentation(folder, files, errors)
+            if not errors:
+                failures.append("custom motion resolved to a code example rather than an actual anchor")
+        set_transition({"presentation": "push", "motion": "none"})
+
+        # Check producer and portable receiving audit on the same published bytes.
+        module_spec = importlib.util.spec_from_file_location("implementation_audit", SCRIPTS_DIR.parent.parent / "frontend-product-implementation/scripts/validate_implementation.py")
+        consumer = importlib.util.module_from_spec(module_spec)
+        module_spec.loader.exec_module(consumer)
+        def verify(expected: int, label: str) -> None:
+            with contextlib.redirect_stdout(io.StringIO()) as output:
+                result = vp.run_verify_manifest(folder)
+            if result != expected:
+                failures.append(f"manifest {label}: {output.getvalue()}")
+            manifest = json.loads((docs / vp.MANIFEST_NAME).read_text())
+            if manifest.get("manifestSchemaVersion") == 2:
+                errors = []
+                consumer.verify_artifact_snapshot(docs, manifest, errors)
+                if bool(errors) != bool(expected):
+                    failures.append(f"receiving carrier integrity {label}: {errors}")
+
+        vp.write_handoff_manifest(folder, files, "authority regression")
+        verify(0, "unchanged")
+        for label, path in (("fixture value", fixture), ("flow destination", flow), ("metadata", meta), ("doc", docs / "PRD.md")):
+            original = path.read_bytes()
+            path.write_bytes(original + b"\nchanged")
+            verify(1, label)
+            path.write_bytes(original)
+        fixture_original = fixture.read_bytes()
+        fixture.unlink()
+        verify(1, "removed fixture")
+        fixture.write_bytes(fixture_original)
+        extra = folder / "fixtures" / "new.json"
+        extra.write_text("[]")
+        verify(1, "added fixture")
+        extra.unlink()
+        exported = docs / "flow.json"
+        exported.write_text("{}")
+        verify(1, "added flow export")
+        exported.unlink()
+        verify(0, "restored")
+        manifest_path = docs / vp.MANIFEST_NAME
+        manifest = json.loads(manifest_path.read_text())
+        manifest["manifestSchemaVersion"] = 1
+        manifest_path.write_text(json.dumps(manifest))
+        verify(1, "legacy snapshot")
+        quoted_owner = 'Product "Review" \\ fixtures'
+        scaffold = subprocess.run([
+            sys.executable, str(SCRIPTS_DIR / "scaffold_prototype.py"), "Quoted Owner",
+            "--target-root", str(folder / "quoted"), "--framework", "react", "--owner", quoted_owner,
+        ], capture_output=True, text=True)
+        if scaffold.returncode:
+            failures.append(f"quoted-owner scaffold failed: {scaffold.stderr}")
+        else:
+            quoted_folder = folder / "quoted" / "quoted-owner-prototype"
+            quoted_doc = (quoted_folder / "docs" / "DATA_SPEC.md").read_text()
+            block = vp.extract_doc_section(quoted_doc, "Data Authority").split("```json\n")[1].split("```")[0]
+            if json.loads(block)["fixtures"][0]["owner"] != quoted_owner:
+                failures.append("scaffold did not preserve quoted owner in Data Authority JSON")
     return failures
 
 

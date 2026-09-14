@@ -140,13 +140,19 @@ Greenfield work should be minimal but production-like: clear folders, typed cont
 
 Real integration is never in scope for this skill. For every feature, create the named adapter seam:
 
-- `types` for request, response, error, and UI state; reuse the DATA_SPEC state vocabulary (`default`, `loading`, `empty`, `error`) plus documented disabled/permission branches
+- typed UI models and UI-facing input/error types from the classified UI schema; reuse the DATA_SPEC state vocabulary (`default`, `loading`, `empty`, `error`) plus documented disabled/permission branches. Transport DTOs require separately confirmed transport source evidence and never derive authority from the fixture's field names
 - a `<Feature>DataSource` interface with one method per handoff fixture group (web: TypeScript interface; the same name carries to a protocol or interface on other platforms)
 - a `Mock<Feature>DataSource` implementation returning the deterministic fixtures — loading the handoff's `fixtures/<group>.json` exports when they exist, otherwise porting the fixture values
 - fixtures for documented success, loading, empty, error, disabled, and permission states
-- a clear replacement point: record the interface name, mock implementation path, and replacement steps in the implementation map, and fill the handoff's `Adapter interface` column in `PRODUCTION_HANDOFF.md` when updating handoff docs
+- a clear replacement point: record its file path and injection symbol, alongside the UI model, interface, mock implementation, schema authority/source, and integration status/owner in the implementation map; fill the handoff's `Adapter interface` column when updating handoff docs
 
 Do not invent real endpoints. Do not add secrets, environment variables, auth flows, or persistence; those belong to the named data-integration owner.
+
+Use confirmed UI requirements to shape the interface. If pagination, freshness, mutation, or error semantics are open, keep any mock-only signature explicitly provisional and record which signature or behavior needs an owner decision before real wiring. Do not guess transport parameters from fixtures. Fake-only assembly may finish with a working UI seam and an integration status of `open`; the next stage can add a mapper from its confirmed transport DTO to this UI model. Missing business semantics, rather than different wire field names, require a product/data decision.
+
+Remote Config may arrive as product prose naming the controlled region, on/off or other demonstrated states, unknown technical decisions, and RD owner. Implement those declared UI states through the mock seam. Leave provider, key, production default, refresh/cache policy, permission and rollout choices open until supported by a confirmed source.
+
+For navigation, consume `presentation`, return `backBehavior`, `motion`, and custom `motionRef` per `handoff-ingestion.md`. Resolve missing intent only from existing explicit authorization or the named decision; do not supply push, single-step back, or platform animation defaults. An unresolved edge blocks that behavior and complete flow acceptance, while unrelated confirmed work continues.
 
 ## Documentation Updates
 
@@ -157,3 +163,7 @@ When implementation changes or narrows the handoff:
 - update the runtime architecture record when an approved implementation decision changes it
 - record deferred handoff requirements
 - record new open decisions for product, design, data, API, auth, runtime architecture, platform, or release ownership
+
+For every changed decision, list affected `DATA_SPEC`, `PRODUCTION_HANDOFF`, `FLOW_SPEC`, `ACCEPTANCE`, fixture files, metadata/flow carriers, and regression tests; update the affected entries and mark replaced clauses `superseded`. Do not turn proposed suggestions into normative text while synchronizing. Re-review the changed scope before a new handoff snapshot is published, then record and verify its new digests; generating hashes alone does not perform the review.
+
+Record the actual skills used via the project installer with an explicit `--skill` list and `--record-usage`, following cm-skills `docs/skills-usage.md`. Required dependencies have their own role and are not automatically claimed as used. Preserve existing repo instructions outside the managed `CLAUDE.md`/`AGENTS.md` blocks and verify `docs/SKILL_USAGE.json` plus the repo-relative installed paths. A mention of a future integration owner is not evidence that its skill ran.

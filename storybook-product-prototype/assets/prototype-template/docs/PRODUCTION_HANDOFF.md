@@ -4,9 +4,19 @@
 
 - Status: `pending` [Set to `confirmed` only after the team reviews the Storybook demo and confirms the product direction.]
 - Confirmed by: [Reviewer or team, once confirmed.]
-- Confirmed on: [Date, once confirmed.]
+- Confirmed on: [ISO date of the actual demo confirmation.]
 - Reviewed demo: [Storybook story id or UI Flow the team reviewed.]
-- Confirmed scope: [What the confirmation covers or explicitly excludes.]
+- Scope: [What the demo confirmation covers or explicitly excludes. Product direction confirmation does not confirm an API, analytics proposal, or configuration contract.]
+
+## Semantic Review
+
+- Reviewed by: [Named document reviewer after the actual review.]
+- Reviewed on: [ISO date of the document review.]
+- Scope: [Decisions and document revision reviewed, including data authority and navigation.]
+- Result: `pending` [Set to `passed` only after checking the document content and related carriers.]
+- Related updates: [Files checked or updated across Data Spec, Handoff, Flow Spec, Acceptance, fixtures, metadata, exports, and affected tests; explain unaffected carriers. Verify suggestions were not promoted and superseded decisions have no active paths.]
+
+Validation checks record completeness and artifact integrity. It does not confirm external sources or perform this semantic review.
 
 ## Target Surfaces
 
@@ -77,15 +87,25 @@ this section only if the map has no `A` rows.]
 
 ## API And Data Contracts
 
+`DATA_SPEC.md` Data Authority is the authority source. Fixture values remain FAKE. UI schemas authorize UI models and mocks; transport DTOs and real integration require confirmed transport evidence. Confirmed product direction or a confirmed UI model does not supply that evidence.
+
 | Fixture group | Expected source | Request | Response | Errors | Semantics | Adapter interface | Owner |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `__FEATURE_CAMEL__Routes` | [Expected endpoint, service, local store, or static content.] | [Shape or unknown.] | [Shape or unknown.] | [Error shape or unknown.] | [`key: value` shorthand, e.g. `pagination: cursor; freshness: poll 30s; mutation: none; errors: retryable/reauth` — or `unknown (owner: <team>)`.] | [`pending` at handoff; the frontend assembly pass fills in the `<Feature>DataSource` method and mock implementation path.] | [Team or owner.] |
+| `__FEATURE_CAMEL__Routes` | [Confirmed contract id/source or `open` with owner. No invented endpoint.] | [Confirmed transport shape or `open`.] | [Confirmed transport shape or `open`; map to UI model when different.] | [Confirmed error shape or `open`.] | [Confirmed semantics only; unresolved pagination, sort/filter, freshness, mutation, and errors use `unknown (owner: <team>)`.] | [`pending` at handoff; assembly records interface, UI model, mock path, injection site, schema authority/source, and integration owner/status.] | [Team or owner.] |
+
+## Remote Config Intent
+
+- Controlled region and product behavior: [Named region and intended behavior, or `Not in scope`.]
+- Prototype states: [Demonstrated states; these do not establish the production default or failure fallback.]
+- Open decisions and RD owner: [Owner and unresolved choices. Technical key, provider, polling, cache, permissions, and rollout details may remain open at prototype handoff.]
+
+Text-only intent with a named owner is sufficient for independent UI/mock assembly. Dependent real integration requires its confirmed decisions. Keep proposed analytics parameters or config keys out of formal acceptance criteria.
 
 ## Frontend Handoff Acceptance
 
 - Production web route or app screen target is identified for the real product shell.
 - Route transitions match `FLOW_SPEC.md`.
-- API/data contracts are documented well enough for the receiving engineer or AI to wire later.
+- Fake data and schema authority are classified; real wiring uses confirmed transport sources. Missing real contracts identify an owner and affected integration without blocking independent UI/mock assembly.
 - Loading, empty, error, disabled, and permission fixture states in scope are documented.
 - Accessibility requirements in `UI_SPEC.md` are specified for the target platform.
 - Web/app platform notes above are filled in or explicitly marked `Not in scope`.
@@ -108,6 +128,7 @@ Ownership is three-stage; each stage hands a contract to the next.
 - `data-prototype-root` and `data-prototype-route-preview` are measurement hooks only.
 - `StaticFlow` is for design/review export, not product runtime.
 - Local fixtures are test data until replaced by the receiving implementation.
+- Fixture values always remain Fake examples; source-backed transport DTOs may differ and map into the UI model.
 
 ## Design System Continuity
 
@@ -122,4 +143,8 @@ This section records discovery results for the receiving implementation; it does
 
 ## Open Product Decisions
 
-- [Decision that affects production routing, navigation, API, auth, security, analytics, release, or platform behavior.]
+| Decision | Status | Scope and affected behavior | Source | Owner | Replacement |
+| --- | --- | --- | --- | --- | --- |
+| [Decision, or `none`.] | [`proposed`, `open`, `confirmed`, or `superseded`.] | [Specific dependent behavior; continue independent work.] | [Confirmed evidence or `none`.] | [Named decision owner.] | [Replacement for a superseded decision, or `none`.] |
+
+Builder suggestions are proposed decisions, not production requirements. If `reason` is absent from a confirmed `delete_email_failed` event, a Builder suggestion does not add it to that event or its acceptance criteria. Remove superseded rules from active flow, data, handoff, and tests before a new review.

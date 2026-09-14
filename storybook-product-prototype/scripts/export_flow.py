@@ -144,7 +144,7 @@ def build_flow_document(flow_text: str, feature: str) -> dict:
             "trigger": extract_string_property(obj, "trigger") or "",
             "label": extract_string_property(obj, "label") or "",
         }
-        for key in ("kind", "presentation", "backBehavior", "note"):
+        for key in ("kind", "presentation", "backBehavior", "motion", "motionRef", "note"):
             value = extract_string_property(obj, key)
             if value:
                 transition[key] = value
@@ -227,6 +227,9 @@ def render_swift(document: dict, folder_name: str) -> str:
         for transition in transitions:
             back = transition.get("backBehavior")
             suffix = f"  back: {back}" if back else ""
+            for key in ("motion", "motionRef"):
+                if transition.get(key):
+                    suffix += f"  {key}: {transition[key]}"
             lines.append(
                 f"//     {transition['from']} -> {transition['to']}"
                 f"  trigger: {transition['trigger']}{suffix}"
@@ -275,6 +278,9 @@ def render_kotlin(document: dict, folder_name: str) -> str:
         for transition in transitions:
             back = transition.get("backBehavior")
             suffix = f"  back: {back}" if back else ""
+            for key in ("motion", "motionRef"):
+                if transition.get(key):
+                    suffix += f"  {key}: {transition[key]}"
             lines.append(
                 f"//     {transition['from']} -> {transition['to']}"
                 f"  trigger: {transition['trigger']}{suffix}"

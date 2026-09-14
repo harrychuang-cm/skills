@@ -50,10 +50,18 @@ Each transition must define:
 - `trigger`
 - `label`
 - `kind`
-- `presentation` when an app target is in scope (`push`, `modal`, `sheet`, `fullscreen`, or `replace`)
-- `backBehavior` when leaving the surface is not a plain `pop`
+- `presentation` for every non-return transition entering a visible route; app targets require it on every non-return transition (`push`, `modal`, `sheet`, `fullscreen`, or `replace`)
+- `backBehavior` for every return transition entering a visible route (`pop`, `popToRoot`, `dismiss`, or `none`); never infer a default pop
+- `motion` for every transition entering a visible route (`none`, `platform-default`, or `custom`)
+- `motionRef` for custom motion, using `FLOW_SPEC.md#explicit-anchor`
 - `flowLine`
 - `sourceAnchor` only when Static Flow export needs a stable edge origin for Figma layout.
+
+## Motion Definitions
+
+Navigation presentation and animation intent are independent. `none` means no transition animation; `platform-default` authorizes the target platform's standard animation without inventing a duration. `custom` requires a definition here with an explicit HTML anchor such as `<a id="open-detail-motion"></a>`, referenced by `motionRef: "FLOW_SPEC.md#open-detail-motion"`.
+
+Each custom definition records entering and returning behavior, direction, duration/easing, and reduced-motion behavior. No custom motion is defined by this scaffold; add the actual reviewed definition when needed. Missing motion or navigation intent blocks that flow's complete handoff, not unrelated work. A non-screen branch evaluation does not require motion solely because it is an edge.
 
 ## Navigation Mapping
 
@@ -86,6 +94,8 @@ One row per route id; write `Not in scope` in the cells of platforms the product
 - If a new screen is reachable, add a route.
 - If a branch is needed between routes, add a flow-only node.
 - If a click changes route, add a transition.
+- Give every transition entering a visible route explicit navigation/return and motion intent; do not fill missing choices with push, pop, or an assumed animation.
+- If custom motion changes, update its explicit definition and reference, the prototype behavior, export, and affected acceptance checks together.
 - If a transition exists in metadata, the prototype must expose a matching user action or document why it is out of scope.
 - If a route is added, `prototypeRoute=<route-id>` must render that route in UI Flow iframe preview mode.
 - If Static Flow export line placement is unclear, adjust `flowPosition` first and use `sourceAnchor` only for stable Figma export edge origins.

@@ -82,6 +82,10 @@ export type __FEATURE_PASCAL__Transition = {
   presentation?: "push" | "modal" | "sheet" | "fullscreen" | "replace";
   /** How the surface is left again; production back/dismiss semantics. */
   backBehavior?: "pop" | "popToRoot" | "dismiss" | "none";
+  /** Explicit animation intent; omission in a draft never implies a default. Required for visible-route handoff. */
+  motion?: "none" | "platform-default" | "custom";
+  /** Required for custom motion: FLOW_SPEC.md#an-explicit-html-anchor. */
+  motionRef?: string;
 };
 
 export const __FEATURE_CAMEL__Routes = [

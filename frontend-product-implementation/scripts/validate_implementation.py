@@ -27,6 +27,7 @@ Standard library only.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import sys
@@ -86,6 +87,39 @@ def table_rows(section: str) -> list[list[str]]:
 
 def clean_cell(cell: str) -> str:
     return cell.replace("`", "").replace("*", "").strip()
+
+
+def verify_artifact_snapshot(handoff: Path, manifest: dict, failures: list[str]) -> None:
+    """Audit source bytes even when nobody has republished a changed carrier."""
+    handoff = handoff.resolve()
+    recorded = manifest.get("artifacts")
+    if not isinstance(recorded, dict) or not recorded:
+        failures.append("v2 manifest is missing its artifacts hash object")
+        return
+    digest = hashlib.sha256(json.dumps(recorded, sort_keys=True).encode()).hexdigest()
+    if manifest.get("artifactsDigest") != digest:
+        failures.append("manifest artifactsDigest does not match its recorded hash object")
+    root = handoff.parent.resolve()
+    for relative, expected in recorded.items():
+        if not isinstance(relative, str) or not isinstance(expected, str):
+            failures.append("manifest artifact paths and hashes must be strings")
+            continue
+        path = (root / relative).resolve()
+        if Path(relative).is_absolute() or not path.is_relative_to(root):
+            failures.append(f"manifest artifact path escapes prototype: {relative}")
+        elif not path.is_file():
+            failures.append(f"handoff artifact missing: {relative}; source integrity cannot be verified")
+        elif hashlib.sha256(path.read_bytes()).hexdigest() != expected:
+            failures.append(f"handoff artifact drift: {relative}; re-review before republishing")
+    current_paths = set()
+    for suffix in ("Flow", "Data", "Meta"):
+        canonical = list(root.glob(f"*Prototype{suffix}.ts"))
+        current_paths.update(canonical or root.glob(f"*{suffix}.ts"))
+    current_paths.update((root / "fixtures").glob("*.json"))
+    current_paths.update(handoff / name for name in ("flow.json", "TOKENS.json"))
+    for path in sorted(current_paths):
+        if path.is_file() and path.relative_to(root).as_posix() not in recorded:
+            failures.append(f"handoff artifact added since publication: {path.relative_to(root)}")
 
 
 def main() -> int:
@@ -148,6 +182,8 @@ def main() -> int:
         try:
             loaded = json.loads(read(manifest_path))
             manifest = loaded if isinstance(loaded, dict) else None
+            if manifest is None:
+                failures.append("HANDOFF_MANIFEST.json must be an object")
         except json.JSONDecodeError as exc:
             failures.append(f"HANDOFF_MANIFEST.json is not valid JSON: {exc}")
     else:
@@ -283,6 +319,13 @@ def main() -> int:
                 f"current manifest (current changelog version {current_version}); "
                 "re-read the changed docs, merge, and update the map"
             )
+        if manifest.get("manifestSchemaVersion") == 2:
+            artifact_match = re.search(r"artifactsDigest\s*:\s*`?([A-Za-z0-9]+)`?", consumed_section)
+            if not artifact_match or artifact_match.group(1) != manifest.get("artifactsDigest"):
+                failures.append("Consumed Manifest artifactsDigest is missing or differs; re-ingest the complete snapshot")
+            verify_artifact_snapshot(args.handoff, manifest, failures)
+        else:
+            notes.append("legacy manifest lacks carrier integrity coverage; it does not confirm data authority")
 
     for note in notes:
         print(f"note: {note}")

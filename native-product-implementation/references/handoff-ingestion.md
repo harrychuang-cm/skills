@@ -7,10 +7,10 @@ Use this reference when reading prototype handoff docs before implementing nativ
 The handoff input contract is shared with `frontend-product-implementation` and is not restated here in full. These rules carry identical semantics on a native target:
 
 - **Reading order**: `PRODUCTION_HANDOFF.md`, then `PRD.md`, `FLOW_SPEC.md`, `UI_SPEC.md`, `DATA_SPEC.md`, `ACCEPTANCE.md`, `IMPLEMENTATION_GUIDE.md`.
-- **Review Status gate**: read the `Review Status` section before treating the docs as an implementation brief. `confirmed` continues and records who confirmed and when; `pending` or a missing section stops and asks the user whether the team demo confirmation happened. Do not start implementation until the user confirms.
-- **Consumed Manifest**: when `docs/HANDOFF_MANIFEST.json` exists, record its `docsDigest` and latest changelog `version` in the implementation map; when absent, record the handoff as consumed `unversioned` and list that as a traceability limitation in the final report. Re-check drift with the prototype's `validate_prototype.py <folder> --verify-manifest` before final reporting when the prototype folder is reachable.
+- **Review Status gate**: read the named, dated, scoped `Review Status` and separate `Semantic Review` result and related-update record. Reuse existing explicit confirmation for the same scope; otherwise pause affected implementation for its owner decision. Demo confirmation does not confirm API or analytics authority. Semantic review checks proposed/superseded clauses and affected docs, fixtures, flow, metadata, and tests; mechanical completeness checks do not perform that review.
+- **Consumed Manifest**: record `docsDigest`, `artifactsDigest` when present, and latest changelog `version`. Run reachable `validate_prototype.py <folder> --verify-manifest` at ingestion and before completion, and compare both consumed digests to the current manifest to detect republication. An absent manifest records docs/version as `unversioned` and artifacts as `unavailable`; a legacy manifest retains docs/version but records incomplete carrier integrity. Unavailable source checks remain an explicit limitation and never grant data authority.
 - **Delivery scope, verbatim**: copy each row's scope from the Prototype To Frontend Map — never infer it from whether the prototype renders the screen. `A` already ships (do not rebuild; record the evidence path in the native repo), `B` new, `C` Storybook-only, `U` unverified and therefore a blocking question. A handoff predating the column means every row is `U`.
-- **Conflict handling**: prefer `PRODUCTION_HANDOFF.md` for ownership and platform target, `FLOW_SPEC.md` for route ids and triggers, `UI_SPEC.md` for interaction and accessibility detail, `DATA_SPEC.md` for fixture groups and shapes, `ACCEPTANCE.md` for testable criteria. Material conflicts stop for a decision instead of being resolved silently.
+- **Conflict handling**: prefer `PRODUCTION_HANDOFF.md` for ownership/platform, `FLOW_SPEC.md` for routes/navigation/motion, `UI_SPEC.md` for interaction/accessibility, and `DATA_SPEC.md` for fixtures and UI shapes. Transport authority comes only from Data Authority and its confirmed source; document priority does not upgrade a proposed contract. Material conflicts pause affected work for its owner while independent confirmed work continues.
 
 Only the native-specific deltas below are defined in this file.
 
@@ -41,7 +41,7 @@ The handoff ships platform-neutral carriers; read them instead of re-deriving th
 | --- | --- |
 | `docs/TOKENS.json` | Token values and their layered names (W3C DTCG). The prototype CSS is not your token source. |
 | `fixtures/*.json` | Deterministic fixture data for mock adapters, loadable directly on both platforms. |
-| `DATA_SPEC.md` JSON Schema blocks | Entity/request/response/error shapes for generating `Codable` or `kotlinx.serialization` types. |
+| `DATA_SPEC.md` Data Authority and JSON Schema blocks | Classified UI-model/fixture shapes for mock decoding types. Only separately confirmed transport evidence authorizes production request/response DTOs; using `Codable` or `kotlinx.serialization` does not confer authority. |
 | `docs/flow.json` when present | Routes, nodes, and transitions with navigation semantics and no layout fields. Consumers MUST tolerate the optional top-level `viewport` object (`formFactor`, `width`, `height`) and optional per-route `viewport` overrides — the review viewport the prototype was designed at; absent means phone 375x812. |
 | `docs/HANDOFF_MANIFEST.json` | The consumed handoff version and drift detection. |
 
@@ -49,29 +49,38 @@ When a carrier is absent, fall back to the corresponding doc section and record 
 
 ### Transition semantics to extract
 
-For every transition in scope, extract `from`, `to`, `trigger`, `label`, `kind`, and the navigation semantics `presentation` and `backBehavior`. `presentation` and `backBehavior` decide whether the destination is a pushed screen, a sheet, a dialog, or a root swap, and how the user leaves it. `kind` — `primary`, `return`, `global`, `secondary`, `outcome`, or `condition` — decides how a missing `presentation` is resolved, so extract it even though it carries no presentation of its own:
+For every transition in scope, extract `from`, `to`, `trigger`, `label`, `kind`, `presentation`, `backBehavior`, `motion`, and `motionRef`. Navigation and animation are independent decisions:
 
-- **Non-`return` edge with no `presentation`**: the transition predates the field. Implement it as `push` and record the assumption as a divergence rather than guessing a modal.
-- **`kind: return` edge**: always implement it as a return action driven by `backBehavior` — dismiss the presented sheet or cover, pop one step, or pop to the flow root — never as a push, and never as a newly pushed copy of the destination. The contract only requires `presentation` on non-`return` edges, so its absence on a return edge carries no information. When `backBehavior` is also absent, default to a single-step back.
+- Every non-return app transition requires explicit `presentation`. A missing value stays unresolved for that edge; neither legacy status nor an exporter scaffold implies push.
+- A `kind: return` edge executes its confirmed `backBehavior`: dismiss, pop, or pop to root, never push a new destination copy. Return edges need no presentation; a missing backBehavior remains unresolved rather than becoming single-step back.
+- Every edge entering a visible route requires `motion: none | platform-default | custom`. `none` and `platform-default` are explicit choices. Custom motion requires `motionRef: FLOW_SPEC.md#anchor` and a matching explicit anchor in that file; read its timing/token, gesture, and reduced-motion requirements. Flow-only branch evaluation does not by itself require an animation.
 
-This matches the upstream export rather than reinterpreting it: `export_flow.py`'s `group_transitions_by_presentation` deliberately keeps presentation-less `return` edges in an unspecified bucket instead of the push bucket, because pushing a destination for what is actually a dismiss or a pop is exactly the failure it exists to prevent. The platform call shapes for each case are in `implementation-workflow.md`'s navigation mapping tables.
+Reuse an already authorized default only with its exact source and scope recorded. Continue independent confirmed edges and screens while the named owner resolves missing intent, but keep the affected flow acceptance open. `export_flow.py` preserves missing semantics as unspecified; generated comments and stubs cannot authorize navigation. Use the platform call shapes in `implementation-workflow.md` only after the intent is resolved.
+
+### Data authority on native
+
+Read [the shared authority reference](../../storybook-product-prototype/references/handoff-authority.md). If unavailable, retain these local rules: fixture values are fake; `ui-model` schemas support UI models/mocks only; confirmed transport evidence must have `source.reference`, `source.revision`, `source.confirmedBy`, and `source.confirmedOn`. DTO evidence may come from a confirmed transport fixture schema or an independent confirmed contract's source. A proposed UI-model fixture linked to a confirmed API contract remains proposed/UI-scoped while the DTO follows `contracts[].source` and maps to that UI model; do not relabel the fixture or force matching shapes. Proposed/open/superseded/malformed evidence does not itself authorize DTOs. Fake values can follow a confirmed transport schema without becoming real.
+
+Keep UI-facing input and error types distinct from wire types. The integration owner maps a confirmed DTO to the UI model; a different envelope or field name is not a requirement to change either model. Legacy fixtures have no transport authority. Suggestions such as an undocumented analytics `reason` remain proposed, outside formal parameters and acceptance criteria.
+
+Remote Config can be prose defining a controlled region, intended behavior, demonstrated states, unknown details, and RD owner. Mock the declared states without inventing key/provider/default/refresh/cache/permission/rollout details. Unknown real contracts block only dependent wiring and handover; Fake-only native assembly can complete with the real seam recorded `open` under its owner.
 
 ## Extract These Contracts
 
 Build a working map with:
 
-- Review Status confirmation state, and the consumed manifest `docsDigest` and changelog version (or `unversioned`)
+- scoped Review Status and Semantic Review, consumed docs/artifact digests and version, and integrity results/limitations
 - product goal and primary user
 - the native architecture decision record from `native-architecture.md`
 - route ids with their platform destinations, plus flow-only nodes and their branch meaning
-- transitions with trigger, `kind`, `presentation`, and `backBehavior` — and, for every `return` edge, the return action its `backBehavior` implies
+- transitions with trigger, `kind`, `presentation`, `backBehavior`, `motion`, and `motionRef`, including unresolved intent per edge
 - route parameters and deep links declared on routes
 - UI composition, safe-area and orientation constraints, dynamic type, reduce-motion, and screen-reader requirements
 - components to reuse, per route or region: the handoff entry, its origin, and the native counterpart resolved from `targets` on your platform (marked as derived when the handoff carries none)
 - missing components or tokens: every entry whose counterpart is `null` or unresolved, every Component Gaps entry, and every Token Binding role with no native token — carried into the composition and token gates instead of being created inline
 - reusable prototype source files to port, when the handoff lists them, as the parity reference for a new component's variants, props, and states
 - tests and previews to add: the `#Preview` / `@Preview` states each implemented screen and component owes, and the unit or UI tests the in-scope acceptance ids require
-- fixture groups with their JSON Schemas, states, and branch conditions
+- fixture groups with value usage, schema scope/status/source, UI models, confirmed transport evidence when present, states, and branch conditions
 - Storybook-only boundaries that must not ship
 - acceptance criteria ids in scope, with `AC-P` owner tags
 - the named data-integration owner, or the absence of one as a blocking open decision
@@ -86,16 +95,16 @@ The native app almost never lives in the prototype's repository. Settle how the 
 
 When fixture JSON or handoff docs are copied into the native repo:
 
-- Record the provenance in two places: a short source note beside the copied files (repo, path, commit or delivery it came from, and the copy date), and the `## Consumed Manifest` section of `IMPLEMENTATION_MAP.md` with the `docsDigest` and changelog version from `docs/HANDOFF_MANIFEST.json` — `unversioned` when there is no manifest. A copied fixture whose origin nobody can name is untraceable the moment the prototype moves.
-- Keep the copied fixtures byte-identical to the prototype's. They are the golden reference the contract tests compare real responses against later; a locally "corrected" copy stops being evidence about the contract and starts being a second, unversioned opinion about it.
+- Record the provenance in two places: a source note beside copied files (repo, path, commit or delivery, copy date), and `## Consumed Manifest` with both available digests and changelog version. Record absent/legacy or inaccessible source integrity as a limitation. An unattributed copy cannot prove its origin.
+- Keep copied fixtures byte-identical for reproducible UI/mock parity and source provenance. They are not a golden transport contract and real responses need not share their raw shape. Do not hand-correct the copy to match a backend DTO; the real adapter maps DTOs to UI models.
 - Place them where the build can actually load them — `Bundle.module` versus `Bundle.main` on iOS, `assets/` versus `res/raw` versus test resources on Android. A copy the build never packages fails at runtime or passes only in tests; the rules are in `implementation-workflow.md`.
 
 Re-sync when the handoff moves under an in-flight implementation:
 
-1. **Detect drift, do not assume it.** With the prototype reachable, run `python3 <prototype-skill-root>/scripts/validate_prototype.py <prototype-folder> --verify-manifest`: it exits non-zero and lists every document that no longer matches its recorded hash. Independently, compare the `docsDigest` you recorded at ingestion against the current `docs/HANDOFF_MANIFEST.json` — a different digest means the handoff was republished after you consumed it. When neither check is runnable, say so and treat the copy as `unversioned` from that point.
-2. **Re-copy the changed fixtures and docs from the prototype.** Never hand-patch the copy inside the app to match what you believe changed: a hand-patched fixture corrupts the golden reference silently, and the next contract test then measures real responses against something the prototype never published.
-3. **Re-record** the new `docsDigest` and version in the implementation map, and regenerate the navigation skeleton when the flow metadata changed rather than hand-adding the new routes.
-4. **Report the delta**: which documents drifted, what was re-copied, and which already-implemented screens the change affects.
+1. **Detect drift at ingestion and before completion.** Run reachable `validate_prototype.py <prototype-folder> --verify-manifest`; version 2 checks additions, removals, and content changes across docs and carriers. Independently compare consumed `docsDigest` and `artifactsDigest` with the current manifest to detect republication. Keep recorded provenance when checks are unavailable, but clearly state which integrity evidence is missing; legacy needs renewed review and version 2 publication for complete coverage.
+2. **Resolve affected work.** List changed docs, flow/data/meta, fixtures, exports, screens, seams, and acceptance/tests. Continue unaffected confirmed work while the owner resolves changed decisions and any superseded clauses. Matching hashes are never a semantic review.
+3. **Re-copy the reviewed source files.** Preserve source bytes and source notes; do not edit the app's copy to manufacture a backend contract. Synchronize the affected Data/Handoff/Flow/Acceptance/fixtures/metadata/tests before consuming a new published snapshot.
+4. **Re-record and verify** both available digests and the new version, and refresh scratch navigation skeletons when flow metadata changed. Record the new review scope, what was copied, affected implemented screens, and outstanding checks.
 
 ## Delegation Resilience
 
@@ -104,8 +113,8 @@ This skill deliberately delegates shared contracts and one script to `frontend-p
 | Delegated item | Where it is delegated | When the sibling is absent |
 | --- | --- | --- |
 | Handoff input contract: reading order, Review Status gate, Consumed Manifest record, verbatim Scope consumption, conflict handling | this file's `Shared Contract, Delegated` section | the operative rules are summarized there; follow them as written and record that the sibling's full text was unavailable |
-| The `IMPLEMENTATION_MAP.md` four-section contract | `verification-reporting.md`, Implementation Map File | write the four sections exactly as that reference specifies them; no section is dropped for lack of the sibling |
-| The `validate_implementation.py` machine audit | `verification-reporting.md`, Implementation Map File | check the same four conditions by hand — every manifest route id has a terminal outcome, every `existing-verified` evidence path exists, every `AC-P (assembly)` id is present and not deferred, the consumed `docsDigest` still matches the current manifest — and record that the audit was manual |
+| The `IMPLEMENTATION_MAP.md` five-section contract | `verification-reporting.md`, Implementation Map File | write all five sections, including the full Data Adapter Seams authority record; no section is dropped for lack of the sibling |
+| The `validate_implementation.py` machine audit | `verification-reporting.md`, Implementation Map File | follow that reference's manual checks for route/acceptance coverage, evidence paths, both available digests, Data Adapter Seams, and Component Map; record the substitution and separately run reachable source integrity verification |
 | Token bootstrap for a repo that has a token source but no DTCG export | `implementation-workflow.md`, Token Consumption | port the minimal token subset by hand under the same source priority and the same approval gate, and record which source each token came from |
 
 Delegations to skills other than the sibling are handled where they appear and are not covered by this table: `$ds-governance` where `SKILL.md` binds it, the prototype's `validate_prototype.py` and `export_flow.py` under Cross-Repository Access above, and `production-data-integration` as one possible named receiving owner for the seams.

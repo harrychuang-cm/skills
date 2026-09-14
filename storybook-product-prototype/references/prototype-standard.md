@@ -39,7 +39,7 @@ Adapt the root path if the project uses `src/screens`, `app`, `packages/ui`, or 
 - `PRD.md`: product problem, users, goals, non-goals, journeys, requirements, AI implementation scope, dependencies.
 - `FLOW_SPEC.md`: route ids, flow-only nodes, transitions, triggers, state rules, navigation mappings, and the declared primary viewport (`flow.viewport`).
 - `UI_SPEC.md`: shell layout, composition, visual states, interaction rules, responsive behavior, accessibility, design-system constraints, component map with import paths, component gap list, token binding.
-- `DATA_SPEC.md`: deterministic fixtures, field meanings, data invariants, API replacement points.
+- `DATA_SPEC.md`: Fake values, separate Real Data Contract, the single Data Authority registry, scoped UI/transport schemas, field meanings, data invariants, and confirmed/open replacement points.
 - `PRODUCTION_HANDOFF.md`: web/app target surfaces, prototype-to-frontend mapping, reusable boundaries, API/data contracts, integration ownership, handoff acceptance, open decisions.
 - `ACCEPTANCE.md`: testable completion criteria for Storybook, metadata, interaction behavior, visual consistency, accessibility, and implementation readiness.
 - `IMPLEMENTATION_GUIDE.md`: implementation order, files to create, constraints, verification commands.
@@ -66,7 +66,9 @@ Adapt the root path if the project uses `src/screens`, `app`, `packages/ui`, or 
 - Every reachable screen has a route id.
 - Every non-screen branch has a flow-only node.
 - Every route-changing click has a transition with a stable trigger.
+- Every visible-route transition has explicit navigation/return and motion intent; custom motion resolves to an explicit Flow Spec anchor.
 - Every route has deterministic fixture data.
+- Every fixture has Fake values and a schema authority record. Empty real-contract inventory is valid; no unknown endpoint or configuration key is invented to fill a handoff.
 - Every screen region maps to a concrete existing component (name + import path) in the Component Map, or has an explicit Component Gaps entry.
 - `meta.components` records every route's composition, origin-marked (`shared` / `local` / `promoted`) against the Component Map and Component Gaps, with story ids resolved per `references/component-discovery.md`, never guessed.
 - Prototype and Static Flow CSS consume `--proto-*` aliases bound to recorded project tokens; interactive controls ship hover/focus-visible/active/disabled states and in-scope routes render loading/empty/error.
@@ -75,6 +77,7 @@ Adapt the root path if the project uses `src/screens`, `app`, `packages/ui`, or 
 - Acceptance criteria cover Storybook, docs, UI Flow, interaction, accessibility, and TypeScript.
 - Route ids in `FLOW_SPEC.md` and the `PRODUCTION_HANDOFF.md` map match `*Flow.ts`, and fixture group references match `*Data.ts` exports (`--handoff-ready` verifies this).
 - `PRODUCTION_HANDOFF.md` `Review Status` is `confirmed` by the team demo review before the docs are used as an implementation brief.
+- Named, dated, scoped Semantic Review checks suggestions, superseded decisions, and all affected docs, flow/data/meta, fixtures, exports, and tests separately from demo confirmation. See [handoff-authority.md](handoff-authority.md).
 - Team-confirmed, recurring gap components are promoted into the hub's shared component library, or recorded as `local` promotion candidates with file paths.
 - Storybook route previews support `prototypeRoute`, expose `data-prototype-route-preview`, and keep `data-prototype-root`.
 - `flow.viewport` declares the primary review viewport and `meta.surface.target` the platform decision; every renderer derives preview sizes from the flow contract at runtime.

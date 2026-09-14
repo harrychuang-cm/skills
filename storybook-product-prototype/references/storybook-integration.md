@@ -71,6 +71,8 @@ The `data` object should summarize:
 - API replacement points
 - source ownership when known
 
+Data Authority remains solely in the raw `docs.dataSpec` markdown under `## Data Authority`; do not copy the registry into `data`. The Inspector reads its single fenced JSON block, displays FAKE values separately from UI-model/transport confirmation, and shows source and owner. Missing, malformed, or unsupported authority is unverified; free-text `data.overview.status` and demo confirmation cannot override it. See [handoff-authority.md](handoff-authority.md).
+
 The `figmaExport` object should expose:
 
 - `flowStoryId`: the Storybook id for the `StaticFlow` export, for example `pages-prototypes-example-prototype--static-flow`.
@@ -148,7 +150,7 @@ The bundled addon reads `parameters.prototype` and provides a Storybook toolbar 
   - Hovering or focusing a card whose highlight selector resolves (see Component Composition Metadata above) outlines the matching element(s) inside the preview iframe, scrolls the first match into view, and shows the match count on the card. A selector that matches nothing in the preview's current state is normal: the card shows a muted "not in current state" chip instead of a highlight.
   - The reverse direction works too (mouse only): hovering a component's rendered instance inside the live preview outlines just that instance and emphasizes its card in the middle pane, scrolling the card into view; when several entries' selectors match, the deepest (most specific) element wins. Leaving the preview hands the highlight back to a still-focused card or clears it, and the listeners never intercept clicks or navigation inside the preview.
   - Everything degrades gracefully: entries without a resolvable selector (no `domSelector` and no `classPrefix`) keep their full card — origin, links, import path — just without the hover-highlight. A prototype without `meta.components` gets a friendly empty state, not an error; a selected route without a composition entry shows a "No composition data for this route" message while the preview still renders.
-- `Data`: fixture summary, API replacement points, source ownership, route data map, state rules, and raw metadata.
+- `Data`: Fake fixture values, schema scope/confirmation, contract source and owner from the raw Data Authority registry, API replacement requirements, route data map, state rules, and raw metadata. Confirmed UI models are explicitly distinct from confirmed real transport contracts; legacy or invalid registries remain unverified.
 - `Open Static Flow`: when `parameters.prototype.figmaExport.flowStoryId` is present, open the Figma-ready static flow story that uses the same saved layout.
 
 UI Flow route cards also carry a compact component strip/badge sourced from the same `meta.components` data. The `Components` mode and route-card strip ship with the bundled addon: an existing install picks them up by re-running `install_prototype_inspector.mjs --force`.

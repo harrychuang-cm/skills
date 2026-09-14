@@ -76,10 +76,14 @@ Every user-triggered route change must define:
 - `trigger`: stable event or branch condition name.
 - `label`: human-readable edge label.
 - `kind`: optional semantic category such as `primary`, `return`, `global`, `secondary`, `outcome`, or `condition`.
-- `presentation`: optional presentation semantics for the target surface — `push` (stack navigation / page change), `modal` (blocking overlay), `sheet` (partial overlay), `fullscreen` (full-screen cover), or `replace` (swap without history). This is what lets iOS map the edge to NavigationStack vs sheet and Android to NavHost vs dialog; web benefits too (modal vs page). Required at handoff time for non-`return` transitions when an app target is in scope (`validate_prototype.py --handoff-ready` warns, `--strict-style` fails).
-- `backBehavior`: optional exit semantics — `pop` (one step back), `popToRoot` (back to the flow's root), `dismiss` (close the overlay), or `none` (no user-initiated back). Declare it whenever leaving the surface is not a plain `pop`.
+- `presentation`: target semantics — `push` (stack navigation / page change), `modal` (blocking overlay), `sheet` (partial overlay), `fullscreen` (full-screen cover), or `replace` (swap without history). Required by `--handoff-ready` for every non-return transition entering a visible route, on every platform; app targets also require it on all other non-return transitions. A missing field is an error without `--strict-style`, never an implied push.
+- `backBehavior`: exit semantics — `pop` (one step back), `popToRoot` (back to the flow's root), `dismiss` (close the overlay), or `none` (no user-initiated back). Required at handoff for every return transition entering a visible route. Declare other nontrivial exits explicitly too; missing return behavior never implies pop.
+- `motion`: `none`, `platform-default`, or `custom`. Required at handoff for every transition entering a visible route, including return transitions. This is animation intent, separate from navigation presentation. `platform-default` explicitly authorizes the native/browser framework default without a guessed duration; `none` explicitly disables transition animation.
+- `motionRef`: required for custom motion, using `FLOW_SPEC.md#explicit-anchor` with a matching actual HTML anchor in that document. Describe entering/returning behavior, direction, duration/easing, and reduced-motion behavior at the anchor. Do not rely on an automatically generated Markdown heading slug.
 - `flowLine`: optional display hint. Use `key` only for transitions drawn on the simplified canvas.
 - `sourceAnchor`: optional `{ x, y }` route-card-relative ratio used only when Static Flow export needs a stable edge origin for Figma-ready layout. Use sparingly and keep values between `0` and `1`.
+
+Draft/legacy files may omit the navigation and motion fields and remain readable. Report the unresolved choice and its owner; do not infer defaults. Missing intent blocks that flow's complete handoff, not independent work. A non-screen branch target does not need motion solely for branch evaluation. `export_flow.py` preserves motion/motionRef in flow JSON and native scaffold comments; it does not implement an animation engine.
 
 ## Trigger Naming
 
@@ -121,6 +125,7 @@ Keep route ids stable across prototype docs and handoff docs so engineers and AI
 - Every visible route appears in route metadata.
 - Every documented click appears in transition metadata.
 - Every transition target exists as a route or flow-only node.
+- Every transition entering a visible route has motion plus its required presentation or return behavior; every custom motion reference resolves to an explicit Flow Spec anchor.
 - UI Flow canvas uses key transitions; Transition Index uses the full transition list.
 - The prototype supports `prototypeRoute=<route-id>` for route-specific iframe previews.
 - The prototype supports `prototypeFlowPreview=true` for compact embedded rendering.

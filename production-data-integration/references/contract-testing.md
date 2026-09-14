@@ -1,8 +1,8 @@
 # Contract Testing
 
-Use this reference to prove that a real data source satisfies the contract the UI was built against.
+Use this reference to verify the real transport contract and its mapping to the assembled UI model separately.
 
-The mock adapters made the UI's expectations executable. Contract tests keep them executable after the real source replaces the mock — without them, the first shape drift in a backend response surfaces as a broken screen in production instead of a red test.
+Mocks make UI expectations executable. They do not define backend response shapes. Data Authority must identify confirmed transport evidence before DTO or real wiring tests can claim contract conformance; proposed/open/legacy shapes remain UI/mock evidence only.
 
 ## Scope And Framework
 
@@ -14,15 +14,17 @@ Tests belong wherever the repo keeps integration or service-layer tests. Each fi
 
 ### 1. Schema validation
 
-Validate the real response against the group's JSON Schema block from `DATA_SPEC.md`:
+Validate the real response against the confirmed transport contract identified by Data Authority, using a DATA_SPEC transport JSON Schema block only when its complete source evidence confirms that scope. A confirmed UI-model schema is not eligible.
+
+The confirmed source may be an independent `contracts[]` entry. A proposed `ui-model` fixture linked to confirmed `alerts-api` does not prevent transport or mapper tests: use `alerts-api.source` for the DTO test and the UI model for mapper assertions, leaving the fixture's status and scope unchanged.
 
 | Platform | How validation happens |
 | --- | --- |
-| Web | A schema validator (the repo's existing one, e.g. an ajv-style validator) run against the parsed response |
-| iOS | `Codable` decoding into the schema-derived types — a decode failure is the assertion |
-| Android | `kotlinx.serialization` decoding into the schema-derived types, with strict mode so unknown-but-required mismatches surface |
+| Web | The repo's existing schema validator against the parsed transport response |
+| iOS | Decode into confirmed transport `Codable` DTOs, plus assertions for source constraints not enforced by decoding |
+| Android | Decode into confirmed transport serialization DTOs under the repo's policy, plus assertions for source constraints not enforced by decoding |
 
-The test must fail on a missing required field and on a type mismatch. A test that only checks the request was made proves nothing about the contract.
+The test must fail on a missing required transport field and type mismatch according to the real contract. Optionality, defaults, additional fields, and other constraints follow that contract rather than a blanket strict-decoding rule or the fixture field set. A test that only checks the request was made does not validate the contract.
 
 Where the real service can be called in CI, validate a recorded real response; where it cannot, validate the response fixture captured from the real service during implementation, and record in the test which environment and date it came from.
 
@@ -48,20 +50,24 @@ Write at least one behavior assertion per recorded `Semantics` entry:
 
 A `Semantics` entry that was `unknown` at handoff and got confirmed during wiring gets its assertion here, and its confirmed value written back to the handoff.
 
-### 4. Fixture shape reference
+### 4. DTO-To-UI Mapping And Mock Reference
 
-Use `fixtures/<group>.json` as the golden reference for shape: assert that the real response's field set and field types match the fixture's. Do not assert on values — the fixture's values are deterministic prototype data, and a real service will never return them. When the real response legitimately carries fields the fixture lacks, that is a contract change: write it back to `DATA_SPEC.md` and the fixture rather than loosening the test.
+Test the mapper from the confirmed transport DTO to the UI model returned by the DataSource. For a response with `data.items` and `nextCursor` while the UI model has `state` and `rows`, transport validation checks the source schema; mapper assertions check item-to-row mapping and confirmed pagination behavior. Do not require raw backend `state`/`rows`, or raw field-set/type equality with the fake fixture.
+
+Use `fixtures/<group>.json` to exercise the documented UI/mock states and deterministic presentation expectations. Retain its original bytes for provenance and UI parity; it is not a transport golden reference. A fake fixture may follow a confirmed transport schema while its values remain fake. Additional backend fields are permitted or rejected by the real schema; their absence in a UI fixture does not itself trigger a contract change.
+
+If a confirmed service cannot provide a business value or semantic behavior the UI needs, record the affected decision with its owner and stop that mapper/seam; continue independent confirmed work. Do not invent a fallback value or rewrite the fixture to conceal the missing requirement.
 
 ## Failure Handling
 
 A failing contract test means one of three things. Resolve it, never silence it:
 
 1. **The implementation is wrong** — fix the client, decoding, or error mapping.
-2. **The contract is wrong** — the real service legitimately differs. Report the divergence to the contract owner, agree on the change, update `DATA_SPEC.md`, `PRODUCTION_HANDOFF.md`, the fixture, and the Storybook regression story, then update the test.
+2. **The confirmed transport contract is wrong** — the service differs from its actual source contract. Resolve the affected decision with its owner, update Data Authority and affected Data/Handoff/Flow/Acceptance/fixtures/metadata/tests, mark superseded clauses inactive, and re-review before consuming a republished snapshot. A DTO/UI shape difference alone belongs in the mapper and does not prove either contract wrong.
 3. **The UI's expectation is wrong** — surface it as a product decision. This skill does not change the UI; it reports the finding to the assembly-pass owner.
 
 Weakening an assertion to make a test pass converts a caught contract break into an uncaught one.
 
 ## Reporting
 
-Report per fixture group: schema validation result, error classes covered, semantics assertions written, and any assertion deferred with its reason and owner. These results settle the `AC-P (integration)` rows of the Acceptance Traceability table.
+Report per seam: confirmed transport source, schema validation and mapper results, UI/mock expectations covered, error classes, semantics assertions, and deferred assertions with their reason/owner. These results settle only the integration acceptance they actually verify. A Fake-only fixture or passing mock-mode test cannot settle an `AC-P (integration)` real-source criterion.

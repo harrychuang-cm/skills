@@ -629,13 +629,13 @@ def validate_review_status(
     """Handoff docs must carry a team-confirmed Review Status before handoff."""
     review_section = extract_doc_section(handoff_text, "Review Status")
     if not review_section:
-        warnings.append(
+        errors.append(
             "docs/PRODUCTION_HANDOFF.md has no Review Status section, so team "
             "confirmation of the Storybook demo cannot be verified"
         )
         return
     status_match = re.search(
-        r"^\s*[-*]\s*Status\s*:\s*(.+)$", review_section, re.MULTILINE
+        r"^[ \t]*[-*][ \t]*Status[ \t]*:[ \t]*(.+)$", review_section, re.MULTILINE
     )
     check(
         status_match is not None,
@@ -645,11 +645,47 @@ def validate_review_status(
     if status_match:
         status_value = status_match.group(1).strip().strip("`").lower()
         check(
-            re.match(r"confirmed\b", status_value) is not None,
+            status_value == "confirmed",
             "docs/PRODUCTION_HANDOFF.md Review Status is not confirmed; the team "
             "must confirm the Storybook demo before handoff",
             errors,
         )
+    for label in ("Confirmed by", "Confirmed on", "Reviewed demo", "Scope"):
+        require_review_field(review_section, label, "Review Status", errors)
+    semantic = extract_doc_section(handoff_text, "Semantic Review")
+    for label in ("Reviewed by", "Reviewed on", "Scope", "Related updates"):
+        require_review_field(semantic, label, "Semantic Review", errors)
+    check(
+        doc_field(semantic, "Result").lower() == "passed",
+        "Semantic Review must record Result: passed after reviewing sources and related updates",
+        errors,
+    )
+
+
+def doc_field(section: str, label: str) -> str:
+    match = re.search(rf"^[ \t]*[-*][ \t]+{re.escape(label)}[ \t]*:[ \t]*(.*)$", section, re.MULTILINE)
+    return match.group(1).strip().strip("`") if match else ""
+
+
+def meaningful_text(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and bool(value.strip())
+        and value.strip().lower() not in {"unknown", "pending", "tbd", "todo", "none", "n/a"}
+        and not PLACEHOLDER_PATTERN.search(value)
+    )
+
+
+def require_review_field(section: str, label: str, subject: str, errors: list[str]) -> None:
+    value = doc_field(section, label)
+    check(meaningful_text(value), f"{subject} requires a concrete {label} record", errors)
+    if label.endswith(" on") and meaningful_text(value):
+        try:
+            if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+                raise ValueError("not YYYY-MM-DD")
+            date.fromisoformat(value)
+        except ValueError:
+            errors.append(f"{subject} {label} must use YYYY-MM-DD")
 
 
 def validate_acceptance_ids(
@@ -748,7 +784,7 @@ def mask_code_fences(text: str) -> str:
 
 def extract_doc_section(text: str, heading: str) -> str:
     scan_text = mask_code_fences(text)
-    opener = re.search(rf"^(#+)\s+{re.escape(heading)}\s*$", scan_text, re.MULTILINE)
+    opener = re.search(rf"^(#+)[ \t]+{re.escape(heading)}[ \t]*$", scan_text, re.MULTILINE)
     if not opener:
         return ""
     level = len(opener.group(1))
@@ -757,6 +793,111 @@ def extract_doc_section(text: str, heading: str) -> str:
     )
     end = opener.end() + closer.start() if closer else len(text)
     return text[opener.end():end]
+
+
+def unique_json_object(pairs: list[tuple[str, object]]) -> dict:
+    result: dict = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate JSON key: {key}")
+        result[key] = value
+    return result
+
+
+def validate_data_authority(
+    folder: Path,
+    files: dict[str, Path | None],
+    errors: list[str],
+    warnings: list[str],
+    handoff_ready: bool,
+) -> None:
+    """Check declared authority, never infer it from a demo or fixture shape."""
+    path = folder / "docs" / "DATA_SPEC.md"
+    text = read(path) if path.is_file() else ""
+    section = extract_doc_section(text, "Data Authority")
+    headings = re.findall(r"^##\s+Data Authority\s*$", mask_code_fences(text), re.MULTILINE)
+    if not headings:
+        (errors if handoff_ready else warnings).append(
+            "DATA_SPEC.md has no Data Authority registry; fixture schema authority is unverified"
+        )
+        return
+    check(len(headings) == 1, "DATA_SPEC.md has duplicate Data Authority sections", errors)
+    blocks = re.findall(r"^```json\s*\n(.*?)^```\s*$", section, re.MULTILINE | re.DOTALL)
+    if len(blocks) != 1:
+        errors.append("Data Authority requires exactly one fenced json registry")
+        return
+    try:
+        registry = json.loads(blocks[0], object_pairs_hook=unique_json_object)
+    except (ValueError, json.JSONDecodeError) as exc:
+        errors.append(f"Data Authority is not valid JSON: {exc}")
+        return
+    if not isinstance(registry, dict) or type(registry.get("schemaVersion")) is not int or registry.get("schemaVersion") != 1:
+        errors.append("Data Authority requires schemaVersion 1")
+        return
+    if not isinstance(registry.get("fixtures"), list) or not isinstance(registry.get("contracts"), list):
+        errors.append("Data Authority requires fixtures and contracts arrays")
+        return
+    if handoff_ready:
+        for heading in ("Fake Data", "Real Data Contract"):
+            check(bool(extract_doc_section(text, heading)), f"DATA_SPEC.md requires {heading}", errors)
+
+    indexed: dict[str, dict[str, dict]] = {"fixtures": {}, "contracts": {}}
+    for collection, key in (("fixtures", "group"), ("contracts", "id")):
+        for index, record in enumerate(registry[collection]):
+            subject = f"Data Authority {collection}[{index}]"
+            if not isinstance(record, dict):
+                errors.append(f"{subject} must be an object")
+                continue
+            identifier = record.get(key)
+            if not meaningful_text(identifier):
+                errors.append(f"{subject} needs a concrete {key}")
+                continue
+            subject = f"Data Authority {collection} {identifier}"
+            check(identifier not in indexed[collection], f"{subject} is duplicated", errors)
+            indexed[collection][identifier] = record
+            check(meaningful_text(record.get("owner")), f"{subject} needs a named owner", errors)
+            status = record.get("status")
+            check(status in ("proposed", "open", "confirmed", "superseded"), f"{subject} has invalid status", errors)
+            check("source" in record, f"{subject} must explicitly record source or null", errors)
+            source = record.get("source")
+            if source is not None or status == "confirmed":
+                complete = isinstance(source, dict) and all(
+                    meaningful_text(source.get(field))
+                    for field in ("reference", "revision", "confirmedBy", "confirmedOn")
+                )
+                check(complete, f"{subject} requires source reference, revision, confirmedBy and confirmedOn", errors)
+                if complete:
+                    try:
+                        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", source["confirmedOn"]):
+                            raise ValueError("not YYYY-MM-DD")
+                        date.fromisoformat(source["confirmedOn"])
+                    except ValueError:
+                        errors.append(f"{subject} source confirmedOn must use YYYY-MM-DD")
+            if collection == "fixtures":
+                check(record.get("values") == "fake", f"{subject} values must stay fake", errors)
+                check(record.get("schemaScope") in ("ui-model", "transport"), f"{subject} has invalid schemaScope", errors)
+                if handoff_ready:
+                    check(status != "superseded", f"{subject} is an active fixture with superseded authority", errors)
+            else:
+                check(record.get("kind") in ("api", "analytics", "remote-config", "storage", "static"), f"{subject} has invalid kind", errors)
+
+    for group, record in indexed["fixtures"].items():
+        if "contractId" not in record:
+            continue
+        contract_id = record["contractId"]
+        if not isinstance(contract_id, str) or contract_id not in indexed["contracts"]:
+            errors.append(f"Data Authority fixture {group} references an unknown contractId")
+        elif handoff_ready and indexed["contracts"][contract_id].get("status") == "superseded":
+            errors.append(f"Data Authority fixture {group} references superseded contract {contract_id}")
+    if handoff_ready:
+        data = files.get("data")
+        expected = set(EXPORT_CONST_PATTERN.findall(sanitize_meta_source(read(data)))) if data and data.is_file() else set()
+        expected.update(p.stem for p in (folder / "fixtures").glob("*.json"))
+        actual = set(indexed["fixtures"])
+        for name in sorted(expected - actual):
+            errors.append(f"Data Authority is missing fixture group {name}")
+        for name in sorted(actual - expected):
+            errors.append(f"Data Authority references nonexistent fixture group {name}")
 
 
 def validate_doc_code_consistency(
@@ -968,6 +1109,7 @@ def validate_fixture_json_consistency(
 
 TRANSITION_PRESENTATION_VALUES = {"push", "modal", "sheet", "fullscreen", "replace"}
 TRANSITION_BACK_BEHAVIOR_VALUES = {"pop", "popToRoot", "dismiss", "none"}
+TRANSITION_MOTION_VALUES = {"none", "platform-default", "custom"}
 
 
 def app_target_in_scope(handoff_text: str) -> bool:
@@ -1122,37 +1264,49 @@ def validate_surface_viewport_alignment(
 
 
 def validate_transition_presentation(
-    folder: Path, files: dict[str, Path | None], warnings: list[str]
+    folder: Path, files: dict[str, Path | None], errors: list[str]
 ) -> None:
-    """App-bound handoffs need presentation semantics on navigation edges.
-
-    Runs only with --handoff-ready and only when an app target is in scope —
-    resolved from the typed meta surface first, PRODUCTION_HANDOFF prose as
-    legacy fallback. Warning-level (--strict-style promotes) so web-era
-    prototypes keep validating; without a presentation value a native
-    receiver cannot tell a push from a sheet from a dialog.
-    """
-    if not resolve_app_target_in_scope(folder, files):
-        return
+    """Require explicit navigation and motion at handoff, on every platform."""
     flow_path = files.get("flow")
     if flow_path is None or not flow_path.is_file():
         return
-    for index, transition in enumerate(
-        extract_transition_objects(read(flow_path)), start=1
-    ):
-        if extract_string_property(transition, "kind") == "return":
+    flow_text = read(flow_path)
+    route_ids = set(
+        extract_const_string_array(flow_text, "RouteIds")
+        + extract_object_array_ids(flow_text, "Routes")
+    )
+    app_target = resolve_app_target_in_scope(folder, files)
+    flow_doc = folder / "docs" / "FLOW_SPEC.md"
+    flow_prose = mask_code_fences(read(flow_doc)) if flow_doc.is_file() else ""
+    flow_prose = re.sub(r"(`+).*?\1", "", flow_prose, flags=re.DOTALL)
+    for index, transition in enumerate(extract_transition_objects(flow_text), start=1):
+        label = extract_string_property(transition, "trigger") or f"#{index}"
+        is_return = extract_string_property(transition, "kind") == "return"
+        visible_target = extract_string_property(transition, "to") in route_ids
+        if not is_return and (app_target or visible_target):
+            check(
+                extract_string_property(transition, "presentation") in TRANSITION_PRESENTATION_VALUES,
+                f"transition {label} needs an explicit presentation; do not infer push",
+                errors,
+            )
+        if not visible_target:
             continue
-        if extract_string_property(transition, "presentation") is None:
-            label = (
-                extract_string_property(transition, "trigger")
-                or extract_string_property(transition, "label")
-                or f"#{index}"
+        if is_return:
+            check(
+                extract_string_property(transition, "backBehavior") in TRANSITION_BACK_BEHAVIOR_VALUES,
+                f"return transition {label} needs explicit backBehavior; do not infer pop",
+                errors,
             )
-            warnings.append(
-                f"transition {label} has no presentation value (push/modal/sheet/"
-                "fullscreen/replace) although Target Surfaces declares an app "
-                "target; native navigation cannot be derived without it"
-            )
+        motion = extract_string_property(transition, "motion")
+        check(motion in TRANSITION_MOTION_VALUES, f"transition {label} needs explicit motion (none/platform-default/custom)", errors)
+        if motion == "custom":
+            reference = extract_string_property(transition, "motionRef") or ""
+            match = re.fullmatch(r"FLOW_SPEC\.md#([A-Za-z0-9_-]+)", reference)
+            anchor = match.group(1) if match else None
+            exists = bool(anchor and (
+                re.search(rf'<a\s+(?:id|name)=["\']{re.escape(anchor)}["\'][^>]*>', flow_prose)
+            ))
+            check(exists, f"transition {label} custom motionRef must resolve to an explicit FLOW_SPEC.md#anchor", errors)
 
 
 def validate_component_usage(
@@ -1676,7 +1830,7 @@ def validate_flow(path: Path | None, errors: list[str]) -> None:
 
 
 MANIFEST_NAME = "HANDOFF_MANIFEST.json"
-MANIFEST_SCHEMA_VERSION = 1
+MANIFEST_SCHEMA_VERSION = 2
 
 
 def sha256_text(text: str) -> str:
@@ -1692,6 +1846,20 @@ def compute_docs_hashes(folder: Path) -> dict[str, str]:
         if doc_path.is_file():
             hashes[doc_name] = sha256_text(read(doc_path))
     return hashes
+
+
+def compute_artifact_hashes(folder: Path) -> dict[str, str]:
+    """Hash handoff bytes, including carriers whose ids or counts can stay unchanged."""
+    paths = {folder / "docs" / name for name in REQUIRED_DOCS}
+    paths.update(folder / "docs" / name for name in ("flow.json", "TOKENS.json"))
+    for suffix in ("Flow", "Data", "Meta"):
+        canonical = list(folder.glob(f"*Prototype{suffix}.ts"))
+        paths.update(canonical or folder.glob(f"*{suffix}.ts"))
+    paths.update((folder / "fixtures").glob("*.json"))
+    return {
+        path.relative_to(folder).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
+        for path in sorted(paths) if path.is_file()
+    }
 
 
 def docs_digest(docs_hashes: dict[str, str]) -> str:
@@ -1711,6 +1879,7 @@ def write_handoff_manifest(
     """
     docs_dir = folder / "docs"
     docs_hashes = compute_docs_hashes(folder)
+    artifact_hashes = compute_artifact_hashes(folder)
 
     route_ids: list[str] = []
     flow_node_ids: list[str] = []
@@ -1744,6 +1913,9 @@ def write_handoff_manifest(
     if confirmed_match:
         review_status["confirmedOn"] = confirmed_match.group(1).strip()
 
+    review_status["confirmedBy"] = doc_field(review_section, "Confirmed by") or None
+    review_status["scope"] = doc_field(review_section, "Scope") or None
+
     manifest_path = docs_dir / MANIFEST_NAME
     previous_changelog: list[dict] = []
     if manifest_path.is_file():
@@ -1761,9 +1933,7 @@ def write_handoff_manifest(
         version = (
             max(int(entry.get("version", 0)) for entry in previous_changelog) + 1
         )
-    summary = changelog_summary or (
-        "regenerated" if previous_changelog else "initial handoff"
-    )
+    summary = changelog_summary or "regenerated"
     changelog = previous_changelog + [
         {"version": version, "date": date.today().isoformat(), "summary": summary}
     ]
@@ -1775,6 +1945,8 @@ def write_handoff_manifest(
         "reviewStatus": review_status,
         "docs": docs_hashes,
         "docsDigest": docs_digest(docs_hashes),
+        "artifacts": artifact_hashes,
+        "artifactsDigest": docs_digest(artifact_hashes),
         "flow": {
             "routeIds": route_ids,
             "flowNodeIds": flow_node_ids,
@@ -1793,51 +1965,42 @@ def write_handoff_manifest(
 
 
 def run_verify_manifest(folder: Path) -> int:
-    """Compare current handoff docs against docs/HANDOFF_MANIFEST.json.
-
-    Exit 0 when every listed document still matches its recorded hash;
-    otherwise list each drifted or missing document and exit 1.
-    """
-    manifest_path = folder / "docs" / MANIFEST_NAME
-    if not manifest_path.is_file():
+    """Verify the full published artifact set; a hash match is not semantic review."""
+    path = folder / "docs" / MANIFEST_NAME
+    if not path.is_file():
         print(f"No {MANIFEST_NAME} found in {folder / 'docs'}; run --handoff-ready first.")
         return 1
     try:
-        manifest = json.loads(read(manifest_path))
-    except json.JSONDecodeError as exc:
+        manifest = json.loads(read(path), object_pairs_hook=unique_json_object)
+    except ValueError as exc:
         print(f"{MANIFEST_NAME} is not valid JSON: {exc}")
         return 1
-    recorded = manifest.get("docs")
-    if not isinstance(recorded, dict) or not recorded:
-        print(f"{MANIFEST_NAME} has no docs hash object; regenerate it with --handoff-ready.")
+    if not isinstance(manifest, dict) or type(manifest.get("manifestSchemaVersion")) is not int or manifest.get("manifestSchemaVersion") != MANIFEST_SCHEMA_VERSION:
+        print(f"{MANIFEST_NAME} lacks supported v2 carrier integrity coverage; review and republish with --handoff-ready.")
         return 1
-
-    drifted: list[str] = []
-    missing: list[str] = []
-    for doc_name, recorded_hash in recorded.items():
-        doc_path = folder / "docs" / str(doc_name)
-        if not doc_path.is_file():
-            missing.append(str(doc_name))
-        elif sha256_text(read(doc_path)) != recorded_hash:
-            drifted.append(str(doc_name))
-
-    if not drifted and not missing:
-        version = ""
-        changelog = manifest.get("changelog")
-        if isinstance(changelog, list) and changelog:
-            version = f" (changelog version {changelog[-1].get('version')})"
-        print(f"Handoff docs match {MANIFEST_NAME}{version}; no drift.")
+    for key, digest_key in (("docs", "docsDigest"), ("artifacts", "artifactsDigest")):
+        recorded = manifest.get(key)
+        if not isinstance(recorded, dict) or not recorded or not all(
+            isinstance(name, str) and isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value)
+            for name, value in recorded.items()
+        ) or manifest.get(digest_key) != docs_digest(recorded):
+            print(f"{MANIFEST_NAME} has an invalid {key} hash object or {digest_key}; review and republish.")
+            return 1
+    recorded = manifest["artifacts"]
+    current = compute_artifact_hashes(folder)
+    changes = [f"missing: {name}" for name in sorted(recorded.keys() - current.keys())]
+    changes += [f"added: {name}" for name in sorted(current.keys() - recorded.keys())]
+    changes += [f"drifted: {name}" for name in sorted(current.keys() & recorded.keys()) if current[name] != recorded[name]]
+    current_docs = compute_docs_hashes(folder)
+    if current_docs != manifest["docs"]:
+        changes.append("document hash snapshot differs")
+    if not changes:
+        print(f"Handoff artifacts match {MANIFEST_NAME}; no drift. Source truth and semantic review are separate checks.")
         return 0
-
-    print("Handoff drift detected against " + MANIFEST_NAME + ":")
-    for doc_name in drifted:
-        print(f"- drifted: docs/{doc_name}")
-    for doc_name in missing:
-        print(f"- missing: docs/{doc_name}")
-    print(
-        "Re-confirm the direction if needed, then regenerate the manifest with "
-        "--handoff-ready --changelog \"<summary>\"."
-    )
+    print(f"Handoff drift detected against {MANIFEST_NAME}:")
+    for change in changes:
+        print(f"- {change}")
+    print("Review affected decisions and related artifacts before republishing with --handoff-ready --changelog.")
     return 1
 
 
@@ -1928,6 +2091,7 @@ def main() -> int:
         else:
             validate_docs(folder, errors, warnings, args.handoff_ready)
             files = validate_files(folder, errors, framework, warnings)
+            validate_data_authority(folder, files, errors, warnings, args.handoff_ready)
             validate_story(files["story"], errors)
             validate_static_flow_story(files["static flow story"], errors)
             validate_static_flow_export(files["static flow export"], errors)
@@ -1948,7 +2112,7 @@ def main() -> int:
             if args.handoff_ready:
                 validate_doc_code_consistency(folder, files, errors, warnings)
                 validate_fixture_json_consistency(folder, files, errors, warnings)
-                validate_transition_presentation(folder, files, warnings)
+                validate_transition_presentation(folder, files, errors)
                 validate_surface_viewport_alignment(files, warnings)
 
     if args.strict_style:

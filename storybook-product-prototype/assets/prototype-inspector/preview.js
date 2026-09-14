@@ -3296,6 +3296,162 @@ function normalizeDataItems(value) {
   return Array.isArray(value) ? value.filter(isRecord) : [];
 }
 
+function readPrototypeDataAuthority(markdown) {
+  const unverified = (message) => ({ valid: false, fixtures: [], contracts: [], message });
+  if (typeof markdown !== "string") {
+    return unverified("Data authority unverified: no Data Spec registry was provided.");
+  }
+  // Ignore headings inside fences. Horizontal whitespace keeps an immediately
+  // following JSON block from being swallowed by the heading match.
+  let inSection = false;
+  let sectionCount = 0;
+  let fence = null;
+  const blocks = [];
+  for (const line of markdown.split(/\r?\n/)) {
+    if (fence) {
+      const closer = new RegExp(`^[ \\t]*${fence.character}{${fence.length},}[ \\t]*$`);
+      if (closer.test(line)) {
+        if (fence.inSection) blocks.push({ language: fence.language, text: fence.lines.join("\n") });
+        fence = null;
+      } else if (fence.inSection) {
+        fence.lines.push(line);
+      }
+      continue;
+    }
+    const opener = line.match(/^[ \t]*(`{3,}|~{3,})([^\r\n]*)$/);
+    if (opener) {
+      fence = { character: opener[1][0], length: opener[1].length, language: opener[2].trim(), inSection, lines: [] };
+      continue;
+    }
+    if (/^##[ \t]+Data Authority[ \t]*$/.test(line)) {
+      sectionCount += 1;
+      inSection = true;
+    } else if (/^#{1,2}[ \t]+/.test(line)) {
+      inSection = false;
+    }
+  }
+  if (sectionCount === 0) {
+    return unverified("Data authority unverified: the legacy Data Spec has no Data Authority registry.");
+  }
+  if (sectionCount !== 1 || (fence && fence.inSection) || blocks.length !== 1 || blocks[0]?.language !== "json") {
+    return unverified("Data authority unverified: Data Authority must contain exactly one complete JSON block.");
+  }
+  let registry;
+  try {
+    const payload = blocks[0].text;
+    registry = JSON.parse(payload);
+    // JSON.parse silently keeps the last duplicate key. Reject that ambiguity
+    // before displaying any confirmation, matching the producer validator.
+    const objectKeys = [];
+    const tokens = /"(?:\\.|[^"\\])*"|[{}\[\]]/g;
+    for (const match of payload.matchAll(tokens)) {
+      const token = match[0];
+      if (token === "{" || token === "[") {
+        objectKeys.push(token === "{" ? new Set() : null);
+      } else if (token === "}" || token === "]") {
+        objectKeys.pop();
+      } else if (/^\s*:/.test(payload.slice(match.index + token.length))) {
+        const keys = objectKeys[objectKeys.length - 1];
+        const key = JSON.parse(token);
+        if (keys.has(key)) throw new Error("duplicate JSON key");
+        keys.add(key);
+      }
+    }
+  } catch {
+    return unverified("Data authority unverified: the registry contains malformed JSON or duplicate keys.");
+  }
+  if (!isRecord(registry) || registry.schemaVersion !== 1 || !Array.isArray(registry.fixtures) || !Array.isArray(registry.contracts)) {
+    return unverified("Data authority unverified: unsupported registry version or missing fixture/contract arrays.");
+  }
+  const statuses = new Set(["proposed", "open", "confirmed", "superseded"]);
+  const kinds = new Set(["api", "analytics", "remote-config", "storage", "static"]);
+  const nonempty = (value) =>
+    typeof value === "string" && value.trim().length > 0 &&
+    !["unknown", "pending", "tbd", "todo", "none", "n/a"].includes(value.trim().toLowerCase()) &&
+    !/\[(?!(?:x|X| )?\])[^\]\n]+\](?!\()/.test(value);
+  const validSource = (source) => {
+    if (!isRecord(source) || !["reference", "revision", "confirmedBy", "confirmedOn"].every((key) => nonempty(source[key]))) return false;
+    const date = source.confirmedOn;
+    return /^\d{4}-\d{2}-\d{2}$/.test(date) && !Number.isNaN(Date.parse(date)) && new Date(date).toISOString().slice(0, 10) === date;
+  };
+  const validRecord = (record) =>
+    isRecord(record) && statuses.has(record.status) && nonempty(record.owner) &&
+    (record.source === null || validSource(record.source)) &&
+    (record.status !== "confirmed" || validSource(record.source));
+  const contractIds = new Set();
+  for (const contract of registry.contracts) {
+    if (!validRecord(contract) || !nonempty(contract.id) || !kinds.has(contract.kind) || contractIds.has(contract.id)) {
+      return unverified("Data authority unverified: a contract has invalid fields, duplicate id, or incomplete confirmation evidence.");
+    }
+    contractIds.add(contract.id);
+  }
+  const groups = new Set();
+  for (const fixture of registry.fixtures) {
+    if (!validRecord(fixture) || !nonempty(fixture.group) || fixture.values !== "fake" || !["ui-model", "transport"].includes(fixture.schemaScope) || groups.has(fixture.group)) {
+      return unverified("Data authority unverified: a fixture has invalid fields, duplicate group, or incomplete confirmation evidence.");
+    }
+    if (fixture.contractId !== undefined && (!nonempty(fixture.contractId) || !contractIds.has(fixture.contractId))) {
+      return unverified("Data authority unverified: a fixture references an unknown contract id.");
+    }
+    groups.add(fixture.group);
+  }
+  return {
+    valid: true,
+    fixtures: registry.fixtures,
+    contracts: registry.contracts,
+    message: "Fixture values are FAKE. Schema confirmation and source evidence are recorded separately; this view does not verify the external source.",
+  };
+}
+
+function getFixtureAuthorityLabel(fixture, contracts) {
+  if (fixture.contractId && contracts.some((contract) => contract.id === fixture.contractId && contract.status === "superseded")) {
+    return "Unverified — references a superseded contract";
+  }
+  if (fixture.status === "confirmed") {
+    return fixture.schemaScope === "transport" ? "Transport schema confirmed" : "UI model confirmed — no transport authority";
+  }
+  return `${fixture.schemaScope === "transport" ? "Transport schema" : "UI model"} ${fixture.status} — no transport authority`;
+}
+
+function PrototypeDataAuthority({ authority }) {
+  return createElement(
+    PrototypeDataSection,
+    { title: "Data Authority · FAKE fixture values", description: authority.message },
+    authority.valid
+      ? createElement(
+          Fragment,
+          null,
+          createElement(PrototypeDataTable, {
+            emptyMessage: "No fixture groups are declared in this registry.",
+            columns: [
+              { key: "group", label: "Fixture group" },
+              { key: "values", label: "Values", render: () => "FAKE" },
+              { key: "schemaScope", label: "Schema scope" },
+              { key: "status", label: "Authority", render: (fixture) => getFixtureAuthorityLabel(fixture, authority.contracts) },
+              { key: "source", label: "Source evidence" },
+              { key: "owner", label: "Owner" },
+              { key: "contractId", label: "Contract id" },
+            ],
+            rows: authority.fixtures,
+          }),
+          createElement("h4", null, "Real Data Contract decisions"),
+          createElement("p", null, "A confirmed API source may define a separate transport DTO that maps into a proposed UI model. Confirming that contract does not confirm or relabel the fixture shape."),
+          createElement(PrototypeDataTable, {
+            emptyMessage: "No real contracts are provided. UI and mock assembly can proceed using the classified Fake data.",
+            columns: [
+              { key: "id", label: "Contract id" },
+              { key: "kind", label: "Kind" },
+              { key: "status", label: "Decision status" },
+              { key: "source", label: "Source evidence" },
+              { key: "owner", label: "Decision owner" },
+            ],
+            rows: authority.contracts,
+          }),
+        )
+      : createElement("p", null, "Treat local fixture values as FAKE. Do not derive transport authority from legacy metadata, free-text status, or product demo confirmation."),
+  );
+}
+
 function formatDataValue(value) {
   if (value === undefined || value === null || value === "") {
     return "-";
@@ -3440,8 +3596,8 @@ function PrototypeDataSchemas({ schemas }) {
     PrototypeDataSection,
     {
       description:
-        "Field-level contract for props, fixtures, and future API responses.",
-      title: "Data Schemas",
+        "Field descriptions for UI and mock use. Transport use requires confirmed transport source evidence in Data Authority.",
+      title: "Data Schemas · scope governed by Data Authority",
     },
     createElement(
       "div",
@@ -3488,6 +3644,7 @@ function PrototypeDataSchemas({ schemas }) {
 function PrototypeData({ prototype }) {
   const routes = normalizeRoutes(prototype.flow);
   const data = isRecord(prototype.data) ? prototype.data : {};
+  const authority = readPrototypeDataAuthority(prototype.docs?.dataSpec);
   const apiContracts = normalizeDataItems(
     data.apiContracts ?? data.apis ?? data.api,
   );
@@ -3507,20 +3664,26 @@ function PrototypeData({ prototype }) {
       eyebrow: prototype.id,
       title: "Prototype Data",
       description:
-        "API contracts, source ownership, UI data mapping, state rules, and fixture payloads.",
+        "FAKE fixture values, schema authority, source evidence, UI mapping, and integration decisions.",
     }),
     createElement(
       "div",
       { className: "prototype-inspector__data-body" },
+      createElement(PrototypeDataAuthority, { authority }),
       isRecord(data.overview)
         ? createElement(
             PrototypeDataSection,
             {
               description:
-                "High-level data contract that explains what the Data tab owns.",
+                "UI data overview. Per-schema authority comes only from the Data Spec registry.",
               title: "Overview",
             },
-            createElement(PrototypeDataKeyValues, { value: data.overview }),
+            createElement(PrototypeDataKeyValues, {
+              value: {
+                ...data.overview,
+                status: authority.valid ? "See Data Authority for each schema and contract decision" : "Data authority unverified",
+              },
+            }),
           )
         : null,
       apiContracts.length > 0
@@ -3528,8 +3691,8 @@ function PrototypeData({ prototype }) {
             PrototypeDataSection,
             {
               description:
-                "API replacement points for moving from local fixtures to product integration.",
-              title: "API Contracts",
+                "Requested replacement points. These fields do not establish a real API contract; use confirmed transport sources from Data Authority.",
+              title: "API Replacement Requirements",
             },
             createElement(PrototypeDataTable, {
               columns: [
@@ -3580,7 +3743,7 @@ function PrototypeData({ prototype }) {
             PrototypeDataSection,
             {
               description:
-                "Where the data should come from, who owns it, and how often it changes.",
+                "Source requirements and ownership notes. Unconfirmed refresh or source choices remain proposals; consult Data Authority.",
               title: "Data Sources",
             },
             createElement(PrototypeDataTable, {
@@ -3675,8 +3838,8 @@ function PrototypeData({ prototype }) {
             PrototypeDataSection,
             {
               description:
-                "Local deterministic fixtures used by Storybook while the prototype is not wired to APIs.",
-              title: "Fixture Summary",
+                "FAKE local deterministic examples for Storybook and mock adapters, including when their schema has a confirmed transport source.",
+              title: "Fake Fixture Summary",
             },
             createElement(PrototypeDataKeyValues, { value: data.fixtures }),
           )

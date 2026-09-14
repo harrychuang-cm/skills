@@ -168,10 +168,10 @@ When that sibling skill is not installed in this environment, do not skip the pr
 
 Real integration is never in scope for this skill. For every in-scope fixture group — those belonging to the routes and regions the map scopes `B` on this platform, plus any `U` row a resolved blocking question turned into new work — create the named adapter seam:
 
-- Entity, request, response, and error types generated from the `DATA_SPEC.md` JSON Schema blocks — `Codable` structs on iOS, `@Serializable` data classes on Android. Preserve the `default` / `loading` / `empty` / `error` state vocabulary and any documented disabled/permission branches.
+- UI models and UI-facing input/error types from Data Authority-classified UI schemas; `Codable` structs or `@Serializable` data classes may decode mock resources, but that capability does not make them transport DTOs. Generate wire request/response types only from separately confirmed transport source evidence. Preserve `default` / `loading` / `empty` / `error` and documented disabled/permission branches.
 - `<Feature>DataSource`: a Swift `protocol` or Kotlin `interface`, with one method per in-scope handoff fixture group.
 - `Mock<Feature>DataSource`: the deterministic implementation, loading the handoff's `fixtures/<group>.json` from the resource location chosen below. Copy the JSON files into the target's resources rather than duplicating their values in code.
-- A clear replacement point: the injection site the data-integration owner swaps. Record the interface name, mock implementation path, and injection site in the implementation map's Data Adapter Seams table, and fill the handoff's `Adapter interface` column when updating handoff docs.
+- A clear replacement point: the injection site the data-integration owner swaps. Record the UI model, interface, mock path, injection site, schema authority/source, and integration status/owner in Data Adapter Seams; fill the handoff's `Adapter interface` column when updating handoff docs.
 
 Fixture groups belonging to routes or regions the map scopes `A` on this platform are excluded and recorded as such — they never become DataSource seams, and they never become integration work for the next stage.
 
@@ -179,7 +179,7 @@ Do not invent endpoints. Do not add secrets, environment configuration, auth flo
 
 ### Let the contract semantics shape the interface
 
-Before fixing the method signatures, read the `Semantics` cell of each fixture group's row in the `PRODUCTION_HANDOFF.md` API And Data Contracts table. On native the interface is compile-time rigid: a signature that cannot carry the documented semantics forces the next stage to change the interface — and with it the view models, tests, and call sites — instead of swapping one implementation, which is the whole promise of the seam.
+Before fixing method signatures, read the `Semantics` cell and its Data Authority/source status. Confirmed UI behavior shapes the UI-facing seam; only confirmed transport evidence specifies wire parameters. On native, record these distinctions before making signatures rigid so a proposed transport assumption does not spread into view models and call sites.
 
 - `pagination` — decides whether the method takes a cursor or an offset/limit pair and what the return type carries back (the next cursor, the total, whether more pages exist). A method returning one fixed page cannot be substituted by a paginated implementation.
 - `sort-filter` — decides whether sort and filter criteria are parameters of the method or fixed by the caller.
@@ -187,7 +187,9 @@ Before fixing the method signatures, read the `Semantics` cell of each fixture g
 - `mutation` — decides whether the interface needs write methods at all, and whether an optimistic path needs a rollback entry point.
 - `errors` — decides the cases of the error type. A retryable / terminal / re-authentication split in the contract becomes distinguishable cases, not one generic failure.
 
-An entry recorded as `unknown (owner: …)` is a question for that named contract owner, not a gap to fill with an assumption. Implement the most conservative signature the fixtures support, record the open item in the implementation map, and hand it to the owner with the seam.
+An `unknown (owner: …)`, proposed, or open entry remains the named owner's decision. A signature needed for mock/UI assembly is explicitly provisional for unresolved semantics; record the affected method and integration limitation instead of inferring transport inputs from fixtures. Independent Fake-only assembly can complete with real integration `open`. Before wiring, the integration owner maps confirmed DTOs to the UI model and resolves any semantic/signature changes with the assembly owner; different wire field names alone do not require UI changes.
+
+Remote Config may be a text-only intent with a controlled region, demonstrated states, unresolved details, and RD owner. Use the mock seam to display the declared states; leave key/provider/production default/refresh/cache/permission/rollout details open. Do not promote an analytics suggestion such as `reason` into the formal event or acceptance criteria.
 
 ### Injection site
 
@@ -269,8 +271,9 @@ Rules:
 
 - Register destinations by handoff route id so traceability survives into the code.
 - Route `params` become destination arguments — associated values on a Swift route enum, typed nav arguments on Compose. Follow the module's existing convention: type-safe routes (`@Serializable` route classes with `composable<Route>` and `toRoute<Route>()`) where it uses them, string routes with declared arguments where it does not. `deepLink` patterns are registered where the platform supports them.
-- Respect each transition's `kind` before its `presentation`. A transition whose `kind` is `return` is implemented as a return action driven by its `backBehavior` — dismissing the presented surface, popping the stack, or popping to the flow root — and never as a push, even when it carries no `presentation`: the flow contract only requires `presentation` on non-`return` edges, so its absence there is normal rather than a gap. When such an edge also carries no `backBehavior`, default to a single-step back (`pop`) and record the assumption.
-- A transition whose `kind` is not `return` and that carries no `presentation` is implemented as `push`, with the assumption recorded in the implementation map's divergence notes.
+- Respect `kind` before `presentation`. A return executes its confirmed `backBehavior` and never pushes a destination copy; missing return `presentation` is normal, but missing `backBehavior` remains an unresolved decision for that edge.
+- A non-return app edge with missing `presentation` remains unresolved. No legacy rule or generated scaffold implies push, and no missing return action implies a single-step pop. Reuse an already explicit authorized default only with its source and scope recorded.
+- Every edge entering a visible route declares `motion: none | platform-default | custom` independently of navigation. For custom motion, read its `motionRef: FLOW_SPEC.md#anchor` and verify the explicit anchor exists. Implement the declared timing/token, gesture, and reduced-motion behavior through the app's conventions; do not infer platform animation from a navigation API. Keep the affected flow acceptance open until missing intent is resolved while continuing independent confirmed work.
 
 ### Generating the flow skeleton
 
@@ -285,6 +288,14 @@ python3 <storybook-product-prototype-skill-root>/scripts/export_flow.py <prototy
 - The positional argument is the prototype folder holding `*PrototypeFlow.ts`. With no flags the script writes `docs/flow.json` under that folder (`--out <path>` overrides the location); `--swift` and `--kotlin` additionally write a Swift route enum and a Kotlin sealed route class with a `NavHost` scaffold. Both are optional and independent.
 - Write the skeletons to a scratch location, not straight into the production tree. They are scaffolding — route cases, params, deep-link comments, and destination stubs derived from the flow metadata — not finished navigation. Merge the route ids, parameter types, and deep links into the app's existing router and discard the rest; the generated header says the same thing.
 - When the prototype folder is not reachable from this session, use the handoff's `docs/flow.json` and map the routes by hand, and record that the skeleton step was skipped.
+
+Preserve exported `motion`/`motionRef` and unspecified navigation in the working map. A scaffold with an unresolved presentation or back action is not permission to register a default behavior.
+
+## Documentation And Skill Delivery
+
+When an approved decision changes, list affected Data/Handoff/Flow/Acceptance documents, fixture files, metadata/flow carriers, and regression tests; synchronize those entries, mark superseded clauses inactive, and re-review the changed scope before consuming a new manifest. Verify source artifacts and compare both recorded digests at ingestion and completion. A copied fixture remains a provenance/UI-parity reference, never a transport golden schema.
+
+Use the project installer with `--record-usage` and explicit actual used skills, following cm-skills `docs/skills-usage.md`. Native's dependency closure includes `ds-governance` and frontend support; record dependency roles separately and do not automatically install `production-data-integration`. Verify `docs/SKILL_USAGE.json`, installed content hashes, and repo-relative links in managed `CLAUDE.md`/`AGENTS.md` blocks while preserving all other bytes. Do not install globally or use the `all` selection for usage recording.
 - Regenerate whenever a newer handoff version changes the flow metadata — `validate_prototype.py <prototype-folder> --verify-manifest` reporting drift, or added/removed routes or transitions in the flow file. Re-diff the regenerated skeleton against the router rather than hand-adding the new routes, so a dropped transition is visible instead of silent.
 
 ## Existing App Mode

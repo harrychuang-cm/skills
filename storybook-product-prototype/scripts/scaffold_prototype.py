@@ -241,6 +241,7 @@ def scaffold(args: argparse.Namespace) -> Path:
         "__FEATURE_TITLE__": feature_title,
         "__FORM_FACTOR__": form_factor,
         "__OWNER__": args.owner,
+        "__OWNER_JSON__": json.dumps(args.owner, ensure_ascii=False),
         "__SHELL_WIDE_CAP__": "720px" if form_factor == "phone" else "100%",
         "__TARGET_SURFACE__": args.target_surface,
         "__VIEWPORT_HEIGHT__": str(viewport_height),

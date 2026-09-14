@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "skills": {
+    "frontend-product-implementation": [
+      {
+        "name": "ds-governance",
+        "role": "required",
+        "reason": "Discover and apply the target design system before implementing UI."
+      }
+    ],
+    "native-product-implementation": [
+      {
+        "name": "ds-governance",
+        "role": "required",
+        "reason": "Apply design-system governance to native tokens and shared components."
+      },
+      {
+        "name": "frontend-product-implementation",
+        "role": "support",
+        "reason": "Supply shared handoff contracts, token bootstrap guidance, and scripts/validate_implementation.py; do not invoke web implementation."
+      }
+    ]
+  }
+}

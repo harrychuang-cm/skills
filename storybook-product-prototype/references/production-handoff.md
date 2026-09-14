@@ -2,6 +2,8 @@
 
 Use this reference when creating `PRODUCTION_HANDOFF.md` or preparing prototype docs for frontend web or app implementation handoff.
 
+Read [handoff-authority.md](handoff-authority.md) with this reference. `DATA_SPEC.md` owns the Data Authority registry; this handoff references its decisions without copying or upgrading their status.
+
 ## Purpose
 
 `PRODUCTION_HANDOFF.md` is the bridge from a Storybook prototype to frontend implementation work. It should let an engineer or AI agent understand what UI behavior to build, where it belongs in the production product, which prototype parts are reusable, which data/API contracts the UI expects, and which integration responsibilities belong to the receiving production repo.
@@ -17,6 +19,8 @@ Use these sections:
 
 ## Review Status
 
+## Semantic Review
+
 ## Target Surfaces
 
 ## Prototype To Frontend Map
@@ -28,6 +32,8 @@ Use these sections:
 ## Shared Domain And UI State Model
 
 ## API And Data Contracts
+
+## Remote Config Intent
 
 ## Frontend Handoff Acceptance
 
@@ -45,11 +51,16 @@ Use these sections:
 The handoff flow is: Storybook demo → the team confirms the product direction → the docs go to the receiving engineer or AI. This section stamps that confirmation so the receiver knows the docs describe a confirmed direction, not a draft under discussion:
 
 - Status: `pending` or `confirmed`
-- who confirmed and when
-- which Storybook story or UI Flow demo was reviewed
-- what the confirmation covers or explicitly excludes
+- `Confirmed by`: named reviewer or team
+- `Confirmed on`: actual ISO review date
+- `Reviewed demo`: Storybook story or UI Flow reviewed
+- `Scope`: what the product confirmation covers or explicitly excludes
 
-`validate_prototype.py --handoff-ready` fails while the status is `pending`. A legacy handoff written before this section existed only gets a warning for the missing section; new handoffs must include it. Do not hand the docs to a receiving implementation before the status is `confirmed`.
+`validate_prototype.py --handoff-ready` requires this complete, confirmed record. A legacy draft remains readable, but it must gain actual review evidence before handoff. Product confirmation never confirms an API, analytics parameter, Remote Config key, or UI schema automatically.
+
+## Semantic Review
+
+Record `Reviewed by`, `Reviewed on` (ISO date), `Scope`, `Result: passed`, and `Related updates` only after reviewing the actual document content. Check that Builder suggestions remain proposed, superseded decisions have no active paths, and every unknown names its owner and affected behavior. Review the affected Data Spec, Handoff, Flow Spec, Acceptance, fixtures, metadata, exports, and tests together; name the files updated or why each was unaffected. Validation checks completeness and integrity, not external source truth or semantic correctness.
 
 ## Target Surfaces
 
@@ -163,7 +174,7 @@ For each prototype fixture group that needs a receiving-side replacement, docume
 - owning team or system
 - routes or screens that consume it
 - fixture group being replaced
-- adapter interface: `pending` at handoff time; the frontend assembly pass fills in the `<Feature>DataSource` method and mock implementation path once the seam exists, so the data-integration owner has a predictable replacement point
+- adapter interface: `pending` at handoff time; assembly fills in the `<Feature>DataSource` method, UI model, mock path, injection site, schema authority/source, and integration owner/status so the data-integration owner has a predictable replacement point
 - semantics — the five entries the data-integration pass confirms before wiring, as `key: value` shorthand separated by semicolons:
   - `pagination`: `cursor`, `offset`, or `none`
   - `sort` / `filter`: the fields the caller may pass
@@ -173,19 +184,25 @@ For each prototype fixture group that needs a receiving-side replacement, docume
 
   For example `pagination: cursor; freshness: poll 30s; mutation: none; errors: retryable/reauth`. An unresolved entry is `unknown (owner: <team>)`, never a guess. `validate_prototype.py` does not judge this cell's content — it is guidance for station 5, and `production-data-integration` asks the named owner for anything missing before it wires that seam.
 
-If an API is unknown, document the UI's expected contract and mark the owner or endpoint as open. Do not invent real endpoints or data sources.
+If an API is unknown, document the UI data need and name the decision owner; keep it proposed/open in Data Authority without inventing endpoints or DTOs. A UI schema authorizes UI/mock types only. Real transport DTOs require confirmed transport evidence, and a mapper adapts them to the UI model when shapes differ. An empty contracts array is valid for a Fake-only handoff.
+
+## Remote Config Intent
+
+Record the controlled region, intended product behavior, demonstrated states, unresolved decisions, and RD owner. Text is enough for this stage. Do not infer production defaults/fallbacks from fixtures or invent key, provider, polling, cache, permission, or rollout details. Confirmed product behavior supports UI/mock assembly while dependent real integration awaits its decisions.
 
 ## Frontend Handoff Acceptance
 
 Define handoff-ready checks separately from Storybook checks and from final production integration checks:
 
 - production route or screen target is identified for the real app shell
-- API/data contracts are documented well enough for the receiving engineer or AI to wire later
+- every fixture has Fake values and a declared schema scope/status; confirmed transport sources or explicit open decisions identify what a receiver may wire later
 - route transitions match `FLOW_SPEC.md`
 - accessibility and responsive behavior match `UI_SPEC.md`
 - web or app platform notes are specified or explicitly marked `Not in scope`
 - fixture states cover successful, empty, loading, error, and permission paths in scope
 - analytics, feature flags, auth, persistence, and security requirements are noted as handoff inputs or open decisions
+- demo confirmation and Semantic Review are named, dated, and scoped; suggestions have not become normative requirements and superseded clauses are absent from active paths
+- visible-route transitions have explicit navigation/return and motion intent; custom motion references an existing explicit Flow Spec anchor
 
 ## Integration Ownership
 
@@ -197,7 +214,7 @@ Ownership is three-stage; each stage hands a contract to the next. State all thr
 
 Include a `Data Integration Ownership` field naming the stage-3 receiver — a team, a system, a person, or the `production-data-integration` skill. When the owner is unknown, record an open decision in `Open Product Decisions` with an owner responsible for resolving it; never leave the field absent in a new handoff. `validate_prototype.py --handoff-ready` reports a missing field on a legacy handoff as a warning.
 
-- If a later stage intentionally changes a route, data shape, or branch state, it updates the handoff docs and the Storybook regression story.
+- If a later stage changes a decision, route, data shape, or branch state, identify and update all affected docs, flow/data/meta, fixtures, exports, and tests, supersede replaced decisions, and re-review before a new manifest. Receivers record both `docsDigest` and version-2 `artifactsDigest` and verify source integrity at ingestion and before completion. Hashes do not confer data authority.
 
 ## Storybook-Only Boundaries
 
@@ -225,6 +242,8 @@ Record the discovery results so the receiving implementation inherits them inste
 ## Open Product Decisions
 
 Record unresolved choices that would change implementation:
+
+For each decision record `status` (proposed/open/confirmed/superseded), source, owner, scope, affected behavior, and replacement when superseded. A Builder suggestion is proposed, not a production requirement: a suggested `reason` absent from the confirmed `delete_email_failed` event must not appear in formal event payloads or acceptance criteria. Continue independent confirmed work; do not guess blocked behavior.
 
 - platform target or routing model
 - API ownership or response shape

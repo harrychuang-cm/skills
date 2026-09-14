@@ -1,6 +1,6 @@
 ---
 name: frontend-product-implementation
-description: "Implement framework-agnostic frontend products and production features from PRD, UI Flow, UI Spec, Data Spec, Acceptance, Implementation Guide, and PRODUCTION_HANDOFF docs. Use when building a web or app frontend from 0 to 1, adding a route, screen, interface, or feature to an existing product, translating Storybook prototype handoff docs into production code, creating typed route/component/data-adapter work, or continuing after storybook-product-prototype. Resolve the target root and runtime architecture before greenfield scaffolding, inherit a clear existing stack without re-asking, ask when targets conflict or a migration is implied, and follow framework-native conventions rather than assuming React. Always follow ds-governance: discover tokens, grid, motion, i18n, and shared components first; reuse existing components; resolve scoped authorization before creating missing tokens or shared components. When the target has no token system and the user approves establishing one, follow the token-bootstrap reference to port a minimal token subset from the prototype design-system source."
+description: "Implement web frontend products and features from PRD, Flow, UI, Data, Acceptance, Implementation Guide, and PRODUCTION_HANDOFF docs. Use for a new web product, an existing route/screen/feature, or production UI assembly after storybook-product-prototype. Resolve the target root and runtime architecture before scaffolding; inherit a clear existing stack and follow its framework conventions. Apply ds-governance for tokens, motion, i18n, and component reuse. Keep Fake fixtures and UI models separate from confirmed transport DTOs. Deliver typed mock DataSource seams and hand real API/auth/persistence wiring to the named integration owner; native targets belong to native-product-implementation."
 ---
 
 # Frontend Product Implementation
@@ -10,7 +10,16 @@ Use this skill to turn frontend handoff documents into working product code in a
 - Greenfield: create a new frontend product from 0 to 1.
 - Existing product: add a new interface, route, screen, or feature to an existing app.
 
-This skill owns frontend implementation only: UI assembly and flow interaction. Real API clients, auth, persistence, storage, cache policy, and environment wiring are never in scope for this skill. Always create typed contracts, deterministic fixtures, and mock adapters, and hand the real integration work — together with its contract — over to the named data-integration owner recorded in the handoff: a team, a system, or the `production-data-integration` skill. When no owner is named, record the hand-over as a blocking open decision and ask the user to name one.
+This skill owns frontend implementation only: UI assembly and flow interaction. Real API clients, auth, persistence, storage, cache policy, and environment wiring are never in scope for this skill. Create typed UI models, deterministic fixtures, and mock adapters, and hand real integration work to the named data-integration owner: a team, a system, or `production-data-integration`. An unknown receiving owner blocks that integration handover; independent UI assembly can continue.
+
+## Handoff Authority And Delivery
+
+- Read `DATA_SPEC.md`'s Data Authority registry before deriving types. Fake values remain fake; `schemaScope: ui-model` supports UI models and mocks only, even when `confirmed`. Generate transport DTOs only from a `confirmed` transport contract with complete source evidence (`reference`, `revision`, `confirmedBy`, `confirmedOn`), including an independent `contracts[].source` while the linked UI fixture stays proposed. Missing, invalid, `proposed`, `open`, or `superseded` authority never authorizes an API, analytics parameter, or Remote Config key. Product demo confirmation does not confirm a data contract.
+- A Fake-only handoff with named owners can complete UI assembly. Record unknown real contracts and Remote Config technical details against the affected seam and owner; continue independent confirmed work. A Builder suggestion such as an undocumented analytics `reason` stays proposed.
+- Read each visible-route transition's navigation and motion intent: `motion: none | platform-default | custom`; `custom` needs an explicit `FLOW_SPEC.md#anchor`. Non-return edges require presentation; return edges require backBehavior and do not require presentation. Missing required navigation or motion stays unresolved, never an implicit push, pop, or platform animation. Reuse already explicit authorization and record its source.
+- Record and check the consumed `docsDigest`, `artifactsDigest` when present, and changelog version at ingestion and before completion. Legacy or unavailable integrity evidence is a limitation, not transport authority; matching hashes do not prove semantic correctness.
+- Read [the shared handoff authority reference](../storybook-product-prototype/references/handoff-authority.md) for registry, review, and synchronization details. If the sibling is unavailable, follow the rules above, record the missing reference, and do not upgrade data authority.
+- Deliver the skills actually used into the target repo through the cm-skills installer with project scope, explicit skill names, and `--record-usage`. Record `frontend-product-implementation` as used when applied; install required `ds-governance` as a dependency unless also explicitly used. Preserve existing `CLAUDE.md` and `AGENTS.md` outside managed blocks, and verify repo-relative links and `docs/SKILL_USAGE.json` content hashes. Do not use `all`, install globally, or install a named next-stage receiver merely because the handoff mentions it. See cm-skills `docs/skills-usage.md` for the command syntax; do not reconstruct missing installer behavior by overwriting repo instructions.
 
 ## Required Companion Skill
 
@@ -51,7 +60,7 @@ Read only the reference needed for the current step:
    - `PRODUCTION_HANDOFF.md`
    - `ACCEPTANCE.md`
    - `IMPLEMENTATION_GUIDE.md`
-4. Read `PRODUCTION_HANDOFF.md` first when present. Check its `Review Status` before anything else: when the status is `pending` or the section is missing, stop and ask whether the team demo confirmation happened before treating the docs as a brief. Then cross-check PRD, flow, UI, data, and acceptance docs, and record the consumed `HANDOFF_MANIFEST.json` digest and changelog version (or `unversioned`) in the implementation map.
+4. Read `PRODUCTION_HANDOFF.md` first when present. Check the named, dated, scoped `Review Status` and separate `Semantic Review` before treating the docs as a brief; resolve missing confirmation for affected work using existing session authorization or the named owner. Then cross-check PRD, flow, UI, Data Authority, and acceptance docs, verify reachable handoff integrity, and record both consumed manifest digests and the changelog version (or `unversioned`) in the implementation map.
 5. Inspect target-root and handoff evidence, then create the required runtime architecture decision record.
 6. Resolve the architecture gate before implementation:
    - Greenfield: treat explicit scaffold-affecting choices in the current request as confirmation; otherwise ask only for unresolved choices before running a scaffolder, installing dependencies, or generating app code.
@@ -71,7 +80,7 @@ Read only the reference needed for the current step:
 - Add product surfaces by following the selected root's existing routing, screen, state, i18n, and test conventions.
 - Treat a feature request as authorization for the feature, not for a framework, renderer, build-tool, language, package-manager, routing, state, styling, or repository migration.
 - Do not scaffold, install dependencies, or change runtime architecture until the architecture decision record is resolved at the level required for the current mode.
-- Use deterministic fixtures and mock adapters; real data sources are never in scope for this skill.
+- Use deterministic fixtures and mock adapters built against UI models; fixture values and UI schemas are never evidence for a real transport contract.
 - Preserve handoff route ids and transition triggers in implementation names, tests, comments, or metadata where useful for traceability.
 - Implement loading, empty, error, disabled, permission, optimistic, retry, and async branch states when documented.
 - Keep Storybook or regression stories when the repo has Storybook; add or update stories for changed shared components.
@@ -116,7 +125,7 @@ Do not consider work complete until:
 - Existing tokens/components reused are identified.
 - Any new token/component approval decisions are reported.
 - Every handoff route and state reached one of three terminal outcomes: implemented; verified as already shipping in the target repo and excluded from this change, with the evidence path recorded; or explicitly marked deferred/open. An existing surface is none of the first or last — recording it as deferred wrongly promises future work, and implementing it rebuilds something that already ships.
-- Data contracts are implemented or explicitly marked as deferred/open. Fixtures belonging to surfaces excluded as already-shipping do not become API integration work.
+- UI models and mock seams are implemented or explicitly marked as deferred/open, with schema authority/source and integration status/owner recorded. Fake-only assembly can finish while its real seam awaits the named owner. Fixtures belonging to surfaces excluded as already-shipping do not become API integration work.
 - Framework-native typecheck, tests, build, Storybook build, or app preview commands have been run when available.
 - `IMPLEMENTATION_MAP.md` is written per `references/verification-reporting.md` and `scripts/validate_implementation.py` passes against it when the handoff provides docs to audit against.
 - Every real API/data/auth/persistence integration item is handed over to a named receiving owner recorded in the final report, or listed as a blocking open decision that asks the user to name that owner; none is silently deferred.

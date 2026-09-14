@@ -37,6 +37,9 @@
 - Keep prototype-specific CSS scoped under `.__FEATURE_CSS_CLASS__`.
 - Do not call real product APIs.
 - Document API/data contract expectations in `PRODUCTION_HANDOFF.md`; real data sources and clients are owned by the receiving implementation.
+- Classify fixture values as Fake and schema authority in the single Data Authority registry in `DATA_SPEC.md`. UI schema generates UI/mock types only; transport DTOs require confirmed transport sources.
+- Keep author suggestions proposed and unknowns open with scope and owner. Remote Config may remain a text intent with RD-owned details; do not generate a production key or default.
+- Every visible-route transition needs explicit navigation/return and motion intent; custom motion references an existing explicit Flow Spec anchor.
 - Document web/app production routes, screens, navigation, and platform constraints before asking production engineers or AI agents to implement.
 - Keep `prototypeRoute` query support when adding or renaming routes.
 - Keep Static Flow export driven by `__FEATURE_CAMEL__Flow.ts`; do not duplicate route or transition lists.
@@ -49,6 +52,8 @@
 - Map every route id to a production web route, app screen, shared component state, or open decision.
 - Add production tests for the primary journey and scoped branch states.
 - Keep Storybook stories as review and regression artifacts after production implementation starts.
+- Record actual demo confirmation and Semantic Review separately. Check suggestions, superseded paths, and all affected docs, flow/data/meta, fixtures, exports, and tests before creating a new manifest.
+- Record the skills actually used through the project installer with `--record-usage` and an explicit list. Verify `docs/SKILL_USAGE.json`, repo-local installed contents, and relative links in managed `CLAUDE.md`/`AGENTS.md` blocks; preserve unrelated content and never use global installs as the handoff.
 
 ## Required Verification
 
@@ -57,3 +62,4 @@
 - Render the `StaticFlow` Storybook story.
 - Run `python3 <skill-root>/scripts/validate_prototype.py <this-prototype-folder>`.
 - Run `python3 <skill-root>/scripts/validate_prototype.py <this-prototype-folder> --handoff-ready` before using the docs as a frontend implementation brief.
+- For a consumed handoff, run `--verify-manifest` before and after the receiving work; record both `docsDigest` and `artifactsDigest`. A version-1 or absent manifest is incomplete provenance; a passing hash check does not establish semantic or source correctness.

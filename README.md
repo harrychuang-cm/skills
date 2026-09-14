@@ -39,7 +39,7 @@ node scripts/install_agent_skills.mjs --agent all --scope user --skill ds-govern
 node scripts/install_agent_skills.mjs --agent all --scope user --skill ds-governance
 ```
 
-For an existing installation, inspect the diff before adding `--force`. For project scope, use `--scope project --project-root <product-repo>`. The installer copies only selected skills; include `ds-governance` when selecting an implementation skill that requires it. It does not resolve companion dependencies automatically.
+For an existing installation, inspect the diff before adding `--force`. For project scope, use `--scope project --project-root <product-repo>`. Normal installs copy only selected skills, so include `ds-governance` when an implementation skill requires it. The opt-in `--record-usage` project delivery mode resolves the declared required/support dependencies and records the skills used in that repo; see Usage below.
 
 ### `design-system-extractor`
 
@@ -300,6 +300,19 @@ node scripts/install_agent_skills.mjs --agent codex --scope user --skill design-
 ```
 
 Use `--dry-run` to preview destinations and `--force` to replace existing installed copies.
+
+Record skills actually used in a project and deliver their required files with the repo:
+
+```sh
+node scripts/install_agent_skills.mjs --agent all --scope project --project-root <repo> --skill storybook-product-prototype,native-product-implementation --record-usage --dry-run
+node scripts/install_agent_skills.mjs --agent all --scope project --project-root <repo> --skill storybook-product-prototype,native-product-implementation --record-usage
+```
+
+`--record-usage` requires project scope and an explicit `--skill` list excluding `all`. The caller declares that those selected skills were used; dependencies are listed separately. [`scripts/skill-dependencies.json`](scripts/skill-dependencies.json) adds `ds-governance` for frontend implementation and adds both `ds-governance` and frontend support for native implementation. Frontend support supplies shared contracts, references and `validate_implementation.py`; it does not start web implementation. Next-stage receivers such as `production-data-integration` are only installed when explicitly selected. The prototype retains its standalone governance fallback; include any optional companion actually used in the explicit list.
+
+This mode upserts `docs/SKILL_USAGE.json` with source repository, Git commit (or `null`), dirty state (or `null` when unknown), actual source/installed content hashes, usage/dependency roles and project-relative installed paths. Prior usage survives subsequent selections, and an explicitly selected dependency becomes declared used. It maintains bounded `CM-SKILLS:USAGE` blocks in `CLAUDE.md` and `AGENTS.md` with relative links, preserving other bytes. Identical copies need no `--force` in this mode; changed copies still require it after inspection. Missing selections/dependencies, dependency cycles, malformed usage/markers, destination conflicts and nonportable symlinks fail before copying. Dry-run writes nothing.
+
+Review the printed delivery allowlist and include the skill folders, usage JSON and both instruction files in version control so another clone has the same files. Ignored delivery paths are reported for deliberate inclusion; the installer does not edit `.gitignore`, stage files or commit. Usage recording is local delivery, not publication. Without `--record-usage`, existing install behavior is unchanged.
 
 Default install locations:
 

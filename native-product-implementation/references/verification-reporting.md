@@ -103,7 +103,7 @@ Single-screen rendering checks do not prove the flow works. After UI verificatio
 
 1. Start from the `FLOW_SPEC.md` entry route and complete the primary journey end to end.
 2. Reach every in-scope branch state through real interactions, not by hardcoding state.
-3. Trigger every documented transition through its interaction trigger, and confirm the destination's presentation and back behavior match the declared `presentation` / `backBehavior` — a `sheet` that pushed, or a `none` that the system back button still dismisses, is a defect.
+3. Trigger every documented transition and verify `presentation`, return `backBehavior`, and `motion` independently. Check custom motion against its explicit `FLOW_SPEC.md#anchor`, including reduced-motion requirements. A sheet that pushed, a declared `backBehavior: none` that still dismisses, or an assumed animation for unresolved motion is a defect. Unknown intent keeps the affected edge and flow acceptance open; it does not authorize push/pop/platform-animation defaults.
 4. Record the result — journey completed, branches reached, transitions triggered, divergences and deferrals with reasons — and use it to settle the `AC-P (assembly)` rows of the Acceptance Traceability table.
 
 The implementation is not complete while the walkthrough is unrecorded or failing. "Recorded" means one of two things: the walkthrough ran and its result is written down, or the degraded substitute ran, is named as a substitute, and its uncovered items are listed with an owner. Silence about the walkthrough, and a walkthrough claimed without a run, both fail this bar.
@@ -112,14 +112,14 @@ The implementation is not complete while the walkthrough is unrecorded or failin
 
 Write `IMPLEMENTATION_MAP.md` where the repo keeps implementation notes (or next to the feature module), with the same five sections the `frontend-product-implementation` contract defines:
 
-- `## Consumed Manifest` — `- docsDigest: <sha256>` and `- version: <n>` from the consumed `HANDOFF_MANIFEST.json`, or `- docsDigest: unversioned`.
+- `## Consumed Manifest` — `- docsDigest: <sha256>`, `- artifactsDigest: <sha256>`, and `- version: <n>` from the consumed version 2 manifest. With no manifest use docs/version `unversioned`, artifacts `unavailable`; with legacy retain docs/version and record artifacts `unavailable`. Record checks at ingestion and before completion, copy provenance, and unavailable integrity checks without upgrading data authority.
 - `## Route Outcomes` — columns `Route id`, `Outcome`, `Evidence`; one row per handoff route id. `Outcome` is one of four terminal values:
   - `implemented`
   - `existing-verified` — `Evidence` is the repo-relative path proving the screen already ships on this platform
   - `deferred` — `Evidence` is the reason; this value promises the work still happens later
   - `not-applicable` — the route is out of scope on this platform, and `Evidence` names the Production Navigation Map cell that says so (for example `FLOW_SPEC.md Production Navigation Map, iOS destination: Not in scope`). Never record such a route as `deferred`: the manifest's route ids cover every platform, and `deferred` would promise native work nobody intends to do.
 - `## Acceptance Traceability` — columns `AC id`, `Target`, `Result`, `Notes`; `AC-P (assembly)` settled by the walkthrough, `AC-P (integration)` deferred to the named data-integration owner.
-- `## Data Adapter Seams` — columns `Fixture group`, `Interface`, `Mock implementation`, `Injection site`; one row per in-scope fixture group. The injection site is the single place the data-integration owner swaps, recorded in the form the app uses (environment or composition-local key, view-model initializer parameter, or DI module registration). A replacement point that belongs to no fixture group — a permission-status provider, for example — takes a row with `—` in the `Fixture group` column rather than being left out of the table.
+- `## Data Adapter Seams` — columns `Fixture group`, `UI model`, `Interface`, `Mock implementation`, `Injection site`, `Schema authority/source`, `Integration status/owner`, identical to the frontend contract. One row per in-scope group, or `—` for a seam without a fixture group. Record repo-relative type/mock paths, injection file and symbol, and Data Authority group/contract id, value usage, schema scope/status, and source evidence or explicit `none`. Integration status is `open`, `ready`, `integrated`, or `not-applicable`, with a named owner or explicit unresolved owner decision. `ready` needs confirmed transport evidence; `integrated` additionally needs real implementation and verification, which this pass does not perform. Fake-only assembly can finish with real integration `open`.
 - `## Component Map` — the shape the sibling contract defines (optional `- source:` lead-in bullet; columns `Handoff component`, `Resolution`, `Production component`, `Evidence`, `Notes`; `Resolution` one of `reused` / `composed` / `extended` / `created` / `deferred`), with `Evidence` holding repo-relative paths inside the owning native module.
 
 Audit it before claiming completion by running the shared script from the `frontend-product-implementation` skill — it reads the handoff and the map and resolves evidence paths under `--repo`, so it is platform-agnostic:
@@ -131,13 +131,15 @@ python3 <frontend-product-implementation-skill-root>/scripts/validate_implementa
 
 **Known gap: `not-applicable` and the shared script.** That script accepts only `implemented`, `existing-verified`, and `deferred`, so a `not-applicable` row comes back as a failing row — `route '<id>' has outcome 'not-applicable'; expected implemented, existing-verified, or deferred` — and the run exits non-zero. The row still counts toward the manifest's route coverage, so it produces that one invalid-outcome message and no separate missing-outcome message. That is a known divergence between the native contract and the shared script, not a defect in the map. Do not edit the script — it belongs to `frontend-product-implementation` and changing it is outside this work — and do not relabel the row as `deferred` to turn the audit green. Instead, in the final report: list every `not-applicable` row the audit flagged, quote the navigation-map cell justifying each one, and record that the other audit conditions were confirmed by hand for those rows. An audit whose only failures are `not-applicable` rows is reported as passed with that known gap named; any other failure in the same run is a real failure and is fixed, not explained away.
 
-When that sibling skill is not installed in this environment, do not skip the check: verify the same conditions by hand — every manifest route id has a terminal outcome (`not-applicable` counts as one here), every `existing-verified` evidence path exists, every `AC-P (assembly)` id is present and not deferred, the consumed `docsDigest` still matches the current manifest, and the `## Component Map` section passes its row checks (five-value `Resolution`, `Evidence` paths resolving inside the native target root, non-empty `Notes` on `created` and `deferred` rows, or `- source: none` with no rows) — and record in the final report that the audit was manual.
+When the sibling is unavailable, perform the manual checks: every manifest route has a terminal outcome (`not-applicable` counts here); existing-surface evidence paths resolve; all `AC-P (assembly)` rows are settled; both available consumed digests match the current manifest; every in-scope Data Adapter Seams row records the seven required fields without upgrading UI/mock authority; and Component Map uses the five resolutions, resolves evidence inside the native root, and supplies notes on created/deferred rows (or `source: none`). Record the audit as manual and name missing/legacy integrity evidence.
+
+At ingestion and before completion, also run reachable source `--verify-manifest` and compare both digests against any republished snapshot per `handoff-ingestion.md`. A passing map audit alone does not inspect carrier bytes or prove semantic correctness. Record changed/added/removed artifacts, affected surfaces/seams/tests, and the owner's scoped re-review and synchronization before consuming a changed snapshot.
 
 ## Final Response Contract
 
 Report:
 
-- handoff docs used, the consumed manifest digest and version (or `unversioned`)
+- handoff docs used, consumed docs/artifact digests and version, source integrity results at ingestion and completion, and incomplete provenance when any check is unavailable
 - target root and mode: greenfield or existing product
 - platform, minimum OS/SDK, UI framework, navigation system, language version, dependency management, state/DI approach
 - architecture decision sources, confidence, unresolved or not-applicable fields, and approved deviations
@@ -145,13 +147,14 @@ Report:
 - existing components reused: reference and summarize the `IMPLEMENTATION_MAP.md` `## Component Map` section as the single source of the prototype-to-native mapping rather than restating an independent list; any discrepancy between response text and map rows resolves in favor of the map
 - new components created only with approval, each with prototype source evidence and its parity result or recorded divergences
 - routes/screens implemented, with their navigation destinations and presentation semantics
-- data contracts implemented as typed DataSources and mocks, with the replacement points and the named integration owner
+- UI models and typed mock DataSources, fixture value usage and schema authority/source, injection sites, and each real integration's status and owner; mock decoding is not proof of an API contract
 - the Acceptance Traceability table: every in-scope acceptance id exactly once with `pass`, `deferred` (with owner), or `not-applicable` (with reason)
 - the mock-mode walkthrough result — or, when it ran degraded, the substitute used, the items it covered, and the uncovered items with their owner
 - the parity sweep result, including any Scope `B` surface left unverified because the prototype or the app could not be run
 - every `not-applicable` route row, with the navigation-map cell behind it and the audit's finding for that row
 - verification commands run, their results, and any command unavailable in this environment
 - open decisions, especially real API/data/auth/persistence ownership and platform capability questions
+- repo skill delivery: actual used skills, dependency/support roles, `docs/SKILL_USAGE.json`, installed relative paths and content hash checks, managed instruction-block verification or the exact outstanding limitation
 
 ## Completion Bar
 
@@ -162,7 +165,7 @@ The implementation is complete only when:
 - the final architecture matches the inherited or confirmed decision record, except for explicitly approved and reported deviations
 - documented routes, transitions, presentation semantics, and UI states are represented
 - the mock-mode flow walkthrough has been run and passes, or a recorded degraded substitute covers the same items and the uncovered ones are listed with a named owner
-- Every in-scope fixture group has a typed DataSource, a mock implementation, and a recorded replacement point. Fixture groups belonging to routes or regions the map scopes `A` on this platform are excluded and recorded as such — they never become DataSource seams, and they never become integration work for the next stage.
+- Every in-scope fixture group has a UI model, typed DataSource, mock implementation, injection site, schema authority/source, and integration status/owner. An open real contract does not prevent otherwise verified Fake-only assembly. Groups belonging only to scope `A` surfaces are excluded and recorded; they do not become new seams or integration work.
 - no real endpoint, auth flow, storage, persistence, or environment secret was introduced
 - no unapproved token, shared component, hardcoded visual value, framework, navigation-system, minimum-version, or dependency migration was introduced
 - `IMPLEMENTATION_MAP.md` exists and its audit passes — or its manual equivalent is recorded, or its only failures are `not-applicable` rows explained per the known gap above

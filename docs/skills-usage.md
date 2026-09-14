@@ -264,7 +264,20 @@ node scripts/install_agent_skills.mjs --agent all --scope user --skill ds-govern
 node scripts/install_agent_skills.mjs --agent all --scope user --skill ds-governance
 ```
 
-若目標已有同名 skill，先比對再以 `--force` 更新。專案安裝使用 `--scope project --project-root <產品 repo>`。安裝器不會自動安裝 companion；選擇 `frontend-product-implementation` 或 `native-product-implementation` 時，將 `ds-governance` 一起放入 `--skill` 清單。
+若目標已有同名 skill，先比對再以 `--force` 更新。專案安裝使用 `--scope project --project-root <產品 repo>`。一般安裝不會自動安裝 companion；選擇 `frontend-product-implementation` 或 `native-product-implementation` 時，將 `ds-governance` 一起放入 `--skill` 清單。以下 opt-in 交付模式會解析已宣告的必要依賴。
+
+將本次真正用過的 skills 與必要支援檔案放進同一個 repo：
+
+```bash
+node scripts/install_agent_skills.mjs --agent all --scope project --project-root <產品 repo> --skill storybook-product-prototype,native-product-implementation --record-usage --dry-run
+node scripts/install_agent_skills.mjs --agent all --scope project --project-root <產品 repo> --skill storybook-product-prototype,native-product-implementation --record-usage
+```
+
+`--record-usage` 只接受 project scope 與明確 `--skill` 名單，不能用 `all`。名單表示呼叫方聲明本次用過的 skills，必要依賴另外列示；native 會帶入 `ds-governance` 與作為 support 的 frontend skill，讓共享規格、token bootstrap reference、`validate_implementation.py` 在新 clone 中都可讀取。support 不代表執行 web 階段，也不會自動安裝 `production-data-integration` 等下一階段接收者。prototype 保留既有 standalone fallback；實際用了選用 companion 時，將它明確加進名單。
+
+交付會累積更新 `docs/SKILL_USAGE.json`，記錄來源 repo、commit、dirty 狀態、source／installed content hash、使用／依賴角色與 repo 相對路徑。不是 Git 來源時 commit 為 `null`、dirty 為 `null`，不把不明狀態寫成乾淨來源。同時維護 `CLAUDE.md` 與 `AGENTS.md` 的 `CM-SKILLS:USAGE` 受管區塊，保留其他 bytes。重跑不重複區塊，相同內容可直接重跑；有差異的既有 skill 仍須檢查後以 `--force` 更新。
+
+參數、必要依賴、目的地、既有 usage JSON、受管標記與不可攜 symlink 會在複製前檢查；失敗或 dry-run 不寫檔。依輸出的 allowlist 將 skills、usage JSON、CLAUDE 與 AGENTS 文件納入版本控制，其他人 clone 後才能共用。被 ignore 的交付路徑會明列，安裝器不改 `.gitignore`，也不自動 stage／commit；本機交付完成不代表已發布。
 
 在三個 agent 都可直接說：「先讀 `<cm-skills path>/ds-governance/SKILL.md`，再依它檢查這次 UI 修改。」請求中指定 checkout 時，以該來源為準；已有舊名 `design-system-governance` 的安裝不會自動被覆寫或刪除。
 

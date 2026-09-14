@@ -32,9 +32,9 @@ export const __FEATURE_CAMEL__Meta = {
     },
     overview: {
       contract:
-        "Data tab documents the local fixtures and future API replacement points for this prototype.",
+        "Fixture values are FAKE. Data Authority in docs/DATA_SPEC.md separately records UI-model and transport confirmation; the Inspector reads that registry directly.",
       owner: "__OWNER__",
-      status: "Draft data contract",
+      status: "Draft UI data requirements; transport authority is unverified until source-confirmed",
     },
     routeDataRequirements: [
       {

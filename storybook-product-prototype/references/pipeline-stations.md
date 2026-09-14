@@ -8,14 +8,14 @@ Use this reference to see where a skill sits in the prototype-to-production chai
 | --- | --- | --- | --- | --- | --- |
 | 1 | Prototype authoring | `storybook-product-prototype` | Product intent, design-system source, existing components | Prototype folder, seven handoff docs, fixtures (`.ts` + `fixtures/*.json`), flow metadata, Storybook stories | `validate_prototype.py`, project typecheck, Storybook build |
 | 2 | Team demo confirmation | The product team (human) | The Storybook story and UI Flow | `Review Status: confirmed` with reviewer, date, and covered scope | **Human gate.** No automation passes this station |
-| 3 | Handoff finalization | `storybook-product-prototype` | Confirmed docs | `docs/HANDOFF_MANIFEST.json`, optional `docs/TOKENS.json` and `docs/flow.json` | `validate_prototype.py --handoff-ready` (placeholder sweep, doc↔code cross-checks, acceptance ids, confirmed Review Status) |
-| 4 | Frontend assembly, mock mode | `frontend-product-implementation` (web) / `native-product-implementation` (iOS, Android) | Manifest, docs, `TOKENS.json`, `fixtures/*.json`, JSON Schemas | Production routes/screens, typed `<Feature>DataSource` + mock, `IMPLEMENTATION_MAP.md` | design-system governance gates, mock-mode flow walkthrough, `validate_implementation.py`, framework-native build/test |
-| 5 | Data integration | `production-data-integration` | Contracts with `Semantics`, Data Adapter Seams, fixtures, JSON Schemas | Real clients/auth/cache/persistence, swapped injection points, contract tests | Contract tests per fixture group, every `AC-P (integration)` criterion settled |
+| 3 | Handoff finalization | `storybook-product-prototype` | Demo-confirmed direction, scoped Semantic Review, classified Data Authority | Version-2 `docs/HANDOFF_MANIFEST.json`, optional `docs/TOKENS.json` and `docs/flow.json` | `--handoff-ready`: review evidence, authority structure, navigation/motion, carrier cross-checks and hashes |
+| 4 | Frontend assembly, mock mode | `frontend-product-implementation` (web) / `native-product-implementation` (iOS, Android) | Manifest digests, docs, `TOKENS.json`, Fake fixtures, classified UI schemas | Production routes/screens, UI models, typed `<Feature>DataSource` + mock, authority-aware `IMPLEMENTATION_MAP.md` | design-system governance gates, mock-mode walkthrough, implementation validation, native build/test, source integrity check |
+| 5 | Data integration | `production-data-integration` | Confirmed transport contracts/sources and semantics, Data Adapter Seams, UI models and Fake examples | Real clients/auth/cache/persistence, DTO-to-UI mappers, swapped injection points, contract tests | Real payload tests against confirmed source contracts, mapper tests, every `AC-P (integration)` criterion settled |
 | 6 | Visual and acceptance QA | `ui-pixel-align-report`, `ui-compare-to-reference` | Running production build, prototype Storybook | Pixel-alignment evidence, applied visual fixes, completed traceability | Every Scope `B` surface compared, acceptance traceability fully resolved |
 
 ## The Platform Fork
 
-The fork sits **after station 3**, not before it. Stations 1–3 are platform-neutral: PRD, flow state machine, acceptance criteria, JSON Schemas, and DTCG tokens describe the product, not a runtime. One handoff, one manifest, one confirmation.
+The fork sits **after station 3**, not before it. Stations 1–3 are platform-neutral: PRD, flow state machine, acceptance criteria, scoped JSON Schemas, and DTCG tokens travel in one handoff and manifest. Demo confirmation, semantic review, and each data/analytics/config contract's confirmation remain independent; see [handoff-authority.md](handoff-authority.md).
 
 From station 4 on, the execution skill differs by target:
 
