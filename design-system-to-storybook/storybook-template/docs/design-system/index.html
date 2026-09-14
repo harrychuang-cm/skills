@@ -13200,7 +13200,7 @@ parameters: {
 <ul><li>Actions</li><li>Assets</li><li>Badges And Labels</li><li>Controls</li><li>Navigation</li><li>Sheets And Overlays</li><li>Market Data</li><li>Events</li><li>Portfolio Analytics</li><li>Portfolio Management</li><li>Broker Import</li></ul>
 <p>When adding a new component, add or update the catalog entry before wiring the story title. Mark entries as <code>extracted</code> only when a reviewed design-system component spec exists; otherwise use <code>implementation-derived</code> and <code>needs-review</code> in the component spec. Run the catalog coverage check before closeout so literal story titles and catalog metadata do not drift.</p>
 <h2 id="doc-storybook-architecture-md-governance-rules">Governance Rules</h2>
-<p>Future work uses <code>$design-system-governance</code> before creating or changing tokens, shared components, composite views, or stories.</p>
+<p>Future work uses <code>$ds-governance</code> before creating or changing tokens, shared components, composite views, or stories.</p>
 <p>Required flow:</p>
 <ol><li>Check the existing component inventory and specs.</li><li>Confirm the needed <code>--cm-comp-*</code> token slots already exist.</li><li>Confirm those component tokens map to <code>--cm-sys-*</code> tokens.</li><li>Confirm system tokens map to <code>--cm-ref-*</code> tokens.</li><li>Build the component only after token mapping is complete.</li><li>Add stories for evidenced states: default, hover, focus-visible, disabled, and composite assembly where applicable.</li></ol>
 <h2 id="doc-storybook-architecture-md-token-contract">Token Contract</h2>

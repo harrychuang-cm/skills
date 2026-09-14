@@ -8,7 +8,7 @@ TBD - created by syncing change 'add-component-reuse-map'. Update Purpose after 
 
 ### Requirement: Pre-implementation component resolution gate
 
-The frontend-product-implementation and native-product-implementation workflows SHALL require a Component Reuse Map to be drafted after design-system-governance Phase 0 discovery and before the first UI source file is written. Every row SHALL either carry a terminal resolution or have raised its governance gate question (the Composition Gate ask for a missing component, the Token Gate ask when the blocker is a missing token) before UI implementation proceeds. At completion, no row SHALL remain unresolved. The SKILL.md First Actions list of each skill SHALL name this step explicitly between governance loading and implementation.
+The frontend-product-implementation and native-product-implementation workflows SHALL require a Component Reuse Map to be drafted after ds-governance Phase 0 discovery and before the first UI source file is written. Every row SHALL either carry a terminal resolution or have raised its governance gate question (the Composition Gate ask for a missing component, the Token Gate ask when the blocker is a missing token) before UI implementation proceeds. At completion, no row SHALL remain unresolved. The SKILL.md First Actions list of each skill SHALL name this step explicitly between governance loading and implementation.
 
 #### Scenario: Unresolved component blocks UI work
 

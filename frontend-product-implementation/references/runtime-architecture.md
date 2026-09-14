@@ -1,6 +1,6 @@
 # Runtime Architecture Resolution
 
-Use this reference before scaffolding, dependency installation, code generation, or production edits. Resolve where the product belongs and how that target runs. This gate is separate from, and does not replace, `$design-system-governance`.
+Use this reference before scaffolding, dependency installation, code generation, or production edits. Resolve where the product belongs and how that target runs. This gate is separate from, and does not replace, `$ds-governance`.
 
 ## Contents
 

@@ -61,9 +61,11 @@ This applies to the navigation, token, and preview APIs named later in this file
 
 ## Design-System Governance Gate
 
+Reuse authorization already recorded for the same token or shared-component scope under `$ds-governance`; the ask steps below apply only to unresolved decisions.
+
 Before any UI implementation:
 
-1. Apply `$design-system-governance` Phase 0 discovery against the native theme sources found above.
+1. Apply `$ds-governance` Phase 0 discovery against the native theme sources found above.
 2. List existing tokens and shared UI components relevant to the handoff.
 3. Draft and resolve the Component Reuse Map per the shared contract (`frontend-product-implementation/references/implementation-workflow.md`, Component Reuse Map): row sources, the five-value resolution vocabulary, and targets-seed verification are identical. Resolve each row against the native component sources Repo Discovery located — attempting composition from existing shared components before creating new ones — and record evidence as repo-relative paths inside the owning native module (a local Swift package, a Gradle module such as `:core:ui`). For `targets` metadata, read the implementing platform's key (`ios` / `android`).
 4. Stop and ask when a required token or shared component is missing: an unresolved row raises the Composition Gate ask — or the Token Gate ask when the blocker is a missing token — before any UI code for the affected surfaces is written. The completed map becomes the `## Component Map` section of `IMPLEMENTATION_MAP.md` (`verification-reporting.md`).

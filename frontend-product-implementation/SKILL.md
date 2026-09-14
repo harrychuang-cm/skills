@@ -1,6 +1,6 @@
 ---
 name: frontend-product-implementation
-description: "Implement framework-agnostic frontend products and production features from PRD, UI Flow, UI Spec, Data Spec, Acceptance, Implementation Guide, and PRODUCTION_HANDOFF docs. Use when building a web or app frontend from 0 to 1, adding a route, screen, interface, or feature to an existing product, translating Storybook prototype handoff docs into production code, creating typed route/component/data-adapter work, or continuing after storybook-product-prototype. Resolve the target root and runtime architecture before greenfield scaffolding, inherit a clear existing stack without re-asking, ask when targets conflict or a migration is implied, and follow framework-native conventions rather than assuming React. Always follow design-system-governance: discover tokens, grid, motion, i18n, and shared components first; reuse existing components; stop for approval before creating missing tokens or shared components. When the target has no token system and the user approves establishing one, follow the token-bootstrap reference to port a minimal token subset from the prototype design-system source."
+description: "Implement framework-agnostic frontend products and production features from PRD, UI Flow, UI Spec, Data Spec, Acceptance, Implementation Guide, and PRODUCTION_HANDOFF docs. Use when building a web or app frontend from 0 to 1, adding a route, screen, interface, or feature to an existing product, translating Storybook prototype handoff docs into production code, creating typed route/component/data-adapter work, or continuing after storybook-product-prototype. Resolve the target root and runtime architecture before greenfield scaffolding, inherit a clear existing stack without re-asking, ask when targets conflict or a migration is implied, and follow framework-native conventions rather than assuming React. Always follow ds-governance: discover tokens, grid, motion, i18n, and shared components first; reuse existing components; resolve scoped authorization before creating missing tokens or shared components. When the target has no token system and the user approves establishing one, follow the token-bootstrap reference to port a minimal token subset from the prototype design-system source."
 ---
 
 # Frontend Product Implementation
@@ -14,7 +14,11 @@ This skill owns frontend implementation only: UI assembly and flow interaction. 
 
 ## Required Companion Skill
 
-Before implementing UI, load and follow `$design-system-governance`.
+Before implementing UI, load and follow `$ds-governance`.
+
+Use the explicitly selected cm-skills checkout when provided; otherwise resolve the companion through the skill catalog or [the sibling source](../ds-governance/SKILL.md). If unavailable, report that `ds-governance` must be installed from cm-skills or its `ds-governance/SKILL.md` supplied, and pause affected UI mutations; independent discovery can continue. Do not silently substitute an older global governance skill.
+
+All governance gates below inherit its scoped authorization rule: reuse existing approval for the same token/component work and ask only for unresolved choices. The Traditional Chinese prompts are examples that can be translated; they are not machine triggers.
 
 Apply its Phase 0 discovery and gates as mandatory:
 
@@ -22,7 +26,7 @@ Apply its Phase 0 discovery and gates as mandatory:
 - If the project has no token system, stop and ask whether to establish one first; if the user approves establishing one, follow `references/token-bootstrap.md`.
 - If a required token is missing, ask: `找不到對應的 design token（sys/comp 層）。是否要先建立這組 token，再繼續元件開發？`
 - If a required shared component is missing, ask: `目前既有元件無法完整組裝此組件。是否要先建立新的共用子元件，再繼續？`
-- Do not add hardcoded visual values, one-off inline child components, or display text outside the project i18n source.
+- Do not add hardcoded visual values, duplicates of shared primitives disguised as inline child components, or display text outside the project i18n source.
 
 ## Reference Loading
 
@@ -53,7 +57,7 @@ Read only the reference needed for the current step:
    - Greenfield: treat explicit scaffold-affecting choices in the current request as confirmation; otherwise ask only for unresolved choices before running a scaffolder, installing dependencies, or generating app code.
    - Existing product with one clear, internally consistent stack: inherit and record it without asking the user to repeat the choice.
    - Multiple roots, conflicting evidence, or a requested re-platform: stop and ask for the unresolved decision or migration approval.
-7. Load and apply `$design-system-governance` before any UI implementation.
+7. Load and apply `$ds-governance` before any UI implementation.
 8. Inspect the selected root's design-system and product patterns before writing code: routes/screens, component library, tokens, i18n, data/API patterns, tests, and Storybook.
 9. Draft the Component Reuse Map before writing any UI code: resolve every in-scope handoff component against the production repo to `reused`, `composed`, `extended`, `created`, or `deferred` per the Component Reuse Map contract in `references/implementation-workflow.md`. A row that cannot be resolved raises the Composition Gate ask (or the Token Gate ask when the blocker is a missing token) before any UI code for the affected surfaces is written, and no non-terminal row may remain at completion.
 10. Build an implementation map that contains the runtime architecture decision record and maps handoff routes/states/data contracts to the selected repo files and components.

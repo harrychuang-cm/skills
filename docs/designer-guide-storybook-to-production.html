@@ -333,7 +333,7 @@
   const footer = `
     <p class="endnote">
       cm-skills · designer guide · 路線 A：storybook-product-prototype → frontend-product-implementation（原生 App 換成 native-product-implementation）→ production-data-integration · 路線 B：元件庫 → frontend-product-implementation → production-data-integration<br>
-      更多旅程與工具：<a href="skills-guide.html">CM Skills 使用指南</a>
+      UI 組裝搭配 <a href="skills-guide.html#/j/govern-ui">ds-governance 設計系統把關</a> · 更多旅程與工具：<a href="skills-guide.html">CM Skills 使用指南</a>
     </p>`;
 
   /* ================================================================ 找路線 */
@@ -371,14 +371,14 @@
       route: "a", badge: "ROUTE A", title: "路線 A：帶著交接文件進產品",
       why: "原型和文件都齊了，這是最順的一條路——交接包就是 AI 的施工圖。",
       steps: ["打開交接文件 PRODUCTION_HANDOFF，確認目標頁面寫對、「真實資料由誰接」那一欄沒有空著", "到產品專案，用下面這句話開工", "AI 盤點後動工，缺什麼會先問你——做出來的畫面是用假資料跑的", "請交接文件裡記名的負責人（或 production-data-integration）把假資料換成真的", "完成後用 ui-compare-to-reference 驗收"],
-      say: "請用 frontend-product-implementation，依原型的 handoff 文件把這個功能實作進產品。",
+      say: "請用 frontend-product-implementation 並遵循 ds-governance，依原型的 handoff 文件把這個功能實作進產品。",
       jump: "#/route-a", jumpText: "看路線 A 完整步驟 →",
     },
     "proto|screen": {
       route: "a", badge: "ROUTE A・輕量", title: "路線 A（輕量版）：小東西也走交接文件",
       why: "既然原型和文件都有了，照走 A 但份量小——AI 只會動需要的那個畫面。",
       steps: ["跟 AI 確認交接文件（handoff）裡這個畫面的範圍，順便看「真實資料由誰接」那一欄沒有空著", "到產品專案，用下面這句話開工——做出來的畫面是用假資料跑的", "請記名的負責人（或 production-data-integration）把假資料換成真的", "完成後用 ui-compare-to-reference 驗收"],
-      say: "請用 frontend-product-implementation，依 handoff 文件實作〇〇這個畫面就好，其他不動。",
+      say: "請用 frontend-product-implementation 並遵循 ds-governance，依 handoff 文件實作〇〇這個畫面就好，其他不動。",
       jump: "#/route-a", jumpText: "看路線 A 完整步驟 →",
     },
     "mockup|feature": {
@@ -392,7 +392,7 @@
       route: "b", badge: "ROUTE B", title: "路線 B：讓 AI 認積木，直接組裝",
       why: "單一畫面、設計稿已定案——不用原型，直接請 AI 盤點畫面上的元件、對應元件庫、拼進產品。",
       steps: ["把設計稿（Figma 連結或截圖）給 AI", "用下面這句話開工", "AI 盤點元件庫後組裝，缺積木會先問你；做出來的畫面是用假資料跑的", "要抓真實資料的話，請記名的負責人（或 production-data-integration）接上去", "完成後用 ui-pixel-align-report 出比對報告"],
-      say: "請用 ui-screenshot-to-storybook-product，用我們的元件庫實作這張設計稿。",
+      say: "請用 ui-screenshot-to-storybook-product 並搭配 ds-governance，用我們的元件庫實作這張設計稿。",
       jump: "#/route-b", jumpText: "看路線 B 完整步驟 →",
     },
     "idea|feature": {
@@ -406,7 +406,7 @@
       route: "b", badge: "ROUTE B", title: "路線 B：直接描述需求，用現成元件做",
       why: "小畫面不需要文件儀式——把需求說清楚（在哪個頁面、做什麼、成功長怎樣），AI 用元件庫現成的積木直接拼。",
       steps: ["想好三件事：哪個頁面、加什麼、成功的樣子", "用下面這句話開工", "AI 先盤點元件庫再動工；做出來的畫面是用假資料跑的", "要抓真實資料的話，請記名的負責人（或 production-data-integration）接上去", "完成後請 AI 截圖給你確認"],
-      say: "請用 frontend-product-implementation，在產品的〇〇頁面加上〇〇功能，元件請用我們 Storybook 裡現成的。",
+      say: "請用 frontend-product-implementation 並遵循 ds-governance，在產品的〇〇頁面加上〇〇功能，元件請用我們 Storybook 裡現成的。",
       jump: "#/route-b", jumpText: "看路線 B 完整步驟 →",
     },
   };
@@ -508,15 +508,15 @@
       you: "請工程師幫你在正式產品的專案裡開好 AI 工具，然後說一句話請它依交接文件實作。",
       ai: "自己搞懂產品用什麼技術、有哪些現成元件和 tokens，優先重用、不重造。產品是網頁或原生 App，換的只是下面那句話裡的技能名字。",
       out: "新功能的頁面／畫面，先用假資料跑起來——看得到、點得動，但還沒接真實資料，所以還不能上線。（老實說一句：原生 App 這條路機制都備齊了，但還沒在真實的 iOS／Android 專案上完整跑過一次，第一次走要多留確認和來回修正的時間。）",
-      say: "請用 frontend-product-implementation，依原型的 handoff 文件把這個功能實作進產品。",
+      say: "請用 frontend-product-implementation 並遵循 ds-governance，依原型的 handoff 文件把這個功能實作進產品。",
       sayLabel: "產品是網頁時",
-      say2: "請用 native-product-implementation，依同一份 handoff 文件把這個功能實作成 iOS／Android 的畫面。",
+      say2: "請用 native-product-implementation 並遵循 ds-governance，依同一份 handoff 文件把這個功能實作成 iOS／Android 的畫面。",
       sayLabel2: "產品是原生 App 時",
     },
     {
       num: "05", title: "核准時刻", gate: true,
-      you: "回答 AI 的關鍵問題：要不要建 tokens？要不要新增共用元件？「紅綠燈」分頁有每一題的模擬對話。",
-      ai: "產品缺什麼就列清單給你看——包含從原型端搬 tokens 的完整計畫——但落地前一定先問。",
+      you: "確認尚未決定的缺口：要不要建 tokens？要不要新增共用元件？同範圍已核准的決策不重問。「紅綠燈」分頁有每一題的模擬對話。",
+      ai: "ds-governance 把缺口與最小方案列給你看，已有相同範圍授權就繼續，只問還沒決定的項目。",
       out: "乾淨的 tokens 與元件，不會出現寫死的顏色數值。",
       say: null,
       sayLabel: null,
@@ -619,21 +619,21 @@
               <div>
                 <h3>到產品專案，說一句話</h3>
                 <p>切換到正式產品的專案，告訴 AI 依交接文件實作。（「切換到產品專案」的意思是：在正式產品的資料夾裡打開同一個 AI 工具。不會操作的話，請工程師幫你開好那個視窗——你一樣只負責貼句子。）它會自動判斷產品用什麼框架；只有在證據衝突時（例如同時存在多套技術）才會停下來問你——就是紅綠燈 GATE 3 的情況。</p>
-                ${say("請用 frontend-product-implementation，依原型的 handoff 文件把這個功能實作進產品。")}
+                ${say("請用 frontend-product-implementation 並遵循 ds-governance，依原型的 handoff 文件把這個功能實作進產品。")}
               </div>
             </li>
             <li class="step">
               <span class="step-num">3</span>
               <div>
                 <h3>AI 先盤點，再動工</h3>
-                <p>動工前 AI 會先掃一遍產品：有哪些 tokens、哪些現成元件、文字放在哪裡管理。原則是「先用現成的」，拼不出來才會問你要不要新增。這一棒<strong style="color:var(--ink)">不接真實資料</strong>：畫面先用假資料跑，同時留好一個可替換的插座，真實 API 留給步驟 5 記名的人接。</p>
+                <p>動工前，實作 skill 會先載入 <b>ds-governance</b>：盤點 tokens、現成元件、排版、動態、文字來源與驗證方式。先重用，再組合；拼不出來就列具體方案，只問尚未授權的新增項目。這一棒<strong style="color:var(--ink)">不接真實資料</strong>：畫面先用假資料跑，同時留好一個可替換的插座，真實 API 留給步驟 5 記名的人接。</p>
               </div>
             </li>
             <li class="step">
               <span class="step-num">4</span>
               <div>
                 <h3>回答核准問題</h3>
-                <p>如果產品缺 tokens 或缺元件，AI 會停下來問你——<a href="#/gates">「紅綠燈」分頁</a>有每一題的模擬對話，可以先看過一遍心裡有底。</p>
+                <p>如果產品缺 tokens 或共用元件且尚未核准新增，AI 會先列方案，暫停受影響的部分——<a href="#/gates">「紅綠燈」分頁</a>有每一題的模擬對話，可以先看過一遍心裡有底。</p>
               </div>
             </li>
             <li class="step">
@@ -654,7 +654,7 @@
             </li>
           </ol>
           <div class="fit"><b>如果產品是原生 App（iOS／Android）：</b>同一份交接文件也能做成原生 App。上面六個步驟、每個要你點頭的地方完全一樣，只有步驟 2 那句話要換一個技能名字——把 frontend-product-implementation 換成 native-product-implementation，AI 就會用 iOS／Android 的做法產出畫面。老實說一句：這條路的機制都備齊了，但還沒有在真實的 iOS／Android 專案上完整跑過一次，第一次走請多留一點確認和來回修正的時間。</div>
-          ${say("請用 native-product-implementation，依同一份 handoff 文件把這個功能實作成 iOS／Android 的畫面。", "產品是原生 App 時，步驟 2 改說這句")}
+          ${say("請用 native-product-implementation 並遵循 ds-governance，依同一份 handoff 文件把這個功能實作成 iOS／Android 的畫面。", "產品是原生 App 時，步驟 2 改說這句")}
         </div>
         <p class="rule"><b>一句話判斷：</b>需要「說服別人或驗證想法」→ 路線 A；只是「把定案的東西做出來」→ 路線 B。中途發現 B 越做越大，隨時可以回頭補原型和文件，兩條路不衝突。</p>
         <div class="next-links">
@@ -686,22 +686,22 @@
               <div>
                 <h3>選對入口</h3>
                 <p>有截圖或設計稿 → 請 AI 先「認積木」：它會盤點畫面上有哪些元件、對應到元件庫的哪些現成件、缺哪些。只有文字需求 → 直接請 AI 實作。</p>
-                ${say("請用 ui-screenshot-to-storybook-product，用我們的元件庫實作這張設計稿。", "有設計稿")}
-                ${say("請用 frontend-product-implementation，在產品的〇〇頁面加上〇〇功能，元件請用我們 Storybook 裡現成的。", "只有需求")}
+                ${say("請用 ui-screenshot-to-storybook-product 並搭配 ds-governance，用我們的元件庫實作這張設計稿。", "有設計稿")}
+                ${say("請用 frontend-product-implementation 並遵循 ds-governance，在產品的〇〇頁面加上〇〇功能，元件請用我們 Storybook 裡現成的。", "只有需求")}
               </div>
             </li>
             <li class="step">
               <span class="step-num">3</span>
               <div>
                 <h3>AI 用現成元件拼裝</h3>
-                <p>和路線 A 一樣，AI 會先盤點元件庫再動工，不會為了一張稿另起爐灶做重複的按鈕。畫面上的顏色間距全部走 tokens，不寫死。如果這個畫面要抓資料，AI 一樣只做到「假資料先跑起來」並留好插座，真實 API 交給記名的<a href="#/glossary">資料串接負責人</a>——這條規則兩條路線都一樣。</p>
+                <p>和路線 A 一樣，搭配 <b>ds-governance</b> 先盤點元件庫再動工，重用既有按鈕與樣式。它是組裝過程的把關配套，不是多一棒交接。畫面上的顏色間距全部走 tokens，不寫死。如果這個畫面要抓資料，AI 一樣只做到「假資料先跑起來」並留好插座，真實 API 交給記名的<a href="#/glossary">資料串接負責人</a>——這條規則兩條路線都一樣。</p>
               </div>
             </li>
             <li class="step">
               <span class="step-num">4</span>
               <div>
                 <h3>回答核准問題，然後驗收</h3>
-                <p>缺 token、缺元件一樣會先問你。完成後請 AI 出一份像素比對報告，以你的設計稿為準。</p>
+                <p>缺 token 或需要擴充共用元件時，沿用已有的同範圍授權，只問未決定的部分。完成後請 AI 出一份像素比對報告，以你的設計稿為準。</p>
                 ${say("請用 ui-pixel-align-report，以這張設計稿為準，產出產品畫面的像素比對報告。")}
               </div>
             </li>
@@ -723,7 +723,9 @@
       <section>
         <span class="eyebrow amber">Approval Gates</span>
         <h2>紅綠燈：AI 什麼時候會停下來等你</h2>
-        <p class="section-intro">不管走哪條路線，遇到下面這幾種情況——三個紅綠燈，加一個版本檢查和一個最壞情況的備案——AI 都會停下來問你，不會自作主張。展開「看模擬對話」，先預覽 AI 會怎麼問、你可以怎麼回——實際遇到時就不會慌。</p>
+        <p class="section-intro">不管走哪條路線，AI 都先確認決策是否已經存在。ds-governance 處理 token 與共用元件的缺口：同範圍已核准就繼續，未決定才列方案請你選；只有受影響的 UI 暫停，其他獨立盤點仍可進行。架構與交接版本則由原本的實作流程處理。下面的模擬對話都是尚未決定時的例子。</p>
+        <p class="rule"><b>先用現成的，也保留原本的樣子：</b>既有二層／三層 tokens 都可沿用，不必換命名、配色或圓角。用現有元件組成頁面的小 helper 可以直接做；只有新增共用能力才需要相應決策。原生 App 用原生 theme、previews 或裝置驗證，不因治理而安裝 Storybook。</p>
+        ${say("用 ds-governance 檢查 ./apps/web 的結帳 UI，參考 ./design-system。只列出重用情況、缺口與建議，不修改檔案。", "想先看看缺什麼，不開工")}
         <div class="gates">
           <div class="gate">
             <span class="g-label">GATE 1</span>
@@ -740,7 +742,7 @@
           <div class="gate">
             <span class="g-label">GATE 2</span>
             <h3>現成元件拼不出這個畫面</h3>
-            <p>AI 會告訴你缺哪塊積木，問你要不要先做一個新的共用元件。你同意後它才建；專案有 Storybook 時會同步補上元件文件（stories），新積木從此進元件庫，下次直接用。</p>
+            <p>AI 會告訴你缺哪塊積木，問你要不要先做一個新的共用元件。這項新增尚未核准時，先取得你的決定；已核准同一個元件就直接沿用。專案有 Storybook 時補上 stories，原生 App 則沿用 previews／測試。</p>
             <details>
               <summary>看模擬對話</summary>
               <div class="dialog">
@@ -803,6 +805,10 @@
         <p class="section-intro">流程中會出現的詞，用設計師的語言翻譯一次。</p>
         <dl class="glossary">
           <div class="term">
+            <dt>ds-governance（設計系統把關）</dt>
+            <dd>本 repo 維護的 UI 配套 skill：先盤點、先重用，只詢問尚未核准的新增 token 或共用元件。可單獨唯讀檢查，也能跟網頁／原生實作一起用。Cursor、Codex、Claude Code 都可直接讀 <a href="../ds-governance/SKILL.md">SKILL.md</a>；使用方式與安裝見<a href="skills-usage.md">文字指南</a>。</dd>
+          </div>
+          <div class="term">
             <dt>PRD（產品需求文件）</dt>
             <dd>把「要做什麼、為誰做、做到什麼程度算成功」寫清楚的一份文件。從想法開始走路線 A 時，AI 會用問答陪你把它生出來，不用自己從空白頁寫。</dd>
           </div>
@@ -844,7 +850,7 @@
           </div>
           <div class="term">
             <dt>ref → sys → comp</dt>
-            <dd>token 的三層命名：ref 是原料（藍色 500），sys 是語意（主色），comp 是元件用途（按鈕底色）。搬運 tokens 時這個層級會被完整保留。</dd>
+            <dd>token 的三層命名：ref 是原料（藍色 500），sys 是語意（主色），comp 是元件用途（按鈕底色）。搬運時保留來源依賴並映射到目標的既有層級；產品原本只有 primitive → semantic 二層也可以，不必為了治理補第三層。</dd>
           </div>
         </dl>
       </section>`;

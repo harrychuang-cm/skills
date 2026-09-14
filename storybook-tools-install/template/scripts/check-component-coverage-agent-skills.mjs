@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 
 const manifestCandidates = [
+  "outputs/storybook-tools/TEMPLATE_MANIFEST.json",
   "outputs/component-coverage/TEMPLATE_MANIFEST.json",
   "TEMPLATE_MANIFEST.json",
 ];
@@ -25,8 +26,9 @@ try {
   process.exit(1);
 }
 
-const installTargets = manifest.installTargets;
-const expectedHashes = manifest.skillContentSha256;
+const coverageManifest = manifest.tools ? manifest.tools["component-coverage"] : manifest;
+const installTargets = coverageManifest?.installTargets;
+const expectedHashes = coverageManifest?.skillContentSha256;
 const issues = [];
 let checkedCopies = 0;
 
@@ -41,7 +43,7 @@ function collectImplementSkillContractIssues(contents, pathLabel) {
   const requiredPhrases = [
     ["component-coverage-implement remains the orchestrator", "This skill remains the orchestrator"],
     ["design-system-to-storybook companion", "$design-system-to-storybook"],
-    ["design-system governance companion", "$design-system-governance"],
+    ["design-system governance companion", "$ds-governance"],
     ["scoped Component pass", "`Component pass` only for the reviewed `extend` and `build-new` items"],
     ["reuse-only bypass", "A **reuse-only** work list"],
     ["reuse-only avoids Component pass", "does not load or execute the `Component pass`"],

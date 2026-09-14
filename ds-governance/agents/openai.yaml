@@ -1,0 +1,4 @@
+interface:
+  display_name: "Design System Governance"
+  short_description: "Apply project design rules across web and native UI"
+  default_prompt: "Use $ds-governance to inspect this target and apply its token, component, motion and localization rules to the requested UI work."

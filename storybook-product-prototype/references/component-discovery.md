@@ -9,7 +9,7 @@ Use this reference after Frame The Product and before writing any doc content, p
 
 ## Delegate First
 
-- If the `design-system-governance` skill is available in the session, run its discovery phase and honor its token and composition gates; this file is the standalone fallback.
+- Resolve `ds-governance` using the loading rule in this skill's SKILL.md. If available, run its discovery phase and honor its token and composition gates, reusing existing scoped authorization; otherwise this file is the standalone fallback.
 - If the input is a screenshot or mockup image, delegate building-block inventory to `ui-screenshot-to-storybook-product` and consume its result as the Component Map source.
 - If the user gives a Figma URL and Figma MCP tools are available, `get_code_connect_map` and `search_design_system` may confirm component-to-code mappings; treat them as optional evidence, not a required step.
 

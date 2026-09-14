@@ -11,23 +11,23 @@
 如果你的工具已經支援 skills，可以直接用 skill 名稱：
 
 ```text
-Use $frontend-product-implementation to implement <feature> from <handoff docs path> into <product repo path>. Follow $design-system-governance.
+Use $frontend-product-implementation to implement <feature> from <handoff docs path> into <product repo path>. Follow $ds-governance.
 ```
 
 如果你的工具不會自動辨識 `$skill-name`，就明確要求它先讀對應的 `SKILL.md`：
 
 ```text
-Read <cm-skills path>/frontend-product-implementation/SKILL.md and follow that workflow to implement <feature> into <product repo path>. Also follow <design-system-governance skill path>/SKILL.md.
+Read <cm-skills path>/frontend-product-implementation/SKILL.md and follow that workflow to implement <feature> into <product repo path>. Also follow <cm-skills path>/ds-governance/SKILL.md.
 ```
 
-`$design-system-governance` 是外部 skill，不在 cm-skills repo 裡，路徑請指向它實際安裝的位置。
+`ds-governance` 由本 repo 的 `ds-governance/SKILL.md` 維護，可直接讀取，也能透過共用安裝器安裝到三個 agent。
 
 通用使用原則：
 
 - Cursor、Claude Code、Codex 都可以使用同一份 skill 文件。
 - skill 的名字只是快捷入口，真正的規格以各資料夾中的 `SKILL.md` 為準。
 - 請求中要提供明確路徑，例如 target repo、design-system docs、Storybook、reference images、prototype docs。
-- 如果是 UI 實作，請同時要求遵循 `$design-system-governance`。
+- 如果是 UI 實作，請同時要求遵循 `$ds-governance`。
 - 如果 AI 找不到 token、元件或資料 contract，應該先停下來確認，而不是直接硬寫。
 
 ## 快速選擇
@@ -41,7 +41,7 @@ Read <cm-skills path>/frontend-product-implementation/SKILL.md and follow that w
 | 根據 handoff 文件實作前端產品功能（web） | `$frontend-product-implementation` | 把 handoff docs 變成產品 repo 裡的 routes、screens、states、fixtures、mock adapters。 |
 | 用同一份 handoff 文件做 iOS / Android 版 | `$native-product-implementation` | `$frontend-product-implementation` 的姊妹 skill：一樣的文件與把關，執行層換成 SwiftUI 與 Jetpack Compose。（機制完備，尚未對真實原生專案實戰過） |
 | 把 mock 資料換成真的 API、auth、cache | `$production-data-integration` | prototype → production 的第三棒：接上真實資料並用 contract test 證明，不動 UI。 |
-| 確保 UI 開發遵循設計系統規則 | `$design-system-governance` | 搭配實作類 skill 使用，先檢查 tokens、元件庫、i18n，缺 token/元件要先問。（外部 skill，不在本 repo） |
+| 確保 UI 開發遵循設計系統規則 | `$ds-governance` | 搭配實作類 skill 使用，先檢查 tokens、元件庫、i18n，缺 token/元件要先問。（本 repo 維護；已授權的同範圍變更不重問） |
 | 把畫面修成跟參考來源一致 | `$ui-compare-to-reference` | 參考來源可以是 Figma、設計圖，或另一個平台的原始碼（網頁 ↔ App 互為標準）。修在 token 或共用元件上，不是修在單一畫面。 |
 | 產出設計落差稽核報告 | `$ui-pixel-align-report` | 兩邊都抽成同一份規格再比對，產出截圖證據、嚴重度、歸屬層級的離線 HTML 報告與 `findings.json`。 |
 | 判斷 Figma 端修改要不要同步回 Storybook | `$figma-sync-back` | 三方比對分辨 Figma 改了／程式碼改了／兩邊都改，產出分流報告；只判斷、不動程式碼。 |
@@ -179,7 +179,7 @@ Use $storybook-product-prototype to create a checkout flow prototype with PRD, U
 - 先檢查交接文件的 Review Status；`pending` 或缺章節就停下來問，與 prototype 端的 validator 形成雙重防護。
 - 判斷是 greenfield 還是 existing product。
 - 掃描 target repo 的 routes、screens、tokens、component library、Storybook、i18n、data pattern。
-- 遵循 `$design-system-governance`。
+- 遵循 `$ds-governance`。
 - 優先重用現有 tokens 和 shared components。
 - 如果缺 token 或 shared component，先問使用者。需要建立 token 時，來源優先序以 `docs/TOKENS.json`（DTCG）為第一位。
 - 建立 typed contracts、fixtures，以及 `<Feature>DataSource` 介面加 `Mock<Feature>DataSource` 實作（每個 fixture group 一個方法）。
@@ -193,7 +193,7 @@ Use $storybook-product-prototype to create a checkout flow prototype with PRD, U
 範例：
 
 ```text
-Use $frontend-product-implementation to implement the checkout flow from ./src/pages/prototypes/checkout-flow-prototype/docs into ./apps/web. Follow $design-system-governance.
+Use $frontend-product-implementation to implement the checkout flow from ./src/pages/prototypes/checkout-flow-prototype/docs into ./apps/web. Follow $ds-governance.
 ```
 
 ### `$native-product-implementation`
@@ -212,7 +212,7 @@ Use $frontend-product-implementation to implement the checkout flow from ./src/p
 會做的事：
 
 - 從 repo 證據判斷原生架構（`.xcodeproj` / `.xcworkspace` / `Package.swift` / `settings.gradle(.kts)` / `AndroidManifest.xml`），繼承既有 app 就不再追問，也不因為一個功能需求就換平台。
-- 遵循 `$design-system-governance`：動 UI 之前先盤點原生 theme/token 與共用元件，能組合就不新建，缺 token 或元件要先問。
+- 遵循 `$ds-governance`：動 UI 之前先盤點原生 theme/token 與共用元件，能組合就不新建，缺 token 或元件要先問。
 - 把 `docs/TOKENS.json` 生成 SwiftUI 的 `Color` / `Font` extension，或 Compose 的 theme object。
 - 把 flow 的 `presentation` / `backBehavior` 對映到 NavigationStack push、`.sheet`、`.fullScreenCover`，或 NavHost 的 navigate 與 `popUpTo`。
 - 交付 `<Feature>DataSource` protocol/interface 加上讀 `fixtures/*.json` 的 Mock 實作。
@@ -223,7 +223,7 @@ Use $frontend-product-implementation to implement the checkout flow from ./src/p
 範例：
 
 ```text
-Use $native-product-implementation to implement the checkout flow from ./src/pages/prototypes/checkout-flow-prototype/docs into ./apps/ios. Follow $design-system-governance.
+Use $native-product-implementation to implement the checkout flow from ./src/pages/prototypes/checkout-flow-prototype/docs into ./apps/ios. Follow $ds-governance.
 ```
 
 ### `$production-data-integration`
@@ -253,42 +253,63 @@ contract test 的要求：每個 fixture group 一組 — 用 JSON Schema 驗真
 Use $production-data-integration to replace the mock adapters for the checkout flow in ./apps/web with real API clients, using the contracts in ./src/pages/prototypes/checkout-flow-prototype/docs.
 ```
 
-### `$design-system-governance`
+### `$ds-governance`
 
-> **外部 skill：** 這個 skill 不在 cm-skills repo 裡，需要另外安裝。`scripts/install_agent_skills.mjs` 只會安裝這個 repo 裡的 skill 資料夾，不包含它。如果你的 agent 認不出 `$design-system-governance`，請改指向它實際安裝的位置（例如 `~/.claude/skills/design-system-governance/SKILL.md`），而不是 cm-skills 底下的路徑。
+由本 repo 的 [`ds-governance/SKILL.md`](../ds-governance/SKILL.md) 維護。核心是可直接讀取的 Markdown，不依賴特定 agent 的提問工具、MCP 或 Storybook。`agents/openai.yaml` 只提供 Codex 顯示資訊。
 
-用途：確保 UI 實作遵循設計系統規則。
+從 cm-skills repo 安裝到三個 agent：
 
-這通常不是單獨使用，而是搭配以下 skill：
+```bash
+node scripts/install_agent_skills.mjs --agent all --scope user --skill ds-governance --dry-run
+node scripts/install_agent_skills.mjs --agent all --scope user --skill ds-governance
+```
 
-- `$design-system-to-storybook`
-- `$ui-screenshot-to-storybook-product`
-- `$storybook-product-prototype`
-- `$frontend-product-implementation`
-- `$native-product-implementation`
+若目標已有同名 skill，先比對再以 `--force` 更新。專案安裝使用 `--scope project --project-root <產品 repo>`。安裝器不會自動安裝 companion；選擇 `frontend-product-implementation` 或 `native-product-implementation` 時，將 `ds-governance` 一起放入 `--skill` 清單。
 
-它會要求先檢查：
+在三個 agent 都可直接說：「先讀 `<cm-skills path>/ds-governance/SKILL.md`，再依它檢查這次 UI 修改。」請求中指定 checkout 時，以該來源為準；已有舊名 `design-system-governance` 的安裝不會自動被覆寫或刪除。
 
-- token naming
-- token layers
-- grid/layout system
-- motion tokens
-- shared components
-- Storybook
-- i18n source
+用途：讓這次 UI 工作遵守目標專案的設計系統。可以單獨做唯讀檢查，也可以搭配實作 skill；它不取代原本的產品實作、資料串接或視覺驗收責任。
 
-重要規則：
+開始時提供：目標 app／package／module 路徑、這次要做或檢查的範圍，以及可用的設計稿、UI spec 或 handoff 路徑。若本次已核准特定 token 或共用元件，帶上這項決策即可，不必重複批准。
 
-- 不要硬寫顏色、spacing、radius、typography。
-- 不要直接做一次性 inline child component。
-- 找不到 token 時要先問。
-- 找不到可組裝的共用元件時要先問。
-- 顯示文字要走 i18n source。
+目前專案中的搭配關係：
 
-範例：
+| 使用者 | 何時使用 ds-governance |
+| --- | --- |
+| `frontend-product-implementation` | 寫 UI 前必須載入，先盤點再組裝。 |
+| `native-product-implementation` | 寫 UI 前必須載入，套用原生 theme、元件與平台驗證慣例。 |
+| `storybook-product-prototype` | 可載入時使用；找不到時保留內建 component-discovery 流程並回報。 |
+| `storybook-tools-install` 的 `component-coverage-implement` | 覆核清單有 extend／build-new 時，與 design-system-to-storybook 一起載入；reuse-only 清單保持組裝範圍。 |
+| `design-system-to-storybook` 產出的專案模板 | 架構文件指示後續 UI 工作遵循 ds-governance。 |
+
+其他 UI 工作也能由你主動指定搭配；這不代表每個 skill 都會自動載入它。
+
+執行順序：
+
+1. 盤點實際 tokens／theme、共用元件、排版與字級、動態、localization，以及可用的 stories、previews 或測試。每項記錄來源檔案；既有盤點仍有效就沿用。
+2. 對照這次需求：先重用，再組合。feature-local 排版與 helper 可以保留，不可藉此複製共用 primitive。
+3. 缺 token 或需要新增／擴充共用元件時，列出證據與最小方案。已有相同範圍授權就繼續；未決定的部分才詢問，受影響的 UI 暫停，其他獨立盤點仍可進行。
+4. 依原有實作流程完成，再回報重用項目、核准的新增項目、驗證結果與尚未驗證的範圍。紀錄放進既有 implementation map 或工作報告。
+
+適用範圍與限制：
+
+- 沿用既有二層／三層 tokens、命名與品牌風格；不強制飽和色、圓角、大字或裝飾動畫。
+- Web 用現有元件與驗證方式；SwiftUI／Compose 用原生 theme、previews、測試或裝置驗證。不因治理而額外安裝 Storybook。
+- 顯示文字沿用既有 localization；沒有時先確認是否建立，並記錄已授權的例外或延期範圍。
+- 唯讀 review 只列發現與建議，不改檔案。只有 source review／build 證據時，不宣稱已通過互動或視覺驗收。
+
+可以直接複製的提示：
 
 ```text
-Use $frontend-product-implementation and follow $design-system-governance. If required tokens or shared components are missing, stop and ask before creating them.
+用 $ds-governance 檢查 ./apps/web 的結帳 UI 是否沿用既有 tokens、共用元件、動態和多語系。這次只列出問題與建議，不修改檔案。
+```
+
+```text
+用 $frontend-product-implementation，依 ./prototype/docs 把結帳流程做進 ./apps/web，並遵循 $ds-governance。先重用現有 tokens 和元件；同範圍已核准的項目沿用決策，只詢問未決定的新增項目。
+```
+
+```text
+用 $native-product-implementation，依 ./prototype/docs 把結帳流程做進 ./apps/ios，並遵循 $ds-governance。保留現有 theme 層級與原生元件，依專案已有工具驗證；缺少的驗證能力請明確列出。
 ```
 
 ### `$ui-compare-to-reference`
@@ -527,7 +548,7 @@ $design-system-extractor
 適合：產品 repo 已經存在，只是要新增一個頁面或功能。
 
 ```text
-$frontend-product-implementation + $design-system-governance
+$frontend-product-implementation + $ds-governance
 -> $production-data-integration
 -> $ui-compare-to-reference
 ```
@@ -587,13 +608,19 @@ $agent-automation-orchestrate
 | `$ui-pixel-align-report` | `$ui-compare-to-reference` | 先產出差異報告，再修正畫面。 |
 | `$figma-sync-back` | `$ui-compare-to-reference` | 分流報告裡的視覺差異，交給它以 Figma 節點為標準修正。 |
 | `$figma-sync-back` | `$design-system-extractor` | 分流報告裡的 token 差異，走 Late-Arriving Authoritative Source Pass 裁決。 |
-| `$design-system-governance` | 所有 UI 實作類 skill | 確保 token-first、component-first，不亂硬寫 UI。 |
+| `$ds-governance` | Frontend／Native 實作；其他 UI 工作可指定搭配 | 實作前盤點並重用，僅詢問未授權缺口；詳細必要／條件式關係見上方專節。 |
 | `$agent-automation-orchestrate` | 契約中指定的配套 skill | runner 保持通用，專案自己的指示和驗證寫在 task 契約裡。 |
 | `$design-automation-hub-install` | `$agent-automation-orchestrate` | 在既有契約上加 `figma-cleanup` task，不用再裝第二套 runner。 |
 
 ## 給 AI coding agent 的請求模板
 
 這些模板可以直接用在 Cursor、Claude Code、Codex 或其他 AI coding agent。若該工具不支援 `$skill-name` 觸發，請把句子改成「先閱讀 `<skill folder>/SKILL.md`，再依照該 workflow 執行」。
+
+### 檢查這次 UI 是否遵守設計系統
+
+```text
+用 $ds-governance 檢查 <目標 app/package 路徑> 的 <畫面或變更範圍>，參考 <設計規範路徑>。這次只做 review，列出重用情況、缺口與建議，不修改檔案。
+```
 
 ### 建立設計系統
 
@@ -616,13 +643,13 @@ Use $storybook-product-prototype to create a prototype for <feature name>. Inclu
 ### 實作到產品 repo
 
 ```text
-Use $frontend-product-implementation to implement <feature name> from <handoff docs path> into <product repo path>. Follow $design-system-governance. Real API integration is out of scope; use typed contracts, fixtures, and mock adapters.
+Use $frontend-product-implementation to implement <feature name> from <handoff docs path> into <product repo path>. Follow $ds-governance. Real API integration is out of scope; use typed contracts, fixtures, and mock adapters.
 ```
 
 ### 實作到原生 App
 
 ```text
-Use $native-product-implementation to implement <feature name> from <handoff docs path> into <iOS or Android app path>. Follow $design-system-governance. Real data wiring is out of scope; deliver typed DataSource interfaces with mock implementations reading fixtures/*.json.
+Use $native-product-implementation to implement <feature name> from <handoff docs path> into <iOS or Android app path>. Follow $ds-governance. Real data wiring is out of scope; deliver typed DataSource interfaces with mock implementations reading fixtures/*.json.
 ```
 
 ### 把 mock 換成真實資料
@@ -663,7 +690,7 @@ Use $agent-automation-orchestrate to run the <task id> task in <repo path>, with
 
 ## 重要原則
 
-- 如果是 UI 實作，優先使用 `$design-system-governance`。
+- 如果是 UI 實作，優先使用 `$ds-governance`。
 - 如果沒有 design system，先不要直接做產品畫面，先決定是否要建立設計系統。
 - 如果缺 token 或 shared component，要先問使用者。
 - 前端和原生的組裝永遠不接真實資料：只交付 typed DataSource 介面加 mock 實作，真實 API、auth、cache 由 handoff 文件裡記名的第三棒（`$production-data-integration`，或指定的團隊/系統）承接。

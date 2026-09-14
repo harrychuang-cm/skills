@@ -60,7 +60,7 @@ Ask only for answers that would change the route model, data contract, or accept
 
 Read `references/component-discovery.md`, then:
 
-- When the `design-system-governance` skill is available, run its discovery phase and honor its token and composition gates.
+- Resolve `ds-governance` from the explicitly selected cm-skills checkout, the skill catalog, or [the sibling source](../ds-governance/SKILL.md). When available, run its discovery phase and honor its token and composition gates, reusing prior authorization for the same scope. If unavailable, use `references/component-discovery.md` as the existing standalone fallback and record that the companion was unavailable.
 - Work down the discovery tiers (design-system-to-storybook artifacts, Storybook index/stories, source exports), optionally via `scripts/inventory_components.py <repo-root>`.
 - Capture story ids and titles for discovered components when they are derivable (Story Id Resolution in `references/component-discovery.md`); step 6 reuses them as `meta.components` story links.
 - Always run the token scan and record the actual token prefix in use.

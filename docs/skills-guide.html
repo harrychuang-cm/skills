@@ -426,6 +426,7 @@
 
       .note-item { color: var(--text-2); font-size: 15px; line-height: 1.8; }
       .note-item strong { color: var(--text); font-weight: 640; }
+      .note-item a { color: var(--accent-bright); text-decoration: underline; text-underline-offset: 3px; }
 
       .related { display: flex; flex-wrap: wrap; gap: 9px; }
 
@@ -850,6 +851,35 @@
           related: ["fix-drift", "one-screen"],
         },
         {
+          id: "govern-ui",
+          group: "fix",
+          isNew: true,
+          say: "我想讓這次 UI 修改遵守專案的設計規則",
+          then: "先盤點，再重用；新增共用能力只問還沒決定的部分",
+          goal: "用 $ds-governance 把關這次 UI 工作，保留產品原本的風格與技術。它是實作流程的配套，也能單獨做唯讀檢查。",
+          stages: [
+            { name: "盤點", desc: "找出目標 app 的 tokens、元件、動態、多語系與驗證方式，記下來源", who: "$ds-governance" },
+            { name: "對照", desc: "先重用、再組合；缺少能力就列方案，同範圍已核准的決策直接沿用", who: "$ds-governance" },
+            { name: "實作", desc: "按原本的產品流程完成；只要求檢查時，這一步不改檔案", who: "$frontend-product-implementation 或 $native-product-implementation" },
+            { name: "驗證", desc: "回報實際跑過的檢查與未驗證範圍，視覺差異另用既有比對工具處理", who: "原有驗證流程" },
+          ],
+          give: ["目標 app／package 路徑", "要做或檢查的畫面與變更範圍", "可用的設計規範、handoff 與已核准決策"],
+          get: ["附來源的 tokens 與元件重用紀錄", "缺口、具體方案與決策", "已驗證結果及尚未驗證的範圍"],
+          prompts: [
+            { label: "先做唯讀檢查", text: "用 $ds-governance 檢查 ./apps/web 的結帳 UI，參考 ./design-system。列出重用情況、缺口與建議，這次不修改檔案。" },
+            { label: "搭配網頁實作", text: "用 $frontend-product-implementation，依 ./prototype/docs 把結帳流程做進 ./apps/web，並遵循 $ds-governance。同範圍已核准的項目沿用決策，只詢問未決定的新增項目。" },
+            { label: "搭配原生 App", text: "用 $native-product-implementation，依 ./prototype/docs 把結帳流程做進 ./apps/ios，並遵循 $ds-governance。沿用既有 theme 與原生元件，列出可執行的驗證與能力缺口。" },
+            { label: "AI 不認得名稱時", text: "先讀取 <cm-skills 路徑>/ds-governance/SKILL.md，再依它檢查這次 UI 工作。" },
+          ],
+          notes: [
+            "來源是本 repo 的 <a href='../ds-governance/SKILL.md'>ds-governance/SKILL.md</a>。Cursor、Codex、Claude Code 都可直接讀取；安裝方式見 <a href='skills-usage.md'>文字指南</a>。",
+            "網頁與原生實作都必須載入；原型流程可在找不到時用內建盤點 fallback。元件覆蓋實作只有 extend／build-new 工作才需要載入這組 companion。",
+            "保留既有二層或三層 tokens，不強制品牌風格，也不要求額外安裝 Storybook。只用現成元件組成 feature-local helper，不等於新增共用元件。",
+            "它不接真實 API，也不代表已通過視覺驗收。缺少工具時，會把未驗證的範圍說清楚。",
+          ],
+          related: ["from-legacy", "idea-to-proto", "fix-drift"],
+        },
+        {
           id: "from-legacy",
           group: "build",
           say: "我有既有產品，想把設計整理成系統",
@@ -859,18 +889,18 @@
             { name: "反推", desc: "讀既有專案的樣式與元件，整理出實際在用的規則", who: "$design-system-extractor" },
             { name: "審查", desc: "找出重複、衝突、近似但不同的值，決定要留哪一個", who: "你自己看" },
             { name: "收斂", desc: "把確定的規則寫成 token 與共用元件", who: "$design-system-to-storybook" },
-            { name: "把關", desc: "之後每次改 UI 都先檢查 token 與元件，不讓樣式再散開", who: "$design-system-governance" },
+            { name: "把關", desc: "之後每次改 UI 都先檢查 token 與元件，不讓樣式再散開", who: "$ds-governance" },
           ],
           give: ["既有專案的資料夾路徑"],
           get: ["目前實際在用的設計規則文件", "收斂後的 token 檔", "後續開發的把關規則"],
           prompts: [
             { text: "用 $design-system-extractor 從 ./apps/web 反推出目前實際在用的設計規則。" },
             { label: "反推完、你審查過之後", text: "用 $design-system-to-storybook，設計系統在 ./design-system，產品專案在 ./apps/web。" },
-            { label: "之後改 UI 時的把關", text: "之後每次改 UI，都搭配 $design-system-governance：動手前先檢查 token 與共用元件。" },
+            { label: "之後改 UI 時的把關", text: "之後每次改 UI，都搭配 $ds-governance：動手前先檢查 token 與共用元件。" },
           ],
           notes: [
             "反推出來的是「實際的樣子」，不是「理想的樣子」。同一個灰色出現六種值的時候，留哪一個是設計決策，收斂前先過你這關。",
-            "$design-system-governance 不在這個 repo 裡，需要另外安裝 — 不確定裝了沒，直接問 AI。",
+            "$ds-governance 由這個 repo 維護，可用共用安裝器安裝，或直接請 AI 讀 ds-governance/SKILL.md。",
           ],
           related: ["from-design", "fix-drift"],
         },
@@ -1217,14 +1247,13 @@
           journey: "from-design",
         },
         {
-          tag: "$design-system-governance",
+          tag: "$ds-governance",
           group: "建立設計系統",
           when: "我想確保之後每次改 UI 都不會又散掉",
-          give: "不用給什麼，搭配其他 UI skill 一起用",
-          get: "動手前先檢查 token 與元件的把關流程",
-          note: "缺 token 或元件時它會停下來問你，而不是自己硬寫一個。這個 skill 不在本 repo，需另外安裝 — 不確定裝了沒，直接問 AI。",
-          external: true,
-          journey: "from-legacy",
+          give: "目標 app／package 路徑、變更範圍、設計規範與已有決策",
+          get: "附來源的重用紀錄、缺口方案、核准決策與驗證結果",
+          note: "本 repo 維護，Cursor／Codex／Claude Code 都能用。支援唯讀 review 與 Web／原生實作，保留既有風格和 token 層級；同範圍授權不重問。",
+          journey: "govern-ui",
         },
         {
           tag: "$ui-screenshot-to-storybook-product",
@@ -1356,6 +1385,15 @@
           items: [
             "用 $design-system-extractor 從 ./reference 的截圖萃取一份設計系統。",
             "用 $design-system-to-storybook，設計系統在 ./design-system，產品專案在 ./apps/web。",
+          ],
+        },
+        {
+          title: "設計系統把關",
+          items: [
+            "用 $ds-governance 檢查 ./apps/web 的結帳 UI，參考 ./design-system。只列出重用情況、缺口與建議，不修改檔案。",
+            "用 $frontend-product-implementation，依 ./prototype/docs 把結帳流程做進 ./apps/web，並遵循 $ds-governance。同範圍已核准的項目沿用決策。",
+            "用 $native-product-implementation，依 ./prototype/docs 把結帳流程做進 ./apps/ios，並遵循 $ds-governance。沿用原生 theme、元件與驗證方式。",
+            "先讀取 <cm-skills 路徑>/ds-governance/SKILL.md，再依它檢查這次 UI 工作。",
           ],
         },
         {

@@ -28,6 +28,19 @@ Use this when a project needs a portable multi-agent automation contract, when a
 
 One-page navigation guide (zh-TW): `agent-automation-orchestrate/README.md`.
 
+### `ds-governance`
+
+Apply the target project's design-system rules before UI changes: discover tokens/themes, shared components, layout, motion, localization and verification surfaces. Preserve existing layers and platform conventions; reuse scoped approval and ask only for unresolved token or shared-component changes. Visual style comes from the product's design evidence.
+
+The maintained source is [`ds-governance/SKILL.md`](ds-governance/SKILL.md). Cursor, Codex and Claude Code can read this file directly. To install the same source for all three agents, run from this repository:
+
+```bash
+node scripts/install_agent_skills.mjs --agent all --scope user --skill ds-governance --dry-run
+node scripts/install_agent_skills.mjs --agent all --scope user --skill ds-governance
+```
+
+For an existing installation, inspect the diff before adding `--force`. For project scope, use `--scope project --project-root <product-repo>`. The installer copies only selected skills; include `ds-governance` when selecting an implementation skill that requires it. It does not resolve companion dependencies automatically.
+
 ### `design-system-extractor`
 
 Extract a reusable design-system package from screenshots, Figma references, exports, existing app folders, or prototype code:
@@ -146,7 +159,7 @@ Implement frontend products and features from handoff docs:
 
 1. Read PRD, Flow Spec, UI Spec, Data Spec, Production Handoff, Acceptance, and Implementation Guide docs, checking the Review Status gate first — a `pending` status or a missing section stops the work with a question, doubling up with the prototype-side validator.
 2. Inspect the target repo to detect routes/screens, design tokens, shared components, Storybook, i18n, data patterns, and tests.
-3. Follow `design-system-governance` (an external skill — see Notes): reuse tokens/components first, and stop for approval before creating missing tokens or shared components.
+3. Follow the repository's `ds-governance`: reuse tokens/components first, carry forward scoped authorization, and resolve missing-token or shared-component decisions before affected changes.
 4. Build greenfield products or add features to existing products behind mock data adapters — a `<Feature>DataSource` interface with a `Mock<Feature>DataSource` implementation, one method per fixture group.
 5. Accept in mock mode at the flow level: the primary journey and every branch state must run in the product environment on mock adapters, with every transition interactively reachable, before the work counts as done.
 6. Write `IMPLEMENTATION_MAP.md` with its four fixed sections (Consumed Manifest, Route Outcomes, Acceptance Traceability, Data Adapter Seams) and audit it with `scripts/validate_implementation.py` — route outcome coverage, evidence paths that actually exist, resolved AC-P `(assembly)` entries, and consumed manifest hashes that have not drifted.
@@ -421,6 +434,10 @@ The generated report is a static HTML + CSS artifact, usually under `reports/des
 │   ├── SKILL.md
 │   ├── references/
 │   └── template/
+├── ds-governance/
+│   ├── SKILL.md
+│   ├── principles.md
+│   └── agents/openai.yaml
 ├── design-system-extractor/
 │   ├── SKILL.md
 │   ├── agents/
@@ -504,4 +521,4 @@ The generated report is a static HTML + CSS artifact, usually under `reports/des
 - Keep skills generic unless a project-specific assumption is explicitly required.
 - Prefer token-backed and component-first guidance for UI workflows.
 - Update this README when adding or renaming skills.
-- `design-system-governance` is referenced by the UI implementation skills and by the docs, but it does not live in this repository. Install it separately; `scripts/install_agent_skills.mjs` only installs the skill folders listed above. When an agent does not recognize `$design-system-governance`, point it at that skill's own installed path rather than a path under this repo.
+- `ds-governance` is maintained in this repository and installed by `scripts/install_agent_skills.mjs`. When an agent does not recognize the name, point it at `<cm-skills checkout>/ds-governance/SKILL.md`. Previously installed `design-system-governance` copies are not updated or removed automatically; select the new name to use this repository's version.

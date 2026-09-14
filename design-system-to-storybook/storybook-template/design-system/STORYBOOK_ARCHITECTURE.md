@@ -64,7 +64,7 @@ When adding a new component, add or update the catalog entry before wiring the s
 
 ## Governance Rules
 
-Future work uses `$design-system-governance` before creating or changing tokens, shared components, composite views, or stories.
+Future work uses `$ds-governance` before creating or changing tokens, shared components, composite views, or stories.
 
 Required flow:
 

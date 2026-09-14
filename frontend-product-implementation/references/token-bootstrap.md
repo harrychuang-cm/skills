@@ -1,6 +1,6 @@
 # Token Bootstrap
 
-Use this reference when `$design-system-governance` Phase 0 discovery finds no design token system in the selected production target root and the user has approved establishing one. Do not use it when the target root already has a token system — the standard governance flow applies unchanged.
+Use this reference when `$ds-governance` Phase 0 discovery finds no design token system in the selected production target root and the user has approved establishing one. Do not use it when the target root already has a token system — the standard governance flow applies unchanged.
 
 This reference covers the token layer only. A missing component library is handled by the existing shared-component approval gate, not by this document.
 
@@ -33,7 +33,7 @@ Rules:
 Port the smallest token set the in-scope work actually needs, not the full prototype catalog.
 
 1. List the tokens referenced by the in-scope handoff documents (`UI_SPEC.md`, `PRODUCTION_HANDOFF.md`) and by the prototype components being implemented.
-2. Preserve the ref → sys → comp layering defined by `$design-system-governance` Token Layer Rules; keep layer prefixes and naming structure intact.
+2. Preserve the source token dependency graph under `$ds-governance` Token Layer Rules; keep source layer names traceable while mapping to the target's actual theme layers. Do not add a component layer solely because an existing two-layer target lacks one.
 3. Compute the dependency closure: every ported comp or sys token must resolve to a ported ref token.
 4. Exclude ref tokens that no token in the subset depends on; record them as deferred rather than porting them.
 5. List excluded token groups in the implementation notes so a later feature can extend the subset instead of re-deriving it.
@@ -70,7 +70,7 @@ Rules:
 Use this procedure only when no prototype token source exists.
 
 1. Inventory visual values (color, spacing, radius, typography, motion) from the handoff `UI_SPEC.md` and from the prototype's style files.
-2. Normalize the inventoried values into ref → sys layers with names that follow `$design-system-governance` Token Layer Rules.
+2. Normalize the inventoried values into ref → sys layers with names that follow `$ds-governance` Token Layer Rules.
 3. Present the proposed candidate token set to the user, grouped by layer, with the evidence each value came from.
 4. Stop and wait for user approval before creating any token file or component code.
 5. Do not bypass the stop by hardcoding visual values into product components; the fallback exists to create tokens, not to excuse their absence.

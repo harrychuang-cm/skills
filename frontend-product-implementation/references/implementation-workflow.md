@@ -59,9 +59,11 @@ Do not start with a React/Vite scaffold, or any other template, merely because i
 
 ## Design-System Governance Gate
 
+Reuse authorization already recorded for the same token or shared-component scope under `$ds-governance`; the ask steps below apply only to unresolved decisions.
+
 Before any UI implementation:
 
-1. Apply `$design-system-governance` Phase 0 discovery.
+1. Apply `$ds-governance` Phase 0 discovery.
 2. List existing tokens and shared components relevant to the handoff.
 3. Draft the Component Reuse Map (below) and resolve every row, attempting composition from existing shared components first.
 4. Stop and ask if a required token or shared component is missing: an unresolved row raises the Composition Gate ask — or the Token Gate ask when the blocker is a missing token — before any UI code for the affected surfaces is written.

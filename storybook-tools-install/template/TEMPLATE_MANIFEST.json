@@ -1,6 +1,6 @@
 {
   "name": "storybook-tools",
-  "version": "0.10.1",
+  "version": "0.10.2",
   "description": "Storybook Tools suite — template manifest. The installer copies this file to outputs/storybook-tools/TEMPLATE_MANIFEST.json in the target project (adding an installedTools array recording which tools were installed) so update runs can compare versions. Legacy 0.9.x single-tool installations keep their copy at outputs/component-coverage/TEMPLATE_MANIFEST.json until upgraded.",
   "manifestCopyPath": "outputs/storybook-tools/TEMPLATE_MANIFEST.json",
   "legacyManifestCopyPaths": [
@@ -62,7 +62,7 @@
       },
       "skillContentSha256": {
         "skills/component-coverage-analyze/SKILL.md": "7ab007e10e354d8544fd266e575de46734acc7ee577cb34b7b2616d23d74a210",
-        "skills/component-coverage-implement/SKILL.md": "c9eeafa33ee777049fb296e1be90e22f295725e1b456ee5ee941d72433b4b71c"
+        "skills/component-coverage-implement/SKILL.md": "97ff826ddc2131f0d601dad87b9ef105323a30049ef95f079626c231d2556a46"
       },
       "checks": [
         "scripts/check-component-coverage-reports.mjs",
