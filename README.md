@@ -277,6 +277,27 @@ Invocation examples (append your topic or source material):
 
 You can also ask the agent to use `executive-presentation` by name. If a running session does not discover the newly installed skill, start a new session or reference its `SKILL.md` directly.
 
+### `platform-parity-handoff`
+
+Hand a feature from the lead platform to the follower platform with evidence instead of narrative: after the lead slice (for example iOS) merges to its integration branch, `export` derives a nine-chapter handoff pack from the merged diff and source — freeze point, change inventory, screen-by-state matrix, visual values with file and symbol, string ids with locale status, behavior contract split into "current lead behavior" and "intended behavior", API / remote-config / event keys, shared-component impact, and declared platform differences — plus a media index (SHA-256; media stays local) and machine-generated inventories. `audit` then runs on the follower side before implementation (map every item to a component, flag manual decisions, scan pre-existing screen differences) and after it (classify each item as 一致 / 差異 / 允許差異 / 未驗 / 待決 with evidence), ending with one write-back list for the project's requirement system.
+
+Project-specific paths and patterns (string accessor, generated strings file, locale folders, mapping id fields, remote-config and event patterns) live in a JSON project profile; [`platform-parity-handoff/assets/profile.example.json`](platform-parity-handoff/assets/profile.example.json) carries the ToastEnglish values that the prototype was back-tested with, and [`platform-parity-handoff/references/project-profile.md`](platform-parity-handoff/references/project-profile.md) explains how to derive each value from source. The five scripts in `platform-parity-handoff/scripts/` are read-only (git history and working trees only, no network, no builds, `--out` refused inside any input repo). Visual comparison is delegated to `ui-pixel-align-report` / `ui-compare-to-reference` when they are installed and falls back to manual comparison otherwise. The ToastEnglish workspace keeps its own bound copy (`toastenglish-platform-parity-handoff`); this folder is the reusable source.
+
+Install only this skill for all three agents, from the repository root:
+
+```sh
+node scripts/install_agent_skills.mjs --agent all --scope user --skill platform-parity-handoff --dry-run
+node scripts/install_agent_skills.mjs --agent all --scope user --skill platform-parity-handoff
+```
+
+Invocation examples (run from the workspace that contains both platform repos, with a project profile in hand):
+
+| Agent | Prompt |
+|---|---|
+| Codex | `使用 $platform-parity-handoff，profile 在 docs/handoff/parity-profile.json，對 <feature> 在 develop 的合併提交 <sha> 執行 export，輸出到 docs/features/<feature>/handoff/` |
+| Claude Code | `/platform-parity-handoff profile 在 docs/handoff/parity-profile.json，對既有交接包 docs/features/<feature>/handoff/<date>/ 在 Android 端做 audit pre（實作前定位）` |
+| Cursor | `/platform-parity-handoff 對 docs/features/<feature>/handoff/<date>/ 做 audit post，對凍結 SHA 逐項判定並列出一次回寫清單` |
+
 ## Usage
 
 Install or reference these folders as agent skills in Claude Code, Codex, or Cursor. Each skill lives in its own directory and exposes a `SKILL.md` with frontmatter metadata and workflow instructions.
@@ -436,6 +457,15 @@ The generated report is a static HTML + CSS artifact, usually under `reports/des
 │   ├── SKILL.md
 │   └── agents/
 │       └── openai.yaml
+├── platform-parity-handoff/
+│   ├── SKILL.md
+│   ├── agents/
+│   │   └── openai.yaml
+│   ├── assets/
+│   │   └── profile.example.json
+│   ├── references/
+│   ├── scripts/
+│   └── templates/
 ├── agent-automation-orchestrate/
 │   ├── SKILL.md
 │   ├── agents/

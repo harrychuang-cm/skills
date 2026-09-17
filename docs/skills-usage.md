@@ -44,6 +44,7 @@ Read <cm-skills path>/frontend-product-implementation/SKILL.md and follow that w
 | 確保 UI 開發遵循設計系統規則 | `$ds-governance` | 搭配實作類 skill 使用，先檢查 tokens、元件庫、i18n，缺 token/元件要先問。（本 repo 維護；已授權的同範圍變更不重問） |
 | 把畫面修成跟參考來源一致 | `$ui-compare-to-reference` | 參考來源可以是 Figma、設計圖，或另一個平台的原始碼（網頁 ↔ App 互為標準）。修在 token 或共用元件上，不是修在單一畫面。 |
 | 產出設計落差稽核報告 | `$ui-pixel-align-report` | 兩邊都抽成同一份規格再比對，產出截圖證據、嚴重度、歸屬層級的離線 HTML 報告與 `findings.json`。 |
+| 一個平台做完了，把功能交接給另一個平台並對齊 | `$platform-parity-handoff` | 先端合入整合分支後，從合併 diff 與原始碼產出九章交接包；次端實作前定位、實作後逐項對齊，只讀不改。 |
 | 判斷 Figma 端修改要不要同步回 Storybook | `$figma-sync-back` | 三方比對分辨 Figma 改了／程式碼改了／兩邊都改，產出分流報告；只判斷、不動程式碼。 |
 | 把重複性流程變成自動化 | `$agent-automation-orchestrate` | 自動化的起始點：建立專案契約，之後用它執行、續跑、查狀態。 |
 | 在 Storybook 專案安裝通用工具頁（覆蓋率、元件時間軸） | `$storybook-tools-install` | 帶入「UI 圖片/PRD → 覆蓋率報告 → 審查 → 實作」工具、Component Timeline 頁面和配套 skills。 |
@@ -378,6 +379,39 @@ Use $ui-pixel-align-report on https://www.figma.com/design/...?node-id=1-234 and
 Use $ui-pixel-align-report on reference/dashboard.png and Dashboard.stories.tsx.
 ```
 
+### `$platform-parity-handoff`
+
+用途：一個平台（先端，例如 iOS）的功能合入整合分支後，從合併 diff 和原始碼產出交接包給另一個平台（次端，例如 Android）；再在次端用一份對齊報告把所有差異收斂。
+
+適合情境：
+
+- 先端功能已經合入整合分支，次端要做成一樣的。
+- 之前用敘述式文件交接，結果次端做出來和先端對不上、來回修很多輪。
+- 需要一份跨平台對齊報告，逐項附證據。
+
+不適合：共用契約規則、功能規劃、只做單一平台的工作。
+
+兩種模式：
+
+- `export`：在先端合入整合分支後執行，輸入是該功能的合併 diff（first-parent）。產出 `00-manifest.md`（九章：凍結點、變更清單、畫面 × 狀態矩陣、視覺數值、字串 id、行為契約、API／remote config／事件 key、共用元件影響、允許的平台差異，每章標明來源是 diff、原始碼還是人工）、媒體索引與 `inventory/` 清單。
+- `audit`：在次端執行。實作前定位把每一項對到次端落點並整理待決清單；實作後對齊對凍結 SHA 逐項判定 `一致`／`差異`／`允許差異`／`未驗`／`待決`，每列附證據，結尾是一次回寫清單。
+
+會做的事：
+
+- 讀專案的 JSON profile（字串存取方式、資源目錄、mapping 欄位、事件與 remote config 的搜尋樣式），值要從原始碼確認；沒有 profile 時腳本退回範例值，只適合試跑。
+- 執行五支唯讀腳本列清單；腳本只讀 git 歷史與工作樹，不連網、不建置，`--out` 不能落在任何輸入 repo 內。
+- 視覺比對交給 `$ui-pixel-align-report`（報告）和 `$ui-compare-to-reference`（修復）；兩者不在時改人工截圖對照並在報告寫明。
+
+注意：不啟動 App、不修改任何產品 repo、不查翻譯後台；交接包不是需求權威，產品決策回寫專案的需求文件。目前掃描以 Swift 先端為主，先端是 Android 時分類可用 `--platform android`，其餘要擴充 profile 或人工補。
+
+範例：
+
+```text
+Use $platform-parity-handoff with profile docs/handoff/parity-profile.json to export the handoff pack for <feature> from merge commit <sha> on develop into docs/features/<feature>/handoff/.
+Use $platform-parity-handoff with profile docs/handoff/parity-profile.json to run audit pre on docs/features/<feature>/handoff/<date>/ for the Android side.
+Use $platform-parity-handoff to run audit post on docs/features/<feature>/handoff/<date>/ against the frozen SHA and end with the write-back list.
+```
+
 ### `$figma-sync-back`
 
 用途：當元件或頁面曾用 Figma export addon 匯出到 Figma、之後在 Figma 端被繼續打磨，判斷哪些 story 需要同步回 Storybook，並把每個差異導到對的修法。只判斷、不動程式碼。
@@ -606,6 +640,27 @@ $agent-automation-orchestrate
 
 如果要自動化的是 prototype 到 production 這條鏈，`storybook-product-prototype/references/pipeline-stations.md` 有一份可直接改用的編排範例：六站分工、把關條件，團隊 demo 確認保持人類停點，後面幾站以交接定版的 manifest 為前置條件。
 
+### 工作流 8：一個平台做完，交接給另一個平台
+
+適合：iOS 或 Android 其中一端已經把功能合入整合分支，另一端要做成一樣的。
+
+```text
+先端功能合入整合分支（人類確認凍結點）
+-> $platform-parity-handoff（export）
+-> $platform-parity-handoff（audit pre）
+-> $native-product-implementation 或專案原本的實作流程
+-> $platform-parity-handoff（audit post）
+-> $ui-pixel-align-report / $ui-compare-to-reference
+```
+
+說明：
+
+1. 先確認先端已合入整合分支，並準備好專案的 JSON profile；還在 feature branch 上的只能當參考。
+2. 在先端用 export 從合併 diff 產出交接包，每章標明來源是 diff、原始碼還是人工。
+3. 次端開工前用 audit pre 定位落點，把人工判斷的項目整理成開工前要決定的清單。
+4. 照專案原本的流程實作；這個 skill 不動次端程式碼。
+5. 做完後用 audit post 逐項判定並附證據，視覺差異交給比對報告與修正 skill；最後把回寫清單一次回到專案的需求文件。
+
 ## 哪些 Skill 常常搭配使用
 
 | 上游 skill | 下游 skill | 為什麼搭配 |
@@ -619,6 +674,8 @@ $agent-automation-orchestrate
 | `$frontend-product-implementation` | `$ui-compare-to-reference` | 功能做完後，用參考圖檢查視覺偏差。 |
 | `$native-product-implementation` | `$ui-compare-to-reference` | App 畫面同樣要跟 prototype 或設計來源比對，且會保留合理的平台適配差異。 |
 | `$ui-pixel-align-report` | `$ui-compare-to-reference` | 先產出差異報告，再修正畫面。 |
+| `$native-product-implementation` | `$platform-parity-handoff` | 先端合入整合分支後，用它把功能交接給另一個平台，而不是靠敘述文件。 |
+| `$platform-parity-handoff` | `$ui-pixel-align-report`／`$ui-compare-to-reference` | 對齊審計把視覺比對交給它們；不在時改人工對照並在報告註明。 |
 | `$figma-sync-back` | `$ui-compare-to-reference` | 分流報告裡的視覺差異，交給它以 Figma 節點為標準修正。 |
 | `$figma-sync-back` | `$design-system-extractor` | 分流報告裡的 token 差異，走 Late-Arriving Authoritative Source Pass 裁決。 |
 | `$ds-governance` | Frontend／Native 實作；其他 UI 工作可指定搭配 | 實作前盤點並重用，僅詢問未授權缺口；詳細必要／條件式關係見上方專節。 |
@@ -683,6 +740,19 @@ Use $ui-compare-to-reference on <reference screenshot> and <local URL or route o
 Use $ui-pixel-align-report on <reference screenshot> and <local URL>.
 ```
 
+### 交接給另一個平台
+
+```text
+Use $platform-parity-handoff with profile <profile path> to export the handoff pack for <feature> from merge commit <sha> on <integration branch> into <output dir>.
+```
+
+### 在另一個平台做對齊審計
+
+```text
+Use $platform-parity-handoff with profile <profile path> to run audit pre on <handoff pack dir> for the <follower platform> side.
+Use $platform-parity-handoff to run audit post on <handoff pack dir> against the frozen SHA and end with the write-back list.
+```
+
 ### 檢查 Figma 端修改要不要同步回來
 
 ```text
@@ -711,5 +781,6 @@ Use $agent-automation-orchestrate to run the <task id> task in <repo path>, with
 - 團隊 demo 確認是人類的站，沒有自動化能通過；Review Status 還是 `pending` 就不要開始實作。
 - 如果只是想確認產品流程，先用 `$storybook-product-prototype`，不要急著進 production repo。
 - 如果畫面已經做完，再用 `$ui-compare-to-reference` 或 `$ui-pixel-align-report` 做 QA。
+- 跨平台交接以先端合入整合分支的 diff 與原始碼為準，不用敘述文件；審計裡沒有證據的項目是「未驗」，不是「一致」。
 - 如果同一件事要重複做，用 `$agent-automation-orchestrate` 收成契約，不要每次重寫一次流程。
 - 自動化的完成判定要分開看：契約驗證、agent 結束、專案驗證、commit、push 是五件事，不能互相代表。

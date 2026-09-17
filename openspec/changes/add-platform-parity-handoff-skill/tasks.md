@@ -1,0 +1,10 @@
+## 1. 通用 skill
+
+- [x] 1.1 完成 Project profile parameterization：建立 `platform-parity-handoff/assets/profile.example.json`（ToastEnglish 實際值）與 `references/project-profile.md`（逐欄說明、如何從原始碼確認字串存取方式），`scripts/_common.py` 提供 `load_profile`，五支腳本改讀 profile（CLI 明確值優先），依「專案差異全部進 project profile，腳本與 SKILL.md 不含專案路徑」與「未給 profile 時退回範例 profile 並提示」實作。驗證：五支 `--help` 可用；以範例 profile 對 ToastEnglish `apps/ios` 合併提交 `212356d0e` 與 `apps/android` 執行，inventory 與專案版 `handoff/2026-09-17-ios-to-android/inventory/` 內容一致（忽略 generatedAt、絕對路徑、profile 欄）；未給 `--profile` 時 stderr 有提示；`--out` 落在 repo 內 exit 2（Read-only inventory scripts）。
+- [x] 1.2 完成 Diff-derived handoff pack and single audit report 的通用文件：`SKILL.md`（不含專案路徑，註明以 ToastEnglish 專案版為原型）、`references/manifest-chapters.md`、`references/audit-checklist.md`、`references/scripts.md`、`templates/` 三檔，依「與 ToastEnglish 專案版並存，互相註明」處理。驗證：`grep` 不含 AI_START_HERE、CROSS_PLATFORM_WORKFLOW、apps/ios、LocalizationKit、toeic 等專案字串（範例 profile 與 project-profile.md 的範例值除外）；frontmatter 以 YAML 解析且 `name` 等於資料夾名；相對連結全部可解析。
+
+## 2. 打包與安裝
+
+- [x] 2.1 [after: 1.2] 完成 Packaged for three agents：新增 `agents/openai.yaml`，README 新增 `platform-parity-handoff` 小節、安裝命令與目錄樹，`scripts/skill-dependencies.json` 加兩個 support 條目，依「沿用 cm-skills 打包慣例」。驗證：`node scripts/install_agent_skills.mjs --agent all --scope user --skill platform-parity-handoff --dry-run` 列出三個目的地且無錯誤；openai.yaml 與 dependencies JSON 可解析。
+- [x] 2.2 [after: 2.1] [after: 1.1] 依使用者 2026-09-17 指示安裝到 `~/.claude/skills`、`~/.agents/skills`、`~/.cursor/skills`（不加 `--force`），驗證三份與來源 hash 一致；在 ToastEnglish 專案版 SKILL.md 加一句通用版關係註記並確認其 symlink `cmp` 仍一致；執行 `spectra analyze`／`spectra validate`，將檢查結果寫入本 change 的 `verification.md`。驗證：analyze 無 Critical、validate 通過、verification.md 列出通過與未執行項目。
+- [x] 2.3 [after: 2.1] 同步 `docs/`：`docs/skills-usage.md` 加快速選擇列、專節、工作流 8、搭配表兩列、請求模板與原則；`docs/skills-guide.html` 加 `parity` 旅程、skill 卡片與兩句提示，並把它連進 to-native／fix-drift 的相關旅程；`docs/designer-guide-storybook-to-production.html` 在原生 App 說明補一句並加名詞小抄。驗證：兩份 HTML 內嵌 script `node --check` 通過；journey id 與 related／journey 參照無懸空。

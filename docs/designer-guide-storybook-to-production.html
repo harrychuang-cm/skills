@@ -653,7 +653,7 @@
               </div>
             </li>
           </ol>
-          <div class="fit"><b>如果產品是原生 App（iOS／Android）：</b>同一份交接文件也能做成原生 App。上面六個步驟、每個要你點頭的地方完全一樣，只有步驟 2 那句話要換一個技能名字——把 frontend-product-implementation 換成 native-product-implementation，AI 就會用 iOS／Android 的做法產出畫面。老實說一句：這條路的機制都備齊了，但還沒有在真實的 iOS／Android 專案上完整跑過一次，第一次走請多留一點確認和來回修正的時間。</div>
+          <div class="fit"><b>如果產品是原生 App（iOS／Android）：</b>同一份交接文件也能做成原生 App。上面六個步驟、每個要你點頭的地方完全一樣，只有步驟 2 那句話要換一個技能名字——把 frontend-product-implementation 換成 native-product-implementation，AI 就會用 iOS／Android 的做法產出畫面。老實說一句：這條路的機制都備齊了，但還沒有在真實的 iOS／Android 專案上完整跑過一次，第一次走請多留一點確認和來回修正的時間。做完其中一個平台、要再做另一個時，改走 platform-parity-handoff：從已合入的程式碼產出交接包，再用一份對齊報告把兩端差異收乾淨（旅程見<a href="skills-guide.html#/j/parity">使用指南</a>）。</div>
           ${say("請用 native-product-implementation 並遵循 ds-governance，依同一份 handoff 文件把這個功能實作成 iOS／Android 的畫面。", "產品是原生 App 時，步驟 2 改說這句")}
         </div>
         <p class="rule"><b>一句話判斷：</b>需要「說服別人或驗證想法」→ 路線 A；只是「把定案的東西做出來」→ 路線 B。中途發現 B 越做越大，隨時可以回頭補原型和文件，兩條路不衝突。</p>
@@ -823,6 +823,10 @@
           <div class="term">
             <dt>Handoff（交接文件）</dt>
             <dd>原型階段產出的七份文件，讓接手的人不用私訊問你「這裡是什麼意思」。核心是 <code>PRODUCTION_HANDOFF.md</code>。</dd>
+          </div>
+          <div class="term">
+            <dt>Parity handoff（跨平台交接包）</dt>
+            <dd>一個平台的功能合入後，用 platform-parity-handoff 從合併的程式碼產出的交接包：改了什麼、每個畫面各狀態長什麼樣、視覺數值、字串 id、行為契約，每一章都標明來源。另一個平台照它做，做完再用同一個 skill 出一份對齊報告。</dd>
           </div>
           <div class="term">
             <dt>UI Flow</dt>
