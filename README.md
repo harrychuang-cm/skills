@@ -480,6 +480,11 @@ The generated report is a static HTML + CSS artifact, usually under `reports/des
 │   ├── SKILL.md
 │   └── agents/
 │       └── openai.yaml
+├── presentation-review/
+│   ├── SKILL.md
+│   ├── agents/
+│   │   └── openai.yaml
+│   └── references/
 ├── platform-parity-handoff/
 │   ├── SKILL.md
 │   ├── agents/
