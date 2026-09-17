@@ -1,4 +1,4 @@
-<!-- SPECTRA:START v1.0.2 -->
+<!-- SPECTRA:START v1.3.0 -->
 
 # Spectra Instructions
 
@@ -11,8 +11,13 @@ This project uses Spectra for Spec-Driven Development(SDD).
 - **Archive**: `openspec/changes/archive/` - Completed changes
 - **Config**: `openspec/config.yaml` - Project context and rules
 
+Explicit skill invocation takes precedence. Apply existing authorization within its unchanged scope.
+
+- Continue tasks for an identified change → `/spectra-apply`
+- Update requirements or plans for an identified change → `/spectra-ingest`
+
 ## Workflow
 
-discuss? → propose → apply ⇄ ingest → archive
+discuss? → propose → apply ⇄ ingest → verify / review → archive
 
 <!-- SPECTRA:END -->
