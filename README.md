@@ -1,6 +1,6 @@
 # CM Skills
 
-Reusable Cursor / Codex / Claude Code skills for UI implementation, engineering automation, and executive presentations.
+Reusable Cursor / Codex / Claude Code skills for UI implementation, engineering automation, executive presentations, and presentation review.
 
 Open the visual guide at [`docs/skills-guide.html`](docs/skills-guide.html) for a simple overview of each skill, when to use it, and common prompts.
 
@@ -276,6 +276,29 @@ Invocation examples (append your topic or source material):
 | Cursor | `/executive-presentation 將以下新功能想法整理成白話的四頁產品提案，補找參考案例並說明產品價值：…` |
 
 You can also ask the agent to use `executive-presentation` by name. If a running session does not discover the newly installed skill, start a new session or reference its `SKILL.md` directly.
+
+### `presentation-review`
+
+Review an existing deck against a versioned rule set instead of drafting one. [Skill instructions](presentation-review/SKILL.md) check every slide for three things: the title states one conclusion made of a viewpoint plus an action, the subtitle gives the reasons, and the slide carries one to three pieces of evidence that support that conclusion — which product did what, what growth or result it reported, and where the source is.
+
+The default output is a Traditional Chinese review report: an overall verdict, the title-only storyline, a per-slide table of pass / needs change / missing judgments with quoted evidence, a prioritized must-fix list, rewrite suggestions, and a list of evidence still to be supplied. Missing evidence is written as a labeled placeholder, never invented. On request the skill rewrites the whole deck under the same rules, or drafts new slides (optionally via `executive-presentation` first). The rules live in [`presentation-review/references/rules.md`](presentation-review/references/rules.md) with stable IDs, origin labels, severities, and a change log; when you add or change a rule, only that file changes.
+
+Install only this skill for all three agents, from the repository root:
+
+```sh
+node scripts/install_agent_skills.mjs --agent all --scope user --skill presentation-review --dry-run
+node scripts/install_agent_skills.mjs --agent all --scope user --skill presentation-review
+```
+
+Invocation examples (append or attach the slide content):
+
+| Agent | Prompt |
+|---|---|
+| Codex | `使用 $presentation-review，逐頁審查以下簡報：標題是否為一個結論（觀點＋行動）、副標是否用理由補充、每頁是否有 1–3 個支持結論的證據：…` |
+| Claude Code | `/presentation-review 逐頁審查以下簡報：標題是否為一個結論（觀點＋行動）、副標是否用理由補充、每頁是否有 1–3 個支持結論的證據：…` |
+| Cursor | `/presentation-review 逐頁審查以下簡報：標題是否為一個結論（觀點＋行動）、副標是否用理由補充、每頁是否有 1–3 個支持結論的證據：…` |
+
+To evolve the rules, tell the agent the new rule in plain words (for example「以後每頁最後要有一句『所以我們要做什麼』」); it adds the rule to `rules.md` with the next free ID, bumps the version, and restates it for confirmation.
 
 ### `platform-parity-handoff`
 
