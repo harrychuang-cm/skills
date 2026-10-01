@@ -8,12 +8,64 @@ TBD - created by archiving change 'prototype-production-readiness'. Update Purpo
 
 ### Requirement: JSON Schema sections in DATA_SPEC
 
-The DATA_SPEC.md template SHALL contain a Data Schemas (JSON Schema) section holding one fenced json code block per fixture group, describing the group's entity, request, response, and error shapes together with its state enumeration. The storybook-product-prototype data-contract reference SHALL require authoring these schema blocks whenever fixture groups are created or changed.
+The DATA_SPEC.md template SHALL contain a Data Schemas (JSON Schema) section holding one fenced JSON code block per fixture group, describing the UI entity and state enumeration or the source-backed transport shape identified by Data Authority. The data-contract reference SHALL require authoring schema blocks whenever fixture groups change. UI schemas SHALL generate UI and mock types only; request, response and error DTOs SHALL require confirmed transport evidence. Fake sample values SHALL NOT determine a backend schema.
 
 #### Scenario: Fixture group with schema block
-
 - **WHEN** a prototype defines a fixture group for route content
-- **THEN** DATA_SPEC.md contains a fenced json block for that group that parses as JSON and names its state enumeration values
+- **THEN** DATA_SPEC SHALL contain a parseable JSON schema for that group with its state enumeration and Data Authority classification
+
+#### Scenario: Fake values under confirmed transport schema
+- **WHEN** fixture values are fake and their transport schema has confirmed source evidence
+- **THEN** receivers SHALL use the confirmed schema for transport types while retaining fake classification for the fixture values
+
+
+<!-- @trace
+source: clarify-prototype-handoff-authority
+updated: 2026-09-22
+code:
+  - .agents/skills/spectra-debug/SKILL.md
+  - platform-parity-handoff/references/project-profile.md
+  - platform-parity-handoff/scripts/list_string_keys.py
+  - .agents/skills/spectra-archive/SKILL.md
+  - .agents/skills/spectra-discuss/SKILL.md
+  - platform-parity-handoff/references/audit-checklist.md
+  - .agents/skills/spectra-review/SKILL.md
+  - .agents/skills/spectra-analyze/SKILL.md
+  - .agents/skills/spectra-ask/SKILL.md
+  - .agents/skills/spectra-commit/SKILL.md
+  - docs/skills-guide.html
+  - presentation-review/references/rules.md
+  - .agents/skills/spectra-apply/SKILL.md
+  - .agents/skills/spectra-ingest/SKILL.md
+  - presentation-review/SKILL.md
+  - AGENTS.md
+  - platform-parity-handoff/templates/audit-report.md
+  - platform-parity-handoff/templates/media-index.json
+  - docs/skills-usage.md
+  - presentation-review/references/examples.md
+  - presentation-review/references/review-report-template.md
+  - platform-parity-handoff/agents/openai.yaml
+  - platform-parity-handoff/scripts/find_config_event_keys.py
+  - platform-parity-handoff/templates/handoff-manifest.md
+  - platform-parity-handoff/assets/profile.example.json
+  - .agents/skills/spectra-propose/SKILL.md
+  - platform-parity-handoff/references/manifest-chapters.md
+  - presentation-review/agents/openai.yaml
+  - platform-parity-handoff/SKILL.md
+  - platform-parity-handoff/references/scripts.md
+  - platform-parity-handoff/scripts/_common.py
+  - platform-parity-handoff/scripts/hash_assets.py
+  - scripts/skill-dependencies.json
+  - CLAUDE.md
+  - docs/designer-guide-storybook-to-production.html
+  - .agents/skills/spectra-verify/SKILL.md
+  - .cursorrules
+  - .agents/skills/spectra-audit/SKILL.md
+  - .agents/skills/spectra-drift/SKILL.md
+  - platform-parity-handoff/scripts/classify_diff.py
+  - README.md
+  - platform-parity-handoff/scripts/cross_check_string_mapping.py
+-->
 
 ---
 ### Requirement: Fixture JSON export

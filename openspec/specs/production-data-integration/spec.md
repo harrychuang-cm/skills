@@ -8,17 +8,64 @@ TBD - created by archiving change 'prototype-production-family'. Update Purpose 
 
 ### Requirement: Third-stage skill scope and boundary
 
-A new skill folder, production-data-integration, SHALL own stage 3 of the integration ownership chain: real API clients, auth/session, cache policy, storage, persistence, and environment configuration, replacing the mock adapters the assembly pass delivered. Its inputs SHALL be four artifacts: the PRODUCTION_HANDOFF API And Data Contracts table (including the Adapter interface and Semantics columns), the IMPLEMENTATION_MAP Data Adapter Seams table, the fixtures/*.json files, and the DATA_SPEC JSON Schema blocks. The skill SHALL NOT change UI behavior, route flow, components, or tokens; when reality diverges from the documented contract, it SHALL report the divergence and update the handoff docs and regression story per the change rule instead of editing the UI in place. Unknown endpoints or auth SHALL be asked of the named owner, never invented.
+production-data-integration SHALL own real clients, auth/session, cache, storage, persistence and environment configuration behind assembled DataSource seams. Inputs SHALL include the handoff API contracts and semantics, implementation seam map, fixtures for UI/mock reference, and Data Spec schemas with Data Authority evidence. Only confirmed transport sources SHALL authorize DTOs and real wiring. UI behavior, routes, components and tokens SHALL remain outside scope. Unknown endpoints, auth or semantics SHALL block the affected seam and be assigned to its named owner; independent confirmed seams SHALL continue.
 
 #### Scenario: Contract mismatch discovered during wiring
-
-- **WHEN** the real API returns a field shape that differs from the DATA_SPEC JSON Schema
-- **THEN** the skill reports the divergence, asks the contract owner which side changes, and updates the handoff docs when the contract side changes — the UI code is not silently reshaped
+- **WHEN** a real DTO shape differs from a prototype UI-model schema
+- **THEN** the skill SHALL map the confirmed transport DTO to the UI model and SHALL NOT require the service to match the fake fixture; missing business semantics SHALL become an explicit decision
 
 #### Scenario: Unknown endpoint
+- **WHEN** a seam has no confirmed endpoint
+- **THEN** the skill SHALL request the named decision and SHALL NOT invent a path
 
-- **WHEN** a fixture group's Expected source is still marked unknown
-- **THEN** the skill stops and asks the named owner for the endpoint instead of inventing one
+
+<!-- @trace
+source: clarify-prototype-handoff-authority
+updated: 2026-09-22
+code:
+  - .agents/skills/spectra-debug/SKILL.md
+  - platform-parity-handoff/references/project-profile.md
+  - platform-parity-handoff/scripts/list_string_keys.py
+  - .agents/skills/spectra-archive/SKILL.md
+  - .agents/skills/spectra-discuss/SKILL.md
+  - platform-parity-handoff/references/audit-checklist.md
+  - .agents/skills/spectra-review/SKILL.md
+  - .agents/skills/spectra-analyze/SKILL.md
+  - .agents/skills/spectra-ask/SKILL.md
+  - .agents/skills/spectra-commit/SKILL.md
+  - docs/skills-guide.html
+  - presentation-review/references/rules.md
+  - .agents/skills/spectra-apply/SKILL.md
+  - .agents/skills/spectra-ingest/SKILL.md
+  - presentation-review/SKILL.md
+  - AGENTS.md
+  - platform-parity-handoff/templates/audit-report.md
+  - platform-parity-handoff/templates/media-index.json
+  - docs/skills-usage.md
+  - presentation-review/references/examples.md
+  - presentation-review/references/review-report-template.md
+  - platform-parity-handoff/agents/openai.yaml
+  - platform-parity-handoff/scripts/find_config_event_keys.py
+  - platform-parity-handoff/templates/handoff-manifest.md
+  - platform-parity-handoff/assets/profile.example.json
+  - .agents/skills/spectra-propose/SKILL.md
+  - platform-parity-handoff/references/manifest-chapters.md
+  - presentation-review/agents/openai.yaml
+  - platform-parity-handoff/SKILL.md
+  - platform-parity-handoff/references/scripts.md
+  - platform-parity-handoff/scripts/_common.py
+  - platform-parity-handoff/scripts/hash_assets.py
+  - scripts/skill-dependencies.json
+  - CLAUDE.md
+  - docs/designer-guide-storybook-to-production.html
+  - .agents/skills/spectra-verify/SKILL.md
+  - .cursorrules
+  - .agents/skills/spectra-audit/SKILL.md
+  - .agents/skills/spectra-drift/SKILL.md
+  - platform-parity-handoff/scripts/classify_diff.py
+  - README.md
+  - platform-parity-handoff/scripts/cross_check_string_mapping.py
+-->
 
 ---
 ### Requirement: Data wiring workflow
@@ -33,14 +80,60 @@ The data-wiring-workflow reference SHALL define the replacement procedure: inven
 ---
 ### Requirement: Contract test gate
 
-The contract-testing reference SHALL require, per fixture group: a contract test validating the real response against the group's DATA_SPEC JSON Schema (decode-based validation counts on typed platforms); assertions that each documented error-taxonomy class maps to the documented UI error state; at least one behavior assertion per recorded Semantics entry (pagination, freshness, mutation semantics); and use of fixtures/*.json as the shape reference — field sets and types, not values. Tests SHALL use the target repo's existing test framework; the pass SHALL NOT introduce a new test framework for this purpose.
+Contract tests SHALL validate responses against the confirmed transport contract, assert the DTO-to-UI mapping, cover documented error classes and behavior for each recorded semantics entry, and use fake fixtures only to verify UI/mock expectations. Raw response fields SHALL NOT be required to equal fake fixture fields. Required fields and type mismatches SHALL fail according to the real schema; additional fields SHALL be governed by that schema. Tests SHALL use existing repo tools without adding a test framework.
 
 #### Scenario: Schema-validated response
-
-- **WHEN** the contract test fetches the real alertsRoutes response
-- **THEN** the response decodes/validates against the alertsRoutes JSON Schema and the test fails on a missing required field or a type mismatch
+- **WHEN** the real source returns data.items and nextCursor while the UI model contains state and rows
+- **THEN** the transport test SHALL validate the source schema and the mapper test SHALL verify rows without asserting raw shape equality
 
 #### Scenario: Retryable error mapping
+- **WHEN** the confirmed error taxonomy marks timeouts retryable
+- **THEN** a test SHALL assert the documented retry state rather than a terminal error
 
-- **WHEN** the error taxonomy marks timeouts as retryable
-- **THEN** a test asserts the timeout path surfaces the documented retry state rather than a terminal error state
+<!-- @trace
+source: clarify-prototype-handoff-authority
+updated: 2026-09-22
+code:
+  - .agents/skills/spectra-debug/SKILL.md
+  - platform-parity-handoff/references/project-profile.md
+  - platform-parity-handoff/scripts/list_string_keys.py
+  - .agents/skills/spectra-archive/SKILL.md
+  - .agents/skills/spectra-discuss/SKILL.md
+  - platform-parity-handoff/references/audit-checklist.md
+  - .agents/skills/spectra-review/SKILL.md
+  - .agents/skills/spectra-analyze/SKILL.md
+  - .agents/skills/spectra-ask/SKILL.md
+  - .agents/skills/spectra-commit/SKILL.md
+  - docs/skills-guide.html
+  - presentation-review/references/rules.md
+  - .agents/skills/spectra-apply/SKILL.md
+  - .agents/skills/spectra-ingest/SKILL.md
+  - presentation-review/SKILL.md
+  - AGENTS.md
+  - platform-parity-handoff/templates/audit-report.md
+  - platform-parity-handoff/templates/media-index.json
+  - docs/skills-usage.md
+  - presentation-review/references/examples.md
+  - presentation-review/references/review-report-template.md
+  - platform-parity-handoff/agents/openai.yaml
+  - platform-parity-handoff/scripts/find_config_event_keys.py
+  - platform-parity-handoff/templates/handoff-manifest.md
+  - platform-parity-handoff/assets/profile.example.json
+  - .agents/skills/spectra-propose/SKILL.md
+  - platform-parity-handoff/references/manifest-chapters.md
+  - presentation-review/agents/openai.yaml
+  - platform-parity-handoff/SKILL.md
+  - platform-parity-handoff/references/scripts.md
+  - platform-parity-handoff/scripts/_common.py
+  - platform-parity-handoff/scripts/hash_assets.py
+  - scripts/skill-dependencies.json
+  - CLAUDE.md
+  - docs/designer-guide-storybook-to-production.html
+  - .agents/skills/spectra-verify/SKILL.md
+  - .cursorrules
+  - .agents/skills/spectra-audit/SKILL.md
+  - .agents/skills/spectra-drift/SKILL.md
+  - platform-parity-handoff/scripts/classify_diff.py
+  - README.md
+  - platform-parity-handoff/scripts/cross_check_string_mapping.py
+-->

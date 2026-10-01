@@ -1,22 +1,22 @@
-# flow-navigation-semantics Specification
+# project-skill-delivery Specification
 
 ## Purpose
 
-TBD - created by archiving change 'prototype-production-readiness'. Update Purpose after archive.
+TBD - created by archiving change 'clarify-prototype-handoff-authority'. Update Purpose after archive.
 
 ## Requirements
 
-### Requirement: Navigation metadata fields on the flow contract
+### Requirement: Project Skill Delivery
 
-Route params and deepLink SHALL remain optional. Transition presentation SHALL accept push, modal, sheet, fullscreen or replace, and backBehavior SHALL accept pop, popToRoot, dismiss or none. Transition motion SHALL accept none, platform-default or custom with an optional motionRef. Draft legacy flows SHALL remain readable. The ui-flow-contract reference SHALL document every field and distinguish navigation semantics from animation intent.
+The installer SHALL support opt-in --record-usage only with project scope and an explicit skill list excluding all. Selected skills SHALL be recorded as declared used, required dependencies as dependencies with roles. Dependency closure SHALL include ds-governance for frontend and ds-governance plus frontend support for native, and SHALL NOT install next-stage skills merely because they are named receivers. Missing selections, missing dependencies, cycles, malformed managed markers and nonportable symlinks SHALL fail before writes. Without the flag existing installation behavior SHALL remain unchanged. Dry-run SHALL write nothing.
 
-#### Scenario: Legacy flow file without navigation fields
-- **WHEN** ordinary draft validation reads a legacy flow without navigation or motion fields
-- **THEN** the missing fields SHALL NOT by themselves make the draft unreadable or imply default values
+#### Scenario: Native delivery closure
+- **WHEN** native-product-implementation is selected with record-usage
+- **THEN** the delivery SHALL contain native, frontend support and ds-governance, and SHALL NOT add production-data-integration
 
-#### Scenario: Transition with presentation semantics
-- **WHEN** a transition declares presentation sheet, backBehavior dismiss and motion platform-default
-- **THEN** the fields SHALL remain readable as independent navigation and motion choices
+#### Scenario: Invalid selection
+- **WHEN** a selected skill is missing or record-usage uses user scope
+- **THEN** the installer SHALL report an error without changing any destination files
 
 
 <!-- @trace
@@ -68,35 +68,17 @@ code:
 -->
 
 ---
-### Requirement: Production navigation map table
+### Requirement: Skill usage provenance
 
-The FLOW_SPEC.md template's Production Navigation Map section SHALL be a table with one row per route id and columns for the web path, the iOS destination, and the Android route, replacing the previous prose placeholder. Rows for platforms out of scope SHALL record the literal text Not in scope.
+Successful recorded installation SHALL upsert docs/SKILL_USAGE.json with source identity, Git commit or null, dirty state, content hashes, roles and project-relative installation paths. Source and installed content hashes SHALL match before success is recorded. Subsequent runs SHALL preserve prior records and upgrade a dependency explicitly selected as used. CLAUDE.md and AGENTS.md SHALL use bounded managed blocks linking repo copies, preserve all other bytes, and avoid duplicate blocks on rerun. Identical runs SHALL be idempotent. Delivery SHALL NOT auto-commit or claim publication.
 
-#### Scenario: Filling the navigation map for a web-only product
+#### Scenario: Repeated delivery and new clone
+- **WHEN** recorded skills are installed twice and the generated files are committed in an isolated test repo then cloned elsewhere
+- **THEN** the second install SHALL leave identical content and all skill, support and managed-block relative links SHALL resolve in the clone
 
-- **WHEN** the product targets web only
-- **THEN** every row maps its route id to a web path and records Not in scope in the iOS and Android columns
-
----
-### Requirement: Presentation coverage check for app targets
-
-In handoff-ready mode, validate_prototype.py SHALL require presentation for every non-return transition when an app target is in scope. App target detection SHALL prefer the typed app/hybrid declaration and fall back to legacy Target Surfaces prose when no typed declaration exists. Missing presentation SHALL be an error without requiring strict-style. Independently of platform, transitions entering a visible route SHALL require motion, non-return presentation, and return backBehavior. Custom motion SHALL reference an existing explicit anchor in FLOW_SPEC.md. Non-screen branch targets SHALL not require motion solely for branch evaluation.
-
-#### Scenario: App target with uncovered transitions
-- **WHEN** an app handoff has three non-return transitions without presentation
-- **THEN** handoff-ready SHALL report errors identifying all three transitions
-
-#### Scenario: Web-only target
-- **WHEN** a web-only transition enters a visible route without motion or presentation
-- **THEN** handoff-ready SHALL fail for the missing visible-route intent
-
-#### Scenario: Typed surface wins over prose
-- **WHEN** typed surface is web and stale prose mentions app
-- **THEN** typed surface SHALL govern app-only checks while visible-route checks SHALL still apply
-
-#### Scenario: Custom and return motion
-- **WHEN** custom motion lacks a valid FLOW_SPEC anchor or a return edge lacks explicit backBehavior
-- **THEN** handoff-ready SHALL fail rather than inventing navigation or motion
+#### Scenario: Local source edits
+- **WHEN** source bytes change without a new commit
+- **THEN** the recorded content hash SHALL change and SHALL NOT present the Git commit as an exact description of the modified content
 
 <!-- @trace
 source: clarify-prototype-handoff-authority

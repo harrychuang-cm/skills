@@ -8,26 +8,72 @@ TBD - created by archiving change 'native-skill-hardening'. Update Purpose after
 
 ### Requirement: Return transitions respect their kind
 
-The ingestion contract SHALL extract each transition's kind alongside its trigger, presentation, and back behavior. The implementation rules SHALL implement a transition whose kind is return as a return action driven by its back behavior, defaulting to a single-step back when the back behavior is absent. The push default for a missing presentation SHALL apply only to transitions whose kind is not return.
+Native ingestion SHALL extract kind, presentation, backBehavior, motion and motionRef for each transition. A return transition SHALL execute its confirmed backBehavior and SHALL never push a copy of the destination. Missing navigation or motion requirements SHALL be recorded as unresolved for the affected edge, and SHALL NOT default to push, single-step back or platform animation without existing explicit authorization. Independent confirmed work SHALL continue.
 
 #### Scenario: Return transition without presentation
-
-- **WHEN** a transition declares kind return, back behavior dismiss, and no presentation
-- **THEN** it is implemented as dismissing the presented surface, not as pushing a new destination
+- **WHEN** a return transition declares backBehavior dismiss and confirmed motion
+- **THEN** it SHALL dismiss the presented surface rather than push a new destination
 
 #### Scenario: Forward transition without presentation
+- **WHEN** a non-return transition lacks presentation and no explicit authorized default applies
+- **THEN** its implementation SHALL await the named decision instead of assuming push
 
-- **WHEN** a non-return transition declares no presentation
-- **THEN** it is implemented as a push and the assumption is recorded as a divergence
+##### Example: resolution
+| kind | presentation | backBehavior | Result |
+| --- | --- | --- | --- |
+| return | absent | dismiss | dismiss using declared motion |
+| return | absent | absent | unresolved return action |
+| primary | absent | absent | unresolved presentation |
+| primary | sheet | dismiss | sheet with declared dismissal and motion |
 
-##### Example: default resolution
 
-| kind | presentation | backBehavior | Implemented as |
-| ---- | ------------ | ------------ | -------------- |
-| return | absent | dismiss | dismiss the sheet or cover |
-| return | absent | absent | single-step back |
-| primary | absent | — | push, recorded as a divergence |
-| primary | sheet | dismiss | sheet presentation dismissed by gesture |
+<!-- @trace
+source: clarify-prototype-handoff-authority
+updated: 2026-09-22
+code:
+  - .agents/skills/spectra-debug/SKILL.md
+  - platform-parity-handoff/references/project-profile.md
+  - platform-parity-handoff/scripts/list_string_keys.py
+  - .agents/skills/spectra-archive/SKILL.md
+  - .agents/skills/spectra-discuss/SKILL.md
+  - platform-parity-handoff/references/audit-checklist.md
+  - .agents/skills/spectra-review/SKILL.md
+  - .agents/skills/spectra-analyze/SKILL.md
+  - .agents/skills/spectra-ask/SKILL.md
+  - .agents/skills/spectra-commit/SKILL.md
+  - docs/skills-guide.html
+  - presentation-review/references/rules.md
+  - .agents/skills/spectra-apply/SKILL.md
+  - .agents/skills/spectra-ingest/SKILL.md
+  - presentation-review/SKILL.md
+  - AGENTS.md
+  - platform-parity-handoff/templates/audit-report.md
+  - platform-parity-handoff/templates/media-index.json
+  - docs/skills-usage.md
+  - presentation-review/references/examples.md
+  - presentation-review/references/review-report-template.md
+  - platform-parity-handoff/agents/openai.yaml
+  - platform-parity-handoff/scripts/find_config_event_keys.py
+  - platform-parity-handoff/templates/handoff-manifest.md
+  - platform-parity-handoff/assets/profile.example.json
+  - .agents/skills/spectra-propose/SKILL.md
+  - platform-parity-handoff/references/manifest-chapters.md
+  - presentation-review/agents/openai.yaml
+  - platform-parity-handoff/SKILL.md
+  - platform-parity-handoff/references/scripts.md
+  - platform-parity-handoff/scripts/_common.py
+  - platform-parity-handoff/scripts/hash_assets.py
+  - scripts/skill-dependencies.json
+  - CLAUDE.md
+  - docs/designer-guide-storybook-to-production.html
+  - .agents/skills/spectra-verify/SKILL.md
+  - .cursorrules
+  - .agents/skills/spectra-audit/SKILL.md
+  - .agents/skills/spectra-drift/SKILL.md
+  - platform-parity-handoff/scripts/classify_diff.py
+  - README.md
+  - platform-parity-handoff/scripts/cross_check_string_mapping.py
+-->
 
 ---
 ### Requirement: Executable navigation mapping

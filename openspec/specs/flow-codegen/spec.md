@@ -8,22 +8,68 @@ TBD - created by archiving change 'prototype-production-family'. Update Purpose 
 
 ### Requirement: Flow JSON export
 
-The script storybook-product-prototype/scripts/export_flow.py SHALL parse a prototype folder's *PrototypeFlow.ts using the parsing helpers already in validate_prototype.py and write docs/flow.json with flowSchemaVersion 1, the feature name, routes (id, title, navigationId, and the optional component, description, params, deepLink, viewport), nodes (id, title, shape, and the optional tone, description), and transitions (from, to, trigger, label, and the optional kind, presentation, backBehavior). When the flow declares a viewport, the document SHALL include a top-level viewport object with formFactor, width, and height, and each route declaring an override SHALL include its viewport object with width and height; when the flow declares no viewport, the viewport keys SHALL be omitted entirely so legacy documents are unchanged. The viewport fields are product semantics, not canvas layout, and SHALL NOT be stripped. The layout-only fields flowPosition, sourceAnchor, and flowLine SHALL NOT appear anywhere in the output. When the folder has no *PrototypeFlow.ts or the flow declares no routes, the script SHALL print a named error and exit non-zero. The script SHALL use only the Python standard library.
+The standard-library export_flow.py script SHALL parse *PrototypeFlow.ts with existing validation helpers and write docs/flow.json with flowSchemaVersion 1, feature, routes, nodes and transitions. Routes SHALL preserve id, title, navigationId and declared component, description, params, deepLink and viewport. Nodes SHALL preserve id, title, shape and declared tone and description. Transitions SHALL preserve from, to, trigger, label and declared kind, presentation, backBehavior, motion and motionRef. Declared top-level viewport SHALL be retained and absent viewport SHALL remain omitted. Layout-only flowPosition, sourceAnchor and flowLine SHALL be excluded. Missing flow files or routes SHALL produce a named error and non-zero exit. Skeleton comments SHALL preserve motion intent and keep unspecified navigation unasserted.
 
 #### Scenario: Export strips layout fields
-
-- **WHEN** the flow file declares routes with flowPosition and a transition with sourceAnchor and flowLine
-- **THEN** docs/flow.json contains those routes and transitions with navigation fields intact and none of the three layout keys anywhere in the document
+- **WHEN** flow metadata contains layout fields alongside motion custom and a motionRef
+- **THEN** JSON SHALL preserve motion and motionRef and omit the three layout-only fields
 
 #### Scenario: Missing flow file
-
-- **WHEN** the script runs against a folder without a *PrototypeFlow.ts
-- **THEN** it prints an error naming the expected file pattern and exits with a non-zero code
+- **WHEN** no *PrototypeFlow.ts exists
+- **THEN** the command SHALL name the expected pattern and exit non-zero
 
 #### Scenario: Viewport included for declaring flows and omitted for legacy flows
+- **WHEN** one flow declares desktop 1280 by 800 and another declares no viewport
+- **THEN** only the first export SHALL contain that top-level viewport and both SHALL keep flowSchemaVersion 1
 
-- **WHEN** the script runs against a flow declaring viewport { formFactor: "desktop", width: 1280, height: 800 } and again against a flow declaring none
-- **THEN** the first document contains the top-level viewport object with those values while the second document contains no viewport key at any level, and both declare flowSchemaVersion 1
+
+<!-- @trace
+source: clarify-prototype-handoff-authority
+updated: 2026-09-22
+code:
+  - .agents/skills/spectra-debug/SKILL.md
+  - platform-parity-handoff/references/project-profile.md
+  - platform-parity-handoff/scripts/list_string_keys.py
+  - .agents/skills/spectra-archive/SKILL.md
+  - .agents/skills/spectra-discuss/SKILL.md
+  - platform-parity-handoff/references/audit-checklist.md
+  - .agents/skills/spectra-review/SKILL.md
+  - .agents/skills/spectra-analyze/SKILL.md
+  - .agents/skills/spectra-ask/SKILL.md
+  - .agents/skills/spectra-commit/SKILL.md
+  - docs/skills-guide.html
+  - presentation-review/references/rules.md
+  - .agents/skills/spectra-apply/SKILL.md
+  - .agents/skills/spectra-ingest/SKILL.md
+  - presentation-review/SKILL.md
+  - AGENTS.md
+  - platform-parity-handoff/templates/audit-report.md
+  - platform-parity-handoff/templates/media-index.json
+  - docs/skills-usage.md
+  - presentation-review/references/examples.md
+  - presentation-review/references/review-report-template.md
+  - platform-parity-handoff/agents/openai.yaml
+  - platform-parity-handoff/scripts/find_config_event_keys.py
+  - platform-parity-handoff/templates/handoff-manifest.md
+  - platform-parity-handoff/assets/profile.example.json
+  - .agents/skills/spectra-propose/SKILL.md
+  - platform-parity-handoff/references/manifest-chapters.md
+  - presentation-review/agents/openai.yaml
+  - platform-parity-handoff/SKILL.md
+  - platform-parity-handoff/references/scripts.md
+  - platform-parity-handoff/scripts/_common.py
+  - platform-parity-handoff/scripts/hash_assets.py
+  - scripts/skill-dependencies.json
+  - CLAUDE.md
+  - docs/designer-guide-storybook-to-production.html
+  - .agents/skills/spectra-verify/SKILL.md
+  - .cursorrules
+  - .agents/skills/spectra-audit/SKILL.md
+  - .agents/skills/spectra-drift/SKILL.md
+  - platform-parity-handoff/scripts/classify_diff.py
+  - README.md
+  - platform-parity-handoff/scripts/cross_check_string_mapping.py
+-->
 
 ---
 ### Requirement: Swift navigation skeleton generation
