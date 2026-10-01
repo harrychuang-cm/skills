@@ -214,6 +214,33 @@ framebuffer output for video, WebGL, nested iframes, or cross-origin images
 without CORS. The screenshot—not route metadata—is the durable state evidence;
 the addon does not replay component state.
 
+## Tracking Comments
+
+From addon 0.10.0 every visual comment has a kind, **Visual fix** (default) or
+**Tracking**. Developers mark an analytics requirement on a Story by setting
+**Comment type** to **Tracking** in the composer and writing the requirement in
+free text. On the report, a Tracking card's **Copy AI prompt** produces a
+`# Tracking Instrumentation Request`, and **Copy tracking prompts** copies one
+request for every Open Tracking comment of the meeting, optionally narrowed to
+one Story with **Tracking scope**. The request asks the assistant to derive the
+event name, parameters, recording timing, and value definitions, to mark an
+unstated field `unspecified`, and to ask before implementing it.
+
+No setup change is needed: there is no new option in
+`.storybook/figma-export.config.ts`, and existing meetings load unchanged
+because a comment without a stored kind reads as Visual fix. The kind can be
+corrected later in the panel edit modal or the report editor without replacing
+the screenshot. The addon never calls an AI service and comments still need an
+active meeting. The composer preselects the kind of the last saved comment and
+carries it across the preview reload that a dev server performs when evidence is
+written inside the project (a 15-second, read-once `sessionStorage` entry). A
+manual refresh, another participant's comment, or a new tab starts from Visual
+fix again.
+
+For a prototype that keeps a Data Authority registry, record the resulting
+event as a `proposed` `analytics` contract; see
+`storybook-product-prototype/references/handoff-authority.md`.
+
 Reports under `design-system/figma-export-review/` use relative assets and may
 be copied or zipped with their session directory. When rolling back the addon,
 leave this directory intact so canonical JSON and reports remain readable.

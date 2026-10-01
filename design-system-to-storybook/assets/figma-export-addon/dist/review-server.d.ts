@@ -1,7 +1,7 @@
 import { IncomingMessage, ServerResponse } from 'node:http';
 import { FigmaReviewEntry } from './review-controller.js';
 import { createVisualCommentStore } from './visual-comment-store.js';
-import './visualComment-DawOAq7P.js';
+import './visualComment-Diazst2e.js';
 
 declare const defaultFigmaReviewStatusApiPath = "/__figma_export_review_status";
 declare const defaultFigmaExportPayloadApiPath = "/__figma-export/payloads";

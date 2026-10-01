@@ -1,5 +1,5 @@
-import { b as FigmaExportAddonOptions } from './options-BycGBdfI.js';
-import './visualComment-DawOAq7P.js';
+import { b as FigmaExportAddonOptions } from './options-Ft_w0vbm.js';
+import './visualComment-Diazst2e.js';
 
 type FigmaExportPreviewContext = {
     globals?: Record<string, unknown>;

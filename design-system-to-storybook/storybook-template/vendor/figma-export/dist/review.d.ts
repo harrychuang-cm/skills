@@ -1,5 +1,5 @@
-import { R as ResolvedFigmaExportAddonOptions, b as FigmaExportAddonOptions } from './options-BycGBdfI.js';
-import { d as VisualCommentOptions } from './visualComment-DawOAq7P.js';
+import { R as ResolvedFigmaExportAddonOptions, b as FigmaExportAddonOptions } from './options-Ft_w0vbm.js';
+import { e as VisualCommentOptions } from './visualComment-Diazst2e.js';
 export { FigmaReviewEntry, FigmaReviewStatus } from './review-controller.js';
 
 declare const Fragment: unique symbol;
@@ -30,6 +30,9 @@ type FigmaReviewLabels = Partial<{
     closeVisualComments: string;
     closeNotes: string;
     commentBody: string;
+    commentKind: string;
+    commentKindTracking: string;
+    commentKindVisualFix: string;
     confirmDelete: string;
     deleteComment: string;
     deleteCommentDescription: string;

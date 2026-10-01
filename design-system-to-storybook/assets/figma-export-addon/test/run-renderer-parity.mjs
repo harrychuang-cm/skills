@@ -121,7 +121,11 @@ async function runRendererContract(renderer, cdp, sharedDataRoot) {
     );
     try {
       await waitForPageReady(cdp, target.sessionId);
-      return await evaluateContract(cdp, target.sessionId, renderer);
+      const results = await evaluateContract(cdp, target.sessionId, renderer);
+      results.push(
+        ...(await evaluateKindContinuation(cdp, target.sessionId)),
+      );
+      return results;
     } finally {
       await cdp.send("Target.closeTarget", { targetId: target.targetId });
     }
@@ -175,6 +179,8 @@ async function evaluateContract(cdp, sessionId, renderer) {
         let meetingJoined = false;
         let commentEdited = false;
         let commentDeleted = false;
+        let trackingCommentDetail = 'not attempted';
+        let trackingCommentCreated = false;
         let meetingEnded = false;
         let historyAvailable = false;
         let captureSurfaceComplete = false;
@@ -311,6 +317,90 @@ async function evaluateContract(cdp, sessionId, renderer) {
             await waitUntil(
               () => !document.querySelector('[data-pending-comment-preview="true"]'),
             );
+
+            // Tracking kind: chosen in the composer, stored, and labelled.
+            const findButton = (label) =>
+              [...document.querySelectorAll('button')].find(
+                (entry) => entry.textContent?.trim() === label,
+              );
+            const kindControl = () =>
+              document.querySelector('[data-comment-kind-select="true"]');
+            findButton('Add comment')?.click();
+            const trackingArmed = await waitUntil(
+              () => document.documentElement.dataset.sbfxCaptureMode === 'true',
+            );
+            if (trackingArmed && action) {
+              const rect = action.getBoundingClientRect();
+              const eventInit = {
+                bubbles: true,
+                cancelable: true,
+                clientX: rect.left + rect.width * 0.4,
+                clientY: rect.top + rect.height * 0.6,
+                pointerId: 1,
+              };
+              action.dispatchEvent(new PointerEvent('pointerdown', eventInit));
+              action.dispatchEvent(new PointerEvent('pointerup', eventInit));
+              action.dispatchEvent(new MouseEvent('click', eventInit));
+            }
+            await waitUntil(() => Boolean(kindControl()));
+            const defaultKind = kindControl()?.dataset.commentKindValue;
+            const kindLabel = kindControl()?.getAttribute('aria-label');
+            kindControl()
+              ?.querySelector('button[data-comment-kind-option="tracking"]')
+              ?.click();
+            const trackingSelected = await waitUntil(
+              () => kindControl()?.dataset.commentKindValue === 'tracking',
+            );
+            const trackingTextarea = document.querySelector(
+              '.sbfx-review__composer textarea',
+            );
+            if (trackingTextarea) {
+              trackingTextarea.value = 'Tracking parity comment';
+              trackingTextarea.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+            await waitUntil(() => {
+              const button = findButton('Save comment');
+              return button && !button.disabled;
+            });
+            findButton('Save comment')?.click();
+            const trackingArticle = () =>
+              [...document.querySelectorAll('[data-comment-id]')].find((entry) =>
+                entry.textContent?.includes('Tracking parity comment'),
+              );
+            const trackingLabelled = await waitUntil(
+              () =>
+                trackingArticle()
+                  ?.querySelector('[data-comment-kind="tracking"]')
+                  ?.textContent === 'Tracking',
+            );
+            const trackingStored = (
+              await (
+                await fetch('/__sbfx_fixture_comments?storyId=parity-fixture--default')
+              ).json()
+            ).comments?.find((entry) => entry.body === 'Tracking parity comment');
+            trackingCommentCreated =
+              defaultKind === 'visual-fix' &&
+              kindLabel === 'Comment type' &&
+              trackingSelected &&
+              trackingLabelled &&
+              trackingStored?.kind === 'tracking';
+            trackingCommentDetail = [
+              defaultKind,
+              kindLabel,
+              trackingSelected,
+              trackingLabelled,
+              trackingStored?.kind,
+            ].join('/');
+            if (trackingStored) {
+              await fetch(
+                '/__sbfx_fixture_comments/sessions/' +
+                  encodeURIComponent(meetingId) +
+                  '/comments/' +
+                  encodeURIComponent(trackingStored.id),
+                { method: 'DELETE' },
+              );
+              await waitUntil(() => !trackingArticle(), 7000);
+            }
 
             const createResponse = await fetch(
               '/__sbfx_fixture_comments/sessions/' +
@@ -517,6 +607,11 @@ async function evaluateContract(cdp, sessionId, renderer) {
               : 'capture surface contract failed',
           },
           {
+            name: 'tracking-comment-kind',
+            passed: trackingCommentCreated,
+            detail: trackingCommentDetail,
+          },
+          {
             name: 'comment-edit-and-delete',
             passed: commentEdited && commentDeleted,
             detail: commentEdited + '/' + commentDeleted,
@@ -537,6 +632,223 @@ async function evaluateContract(cdp, sessionId, renderer) {
     throw new Error(evaluation.exceptionDetails.text ?? "Renderer contract evaluation failed");
   }
   return evaluation.result.value;
+}
+
+// Comment kind continuation across real page reloads. A dev server reloads the
+// preview when comment evidence is written inside the project; the fixtures keep
+// their data outside the watched tree, so the reload is issued here instead.
+const kindContinuationHelpers = `
+  const waitUntil = async (predicate, timeout = 15000) => {
+    const startedAt = Date.now();
+    while (Date.now() - startedAt < timeout) {
+      if (predicate()) return true;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    return false;
+  };
+  const findButton = (label) =>
+    [...document.querySelectorAll('button')].find(
+      (entry) => entry.textContent?.trim() === label,
+    );
+  const panel = () => document.querySelector('[aria-label="Visual comments"]');
+  const openPanel = async () => {
+    await waitUntil(() => Boolean(panel()));
+    panel()?.querySelector('button[aria-label="Open comments"]')?.click();
+    return waitUntil(() => {
+      const detail = document.querySelector(
+        '[aria-label="Visual comments"] [data-comments-capability]',
+      );
+      return detail && !detail.hidden &&
+        detail.getAttribute('data-comments-capability') === 'available';
+    });
+  };
+  const kindControl = () =>
+    document.querySelector('[data-comment-kind-select="true"]');
+  const openComposer = async () => {
+    await waitUntil(() => findButton('Add comment') && !findButton('Add comment').disabled);
+    findButton('Add comment')?.click();
+    await waitUntil(() => document.documentElement.dataset.sbfxCaptureMode === 'true');
+    const action = document.querySelector('[data-parity-action]');
+    const rect = action.getBoundingClientRect();
+    const eventInit = {
+      bubbles: true,
+      cancelable: true,
+      clientX: rect.left + rect.width * 0.4,
+      clientY: rect.top + rect.height * 0.6,
+      pointerId: 1,
+    };
+    action.dispatchEvent(new PointerEvent('pointerdown', eventInit));
+    action.dispatchEvent(new PointerEvent('pointerup', eventInit));
+    action.dispatchEvent(new MouseEvent('click', eventInit));
+    return waitUntil(() => Boolean(kindControl()));
+  };
+  const closeComposer = async () => {
+    findButton('Close')?.click();
+    await waitUntil(
+      () => !document.querySelector('[data-pending-comment-preview="true"]'),
+    );
+  };
+  const kindEntry = () => sessionStorage.getItem('sbfx:visual-comments-kind');
+  const readComposerKind = async () => {
+    await openPanel();
+    const opened = await openComposer();
+    const kind = opened ? kindControl()?.dataset.commentKindValue : 'composer missing';
+    const entryAfterMount = kindEntry();
+    await closeComposer();
+    return { kind, entryAfterMount };
+  };
+`;
+
+async function evaluateKindContinuation(cdp, sessionId) {
+  const run = async (body) => {
+    const evaluation = await cdp.send(
+      "Runtime.evaluate",
+      {
+        expression: `Promise.resolve((async () => { ${kindContinuationHelpers} ${body} })())`,
+        awaitPromise: true,
+        returnByValue: true,
+      },
+      sessionId,
+    );
+    if (evaluation.exceptionDetails) {
+      throw new Error(
+        evaluation.exceptionDetails.exception?.description ??
+          evaluation.exceptionDetails.text ??
+          "Kind continuation evaluation failed",
+      );
+    }
+    return evaluation.result.value;
+  };
+  const reload = async () => {
+    await run(`window.__sbfxBeforeReload = true;`);
+    await cdp.send("Page.reload", {}, sessionId);
+    const deadline = Date.now() + 30_000;
+    while (Date.now() < deadline) {
+      try {
+        if (
+          await run(
+            `return document.readyState === 'complete' && window.__sbfxBeforeReload !== true;`,
+          )
+        ) {
+          return;
+        }
+      } catch {
+        // The execution context is replaced while the page navigates.
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    throw new Error("Storybook iframe did not reload");
+  };
+
+  let saved = { saved: false, detail: "not attempted" };
+  let afterRequestReload = { kind: "not attempted" };
+  let afterSecondReload = { kind: "not attempted" };
+  let unexpired = { kind: "not attempted" };
+  const unusable = [];
+  try {
+    saved = await run(`
+      await openPanel();
+      const title = document.querySelector('[aria-label="Meeting title"]');
+      if (title) {
+        title.value = 'Kind continuation meeting';
+        title.dispatchEvent(new Event('input', { bubbles: true }));
+        await waitUntil(() => findButton('Start meeting') && !findButton('Start meeting').disabled);
+        findButton('Start meeting')?.click();
+      }
+      const opened = await openComposer();
+      const defaultKind = kindControl()?.dataset.commentKindValue;
+      kindControl()?.querySelector('button[data-comment-kind-option="tracking"]')?.click();
+      await waitUntil(() => kindControl()?.dataset.commentKindValue === 'tracking');
+      const textarea = document.querySelector('.sbfx-review__composer textarea');
+      if (textarea) {
+        textarea.value = 'Kind continuation comment';
+        textarea.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      await waitUntil(() => findButton('Save comment') && !findButton('Save comment').disabled);
+      findButton('Save comment')?.click();
+      const stored = await waitUntil(() =>
+        [...document.querySelectorAll('[data-comment-id]')].some((entry) =>
+          entry.textContent?.includes('Kind continuation comment'),
+        ),
+      );
+      return {
+        saved: opened && stored,
+        detail: [opened, defaultKind, stored, kindEntry()].join('/'),
+        persisted: Object.keys(localStorage).filter(
+          (key) => /kind/i.test(key) || /tracking|visual-fix/.test(localStorage.getItem(key) ?? ''),
+        ),
+      };
+    `);
+    await reload();
+    afterRequestReload = await run(`return readComposerKind();`);
+    await reload();
+    afterSecondReload = await run(`return readComposerKind();`);
+    // Entries are written in the page so their expiry is relative to its clock.
+    for (const [label, entryExpression] of [
+      ["expired 1 ms ago", `JSON.stringify({ kind: 'tracking', expiresAt: Date.now() - 1 })`],
+      ["unknown kind", `JSON.stringify({ kind: 'analytics', expiresAt: Date.now() + 10000 })`],
+      ["not JSON", `'tracking'`],
+    ]) {
+      await run(
+        `sessionStorage.setItem('sbfx:visual-comments-kind', ${entryExpression});`,
+      );
+      await reload();
+      unusable.push({ label, ...(await run(`return readComposerKind();`)) });
+    }
+    await run(
+      `sessionStorage.setItem('sbfx:visual-comments-kind', JSON.stringify({ kind: 'tracking', expiresAt: Date.now() + 10000 }));`,
+    );
+    await reload();
+    unexpired = await run(`return readComposerKind();`);
+  } finally {
+    // The next renderer starts its own meeting, so none may stay active.
+    await run(`
+      const overview = await (
+        await fetch('/__sbfx_fixture_comments?storyId=parity-fixture--default')
+      ).json();
+      if (overview.activeSession?.id) {
+        await fetch(
+          '/__sbfx_fixture_comments/sessions/' +
+            encodeURIComponent(overview.activeSession.id) +
+            '/close',
+          { method: 'POST' },
+        );
+      }
+    `).catch(() => undefined);
+  }
+
+  return [
+    {
+      name: "tracking-kind-survives-request-reload",
+      passed:
+        saved.saved &&
+        saved.persisted?.length === 0 &&
+        afterRequestReload.kind === "tracking" &&
+        afterRequestReload.entryAfterMount === null,
+      detail: JSON.stringify({ saved, afterRequestReload }),
+    },
+    {
+      name: "kind-continuation-consumed-once",
+      passed:
+        afterSecondReload.kind === "visual-fix" &&
+        afterSecondReload.entryAfterMount === null,
+      detail: JSON.stringify(afterSecondReload),
+    },
+    {
+      name: "unexpired-kind-continuation-preselects",
+      passed: unexpired.kind === "tracking" && unexpired.entryAfterMount === null,
+      detail: JSON.stringify(unexpired),
+    },
+    {
+      name: "unusable-kind-continuation-ignored",
+      passed:
+        unusable.length === 3 &&
+        unusable.every(
+          (entry) => entry.kind === "visual-fix" && entry.entryAfterMount === null,
+        ),
+      detail: JSON.stringify(unusable),
+    },
+  ];
 }
 
 async function startBrowser(binary) {

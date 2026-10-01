@@ -117,7 +117,7 @@ Build or update Storybook from an already extracted design-system package:
 
 1. Read `design-system/` Markdown specs and `tokens/`.
 2. Map token layers and component specs into the target product repo.
-3. Install and configure the Figma export addon for compatible React Storybook 10 projects.
+3. Install and configure the Figma export addon for compatible React Storybook 10 projects. Its Visual Comments let reviewers pin comments on a Story; a comment marked **Tracking** carries an analytics requirement, and the report's `Copy tracking prompts` hands every open Tracking comment to a coding assistant as one request (event name, parameters, recording timing, value definitions).
 4. Plan large inventories into dependency-aware batches when there are many components.
 5. Create or update Storybook foundations, shared components, and stories.
 6. Verify each batch with Storybook, lint/typecheck, tests, or visual checks.
@@ -150,6 +150,8 @@ Create PRD-led product prototypes and implementation handoff docs — for web an
 Acceptance criteria carry stable IDs across all three stages — `AC-S-*` (Storybook), `AC-H-*` (handoff), and a new `AC-P-*` product section whose entries are tagged `(assembly)` when mock mode can verify them or `(integration)` when they need real data. The validator checks ID format and uniqueness.
 
 Flow contracts gained four optional fields — Route `params` and `deepLink`, Transition `presentation` (push/modal/sheet/fullscreen/replace) and `backBehavior` (pop/popToRoot/dismiss/none) — which promote the Flow Spec's Production Navigation Map to a Route id × Web path × iOS destination × Android route table; existing prototypes need no changes. For multi-platform handoff, `meta.components` takes an optional `targets` field (web/ios/android, `null` meaning "needs building") and the Prototype To Frontend Map supports split `Scope(web)` / `Scope(app)` columns. API contracts gained a `Semantics` column covering pagination, sort/filter, freshness, mutation (idempotency, optimistic updates), and error taxonomy.
+
+An analytics requirement that starts as a Tracking visual comment on a Story enters the Data Authority registry only as a `proposed` `analytics` contract; the comment, demo confirmation, or an implemented call never confirms it.
 
 Use this when a team wants a clickable Storybook prototype and an implementation handoff before production repo work.
 

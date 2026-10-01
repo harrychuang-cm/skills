@@ -458,6 +458,195 @@ try {
     await rm(ordinalRoot, { recursive: true, force: true });
   }
 
+  const kindRoot = await mkdtemp(join(tmpdir(), "sbfx-comments-kind-"));
+  try {
+    const kindStore = createVisualCommentStore({ cwd: kindRoot });
+    const kindMeeting = (await kindStore.startMeeting("Kind review")).meeting.session.id;
+    const kindMeetingPath = join(
+      kindRoot,
+      "design-system/figma-export-review/sessions",
+      kindMeeting,
+      "meeting.json",
+    );
+    const kindCount = async () => (await kindStore.getMeeting(kindMeeting)).comments.length;
+    const isConflict = (error) => error.code === "CONFLICT" && error.statusCode === 409;
+
+    const tracking = await kindStore.createComment(kindMeeting, {
+      ...request("kind-tracking", "Send order_submit_click with stock_id"),
+      kind: "tracking",
+    });
+    assert.equal(tracking.comment.kind, "tracking", "tracking comment returns its kind");
+    const defaulted = await kindStore.createComment(
+      kindMeeting,
+      request("kind-default", "Tighten the gap"),
+    );
+    assert.equal(defaulted.comment.kind, "visual-fix", "a request without kind is stored as visual-fix");
+    const explicitFix = await kindStore.createComment(kindMeeting, {
+      ...request("kind-explicit-fix", "Fix the radius"),
+      kind: "visual-fix",
+    });
+    assert.deepEqual(
+      JSON.parse(await readFile(kindMeetingPath, "utf8")).comments.map((comment) => comment.kind),
+      ["tracking", "visual-fix", "visual-fix"],
+      "the server writes kind on every comment it creates",
+    );
+
+    for (const invalidKind of ["analytics", "", null, 1]) {
+      await assert.rejects(
+        () => kindStore.createComment(kindMeeting, { ...request("kind-invalid"), kind: invalidKind }),
+        (error) => error.code === "INVALID" && error.statusCode === 400,
+        `kind ${JSON.stringify(invalidKind)} is rejected`,
+      );
+    }
+    assert.equal(await kindCount(), 3, "an unknown kind does not modify the meeting");
+
+    // Replay outcomes: kind is compared after treating an absent kind as visual-fix.
+    const legacyMeeting = JSON.parse(await readFile(kindMeetingPath, "utf8"));
+    const legacyComment = legacyMeeting.comments.find(
+      (comment) => comment.id === defaulted.comment.id,
+    );
+    delete legacyComment.kind;
+    await writeFile(kindMeetingPath, `${JSON.stringify(legacyMeeting, null, 2)}\n`);
+    const legacyCanonical = await readFile(kindMeetingPath, "utf8");
+    assert.equal(
+      (await kindStore.createComment(kindMeeting, request("kind-default", "Tighten the gap"))).replay,
+      true,
+      "legacy comment replays for a request without kind",
+    );
+    assert.equal(
+      (
+        await kindStore.createComment(kindMeeting, {
+          ...request("kind-default", "Tighten the gap"),
+          kind: "visual-fix",
+        })
+      ).replay,
+      true,
+      "legacy comment replays for a visual-fix request",
+    );
+    assert.equal(
+      (await kindStore.createComment(kindMeeting, request("kind-explicit-fix", "Fix the radius"))).replay,
+      true,
+      "visual-fix comment replays for a request without kind",
+    );
+    assert.equal(
+      (
+        await kindStore.createComment(kindMeeting, {
+          ...request("kind-tracking", "Send order_submit_click with stock_id"),
+          kind: "tracking",
+        })
+      ).replay,
+      true,
+      "tracking comment replays for a tracking request",
+    );
+    await assert.rejects(
+      () =>
+        kindStore.createComment(kindMeeting, {
+          ...request("kind-tracking", "Send order_submit_click with stock_id"),
+          kind: "visual-fix",
+        }),
+      isConflict,
+      "tracking comment conflicts with a visual-fix replay",
+    );
+    await assert.rejects(
+      () =>
+        kindStore.createComment(
+          kindMeeting,
+          request("kind-tracking", "Send order_submit_click with stock_id"),
+        ),
+      isConflict,
+      "tracking comment conflicts with a replay that has no kind",
+    );
+    await assert.rejects(
+      () =>
+        kindStore.createComment(kindMeeting, {
+          ...request("kind-explicit-fix", "Fix the radius"),
+          kind: "tracking",
+        }),
+      isConflict,
+      "visual-fix comment conflicts with a tracking replay",
+    );
+    assert.equal(await kindCount(), 3, "replays and conflicts never append a comment");
+
+    // Legacy meeting: comments without kind read as visual-fix and are not rewritten.
+    const legacyOverview = await createVisualCommentStore({ cwd: kindRoot }).getOverview();
+    assert.deepEqual(
+      legacyOverview.comments.map((comment) => comment.kind),
+      ["tracking", "visual-fix", "visual-fix"],
+      "overview reads a comment without kind as visual-fix",
+    );
+    await kindStore.refreshReports(kindMeeting);
+    assert.equal(
+      await readFile(kindMeetingPath, "utf8"),
+      legacyCanonical,
+      "reading and replaying a legacy meeting does not rewrite its comments",
+    );
+    assert.equal((await kindStore.getMeeting(kindMeeting)).version, 1, "kind keeps storage schema version 1");
+
+    // Kind-only edit preserves evidence.
+    const beforeKindEdit = await kindStore.getMeeting(kindMeeting);
+    const beforeKindComment = structuredClone(
+      beforeKindEdit.comments.find((comment) => comment.id === explicitFix.comment.id),
+    );
+    const beforeKindCapture = structuredClone(
+      beforeKindEdit.captures[explicitFix.comment.captureId],
+    );
+    const otherCommentsBefore = structuredClone(
+      beforeKindEdit.comments.filter((comment) => comment.id !== explicitFix.comment.id),
+    );
+    const kindEdited = await kindStore.updateCommentDetails(
+      kindMeeting,
+      explicitFix.comment.id,
+      { kind: "tracking" },
+    );
+    assert.deepEqual(
+      kindEdited.comment,
+      { ...beforeKindComment, kind: "tracking" },
+      "kind-only edit preserves body, pin, author, capture, and timestamps",
+    );
+    assert.deepEqual(
+      kindEdited.meeting.captures[explicitFix.comment.captureId],
+      beforeKindCapture,
+      "kind-only edit preserves capture and image metadata",
+    );
+    assert.deepEqual(
+      kindEdited.meeting.comments.filter((comment) => comment.id !== explicitFix.comment.id),
+      otherCommentsBefore,
+      "kind-only edit does not change another comment",
+    );
+    const allFieldsEdited = await kindStore.updateCommentDetails(
+      kindMeeting,
+      explicitFix.comment.id,
+      { body: "Radius is fine", kind: "visual-fix", pin: { xRatio: 0.1, yRatio: 0.2 } },
+    );
+    assert.equal(allFieldsEdited.comment.kind, "visual-fix");
+    assert.equal(allFieldsEdited.comment.body, "Radius is fine");
+    assert.deepEqual(allFieldsEdited.comment.pin, { xRatio: 0.1, yRatio: 0.2 });
+
+    // Invalid kind does not partially update.
+    for (const invalidPatch of [
+      { body: "Valid body", kind: "analytics" },
+      { kind: "" },
+      { kind: null },
+      { kind: "tracking", resolved: true },
+      { kind: "tracking", author: "Other" },
+    ]) {
+      await assert.rejects(
+        () => kindStore.updateCommentDetails(kindMeeting, explicitFix.comment.id, invalidPatch),
+        (error) => error.code === "INVALID" && error.statusCode === 400,
+        `patch ${JSON.stringify(invalidPatch)} is rejected`,
+      );
+      assert.deepEqual(
+        (await kindStore.getMeeting(kindMeeting)).comments.find(
+          (comment) => comment.id === explicitFix.comment.id,
+        ),
+        allFieldsEdited.comment,
+        "an invalid kind edit never partially writes a valid body",
+      );
+    }
+  } finally {
+    await rm(kindRoot, { recursive: true, force: true });
+  }
+
   const tempFiles = (await readdir(join(root, "design-system/figma-export-review"))).filter((file) => file.endsWith(".tmp"));
   assert.deepEqual(tempFiles, [], "atomic writes leave no temp files");
   console.log("visual comment store checks passed");

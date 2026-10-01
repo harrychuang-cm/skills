@@ -5,6 +5,21 @@ export const defaultVisualCommentsDir = "design-system/figma-export-review";
 export const defaultVisualCommentsAuthorStorageKey = "sbfx:review-author";
 export const defaultVisualCommentsCaptureSelector = "#storybook-root";
 
+export const VISUAL_COMMENT_KINDS = ["visual-fix", "tracking"] as const;
+
+export type VisualCommentKind = (typeof VISUAL_COMMENT_KINDS)[number];
+
+export const defaultVisualCommentKind: VisualCommentKind = "visual-fix";
+
+export function isVisualCommentKind(value: unknown): value is VisualCommentKind {
+  return (VISUAL_COMMENT_KINDS as readonly unknown[]).includes(value);
+}
+
+// Comments stored before kinds existed have no kind; they read as visual-fix.
+export function resolveVisualCommentKind(value: unknown): VisualCommentKind {
+  return isVisualCommentKind(value) ? value : defaultVisualCommentKind;
+}
+
 export type VisualCommentOptions = {
   enabled?: boolean;
   apiPath?: string;
@@ -45,6 +60,7 @@ export type CreateVisualCommentRequest = {
   clientRequestId: string;
   authorName: string;
   body: string;
+  kind?: VisualCommentKind;
   story: VisualCommentStoryMetadata;
   pin: VisualCommentPin;
   viewport: VisualCommentViewport;

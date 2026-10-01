@@ -1,3 +1,5 @@
+declare const VISUAL_COMMENT_KINDS: readonly ["visual-fix", "tracking"];
+type VisualCommentKind = (typeof VISUAL_COMMENT_KINDS)[number];
 type VisualCommentOptions = {
     enabled?: boolean;
     apiPath?: string;
@@ -36,6 +38,7 @@ type CreateVisualCommentRequest = {
     clientRequestId: string;
     authorName: string;
     body: string;
+    kind?: VisualCommentKind;
     story: VisualCommentStoryMetadata;
     pin: VisualCommentPin;
     viewport: VisualCommentViewport;
@@ -77,4 +80,4 @@ declare function beginVisualCommentCapture({ capture, documentRef, onCancel, onC
     selector?: string;
 }): VisualCommentCaptureController;
 
-export { type CreateVisualCommentRequest as C, type VisualCommentPin as V, type VisualCommentCaptureController as a, beginVisualCommentCapture as b, VISUAL_COMMENT_LIMITS as c, type VisualCommentOptions as d };
+export { type CreateVisualCommentRequest as C, type VisualCommentKind as V, type VisualCommentPin as a, beginVisualCommentCapture as b, type VisualCommentCaptureController as c, VISUAL_COMMENT_LIMITS as d, type VisualCommentOptions as e };

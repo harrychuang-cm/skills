@@ -35,13 +35,18 @@ import {
 } from "./workspace";
 
 import {
+  VISUAL_COMMENT_KINDS,
   VISUAL_COMMENT_LIMITS,
   clampRatio,
+  defaultVisualCommentKind,
   getVisualCommentPin,
+  isVisualCommentKind,
   normalizeAuthorName,
+  resolveVisualCommentKind,
   type CreateVisualCommentRequest,
   type VisualCommentCaptureController,
   type VisualCommentCaptureResult,
+  type VisualCommentKind,
   type VisualCommentOptions,
   type VisualCommentPin,
   type VisualCommentPointSelection,
@@ -160,6 +165,9 @@ export type FigmaReviewLabels = Partial<{
   closeVisualComments: string;
   closeNotes: string;
   commentBody: string;
+  commentKind: string;
+  commentKindTracking: string;
+  commentKindVisualFix: string;
   confirmDelete: string;
   deleteComment: string;
   deleteCommentDescription: string;
@@ -247,6 +255,9 @@ const defaultLabels = {
   closeVisualComments: "Close comments",
   closeNotes: "Close",
   commentBody: "Comment",
+  commentKind: "Comment type",
+  commentKindTracking: "Tracking",
+  commentKindVisualFix: "Visual fix",
   confirmDelete: "Confirm delete",
   deleteComment: "Delete comment",
   deleteCommentDescription:
@@ -405,6 +416,41 @@ function consumeVisualCommentsResume(storyId: string): boolean {
   }
 }
 
+// The kind of the last saved comment preselects the next composer. Writing
+// comment evidence inside the project makes the dev server reload the preview,
+// so panel requests carry the kind across that reload in a short-lived,
+// consume-on-read sessionStorage entry; any other page load starts from the
+// default again.
+let lastSavedCommentKind: VisualCommentKind = defaultVisualCommentKind;
+const visualCommentsKindKey = "sbfx:visual-comments-kind";
+
+function rememberVisualCommentKind(kind: VisualCommentKind): void {
+  try {
+    sessionStorage.setItem(
+      visualCommentsKindKey,
+      JSON.stringify({ kind, expiresAt: Date.now() + visualCommentsResumeWindowMs }),
+    );
+  } catch {
+    // Session storage can be unavailable in private/restricted contexts.
+  }
+}
+
+function consumeVisualCommentKind(): VisualCommentKind | null {
+  try {
+    const stored = sessionStorage.getItem(visualCommentsKindKey);
+    if (stored === null) return null;
+    sessionStorage.removeItem(visualCommentsKindKey);
+    const entry = JSON.parse(stored) as { kind?: unknown; expiresAt?: unknown };
+    return isVisualCommentKind(entry?.kind) &&
+      typeof entry.expiresAt === "number" &&
+      entry.expiresAt >= Date.now()
+      ? entry.kind
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 function VisualCommentsSection({
   componentTitle,
   enabled,
@@ -440,6 +486,10 @@ function VisualCommentsSection({
     }
   });
   const [commentBody, setCommentBody] = useState("");
+  const [commentKind, setCommentKind] = useState<VisualCommentKind>(() => {
+    lastSavedCommentKind = consumeVisualCommentKind() ?? lastSavedCommentKind;
+    return lastSavedCommentKind;
+  });
   const [pendingCapture, setPendingCapture] =
     useState<VisualCommentCaptureResult | null>(null);
   const [pendingPoint, setPendingPoint] =
@@ -459,6 +509,9 @@ function VisualCommentsSection({
   const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
   const [commentPinDrafts, setCommentPinDrafts] = useState<
     Record<string, VisualCommentPin>
+  >({});
+  const [commentKindDrafts, setCommentKindDrafts] = useState<
+    Record<string, VisualCommentKind>
   >({});
   const [commentErrors, setCommentErrors] = useState<Record<string, string>>({});
   const [commentPreviewErrors, setCommentPreviewErrors] = useState<
@@ -484,6 +537,45 @@ function VisualCommentsSection({
   const deleteCancelRef = useRef<HTMLButtonElement | null>(null);
   const deleteTriggerRef = useRef<HTMLButtonElement | null>(null);
   const commentEditTitleId = useId();
+  const commentKindLabels: Record<VisualCommentKind, string> = {
+    "visual-fix": labels.commentKindVisualFix,
+    tracking: labels.commentKindTracking,
+  };
+  // Two toggle buttons rather than a select: one click switches the kind.
+  const renderCommentKindControl = (
+    value: VisualCommentKind,
+    onSelect: (kind: VisualCommentKind) => void,
+    marker: "data-comment-kind-select" | "data-comment-edit-kind",
+  ) =>
+    h(
+      "div",
+      { className: "sbfx-review__field" },
+      h("span", null, labels.commentKind),
+      h(
+        "div",
+        {
+          "aria-label": labels.commentKind,
+          className: "sbfx-review__kind",
+          "data-comment-kind-value": value,
+          [marker]: "true",
+          role: "group",
+        },
+        ...VISUAL_COMMENT_KINDS.map((kind) =>
+          h(
+            "button",
+            {
+              "aria-pressed": kind === value,
+              className: "sbfx-review__kind-option",
+              "data-comment-kind-option": kind,
+              key: kind,
+              onClick: () => onSelect(kind),
+              type: "button",
+            },
+            commentKindLabels[kind],
+          ),
+        ),
+      ),
+    );
   const recentComments = [...(overview?.comments ?? [])]
     .sort(
       (left, right) =>
@@ -500,6 +592,10 @@ function VisualCommentsSection({
   const editingCommentPin = editingComment
     ? (commentPinDrafts[editingComment.id] ?? editingComment.preview?.pin ?? null)
     : null;
+  const editingCommentKind = editingComment
+    ? (commentKindDrafts[editingComment.id] ??
+      resolveVisualCommentKind(editingComment.kind))
+    : defaultVisualCommentKind;
   const editingCommentHasPreview = Boolean(
     editingComment?.preview &&
       !commentPreviewErrors[editingComment.id] &&
@@ -638,6 +734,7 @@ function VisualCommentsSection({
     setEditingCommentId(null);
     setCommentDrafts({});
     setCommentPinDrafts({});
+    setCommentKindDrafts({});
     setCommentErrors({});
     setCommentPreviewErrors({});
     commentEditTriggerRef.current = null;
@@ -669,6 +766,8 @@ function VisualCommentsSection({
     setVisualError("");
     setPendingCapture(null);
     setPendingPoint(null);
+    // A cancelled draft must not decide the next comment's kind.
+    setCommentKind(lastSavedCommentKind);
     setIsCapturing(true);
     captureControllerRef.current = commentsController.beginCapture({
       onCancel: () => {
@@ -780,8 +879,11 @@ function VisualCommentsSection({
     setIsPanelOpen(!isPanelOpen);
   }
 
-  function preserveOpenPanelDuringMutation() {
+  function preserveOpenPanelDuringMutation(
+    kind: VisualCommentKind = lastSavedCommentKind,
+  ) {
     if (isPanelOpen) rememberVisualCommentsOpen(storyId);
+    rememberVisualCommentKind(kind);
   }
 
   async function submitComment() {
@@ -799,6 +901,7 @@ function VisualCommentsSection({
         VISUAL_COMMENT_LIMITS.maxAuthorLength,
       ),
       body: commentBody.trim().slice(0, VISUAL_COMMENT_LIMITS.maxBodyLength),
+      kind: commentKind,
       capture: pendingCapture.capture,
       clientRequestId:
         globalThis.crypto?.randomUUID?.() ??
@@ -825,15 +928,17 @@ function VisualCommentsSection({
       // Browser storage can be unavailable in private/restricted contexts.
     }
     try {
-      preserveOpenPanelDuringMutation();
+      preserveOpenPanelDuringMutation(commentKind);
       await mutate(
         `/sessions/${encodeURIComponent(overview.activeSession.id)}/comments`,
         request,
       );
+      lastSavedCommentKind = commentKind;
       setPendingCapture(null);
       setPendingPoint(null);
       setCommentBody("");
     } catch (error) {
+      rememberVisualCommentKind(lastSavedCommentKind);
       setVisualError(error instanceof Error ? error.message : "Unable to save comment.");
     }
   }
@@ -842,12 +947,14 @@ function VisualCommentsSection({
     commentId: string,
     body: string,
     pin: VisualCommentPin | null,
+    kind: VisualCommentKind,
     trigger: HTMLButtonElement,
   ) {
     commentEditTriggerRef.current = trigger;
     setEditingCommentId(commentId);
     setCommentDrafts({ [commentId]: body });
     setCommentPinDrafts(pin ? { [commentId]: { ...pin } } : {});
+    setCommentKindDrafts({ [commentId]: kind });
     setCommentErrors({ [commentId]: "" });
     setCommentPreviewErrors({});
   }
@@ -861,6 +968,11 @@ function VisualCommentsSection({
       return next;
     });
     setCommentPinDrafts((current) => {
+      const next = { ...current };
+      delete next[commentId];
+      return next;
+    });
+    setCommentKindDrafts((current) => {
       const next = { ...current };
       delete next[commentId];
       return next;
@@ -910,9 +1022,18 @@ function VisualCommentsSection({
           evidenceImage.naturalWidth > 0 &&
           pin,
       );
+      // Kind joins the same edit request only when the reviewer changed it.
+      const kindDraft = commentKindDrafts[commentId];
+      const includeKind = Boolean(
+        comment && kindDraft && kindDraft !== resolveVisualCommentKind(comment.kind),
+      );
       const payload = await commentsController.patch(
         path,
-        { body, ...(includePin ? { pin } : {}) },
+        {
+          body,
+          ...(includePin ? { pin } : {}),
+          ...(includeKind ? { kind: kindDraft } : {}),
+        },
       );
       setReportPending(Boolean(payload.reportStale));
       await refresh();
@@ -1207,6 +1328,11 @@ function VisualCommentsSection({
                       value: authorName,
                     }),
                   ),
+                  renderCommentKindControl(
+                    commentKind,
+                    setCommentKind,
+                    "data-comment-kind-select",
+                  ),
                   h(
                     "label",
                     { className: "sbfx-review__field" },
@@ -1313,6 +1439,14 @@ function VisualCommentsSection({
                           comment.resolvedAt ? "Completed" : "Open",
                         ),
                         h(
+                          "span",
+                          {
+                            className: `sbfx-comments-panel__comment-kind sbfx-comments-panel__comment-kind--${resolveVisualCommentKind(comment.kind)}`,
+                            "data-comment-kind": resolveVisualCommentKind(comment.kind),
+                          },
+                          commentKindLabels[resolveVisualCommentKind(comment.kind)],
+                        ),
+                        h(
                           "time",
                           { dateTime: comment.createdAt },
                           new Date(comment.createdAt).toLocaleString(),
@@ -1338,6 +1472,7 @@ function VisualCommentsSection({
                                 comment.id,
                                 comment.body,
                                 comment.preview?.pin ?? null,
+                                resolveVisualCommentKind(comment.kind),
                                 event.currentTarget as HTMLButtonElement,
                               ),
                             title: labels.editComment,
@@ -1550,6 +1685,20 @@ function VisualCommentsSection({
                   labels.adjustCommentPointHint,
                 )
               : null,
+            renderCommentKindControl(
+              editingCommentKind,
+              (kind) => {
+                setCommentKindDrafts((current) => ({
+                  ...current,
+                  [editingComment.id]: kind,
+                }));
+                setCommentErrors((current) => ({
+                  ...current,
+                  [editingComment.id]: "",
+                }));
+              },
+              "data-comment-edit-kind",
+            ),
             h(
               "label",
               { className: "sbfx-review__field" },

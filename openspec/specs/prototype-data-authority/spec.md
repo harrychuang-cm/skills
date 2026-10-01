@@ -247,3 +247,141 @@ code:
   - README.md
   - platform-parity-handoff/scripts/cross_check_string_mapping.py
 -->
+
+---
+### Requirement: Tracking comment ingestion
+
+When a producer or receiving skill records an analytics requirement that originates from a `tracking` visual comment into the Data Authority registry, the contract record SHALL declare kind `analytics`, status `proposed`, source `null`, and a named owner. A tracking comment, a product demo confirmation, a passing validation run, or an implemented tracking call SHALL NOT change that status to `confirmed`; confirmation SHALL require a complete source object with reference, revision, confirmedBy, and confirmedOn. Event names, parameters, recording timing, and value definitions that the comment does not state SHALL NOT be added to the contract, the formal event payload, or the acceptance criteria. The handoff authority reference SHALL document this rule and SHALL name the four event fields.
+
+#### Scenario: Tracking comment becomes a proposed analytics contract
+
+- **WHEN** a developer's tracking comment `點擊送出按鈕時送 order_submit_click，帶 stock_id` is recorded for a prototype that keeps a Data Authority registry
+- **THEN** the contracts array gains one record with kind `analytics`, status `proposed`, source `null`, and a named owner, and data authority validation passes
+
+#### Scenario: Implemented tracking call does not confirm the contract
+
+- **WHEN** the tracking call for a proposed analytics contract is implemented and its tests pass while no source evidence exists
+- **THEN** the contract status remains `proposed`
+
+#### Scenario: Source evidence confirms the contract
+
+- **WHEN** the owner supplies a tracking specification with reference, revision, confirmedBy, and confirmedOn
+- **THEN** the contract status becomes `confirmed` with that complete source object
+
+#### Scenario: Unstated parameter stays out of the contract
+
+- **WHEN** an implementer suggests a `reason` parameter that the tracking comment does not state
+- **THEN** the parameter is retained only as a separate proposed decision and is absent from the formal event payload and acceptance criteria
+
+<!-- @trace
+source: add-tracking-visual-comments
+updated: 2026-10-01
+code:
+  - design-system-to-storybook/storybook-template/vendor/figma-export/dist/visual-comment-store.d.ts
+  - design-system-to-storybook/storybook-template/vendor/figma-export/dist/visual-comment-store.js
+  - design-system-to-storybook/storybook-template/.storybook/vendor/figma-export-addon/dist/preview.js.map
+  - design-system-to-storybook/storybook-template/vendor/figma-export/src/visualCommentReport.ts
+  - design-system-to-storybook/assets/figma-export-addon/dist/visualComment-Diazst2e.d.ts
+  - design-system-to-storybook/storybook-template/.storybook/vendor/figma-export-addon/dist/visual-comment-report.js
+  - design-system-to-storybook/storybook-template/.storybook/vendor/figma-export-addon/src/visualComment.ts
+  - design-system-to-storybook/assets/figma-export-addon/dist/visual-comment-report.js
+  - design-system-to-storybook/storybook-template/vendor/figma-export/package.json
+  - design-system-to-storybook/assets/figma-export-addon/dist/review.d.ts
+  - design-system-to-storybook/assets/figma-export-addon/dist/options-BycGBdfI.d.ts
+  - design-system-to-storybook/storybook-template/vendor/figma-export/dist/preview.js.map
+  - design-system-to-storybook/assets/figma-export-addon/dist/review-server.d.ts
+  - design-system-to-storybook/assets/figma-export-addon/package.json
+  - design-system-to-storybook/assets/figma-export-addon/README.md
+  - design-system-to-storybook/assets/figma-export-addon/src/review.ts
+  - design-system-to-storybook/storybook-template/.storybook/vendor/figma-export-addon/dist/review.js
+  - design-system-to-storybook/assets/figma-export-addon/dist/visual-comment-store.js.map
+  - design-system-to-storybook/assets/figma-export-addon/src/reviewController.ts
+  - design-system-to-storybook/storybook-template/vendor/figma-export/dist/review.css
+  - design-system-to-storybook/assets/figma-export-addon/dist/visual-comment-store.d.ts
+  - design-system-to-storybook/assets/figma-export-addon/src/review-server.ts
+  - design-system-to-storybook/assets/figma-export-addon/src/visualCommentStore.ts
+  - design-system-to-storybook/storybook-template/.storybook/vendor/figma-export-addon/src/review.css
+  - design-system-to-storybook/storybook-template/vendor/figma-export/dist/visual-comment-report.d.ts
+  - design-system-to-storybook/storybook-template/.storybook/vendor/figma-export-addon/dist/index.d.ts
+  - design-system-to-storybook/assets/figma-export-addon/dist/preview.js.map
+  - design-system-to-storybook/storybook-template/vendor/figma-export/src/visualCommentStore.ts
+  - design-system-to-storybook/storybook-template/.storybook/vendor/figma-export-addon/dist/index.js
+  - design-system-to-storybook/storybook-template/.storybook/vendor/figma-export-addon/dist/options-Ft_w0vbm.d.ts
+  - design-system-to-storybook/storybook-template/.storybook/vendor/figma-export-addon/dist/review.css
+  - design-system-to-storybook/storybook-template/.storybook/vendor/figma-export-addon/dist/visualComment-Diazst2e.d.ts
+  - design-system-to-storybook/assets/figma-export-addon/dist/review-server.js
+  - design-system-to-storybook/storybook-template/.storybook/vendor/figma-export-addon/dist/visual-comment-report.d.ts
+  - design-system-to-storybook/storybook-template/.storybook/vendor/figma-export-addon/dist/visual-comment-report.js.map
+  - design-system-to-storybook/assets/figma-export-addon/src/review.css
+  - design-system-to-storybook/assets/figma-export-addon/src/visualCommentReport.ts
+  - design-system-to-storybook/storybook-template/.storybook/vendor/figma-export-addon/dist/visual-comment-store.js
+  - design-system-to-storybook/assets/figma-export-addon/dist/index.js.map
+  - design-system-to-storybook/storybook-template/.storybook/vendor/figma-export-addon/dist/options-BycGBdfI.d.ts
+  - design-system-to-storybook/storybook-template/vendor/figma-export/dist/review-controller.js.map
+  - design-system-to-storybook/storybook-template/vendor/figma-export/src/visualComment.ts
+  - design-system-to-storybook/assets/figma-export-addon/dist/review.css
+  - design-system-to-storybook/storybook-template/.storybook/vendor/figma-export-addon/src/reviewController.ts
+  - design-system-to-storybook/storybook-template/.storybook/vendor/figma-export-addon/src/visualCommentStore.ts
+  - README.md
+  - design-system-to-storybook/storybook-template/vendor/figma-export/dist/visual-comment-report.js
+  - design-system-to-storybook/references/figma-export-review-setup.md
+  - design-system-to-storybook/storybook-template/vendor/figma-export/dist/visual-comment-store.js.map
+  - design-system-to-storybook/storybook-template/vendor/figma-export/src/reviewController.ts
+  - design-system-to-storybook/assets/figma-export-addon/dist/review-controller.d.ts
+  - storybook-product-prototype/references/handoff-authority.md
+  - design-system-to-storybook/storybook-template/vendor/figma-export/dist/visual-comment-report.js.map
+  - design-system-to-storybook/assets/figma-export-addon/dist/index.d.ts
+  - design-system-to-storybook/storybook-template/.storybook/vendor/figma-export-addon/dist/preview.js
+  - design-system-to-storybook/storybook-template/vendor/figma-export/dist/preview.d.ts
+  - design-system-to-storybook/storybook-template/vendor/figma-export/dist/options-BycGBdfI.d.ts
+  - design-system-to-storybook/storybook-template/.storybook/vendor/figma-export-addon/dist/review-controller.d.ts
+  - design-system-to-storybook/storybook-template/.storybook/vendor/figma-export-addon/src/visualCommentReport.ts
+  - design-system-to-storybook/storybook-template/.storybook/vendor/figma-export-addon/dist/review-controller.js.map
+  - design-system-to-storybook/storybook-template/.storybook/vendor/figma-export-addon/dist/review-server.d.ts
+  - design-system-to-storybook/storybook-template/.storybook/vendor/figma-export-addon/src/review.ts
+  - design-system-to-storybook/storybook-template/vendor/figma-export/dist/review-server.d.ts
+  - design-system-to-storybook/storybook-template/.storybook/vendor/figma-export-addon/package.json
+  - design-system-to-storybook/storybook-template/.storybook/vendor/figma-export-addon/src/review-server.ts
+  - design-system-to-storybook/storybook-template/.storybook/vendor/figma-export-addon/dist/review.d.ts
+  - design-system-to-storybook/storybook-template/vendor/figma-export/dist/review-server.js
+  - design-system-to-storybook/assets/figma-export-addon/dist/review.js
+  - design-system-to-storybook/storybook-template/vendor/figma-export/dist/index.js.map
+  - design-system-to-storybook/storybook-template/vendor/figma-export/dist/review.js
+  - design-system-to-storybook/storybook-template/vendor/figma-export/dist/visualComment-Diazst2e.d.ts
+  - design-system-to-storybook/assets/figma-export-addon/dist/visualComment-DawOAq7P.d.ts
+  - design-system-to-storybook/assets/figma-export-addon/dist/visual-comment-store.js
+  - design-system-to-storybook/storybook-template/.storybook/vendor/figma-export-addon/dist/visual-comment-store.js.map
+  - design-system-to-storybook/storybook-template/.storybook/vendor/figma-export-addon/README.md
+  - design-system-to-storybook/storybook-template/vendor/figma-export/dist/index.d.ts
+  - design-system-to-storybook/storybook-template/vendor/figma-export/src/review.css
+  - design-system-to-storybook/storybook-template/.storybook/vendor/figma-export-addon/dist/index.js.map
+  - design-system-to-storybook/assets/figma-export-addon/dist/preview.d.ts
+  - design-system-to-storybook/storybook-template/.storybook/vendor/figma-export-addon/dist/review-server.js
+  - design-system-to-storybook/storybook-template/vendor/figma-export/dist/review-controller.d.ts
+  - design-system-to-storybook/storybook-template/vendor/figma-export/src/review-server.ts
+  - design-system-to-storybook/assets/figma-export-addon/dist/visual-comment-report.js.map
+  - design-system-to-storybook/assets/figma-export-addon/dist/preview.js
+  - design-system-to-storybook/storybook-template/.storybook/vendor/figma-export-addon/dist/visualComment-DawOAq7P.d.ts
+  - design-system-to-storybook/SKILL.md
+  - design-system-to-storybook/storybook-template/vendor/figma-export/dist/visualComment-DawOAq7P.d.ts
+  - design-system-to-storybook/storybook-template/vendor/figma-export/README.md
+  - design-system-to-storybook/storybook-template/.storybook/vendor/figma-export-addon/dist/preview.d.ts
+  - design-system-to-storybook/storybook-template/.storybook/vendor/figma-export-addon/dist/visual-comment-store.d.ts
+  - design-system-to-storybook/storybook-template/vendor/figma-export/dist/index.js
+  - design-system-to-storybook/storybook-template/vendor/figma-export/src/review.ts
+  - design-system-to-storybook/assets/figma-export-addon/src/visualComment.ts
+  - design-system-to-storybook/assets/figma-export-addon/dist/review-controller.js.map
+  - design-system-to-storybook/assets/figma-export-addon/dist/visual-comment-report.d.ts
+  - design-system-to-storybook/storybook-template/vendor/figma-export/dist/preview.js
+  - design-system-to-storybook/assets/figma-export-addon/dist/options-Ft_w0vbm.d.ts
+  - design-system-to-storybook/storybook-template/vendor/figma-export/dist/review.d.ts
+  - design-system-to-storybook/storybook-template/vendor/figma-export/dist/options-Ft_w0vbm.d.ts
+  - design-system-to-storybook/assets/figma-export-addon/dist/index.js
+tests:
+  - design-system-to-storybook/assets/figma-export-addon/test/visual-comment-fixture-entry.ts
+  - design-system-to-storybook/assets/figma-export-addon/test/run-visual-comment-store-test.mjs
+  - storybook-product-prototype/scripts/test_scaffold_validate.py
+  - design-system-to-storybook/assets/figma-export-addon/test/run-visual-comment-report-test.mjs
+  - design-system-to-storybook/assets/figma-export-addon/test/run-renderer-parity.mjs
+  - design-system-to-storybook/assets/figma-export-addon/test/run-visual-comment-http-test.mjs
+-->

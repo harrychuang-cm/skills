@@ -272,6 +272,102 @@ try {
     "an invalid point prevents a valid body from being partially written",
   );
 
+  // Kind: stored on create, corrected through the existing edit route.
+  assert.equal(beforeInvalidAtomic.kind, "visual-fix", "a request without kind is stored as visual-fix");
+  const trackingResponse = await post(`/sessions/${meetingId}/comments`, {
+    ...commentRequest("http-tracking"),
+    kind: "tracking",
+  });
+  assert.equal(trackingResponse.status, 201);
+  const trackingComment = await trackingResponse.json();
+  assert.equal(trackingComment.comment.kind, "tracking");
+  assert.equal(
+    (
+      await post(`/sessions/${meetingId}/comments`, {
+        ...commentRequest("http-bad-kind"),
+        kind: "analytics",
+      })
+    ).status,
+    400,
+    "an unknown kind is rejected on create",
+  );
+  assert.deepEqual(
+    (await (await fetch(`${base}?storyId=demo--story`)).json()).comments.map((entry) => entry.kind),
+    ["visual-fix", "tracking"],
+    "overview exposes every comment kind",
+  );
+  const beforeKindEditMeeting = await (await fetch(`${base}/sessions/${meetingId}`)).json();
+  const kindEditResponse = await patch(
+    `/sessions/${meetingId}/comments/${comment.comment.id}`,
+    { kind: "tracking" },
+  );
+  assert.equal(kindEditResponse.status, 200);
+  const kindEdited = await kindEditResponse.json();
+  assert.deepEqual(
+    kindEdited.comment,
+    { ...beforeInvalidAtomic, kind: "tracking" },
+    "kind-only edit preserves evidence",
+  );
+  assert.deepEqual(
+    kindEdited.meeting.captures,
+    beforeKindEditMeeting.captures,
+    "kind-only edit preserves every capture and image asset record",
+  );
+  assert.deepEqual(
+    kindEdited.meeting.comments.find((entry) => entry.id === trackingComment.comment.id),
+    trackingComment.comment,
+    "kind-only edit does not change another comment",
+  );
+  const trackingBodyEdit = await patch(
+    `/sessions/${meetingId}/comments/${trackingComment.comment.id}`,
+    { body: "Send order_submit_click", pin: { xRatio: 0.5, yRatio: 0.5 } },
+  );
+  assert.equal(trackingBodyEdit.status, 200);
+  assert.equal(
+    (await trackingBodyEdit.json()).comment.kind,
+    "tracking",
+    "a body and point edit preserves a tracking kind",
+  );
+  const kindEditedReport = await (
+    await fetch(`${base}/reports/sessions/${meetingId}/index.html`)
+  ).text();
+  assert.equal(
+    (kindEditedReport.match(/data-comment-card data-comment-status="open" data-comment-kind="tracking"/g) ?? []).length,
+    2,
+    "the regenerated report shows the corrected kind on the card",
+  );
+  assert.match(kindEditedReport, /data-comment-kind-label>Tracking<\/span>/);
+  assert.match(kindEditedReport, /"kind":"tracking","ordinal":1/, "the regenerated context carries the corrected kind");
+  assert.match(kindEditedReport, /data-tracking-batch-copy>Copy tracking prompts<\/button>/);
+  for (const [invalidKindPatch, reason] of [
+    [{ body: "This must not be written", kind: "analytics" }, "invalid kind does not partially update"],
+    [{ resolved: true, kind: "visual-fix" }, "resolved cannot combine with kind"],
+    [{ kind: "visual-fix", unknown: true }, "unknown keys are rejected with kind"],
+  ]) {
+    assert.equal(
+      (await patch(`/sessions/${meetingId}/comments/${comment.comment.id}`, invalidKindPatch)).status,
+      400,
+      reason,
+    );
+    assert.deepEqual(
+      (
+        await (await fetch(`${base}/sessions/${meetingId}`)).json()
+      ).comments.find((entry) => entry.id === comment.comment.id),
+      kindEdited.comment,
+      reason,
+    );
+  }
+  const kindRestoreResponse = await patch(
+    `/sessions/${meetingId}/comments/${comment.comment.id}`,
+    { body: "Align the label and point", pin: { xRatio: 0.18, yRatio: 0.29 }, kind: "visual-fix" },
+  );
+  assert.equal(kindRestoreResponse.status, 200, "body, pin, and kind can be edited in one request");
+  assert.deepEqual((await kindRestoreResponse.json()).comment, beforeInvalidAtomic);
+  assert.equal(
+    (await del(`/sessions/${meetingId}/comments/${trackingComment.comment.id}`)).status,
+    200,
+  );
+
   const completeResponse = await patch(
     `/sessions/${meetingId}/comments/${comment.comment.id}`,
     { resolved: true },

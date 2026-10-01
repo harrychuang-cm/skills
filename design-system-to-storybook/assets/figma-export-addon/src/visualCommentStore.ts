@@ -13,9 +13,13 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "nod
 import {
   VISUAL_COMMENT_LIMITS,
   clampRatio,
+  defaultVisualCommentKind,
   isFiniteRatio,
+  isVisualCommentKind,
   normalizeAuthorName,
+  resolveVisualCommentKind,
   type CreateVisualCommentRequest,
+  type VisualCommentKind,
 } from "./visualComment";
 import {
   renderVisualCommentIndex,
@@ -61,6 +65,8 @@ export type VisualComment = {
   captureId: string;
   authorName: string;
   body: string;
+  // Absent on comments stored before kinds existed; those read as visual-fix.
+  kind?: VisualCommentKind;
   pin: { xRatio: number; yRatio: number };
   createdAt: string;
   resolvedAt?: string | null;
@@ -69,9 +75,11 @@ export type VisualComment = {
 export type VisualCommentDetailsPatch = {
   body?: string;
   pin?: VisualComment["pin"];
+  kind?: VisualCommentKind;
 };
 
 export type VisualCommentOverviewComment = VisualComment & {
+  kind: VisualCommentKind;
   ordinal: number;
   preview: {
     imagePath: string;
@@ -165,10 +173,9 @@ function normalizeCommentDetailsPatch(
   const keys = Object.keys(patch);
   if (
     keys.length === 0 ||
-    keys.length > 2 ||
-    keys.some((key) => key !== "body" && key !== "pin")
+    keys.some((key) => key !== "body" && key !== "pin" && key !== "kind")
   ) {
-    fail("patch must contain body, pin, or both.");
+    fail("patch must contain one or more of body, pin, and kind.");
   }
   const normalized: VisualCommentDetailsPatch = {};
   if (Object.prototype.hasOwnProperty.call(patch, "body")) {
@@ -190,6 +197,9 @@ function normalizeCommentDetailsPatch(
       fail("pin must contain finite xRatio and yRatio values between 0 and 1.");
     }
     normalized.pin = { xRatio: pin.xRatio, yRatio: pin.yRatio };
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, "kind")) {
+    normalized.kind = assertKind(patch.kind);
   }
   return normalized;
 }
@@ -307,11 +317,24 @@ async function readJson<T>(path: string): Promise<T> {
   }
 }
 
+function assertKind(value: unknown): VisualCommentKind {
+  if (!isVisualCommentKind(value)) fail("kind must be visual-fix or tracking.");
+  return value;
+}
+
+// Only tracking enters the replay hash, so requests without a kind, requests
+// with visual-fix, and comments stored before kinds existed all hash alike.
+function hashKind(kind: VisualCommentKind) {
+  return kind === "tracking" ? { kind } : {};
+}
+
 function normalizeRequest(
   requestValue: unknown,
   limits: VisualCommentLimits,
 ) {
   const request = assertRecord(requestValue, "request");
+  const kind =
+    request.kind === undefined ? defaultVisualCommentKind : assertKind(request.kind);
   const story = assertRecord(request.story, "story");
   const pin = assertRecord(request.pin, "pin");
   const viewport = assertRecord(request.viewport, "viewport");
@@ -367,9 +390,9 @@ function normalizeRequest(
   };
   const imageHash = createHash("sha256").update(image.bytes).digest("hex");
   const requestHash = createHash("sha256")
-    .update(JSON.stringify({ ...normalized, imageHash }))
+    .update(JSON.stringify({ ...normalized, imageHash, ...hashKind(kind) }))
     .digest("hex");
-  return { normalized, image, imageHash, requestHash };
+  return { normalized, kind, image, imageHash, requestHash };
 }
 
 function hashStoredRequest(
@@ -395,6 +418,7 @@ function hashStoredRequest(
           cssHeight: capture.image.cssHeight,
         },
         imageHash: capture.image.sha256,
+        ...hashKind(resolveVisualCommentKind(comment.kind)),
       }),
     )
     .digest("hex");
@@ -543,6 +567,7 @@ export function createVisualCommentStore(options: VisualCommentStoreOptions = {}
       }
       if (patch.body !== undefined) comment.body = patch.body;
       if (patch.pin !== undefined) comment.pin = patch.pin;
+      if (patch.kind !== undefined) comment.kind = patch.kind;
       await writeMeeting(meeting);
       return withReportStatus({ comment, meeting }, meeting);
     });
@@ -585,6 +610,7 @@ export function createVisualCommentStore(options: VisualCommentStoreOptions = {}
                 image.height > 0;
               return {
                 ...comment,
+                kind: resolveVisualCommentKind(comment.kind),
                 ordinal,
                 preview: hasPreview
                   ? {
@@ -664,7 +690,7 @@ export function createVisualCommentStore(options: VisualCommentStoreOptions = {}
         if (meeting.session.closedAt) {
           fail("Meeting is closed.", "CLOSED", 409);
         }
-        const { normalized, image, imageHash, requestHash } = normalizeRequest(
+        const { normalized, kind, image, imageHash, requestHash } = normalizeRequest(
           requestValue,
           limits,
         );
@@ -717,6 +743,7 @@ export function createVisualCommentStore(options: VisualCommentStoreOptions = {}
           captureId,
           authorName: normalized.authorName,
           body: normalized.body,
+          kind,
           pin: normalized.pin,
           createdAt: now,
         };

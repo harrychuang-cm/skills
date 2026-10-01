@@ -2,6 +2,7 @@ import {
   beginVisualCommentCapture,
   resolveVisualCommentTarget,
   type VisualCommentCaptureController,
+  type VisualCommentKind,
   type VisualCommentPin,
 } from "./visualComment";
 
@@ -38,6 +39,7 @@ export type VisualCommentOverview = {
     authorName: string;
     body: string;
     createdAt: string;
+    kind?: VisualCommentKind;
     ordinal: number;
     preview: {
       imageUrl: string;

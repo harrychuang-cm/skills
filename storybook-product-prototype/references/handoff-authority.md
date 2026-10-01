@@ -67,6 +67,26 @@ Record scope, source, owner, affected behavior, and replacement where applicable
 
 If Builder proposes a `reason` parameter absent from the confirmed `delete_email_failed` analytics specification, retain it as a proposed analytics decision. Do not add it to the formal event payload or production acceptance criteria. A team approval of the product demo does not confirm the proposal.
 
+## Tracking Comments
+
+A developer can mark an analytics requirement directly on a Story with a `tracking` visual comment (the Visual Comments panel of the Figma export addon). Its AI prompt, the Tracking Instrumentation Request, asks the receiver to derive four event fields from the comment text: event name, parameters, recording timing (the interaction or condition that records the event), and value definitions (what each recorded value means and how it is counted). A field the comment does not state stays `unspecified` until the developer answers.
+
+When that requirement is recorded for a prototype that keeps this registry, add one contract record with `kind: analytics`, `status: proposed`, `source: null`, and a named owner:
+
+```json
+{
+  "id": "analytics-order-submit-click",
+  "kind": "analytics",
+  "status": "proposed",
+  "source": null,
+  "owner": "Growth data team"
+}
+```
+
+The comment is a proposal from the developer who wrote it. None of the following confirms the contract: the comment itself, product demo confirmation, a passing validation run, or a tracking call that is already implemented and tested. Change the status to `confirmed` only with a complete source object (`reference`, `revision`, `confirmedBy`, `confirmedOn`) that points at the tracking specification.
+
+Do not add an event name, parameter, recording timing, or value definition that the comment does not state to the contract, the formal event payload, or the acceptance criteria. Keep such a suggestion as a separate proposed decision, exactly like the `reason` parameter example above.
+
 ## Remote Config Intent
 
 Text is sufficient at prototype handoff. Record the controlled region, intended product behavior, demonstrated states, unresolved choices, and RD owner. Distinguish a demonstrated fixture state from a confirmed production default or fallback.

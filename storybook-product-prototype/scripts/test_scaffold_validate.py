@@ -730,6 +730,13 @@ def check_authority_and_motion() -> list[str]:
         linked["contracts"] *= 2
         put_registry(linked)
         audit_authority(True, "duplicate contract id")
+        tracking = copy.deepcopy(base)
+        tracking["contracts"] = [{"id": "analytics-order-submit-click", "kind": "analytics", "status": "proposed", "source": None, "owner": "Growth data team"}]
+        put_registry(tracking)
+        audit_authority(False, "proposed analytics contract from a tracking comment")
+        tracking["contracts"][0]["status"] = "confirmed"
+        put_registry(tracking)
+        audit_authority(True, "analytics contract confirmed without source evidence")
         linked = copy.deepcopy(base)
         linked["fixtures"][0]["contractId"] = "alerts-api"
         linked["contracts"] = [{"id": "alerts-api", "kind": "api", "status": "confirmed", "source": source, "owner": "RD team"}]

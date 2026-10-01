@@ -1,4 +1,4 @@
-import { V as VisualCommentPin, b as beginVisualCommentCapture, a as VisualCommentCaptureController } from './visualComment-DawOAq7P.js';
+import { V as VisualCommentKind, a as VisualCommentPin, b as beginVisualCommentCapture, c as VisualCommentCaptureController } from './visualComment-Diazst2e.js';
 
 type FigmaReviewStatus = "not-started" | "exported" | "imported" | "needs-fix" | "approved";
 type FigmaReviewEntry = {
@@ -26,6 +26,7 @@ type VisualCommentOverview = {
         authorName: string;
         body: string;
         createdAt: string;
+        kind?: VisualCommentKind;
         ordinal: number;
         preview: {
             imageUrl: string;

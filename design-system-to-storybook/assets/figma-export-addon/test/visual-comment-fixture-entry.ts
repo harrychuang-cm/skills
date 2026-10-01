@@ -299,6 +299,7 @@ async function run() {
   let statusAvailable = true;
   let commentsAvailable = true;
   let failNextCommentPatch = false;
+  let failNextCommentCreate = false;
   const comments: Array<Record<string, unknown>> = [];
   const requests: Array<{ method: string; path: string; body?: unknown }> = [];
   const originalFetch = window.fetch.bind(window);
@@ -319,6 +320,10 @@ async function run() {
         return new Response(JSON.stringify({ meeting: { session: activeSession }, reportStale: false }), { status: 201 });
       }
       if (method === "POST" && path.endsWith("/comments")) {
+        if (failNextCommentCreate) {
+          failNextCommentCreate = false;
+          return new Response(JSON.stringify({ error: "Temporary comment save failure." }), { status: 500 });
+        }
         const savedComment = {
           id: "comment-current-4",
           ...body,
@@ -378,8 +383,8 @@ async function run() {
         if (
           !body ||
           keys.length < 1 ||
-          keys.length > 2 ||
-          keys.some((key) => key !== "body" && key !== "pin") ||
+          keys.some((key) => key !== "body" && key !== "pin" && key !== "kind") ||
+          ("kind" in body && body.kind !== "visual-fix" && body.kind !== "tracking") ||
           ("body" in body &&
             (typeof body.body !== "string" ||
               !body.body.trim() ||
@@ -399,6 +404,7 @@ async function run() {
         }
         if (typeof body.body === "string") comment.body = body.body.trim();
         if (pin) comment.pin = { xRatio: pin.xRatio, yRatio: pin.yRatio };
+        if (typeof body.kind === "string") comment.kind = body.kind;
         return new Response(JSON.stringify({ comment, reportStale: false }), { status: 200 });
       }
       if (commentMatch && method === "DELETE") {
@@ -819,6 +825,68 @@ async function run() {
   );
   await waitFor(() => button("Save comment"));
   resultElement.dataset.stage = "composer-open";
+  const kindControlState = (control: HTMLElement | null) => ({
+    label: control?.getAttribute("aria-label"),
+    options: Array.from(
+      control?.querySelectorAll<HTMLButtonElement>("button[data-comment-kind-option]") ?? [],
+      (option) => `${option.textContent}:${option.getAttribute("aria-pressed")}`,
+    ).join(","),
+    role: control?.getAttribute("role"),
+    value: control?.dataset.commentKindValue,
+  });
+  const chooseKind = async (control: () => HTMLElement | null, kind: string) => {
+    control()!
+      .querySelector<HTMLButtonElement>(`button[data-comment-kind-option="${kind}"]`)!
+      .click();
+    await waitFor(
+      () =>
+        control()?.dataset.commentKindValue === kind &&
+        control()
+          ?.querySelector(`button[data-comment-kind-option="${kind}"]`)
+          ?.getAttribute("aria-pressed") === "true",
+    );
+  };
+  const composerKindControl = () =>
+    document.querySelector<HTMLElement>(
+      ".sbfx-comments-panel .sbfx-review__composer [data-comment-kind-select]",
+    );
+  const composerKind = () => composerKindControl()?.dataset.commentKindValue;
+  const persistedKindEntries = () =>
+    Array.from({ length: localStorage.length }, (_, index) => localStorage.key(index)!).filter(
+      (key) => /kind/i.test(key) || /tracking|visual-fix/.test(localStorage.getItem(key) ?? ""),
+    );
+  const kindContinuation = () => {
+    const stored = sessionStorage.getItem("sbfx:visual-comments-kind");
+    return stored ? (JSON.parse(stored) as { kind: string; expiresAt: number }) : null;
+  };
+  const trackingSavedMarker = "sbfx-fixture:tracking-comment-saved";
+  const previousLoadSavedTracking = localStorage.getItem(trackingSavedMarker) === "1";
+  const isReloadedRun = new URLSearchParams(location.search).get("viewport") === "narrow";
+  check(
+    "composer defaults to Visual fix",
+    JSON.stringify(kindControlState(composerKindControl())) ===
+      JSON.stringify({
+        label: "Comment type",
+        options: "Visual fix:true,Tracking:false",
+        role: "group",
+        value: "visual-fix",
+      }),
+    JSON.stringify(kindControlState(composerKindControl())),
+  );
+  check(
+    "a later page load starts from Visual fix and localStorage keeps no comment kind",
+    composerKind() === "visual-fix" &&
+      persistedKindEntries().length === 0 &&
+      (!isReloadedRun || previousLoadSavedTracking),
+    JSON.stringify({ isReloadedRun, previousLoadSavedTracking, stored: persistedKindEntries() }),
+  );
+  check(
+    "Start meeting leaves a kind continuation that expires within 15 seconds",
+    kindContinuation()?.kind === "visual-fix" &&
+      kindContinuation()!.expiresAt > Date.now() &&
+      kindContinuation()!.expiresAt <= Date.now() + 15_000,
+    JSON.stringify(kindContinuation()),
+  );
   check(
     "Figma export stays visible while composer is open",
     Boolean(workspace.querySelector('.sbfx-exporter[aria-label="Figma export"]')),
@@ -910,6 +978,33 @@ async function run() {
   const textarea = commentsPanel.querySelector<HTMLTextAreaElement>("textarea")!;
   setNativeValue(authorField, "Mina");
   setNativeValue(textarea, "Keep this modal spacing");
+  await chooseKind(composerKindControl, "tracking");
+  await chooseKind(composerKindControl, "visual-fix");
+  await chooseKind(composerKindControl, "tracking");
+  const kindOptionStyle = (kind: string) => {
+    const option = composerKindControl()!.querySelector<HTMLElement>(
+      `button[data-comment-kind-option="${kind}"]`,
+    )!;
+    const style = getComputedStyle(option);
+    return {
+      background: style.backgroundColor,
+      border: style.borderTopColor,
+      height: option.getBoundingClientRect().height,
+    };
+  };
+  check(
+    "the pressed Comment type option is visually distinct and comfortably sized",
+    kindOptionStyle("tracking").background !== kindOptionStyle("visual-fix").background &&
+      kindOptionStyle("tracking").border !== kindOptionStyle("visual-fix").border &&
+      kindOptionStyle("tracking").height >= 28 &&
+      kindOptionStyle("visual-fix").height >= 28,
+    JSON.stringify({ pressed: kindOptionStyle("tracking"), rest: kindOptionStyle("visual-fix") }),
+  );
+  check(
+    "Comment type switches in both directions and shows one pressed option",
+    kindControlState(composerKindControl()).options === "Visual fix:false,Tracking:true",
+    JSON.stringify(kindControlState(composerKindControl())),
+  );
   await waitFor(() => !button("Save comment")!.disabled);
   commentsToggle.click();
   await waitFor(() => commentsDetail.hidden);
@@ -929,6 +1024,10 @@ async function run() {
       pendingPin().style.left === "61%" &&
       pendingPin().style.top === "75%" &&
       document.querySelector("[data-sbfx-live-comment-pin]")?.textContent === "1",
+  );
+  check(
+    "reopening comments restores the drafted comment kind",
+    composerKind() === "tracking",
   );
   const composerCommentsRect = commentsPanel.getBoundingClientRect();
   const composerWorkspaceRect = workspace.getBoundingClientRect();
@@ -967,6 +1066,20 @@ async function run() {
       savedComment: comments.find((comment) => comment.id === "comment-current-4"),
     }),
   );
+  check(
+    "composer posts the selected comment kind",
+    (finalCreateRequest?.body as { kind?: string } | undefined)?.kind === "tracking",
+    JSON.stringify(finalCreateRequest?.body && { kind: (finalCreateRequest.body as { kind?: string }).kind }),
+  );
+  check(
+    "Save comment carries its kind in the sessionStorage continuation and never in localStorage",
+    persistedKindEntries().length === 0 &&
+      kindContinuation()?.kind === "tracking" &&
+      kindContinuation()!.expiresAt > Date.now() &&
+      kindContinuation()!.expiresAt <= Date.now() + 15_000,
+    JSON.stringify({ continuation: kindContinuation(), persisted: persistedKindEntries() }),
+  );
+  localStorage.setItem(trackingSavedMarker, "1");
   check("author is stored locally", localStorage.getItem("sbfx:review-author") === "Mina");
   check("polling overview uses current story id", requests.some((request) => request.method === "GET" && request.path === ""));
 
@@ -1021,6 +1134,152 @@ async function run() {
       "comment-current-4,comment-current-3,comment-current-2" &&
       !commentsPanel.textContent?.includes("Newest but belongs to another story") &&
       !commentsPanel.textContent?.includes("Oldest current-story comment"),
+  );
+  check(
+    "a mounting panel consumes the kind continuation",
+    kindContinuation() === null,
+    JSON.stringify(kindContinuation()),
+  );
+  check(
+    "recent comments show their kind label",
+    currentCommentCards()
+      .map((card) => {
+        const kindLabel = card.querySelector<HTMLElement>(".sbfx-comments-panel__comment-kind");
+        return `${kindLabel?.dataset.commentKind}:${kindLabel?.textContent}`;
+      })
+      .join(",") === "tracking:Tracking,visual-fix:Visual fix,visual-fix:Visual fix",
+    currentCommentCards()
+      .map((card) => card.querySelector(".sbfx-comments-panel__comment-kind")?.textContent)
+      .join(","),
+  );
+  const createRequestsBeforeConsecutiveComposer = requests.filter(
+    (request) => request.method === "POST" && request.path.endsWith("/comments"),
+  ).length;
+  button("Add comment")!.click();
+  dispatchPointerSequence(prototypeButton, 100, 64);
+  await waitFor(() => button("Save comment"));
+  check(
+    "composer keeps Tracking for consecutive comments",
+    kindControlState(composerKindControl()).options === "Visual fix:false,Tracking:true",
+    JSON.stringify(kindControlState(composerKindControl())),
+  );
+  setNativeValue(
+    commentsPanel.querySelector<HTMLTextAreaElement>(".sbfx-review__composer textarea")!,
+    "Send order_submit_click",
+  );
+  await chooseKind(composerKindControl, "visual-fix");
+  await waitFor(() => !button("Save comment")!.disabled);
+  failNextCommentCreate = true;
+  button("Save comment")!.click();
+  await waitFor(() =>
+    commentsPanel.textContent?.includes("Temporary comment save failure."),
+  );
+  check(
+    "a failed save restores the kind continuation to the last saved kind",
+    kindContinuation()?.kind === "tracking",
+    JSON.stringify(kindContinuation()),
+  );
+  check(
+    "save failure preserves the draft body, kind, pin, and captured image",
+    composerKind() === "visual-fix" &&
+      commentsPanel.querySelector<HTMLTextAreaElement>(".sbfx-review__composer textarea")
+        ?.value === "Send order_submit_click" &&
+      Boolean(commentsPanel.querySelector("[data-pending-comment-pin]")) &&
+      Boolean(commentsPanel.querySelector("[data-pending-comment-preview] img")) &&
+      comments.length === 5,
+    JSON.stringify({ kind: composerKind(), comments: comments.length }),
+  );
+  // sessionStorage can throw in restricted contexts; the panel keeps working
+  // with the in-page preselection only.
+  const createCommentRequests = () =>
+    requests.filter(
+      (request) => request.method === "POST" && request.path.endsWith("/comments"),
+    ).length;
+  const originalStorageSetItem = Storage.prototype.setItem;
+  const originalStorageGetItem = Storage.prototype.getItem;
+  const originalStorageRemoveItem = Storage.prototype.removeItem;
+  const denySessionStorage = function (this: Storage) {
+    if (this === sessionStorage) throw new DOMException("denied", "SecurityError");
+  };
+  Storage.prototype.setItem = function (this: Storage, key: string, value: string) {
+    denySessionStorage.call(this);
+    return originalStorageSetItem.call(this, key, value);
+  };
+  Storage.prototype.getItem = function (this: Storage, key: string) {
+    denySessionStorage.call(this);
+    return originalStorageGetItem.call(this, key);
+  };
+  Storage.prototype.removeItem = function (this: Storage, key: string) {
+    denySessionStorage.call(this);
+    return originalStorageRemoveItem.call(this, key);
+  };
+  let consecutiveKindWithoutStorage: string | undefined;
+  let draftSurvivedWithoutStorage = false;
+  try {
+    // A failed save disables mutations until the next scheduled refresh succeeds.
+    await waitFor(() => button("Save comment")?.disabled === false);
+    failNextCommentCreate = true;
+    button("Save comment")!.click();
+    await waitFor(
+      () =>
+        createCommentRequests() === createRequestsBeforeConsecutiveComposer + 2 &&
+        button("Save comment")?.disabled === false,
+    );
+    draftSurvivedWithoutStorage =
+      composerKind() === "visual-fix" &&
+      commentsPanel.querySelector<HTMLTextAreaElement>(".sbfx-review__composer textarea")
+        ?.value === "Send order_submit_click" &&
+      Boolean(commentsPanel.querySelector("[data-pending-comment-pin]"));
+    commentsPanel
+      .querySelector<HTMLButtonElement>(
+        ".sbfx-review__composer .sbfx-review__button--secondary",
+      )!
+      .click();
+    await waitFor(
+      () =>
+        Boolean(button("Add comment")) &&
+        !button("Save comment") &&
+        !document.querySelector("[data-sbfx-live-comment-pin]"),
+    );
+    button("Add comment")!.click();
+    dispatchPointerSequence(prototypeButton, 100, 64);
+    await waitFor(() => button("Save comment"));
+    consecutiveKindWithoutStorage = composerKind();
+    commentsPanel
+      .querySelector<HTMLButtonElement>(
+        ".sbfx-review__composer .sbfx-review__button--secondary",
+      )!
+      .click();
+    await waitFor(
+      () =>
+        Boolean(button("Add comment")) &&
+        !button("Save comment") &&
+        !document.querySelector("[data-sbfx-live-comment-pin]"),
+    );
+  } finally {
+    Storage.prototype.setItem = originalStorageSetItem;
+    Storage.prototype.getItem = originalStorageGetItem;
+    Storage.prototype.removeItem = originalStorageRemoveItem;
+  }
+  check(
+    "unavailable sessionStorage leaves the composer usable with its draft",
+    draftSurvivedWithoutStorage,
+  );
+  check(
+    "a cancelled draft kind does not replace the last saved kind, even without sessionStorage",
+    consecutiveKindWithoutStorage === "tracking",
+    JSON.stringify({ consecutiveKindWithoutStorage }),
+  );
+  check(
+    "failed consecutive saves append no comment and closing sends no further request",
+    createCommentRequests() === createRequestsBeforeConsecutiveComposer + 2 &&
+      comments.length === 5,
+  );
+  await waitFor(
+    () =>
+      document
+        .querySelector(".sbfx-comments-panel__detail")
+        ?.getAttribute("data-comments-capability") === "available",
   );
   check(
     "panel exposes author time body and Open or Completed status",
@@ -1417,6 +1676,112 @@ async function run() {
   );
   commentsToggle.click();
   await waitFor(() => commentsPanel.dataset.expanded === "true");
+
+  // Kind is corrected in the panel edit modal without replacing evidence.
+  const kindCard = () =>
+    commentsPanel.querySelector<HTMLElement>(
+      '.sbfx-comments-panel__comment[data-comment-id="comment-current-4"]',
+    )!;
+  const kindCardLabel = () =>
+    kindCard().querySelector<HTMLElement>(".sbfx-comments-panel__comment-kind");
+  const editKindControl = () =>
+    document.querySelector<HTMLElement>(
+      "[data-comment-edit-modal] [data-comment-edit-kind]",
+    );
+  const editKind = () => editKindControl()?.dataset.commentKindValue;
+  const selectEditKind = (kind: string) => chooseKind(editKindControl, kind);
+  const kindCardCanonical = () =>
+    comments.find((comment) => comment.id === "comment-current-4") as {
+      body: string;
+      capture?: unknown;
+      kind?: string;
+      pin: { xRatio: number; yRatio: number };
+    };
+  const kindEvidenceBefore = JSON.stringify({
+    body: kindCardCanonical().body,
+    capture: kindCardCanonical().capture,
+    pin: kindCardCanonical().pin,
+  });
+  const patchesBeforeKindEdit = patchCount();
+  const openKindCardEditor = async () => {
+    kindCard().querySelector<HTMLButtonElement>('[aria-label="Edit comment"]')!.click();
+    await waitFor(() => editKindControl());
+  };
+  await openKindCardEditor();
+  check(
+    "panel edit modal shows the stored comment kind",
+    JSON.stringify(kindControlState(editKindControl())) ===
+      JSON.stringify({
+        label: "Comment type",
+        options: "Visual fix:false,Tracking:true",
+        role: "group",
+        value: "tracking",
+      }),
+    JSON.stringify(kindControlState(editKindControl())),
+  );
+  await selectEditKind("visual-fix");
+  commentEditModal()
+    .querySelector<HTMLButtonElement>("[data-comment-edit-cancel]")!
+    .click();
+  await waitFor(() => !document.querySelector("[data-comment-edit-modal]"));
+  await openKindCardEditor();
+  check(
+    "cancelling a kind draft sends no request and restores the canonical kind",
+    patchCount() === patchesBeforeKindEdit &&
+      editKind() === "tracking" &&
+      kindCardLabel()?.dataset.commentKind === "tracking",
+  );
+  await selectEditKind("visual-fix");
+  commentEditModal()
+    .querySelector<HTMLButtonElement>("[data-comment-edit-save]")!
+    .click();
+  await waitFor(
+    () =>
+      !document.querySelector("[data-comment-edit-modal]") &&
+      kindCardLabel()?.dataset.commentKind === "visual-fix",
+  );
+  const visualFixKindPayload = requests.filter((request) => request.method === "PATCH").at(-1)
+    ?.body as { body?: string; kind?: string; pin?: unknown } | undefined;
+  check(
+    "a changed kind travels in the single edit request",
+    patchCount() === patchesBeforeKindEdit + 1 &&
+      visualFixKindPayload?.kind === "visual-fix" &&
+      visualFixKindPayload?.body === kindCardCanonical().body,
+    JSON.stringify(visualFixKindPayload),
+  );
+  await openKindCardEditor();
+  await selectEditKind("tracking");
+  commentEditModal()
+    .querySelector<HTMLButtonElement>("[data-comment-edit-save]")!
+    .click();
+  await waitFor(
+    () =>
+      !document.querySelector("[data-comment-edit-modal]") &&
+      kindCardLabel()?.dataset.commentKind === "tracking",
+  );
+  check(
+    "kind is corrected in the panel edit modal",
+    kindCardLabel()?.textContent === "Tracking" &&
+      kindCardCanonical().kind === "tracking" &&
+      patchCount() === patchesBeforeKindEdit + 2 &&
+      JSON.stringify({
+        body: kindCardCanonical().body,
+        capture: kindCardCanonical().capture,
+        pin: kindCardCanonical().pin,
+      }) === kindEvidenceBefore,
+    JSON.stringify({ label: kindCardLabel()?.textContent, kind: kindCardCanonical().kind }),
+  );
+  await openKindCardEditor();
+  commentEditModal()
+    .querySelector<HTMLButtonElement>("[data-comment-edit-save]")!
+    .click();
+  await waitFor(() => !document.querySelector("[data-comment-edit-modal]"));
+  check(
+    "an unchanged kind is not sent with an edit",
+    !("kind" in
+      ((requests.filter((request) => request.method === "PATCH").at(-1)?.body ?? {}) as object)),
+    JSON.stringify(requests.filter((request) => request.method === "PATCH").at(-1)?.body),
+  );
 
   const reviewSlot = workspace.querySelector<HTMLElement>('[data-sbfx-workspace-slot="review"]')!;
   const reviewPreferenceBeforeParentCollapse = localStorage.getItem("sbfx:review-collapsed");

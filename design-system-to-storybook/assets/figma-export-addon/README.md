@@ -326,6 +326,71 @@ pixel-perfect browser chrome capture. Rollback may remove the UI/middleware but
 must not delete the review directory; retained reports and canonical data stay
 readable.
 
+### Tracking comments
+
+Every visual comment has a kind: **Visual fix** (the default) or **Tracking**.
+Use Tracking to mark an analytics requirement on the Story the same way you
+would comment on a design file, then hand the comments to a coding assistant.
+
+1. Start a meeting, choose **Add comment**, and click the element to instrument.
+2. In the composer, set **Comment type** to **Tracking** and write the
+   requirement in free text.
+3. Open **Reports**. A Tracking card's **Copy AI prompt** produces a
+   `# Tracking Instrumentation Request` instead of the visual fix request.
+4. To hand over several at once, use **Copy tracking prompts**. It copies one
+   request containing every Open Tracking comment of the meeting in ordinal
+   order; **Tracking scope** narrows it to one Story. Completed comments and
+   Visual fix comments are never included.
+
+The request asks the assistant to derive four fields per comment — event name,
+parameters, recording timing, and value definitions — to write `unspecified` for
+a field the comment does not state, and to ask before implementing it. It tells
+the assistant to reuse the repository's existing tracking call convention, not to
+add an analytics SDK, and not to invent events or parameters. A comment that
+states all four fields needs no follow-up question, for example:
+
+```text
+點擊「送出」時送 order_submit_click；參數 stock_id（目前股票代號）、amount（下單張數，整數）。
+只在送出成功後記錄一次，重送不重複計算。
+```
+
+A short comment such as `依埋點文件的 order_submit_click` also works when the
+repository already documents the event; the assistant asks about anything left
+`unspecified`.
+
+The kind label appears in the panel's recent comments, in the edit modal, and on
+every report card. A comment saved with the wrong kind can be corrected without
+losing its screenshot: change **Comment type** in the panel edit modal or in the
+report's inline editor and save.
+
+The composer preselects the kind of the last saved comment, so a run of
+tracking comments needs **Tracking** chosen only once. A Storybook dev server
+reloads the preview whenever comment evidence is written inside the project;
+the panel carries the kind across that reload in a `sessionStorage` entry that
+expires after 15 seconds and is removed as soon as it is read. Any other page
+load — a manual refresh, a reload caused by another participant's comment or a
+source change, or a new tab — starts from **Visual fix** again. The kind is
+never written to `localStorage`.
+
+The batch copy is text only. Each comment lists its repository-root-relative
+screenshot path so a coding agent running at the repository root can open the
+image; a single card's **Copy AI prompt** still attaches the screenshot when the
+browser supports it. Nothing here sends an AI request: the addon only writes
+text to the clipboard. Comments still require an active meeting.
+
+When the Story belongs to a prototype that keeps a Data Authority registry
+(`DATA_SPEC.md`), the request tells the assistant to record each event as an
+`analytics` contract with status `proposed`. A tracking comment never confirms
+an analytics contract by itself.
+
+Storage and API: `meeting.json` stays at `version` 1. Each new comment stores
+`kind` (`visual-fix` or `tracking`); a comment stored by an older addon has no
+`kind` and reads as `visual-fix`. A create request accepts an optional `kind`,
+and the comment edit request accepts one or more of `body`, `pin`, and `kind`.
+Rolling back to 0.9.x keeps the data readable, but that version ignores `kind`:
+Tracking comments then show as plain comments and copy the visual fix request
+until the addon is upgraded again.
+
 ### Manual manager registration (optional)
 
 If you do not use the preset entry in `addons`, register the tool yourself in `.storybook/manager.ts`:
