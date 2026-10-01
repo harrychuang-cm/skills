@@ -4298,7 +4298,7 @@ void (async function importStorybookStory(payload) {
 
 // src/version.ts
 function getAddonVersion() {
-  return true ? "0.11.0" : "dev";
+  return true ? "0.12.0" : "dev";
 }
 
 // src/workspace.ts

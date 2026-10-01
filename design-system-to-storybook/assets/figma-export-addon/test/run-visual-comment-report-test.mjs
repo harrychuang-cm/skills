@@ -11,6 +11,9 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import vm from "node:vm";
 import {
+  createCommentPromptFormatter,
+  formatTrackingPrompt,
+  formatVisualFixPrompt,
   renderVisualCommentIndex,
   renderVisualCommentReport,
 } from "../dist/visual-comment-report.js";
@@ -56,7 +59,11 @@ assert.match(report, /Closed meeting/);
 assert.match(report, /1 capture · 2 comments/);
 assert.match(report, /Story ID: story/);
 assert.match(report, /Viewport: 390×844 @ 2x/);
-assert.match(report, /Captured: 2026-07-20T00:00:00Z/);
+assert.match(
+  report,
+  /Captured: <time datetime="2026-07-20T00:00:00Z" data-report-time>2026-07-20T00:00:00Z<\/time>/,
+  "capture time is a time element whose default text is the stored ISO value",
+);
 assert.match(report, /data-comment-status="open"/);
 assert.match(report, /data-comment-status="completed"/);
 assert.match(report, />Open<\/span>/);
@@ -175,7 +182,7 @@ assert.equal(
   "legacy comments without kind are labelled Visual fix",
 );
 assert.equal(
-  (report.match(/data-comment-card data-comment-status="(?:open|completed)" data-comment-kind="visual-fix"/g) ?? []).length,
+  (report.match(/data-comment-card data-comment-ref="[^"]*" data-comment-status="(?:open|completed)" data-comment-kind="visual-fix"/g) ?? []).length,
   2,
   "legacy comment cards carry data-comment-kind visual-fix",
 );
@@ -471,7 +478,8 @@ try {
     "dark scheme keeps the same raised snapshot surface and contain sizing",
   );
 } finally {
-  rmSync(reportLayoutDir, { force: true, recursive: true });
+  // Chrome helper processes can still be flushing the profile after exit.
+  rmSync(reportLayoutDir, { force: true, maxRetries: 5, recursive: true, retryDelay: 200 });
 }
 
 const portableContext = {
@@ -706,6 +714,7 @@ function createReportActionHarness({
   };
   const document = {
     querySelector: (selector) => selector === "[data-delete-dialog]" ? dialog : null,
+    querySelectorAll: () => [],
     createElement: (name) => name === "canvas" ? canvas : new HTMLElement(),
     addEventListener: (type, listener) => {
       if (type === "click") clickListener = listener;
@@ -1112,7 +1121,7 @@ assert.match(
   "the batch control has its own polite feedback region",
 );
 const batchCardSources = Array.from(
-  batchReport.matchAll(/<article class="comment" data-comment-card data-comment-status="([a-z]+)" data-comment-kind="([a-z-]+)" data-comment-story-id="([^"]+)"[\s\S]*?data-ai-fix-context>([\s\S]*?)<\/script>/g),
+  batchReport.matchAll(/<article class="comment" data-comment-card data-comment-ref="[^"]*" data-comment-status="([a-z]+)" data-comment-kind="([a-z-]+)" data-comment-story-id="([^"]+)"[\s\S]*?data-ai-fix-context>([\s\S]*?)<\/script>/g),
   (match) => ({ status: match[1], kind: match[2], storyId: match[3], contextJson: match[4] }),
 );
 assert.equal(batchCardSources.length, 5, "the batch fixture renders five comment cards");
@@ -1294,6 +1303,63 @@ assert.equal(
 );
 assert.equal(batchFailureHarness.button.disabled, false, "a failed batch copy re-enables the button");
 assert.equal(batchFailureHarness.fetchCalls.length, 0);
+
+// Single prompt formatter: the module the panel imports and the source the
+// report embeds produce the same Markdown character for character.
+const reportOrigin =
+  "http://localhost:6006/__figma_export_review_comments/reports/sessions";
+const moduleScreenshotUrl = (context, session) =>
+  new URL(context.screenshot.reportRelativePath, `${reportOrigin}/${session}/index.html`);
+assert.equal(
+  formatVisualFixPrompt(portableContext, moduleScreenshotUrl(portableContext, "session-hero")),
+  promptHarness.writeTextCalls[0],
+  "module and report produce the same Visual UI Fix Request",
+);
+assert.equal(
+  formatVisualFixPrompt(portableContext, moduleScreenshotUrl(portableContext, "session-hero")),
+  expectedPortablePrompt,
+);
+assert.equal(
+  formatTrackingPrompt([
+    {
+      context: trackingContext,
+      screenshotUrl: moduleScreenshotUrl(trackingContext, "session-hero"),
+    },
+  ]),
+  trackingHarness.writeTextCalls[0],
+  "module and report produce the same single Tracking Instrumentation Request",
+);
+const moduleBatchEntries = batchCardSources
+  .filter((source) => source.kind === "tracking" && source.status === "open")
+  .map((source) => JSON.parse(source.contextJson))
+  .sort((first, second) => first.comment.ordinal - second.comment.ordinal)
+  .map((context) => ({
+    context,
+    screenshotUrl: moduleScreenshotUrl(context, "session-batch"),
+  }));
+const allStoriesBatchHarness = createBatchHarness({ scope: "" });
+await allStoriesBatchHarness.click();
+assert.equal(moduleBatchEntries.length, 3);
+assert.equal(
+  formatTrackingPrompt(moduleBatchEntries),
+  allStoriesBatchHarness.writeTextCalls[0],
+  "module and report produce the same batch Tracking Instrumentation Request",
+);
+const embeddedFormatterSource = createCommentPromptFormatter.toString();
+assert.ok(
+  reportActionScript.includes(embeddedFormatterSource),
+  "the report embeds the formatter source instead of a second implementation",
+);
+assert.equal(
+  (reportActionScript.match(/# Visual UI Fix Request/g) ?? []).length,
+  1,
+  "the report script contains one Visual UI Fix Request implementation",
+);
+assert.equal(
+  (reportActionScript.match(/# Tracking Instrumentation Request/g) ?? []).length,
+  1,
+  "the report script contains one Tracking Instrumentation Request implementation",
+);
 
 const malformedBatchHarness = createBatchHarness({
   cardSources: batchCardSources.map((source, index) =>
@@ -1543,6 +1609,488 @@ await deleteHarness.click(deleteHarness.confirmButton);
 assert.equal(deleteHarness.fetchCalls.length, 1, "Confirm delete sends exactly one request");
 assert.equal(deleteHarness.fetchCalls[0].options.method, "DELETE");
 assert.equal(deleteHarness.reloadCount, 1, "confirmed deletion reloads the regenerated report");
+
+// ---- Layout, filters, timestamps, and visual rules in a real browser ----
+// One rule function serves the self-check here and the audit inside the page.
+function reportStyleViolations(sample) {
+  const alpha = (color) => {
+    if (color === "transparent") return 0;
+    const modern = color.match(/\/\s*([\d.]+%?)\s*\)$/);
+    if (modern) {
+      const value = Number.parseFloat(modern[1]);
+      return modern[1].endsWith("%") ? value / 100 : value;
+    }
+    const legacy = color.match(/^rgba\(([^)]+)\)$/);
+    return legacy ? Number.parseFloat(legacy[1].split(",")[3] ?? "1") : 1;
+  };
+  const translucent = (color) => alpha(color) > 0 && alpha(color) < 1;
+  const hasBorder = sample.borderWidths.some((width) => width > 0);
+  const violations = [];
+  if (sample.hasText && sample.fontSize < 12) violations.push("font-size " + sample.fontSize + "px");
+  if (!sample.isScrim && translucent(sample.backgroundColor)) {
+    violations.push("background-color " + sample.backgroundColor);
+  }
+  sample.borderColors.forEach((color, index) => {
+    if (!sample.isScrim && sample.borderWidths[index] > 0 && translucent(color)) {
+      violations.push("border-color " + color);
+    }
+  });
+  if (sample.backgroundImage.includes("gradient")) violations.push("gradient background");
+  if (sample.backdropFilter && sample.backdropFilter !== "none") violations.push("backdrop filter");
+  if (sample.isCard && (hasBorder || (sample.outlineWidth > 0 && !sample.focused))) {
+    violations.push("card has a border or outline");
+  }
+  if (sample.insideCard && !sample.isFormField && hasBorder) {
+    violations.push("nested container has its own border");
+  }
+  return violations;
+}
+const reportSample = (overrides) => ({
+  backdropFilter: "none",
+  backgroundColor: "rgba(0, 0, 0, 0)",
+  backgroundImage: "none",
+  borderColors: ["rgb(0, 0, 0)"],
+  borderWidths: [0],
+  focused: false,
+  fontSize: 15,
+  hasText: false,
+  insideCard: false,
+  isCard: false,
+  isFormField: false,
+  isScrim: false,
+  outlineWidth: 0,
+  ...overrides,
+});
+assert.equal(
+  reportStyleViolations(
+    reportSample({ borderColors: ["rgb(52, 56, 74)"], borderWidths: [1], isCard: true }),
+  ).length,
+  1,
+  "a capture card with a border is rejected",
+);
+assert.equal(
+  reportStyleViolations(
+    reportSample({ borderColors: ["rgb(75, 67, 201)"], borderWidths: [1], insideCard: true }),
+  ).length,
+  1,
+  "a bordered kind label inside a comment card is rejected",
+);
+assert.equal(
+  reportStyleViolations(
+    reportSample({
+      borderColors: ["rgb(52, 56, 74)"],
+      borderWidths: [1],
+      insideCard: true,
+      isFormField: true,
+    }),
+  ).length,
+  0,
+  "a bordered comment draft field is accepted",
+);
+assert.equal(
+  reportStyleViolations(reportSample({ backgroundColor: "rgb(32, 34, 45)", isCard: true })).length,
+  0,
+  "a borderless capture card with an opaque surface is accepted",
+);
+assert.equal(reportStyleViolations(reportSample({ fontSize: 11, hasText: true })).length, 1);
+assert.equal(
+  reportStyleViolations(reportSample({ backgroundColor: "rgba(0, 0, 0, 0.4)" })).length,
+  1,
+);
+
+const auditPageExpression = `(() => {
+  const reportStyleViolations = ${reportStyleViolations.toString()};
+  const violations = [];
+  let audited = 0;
+  for (const element of document.querySelectorAll("body, body *")) {
+    if (!(element instanceof HTMLElement) || element.getClientRects().length === 0) continue;
+    if (element.closest("svg")) continue;
+    audited += 1;
+    const style = getComputedStyle(element);
+    const card = element.closest(".evidence-card, .comment, .meeting-card");
+    const found = reportStyleViolations({
+      backdropFilter: style.backdropFilter,
+      backgroundColor: style.backgroundColor,
+      backgroundImage: style.backgroundImage,
+      borderColors: [style.borderTopColor, style.borderRightColor, style.borderBottomColor, style.borderLeftColor],
+      borderWidths: [style.borderTopWidth, style.borderRightWidth, style.borderBottomWidth, style.borderLeftWidth].map(Number.parseFloat),
+      focused: element.matches(":focus-visible"),
+      fontSize: Number.parseFloat(style.fontSize),
+      hasText:
+        element.matches("input, textarea, select") ||
+        [...element.childNodes].some((node) => node.nodeType === Node.TEXT_NODE && node.textContent.trim()),
+      insideCard: Boolean(card) && !element.matches(".evidence-card, .comment, .meeting-card"),
+      isCard: element.matches(".evidence-card, .comment, .meeting-card"),
+      isFormField: element.matches("input, textarea, select"),
+      isScrim: element.matches(".delete-dialog"),
+      outlineWidth: style.outlineStyle === "none" ? 0 : Number.parseFloat(style.outlineWidth),
+    });
+    for (const violation of found) {
+      violations.push(element.tagName.toLowerCase() + "." + String(element.className).split(" ")[0] + ": " + violation);
+    }
+  }
+  return { audited, violations: [...new Set(violations)].slice(0, 12) };
+})()`;
+
+// Comment 1 visual-fix Open, comment 2 tracking Open, comment 3 tracking Completed.
+const filterMeeting = {
+  ...batchMeeting,
+  session: { ...batchMeeting.session, id: "session-filter", title: "Filter review" },
+  captures: Object.fromEntries(Object.entries(batchMeeting.captures).slice(0, 3)),
+  comments: batchMeeting.comments.slice(0, 3).map((comment, index) =>
+    index === 0 ? { ...comment, createdAt: "2026-10-01T05:36:43.790Z" } : comment,
+  ),
+};
+const filterReport = renderVisualCommentReport(filterMeeting);
+const browserIndex = renderVisualCommentIndex(
+  [
+    { id: "active", title: "Current", startedAt: "2026-10-01T05:36:43.790Z", closedAt: null, captureCount: 2, commentCount: 3 },
+    { id: "closed", title: "Previous", startedAt: "2026-09-30T01:00:00.000Z", closedAt: "2026-09-30T02:00:00.000Z", captureCount: 1, commentCount: 1 },
+  ],
+  "active",
+);
+assert.match(
+  filterReport,
+  /<div class="filter" role="group" aria-label="Filter comments"><button type="button" class="chip" data-report-filter="all" aria-pressed="true">All 3<\/button><button type="button" class="chip" data-report-filter="visual-fix" aria-pressed="false">Visual fix 1<\/button><button type="button" class="chip" data-report-filter="tracking" aria-pressed="false">Tracking 2<\/button><button type="button" class="chip" data-hide-completed aria-pressed="false">Hide completed<\/button><\/div>/,
+  "the report renders the kind filter with counts and the Hide completed toggle",
+);
+assert.match(
+  filterReport,
+  /<time datetime="2026-10-01T05:36:43\.790Z" data-report-time>2026-10-01T05:36:43\.790Z<\/time>/,
+  "without the script a timestamp shows its ISO value",
+);
+assert.match(
+  browserIndex,
+  /<time datetime="2026-09-30T02:00:00\.000Z" data-report-time>2026-09-30T02:00:00\.000Z<\/time>/,
+  "index timestamps are time elements with the ISO value as default text",
+);
+assert.match(report, /<h2>Components\/Button \/ Primary<\/h2><\/div>/, "an unsafe Story URL renders the heading as text with no link");
+assert.doesNotMatch(report, /Open story/);
+assert.match(
+  renderVisualCommentReport({
+    ...filterMeeting,
+    captures: {
+      "capture-1": { ...filterMeeting.captures["capture-1"], story: { ...filterMeeting.captures["capture-1"].story, url: "http://localhost:6006/?path=/story/pages-a--default" } },
+    },
+    comments: filterMeeting.comments.slice(0, 1),
+  }),
+  /<h2>Pages\/A \/ Default<\/h2><a class="story-link" href="http:\/\/localhost:6006\/\?path=\/story\/pages-a--default" target="_blank" rel="noreferrer">Open story<\/a>/,
+  "a valid Story URL renders an Open story link beside the plain-text heading",
+);
+
+const browserDir = mkdtempSync(path.join(tmpdir(), "sbfx-report-browser-"));
+try {
+  const pages = {
+    batch: path.join(browserDir, "batch.html"),
+    filter: path.join(browserDir, "filter.html"),
+    index: path.join(browserDir, "index.html"),
+    single: path.join(browserDir, "single.html"),
+  };
+  writeFileSync(pages.batch, batchReport);
+  writeFileSync(pages.filter, filterReport);
+  writeFileSync(pages.index, browserIndex);
+  writeFileSync(pages.single, report);
+  const reportBrowser = spawn(
+    chrome,
+    [
+      "--headless=new",
+      "--hide-scrollbars",
+      "--no-first-run",
+      "--no-default-browser-check",
+      "--remote-debugging-port=0",
+      `--user-data-dir=${path.join(browserDir, "chrome-profile")}`,
+      "about:blank",
+    ],
+    { stdio: ["ignore", "ignore", "pipe"] },
+  );
+  let reportSocket;
+  try {
+    const wsUrl = await new Promise((resolve, reject) => {
+      let stderr = "";
+      const timeout = setTimeout(() => reject(new Error(`Chrome CDP did not start.\n${stderr}`)), 15_000);
+      reportBrowser.stderr.on("data", (chunk) => {
+        stderr += chunk.toString();
+        const match = stderr.match(/DevTools listening on (ws:\/\/[^\s]+)/);
+        if (!match) return;
+        clearTimeout(timeout);
+        resolve(match[1]);
+      });
+    });
+    reportSocket = new WebSocket(wsUrl);
+    await new Promise((resolve, reject) => {
+      reportSocket.addEventListener("open", resolve, { once: true });
+      reportSocket.addEventListener("error", reject, { once: true });
+    });
+    let messageId = 0;
+    const pendingMessages = new Map();
+    reportSocket.addEventListener("message", (event) => {
+      const message = JSON.parse(String(event.data));
+      if (!message.id || !pendingMessages.has(message.id)) return;
+      const { resolve, reject } = pendingMessages.get(message.id);
+      pendingMessages.delete(message.id);
+      if (message.error) reject(new Error(message.error.message));
+      else resolve(message.result);
+    });
+    const send = (method, params = {}, sessionId) =>
+      new Promise((resolve, reject) => {
+        const id = ++messageId;
+        pendingMessages.set(id, { resolve, reject });
+        reportSocket.send(JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) }));
+      });
+    const { targetId } = await send("Target.createTarget", { url: "about:blank" });
+    const { sessionId } = await send("Target.attachToTarget", { flatten: true, targetId });
+    await send("Runtime.enable", {}, sessionId);
+    await send("Page.enable", {}, sessionId);
+    await send("Emulation.setTimezoneOverride", { timezoneId: "Asia/Taipei" }, sessionId);
+    const evaluate = async (expression) => {
+      const result = await send(
+        "Runtime.evaluate",
+        { expression, awaitPromise: true, returnByValue: true },
+        sessionId,
+      );
+      if (result.exceptionDetails) {
+        throw new Error(result.exceptionDetails.exception?.description ?? result.exceptionDetails.text);
+      }
+      return result.result?.value;
+    };
+    const viewport = (width, height) =>
+      send(
+        "Emulation.setDeviceMetricsOverride",
+        { deviceScaleFactor: 1, height, mobile: false, width },
+        sessionId,
+      );
+    const open = async (file, fragment = "") => {
+      const url = pathToFileURL(file).href + fragment;
+      await send("Page.navigate", { url: "about:blank" }, sessionId);
+      await send("Page.navigate", { url }, sessionId);
+      const deadline = Date.now() + 15_000;
+      while (Date.now() < deadline) {
+        const ready = await evaluate(
+          `document.readyState === "complete" && location.href === ${JSON.stringify(url)} && Boolean(document.querySelector("main"))`,
+        ).catch(() => false);
+        if (ready) return;
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+      throw new Error(`Report page did not load: ${url}`);
+    };
+    const scheme = (value) =>
+      send(
+        "Emulation.setEmulatedMedia",
+        { features: [{ name: "prefers-color-scheme", value }] },
+        sessionId,
+      );
+
+    // Readable timestamps (viewer in UTC+8).
+    await viewport(1280, 860);
+    await open(pages.filter);
+    assert.deepEqual(
+      await evaluate(`(() => {
+        const time = [...document.querySelectorAll("[data-comment-card] time")][0];
+        return { datetime: time.getAttribute("datetime"), text: time.textContent, title: time.getAttribute("title") };
+      })()`),
+      {
+        datetime: "2026-10-01T05:36:43.790Z",
+        text: "2026-10-01 13:36",
+        title: "2026-10-01T05:36:43.790Z",
+      },
+      "the script shows the viewer's local time and keeps the ISO value",
+    );
+    assert.equal(
+      await evaluate(`[...document.querySelectorAll("time[data-report-time]")].every((time) => /^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}$/.test(time.textContent) && time.title === time.getAttribute("datetime"))`),
+      true,
+      "every report timestamp is localized",
+    );
+
+    // Filters and the URL fragment.
+    const visibleCards = `[...document.querySelectorAll("[data-comment-card]")].filter((card) => !card.hidden && card.getClientRects().length > 0).map((card) => card.querySelector("strong").textContent.split(".")[0]).join(",")`;
+    const filterView = async () => ({
+      cards: await evaluate(visibleCards),
+      fragment: await evaluate("location.hash"),
+      pins: await evaluate(`[...document.querySelectorAll("[data-comment-pin]")].filter((pin) => pin.getClientRects().length > 0).length`),
+    });
+    assert.deepEqual(
+      { cards: (await filterView()).cards, fragment: await evaluate("location.hash") },
+      { cards: "1,2,3", fragment: "" },
+      "the default view shows every card and writes no fragment",
+    );
+    const press = (selector) => evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`);
+    const filterRows = [];
+    await press('[data-report-filter="all"]');
+    filterRows.push(await filterView());
+    await press('[data-report-filter="tracking"]');
+    filterRows.push(await filterView());
+    await press("[data-hide-completed]");
+    filterRows.push(await filterView());
+    await press('[data-report-filter="visual-fix"]');
+    filterRows.push(await filterView());
+    assert.deepEqual(
+      filterRows,
+      [
+        { cards: "1,2,3", fragment: "#kind=all&completed=shown", pins: 3 },
+        { cards: "2,3", fragment: "#kind=tracking&completed=shown", pins: 2 },
+        { cards: "2", fragment: "#kind=tracking&completed=hidden", pins: 1 },
+        { cards: "1", fragment: "#kind=visual-fix&completed=hidden", pins: 1 },
+      ],
+      "filters narrow the visible cards, hide their pins, and record the selection",
+    );
+    assert.deepEqual(
+      await evaluate(`({
+        captures: [...document.querySelectorAll("[data-capture-card]")].filter((capture) => capture.getClientRects().length > 0).length,
+        pressed: [...document.querySelectorAll("[data-report-filter]")].filter((button) => button.getAttribute("aria-pressed") === "true").map((button) => button.dataset.reportFilter).join(","),
+        hideCompleted: document.querySelector("[data-hide-completed]").getAttribute("aria-pressed"),
+      })`),
+      { captures: 1, hideCompleted: "true", pressed: "visual-fix" },
+      "captures without a visible card are hidden and the controls reflect the selection",
+    );
+    await open(pages.filter, "#kind=tracking&completed=hidden");
+    assert.deepEqual(
+      await evaluate(`({
+        cards: ${visibleCards},
+        hideCompleted: document.querySelector("[data-hide-completed]").getAttribute("aria-pressed"),
+        tracking: document.querySelector('[data-report-filter="tracking"]').getAttribute("aria-pressed"),
+      })`),
+      { cards: "2", hideCompleted: "true", tracking: "true" },
+      "the fragment restores the filtered view",
+    );
+    await open(pages.filter, "#kind=analytics&completed=maybe");
+    assert.deepEqual(
+      await evaluate(`({
+        all: document.querySelector('[data-report-filter="all"]').getAttribute("aria-pressed"),
+        cards: ${visibleCards},
+        hideCompleted: document.querySelector("[data-hide-completed]").getAttribute("aria-pressed"),
+      })`),
+      { all: "true", cards: "1,2,3", hideCompleted: "false" },
+      "unknown fragment values fall back to the defaults",
+    );
+    // The batch control collects by its own rule, whatever the filter shows.
+    await open(pages.filter);
+    await press('[data-report-filter="visual-fix"]');
+    assert.equal(
+      await evaluate(`(async () => {
+        const writes = [];
+        Object.defineProperty(navigator, "clipboard", {
+          configurable: true,
+          value: { writeText: async (text) => { writes.push(text); } },
+        });
+        document.querySelector("[data-tracking-batch-copy]").click();
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        return {
+          cards: ${visibleCards},
+          copied: [...(writes[0] ?? "").matchAll(/^### Comment (\\d+)$/gm)].map((match) => match[1]).join(","),
+        };
+      })()`).then((result) => JSON.stringify(result)),
+      JSON.stringify({ cards: "1", copied: "2" }),
+      "filtering does not change which comments the batch copy collects",
+    );
+
+    // A view with no visible card shows one empty message.
+    await open(pages.single);
+    await press('[data-report-filter="tracking"]');
+    assert.deepEqual(
+      await evaluate(`(() => {
+        const empty = [...document.querySelectorAll("[data-filter-empty]")].filter((element) => element.getClientRects().length > 0);
+        return {
+          captures: [...document.querySelectorAll("[data-capture-card]")].filter((capture) => capture.getClientRects().length > 0).length,
+          messages: empty.map((element) => element.textContent),
+        };
+      })()`),
+      { captures: 0, messages: ["No comments match these filters."] },
+      "a view with no visible card hides its captures and shows one empty message",
+    );
+
+    // Evidence layout.
+    await open(pages.single);
+    const layoutAt = async () =>
+      evaluate(`(() => {
+        const snapshot = document.querySelector(".snapshot").getBoundingClientRect();
+        const card = document.querySelector("[data-comment-card]").getBoundingClientRect();
+        return {
+          sideBySide: snapshot.right <= card.left + 1 && snapshot.top < card.bottom && card.top < snapshot.bottom,
+          stacked: snapshot.bottom <= card.top + 1,
+        };
+      })()`);
+    assert.deepEqual(
+      await layoutAt(),
+      { sideBySide: true, stacked: false },
+      "at 1280 pixels wide the screenshot and its comments sit side by side",
+    );
+    await viewport(800, 860);
+    assert.deepEqual(
+      await layoutAt(),
+      { sideBySide: false, stacked: true },
+      "below 1024 pixels wide the screenshot stacks above its comments",
+    );
+    await viewport(1280, 860);
+    await open(pages.batch);
+    assert.deepEqual(
+      await evaluate(`(() => {
+        window.scrollTo(0, 1600);
+        const toolbar = document.querySelector("[data-report-toolbar]");
+        const rect = toolbar.getBoundingClientRect();
+        return {
+          scrolled: window.scrollY > 800,
+          inViewport: rect.top >= 0 && rect.bottom <= innerHeight,
+          holdsControls:
+            Boolean(toolbar.querySelector("h1")) &&
+            Boolean(toolbar.querySelector('[aria-label="Filter comments"]')) &&
+            Boolean(toolbar.querySelector("[data-tracking-batch-copy]")) &&
+            /5 captures · 5 comments/.test(toolbar.textContent),
+        };
+      })()`),
+      { holdsControls: true, inViewport: true, scrolled: true },
+      "the toolbar keeps the title, counts, filters, and batch control visible while scrolling",
+    );
+    await viewport(1280, 560);
+    assert.equal(
+      await evaluate(`getComputedStyle(document.querySelector("[data-report-toolbar]")).position`),
+      "static",
+      "the toolbar is not pinned in a viewport shorter than 600 pixels",
+    );
+    await viewport(390, 860);
+    assert.deepEqual(
+      await evaluate(`(() => {
+        const toolbar = document.querySelector("[data-report-toolbar]").getBoundingClientRect();
+        return {
+          noSidewaysScroll: document.documentElement.scrollWidth <= innerWidth,
+          toolbarInside: toolbar.left >= 0 && toolbar.right <= innerWidth,
+        };
+      })()`),
+      { noSidewaysScroll: true, toolbarInside: true },
+      "at 390 pixels wide the toolbar stays inside the viewport and the page does not scroll sideways",
+    );
+    await viewport(1280, 860);
+
+    // Visual rules in both color schemes.
+    for (const value of ["light", "dark"]) {
+      await scheme(value);
+      await open(pages.filter);
+      await evaluate(`document.querySelector('[data-comment-action="edit"]').click()`);
+      const reportAudit = await evaluate(auditPageExpression);
+      assert.ok(reportAudit.audited > 40, `the ${value} report audit inspected the page`);
+      assert.deepEqual(reportAudit.violations, [], `meeting report passes the style audit in the ${value} scheme`);
+      await evaluate(`document.querySelector('[data-comment-action="delete"]').click()`);
+      const dialogAudit = await evaluate(auditPageExpression);
+      assert.deepEqual(dialogAudit.violations, [], `delete confirmation passes the style audit in the ${value} scheme`);
+      await open(pages.index);
+      const indexAudit = await evaluate(auditPageExpression);
+      assert.ok(indexAudit.audited > 10, `the ${value} index audit inspected the page`);
+      assert.deepEqual(indexAudit.violations, [], `report index passes the style audit in the ${value} scheme`);
+      assert.equal(
+        await evaluate(`[...document.querySelectorAll("time[data-report-time]")].map((time) => time.textContent).join(" | ")`),
+        "2026-10-01 13:36 | 2026-09-30 09:00 | 2026-09-30 10:00",
+        "index timestamps are localized",
+      );
+    }
+    await send("Target.closeTarget", { targetId });
+  } finally {
+    reportSocket?.close();
+    const exited = new Promise((resolve) => reportBrowser.once("exit", resolve));
+    reportBrowser.kill("SIGTERM");
+    await Promise.race([exited, new Promise((resolve) => setTimeout(resolve, 5_000))]);
+  }
+} finally {
+  rmSync(browserDir, { force: true, maxRetries: 5, recursive: true, retryDelay: 200 });
+}
 
 const emptyReport = renderVisualCommentReport({
   version: 1,

@@ -7,6 +7,7 @@ import {
   type FigmaExportReviewProps,
 } from "../src/review";
 import { syncFigmaExportOverlay } from "../src/overlay";
+import { buildCommentPromptContext, formatTrackingPrompt } from "../src/visualCommentPrompt";
 import {
   beginVisualCommentCapture,
   captureVisualCommentTarget,
@@ -306,6 +307,44 @@ async function run() {
   let failNextMeetingStart = false;
   let conflictNextMeetingStart = false;
   let extraCommentCount = 0;
+  let failNextMeetingRead = false;
+  let projectRelativeSessionPath: string | null =
+    "design-system/figma-export-review/sessions/meeting-1";
+  const mockKind = (comment: Record<string, unknown>) =>
+    comment.kind === "tracking" ? "tracking" : "visual-fix";
+  const mockStory = (comment: Record<string, unknown>) =>
+    comment.story as { id: string; routeId?: string; stateId?: string };
+  const mockPin = (comment: Record<string, unknown>) => {
+    const ordinal = comments.indexOf(comment) + 1;
+    return (
+      (comment.pin as { xRatio: number; yRatio: number } | undefined) ??
+      { xRatio: 0.15 + ordinal * 0.1, yRatio: 0.2 + ordinal * 0.08 }
+    );
+  };
+  // The whole meeting, as GET /sessions/<id> returns it.
+  const mockMeeting = () => ({
+    captures: Object.fromEntries(
+      comments.map((comment) => [
+        `capture-${comment.id}`,
+        {
+          capturedAt: comment.createdAt,
+          image: { mimeType: "image/png", path: `assets/${comment.id}.png` },
+          story: { name: "Story", title: "Demo", ...mockStory(comment) },
+          viewport: { devicePixelRatio: 1, height: 800, width: 1000 },
+        },
+      ]),
+    ),
+    comments: comments.map((comment) => ({
+      body: comment.body,
+      captureId: `capture-${comment.id}`,
+      createdAt: comment.createdAt,
+      id: comment.id,
+      kind: mockKind(comment),
+      pin: mockPin(comment),
+      ...(comment.resolvedAt ? { resolvedAt: comment.resolvedAt } : {}),
+    })),
+    version: 1,
+  });
   const comments: Array<Record<string, unknown>> = [];
   const requests: Array<{ method: string; path: string; body?: unknown }> = [];
   const originalFetch = window.fetch.bind(window);
@@ -407,6 +446,13 @@ async function run() {
         }
         return new Response(JSON.stringify({ comment: savedComment, reportStale: false }), { status: 201 });
       }
+      if (method === "GET" && path === "/sessions/meeting-1") {
+        if (failNextMeetingRead) {
+          failNextMeetingRead = false;
+          return new Response(JSON.stringify({ error: "Temporary meeting read failure." }), { status: 500 });
+        }
+        return new Response(JSON.stringify(mockMeeting()), { status: 200 });
+      }
       const commentMatch = path.match(/^\/sessions\/meeting-1\/comments\/([^/]+)$/);
       if (commentMatch && method === "PATCH") {
         const comment = comments.find((entry) => entry.id === decodeURIComponent(commentMatch[1]));
@@ -465,14 +511,20 @@ async function run() {
               (comment.story as { id?: string } | undefined)?.id === requestedStoryId,
           )
         : comments;
+      const trackingComments = comments.filter((comment) => mockKind(comment) === "tracking");
       const overviewComments = storyComments.map((comment) => {
         const ordinal = comments.indexOf(comment) + 1;
-        const pin =
-          (comment.pin as { xRatio: number; yRatio: number } | undefined) ??
-          { xRatio: 0.15 + ordinal * 0.1, yRatio: 0.2 + ordinal * 0.08 };
+        const pin = mockPin(comment);
+        const story = mockStory(comment);
         return {
           ...comment,
+          pin,
           ordinal,
+          state:
+            (comment.state as { routeId?: string; stateId?: string } | undefined) ?? {
+              ...(story.routeId ? { routeId: story.routeId } : {}),
+              ...(story.stateId ? { stateId: story.stateId } : {}),
+            },
           preview:
             comment.id === "comment-current-1"
               ? null
@@ -490,7 +542,14 @@ async function run() {
       return new Response(
         JSON.stringify({
           activeSession,
+          activeProjectRelativeSessionPath: activeSession ? projectRelativeSessionPath : null,
           activeReportUrl: activeSession ? "/__comments/reports/sessions/meeting-1/index.html" : null,
+          activeTracking: activeSession
+            ? {
+                open: trackingComments.filter((comment) => !comment.resolvedAt).length,
+                total: trackingComments.length,
+              }
+            : { open: 0, total: 0 },
           comments: activeSession ? overviewComments : [],
           recentSessions: [{
             id: "meeting-closed",
@@ -934,6 +993,10 @@ async function run() {
     identity()?.textContent?.startsWith("Commenting as Anonymous") === true &&
       identity()?.dataset.commentingAs === "Anonymous",
     identity()?.textContent ?? "",
+  );
+  check(
+    "a meeting without tracking comments has no copy action",
+    !commentsPanel.querySelector("[data-panel-tracking-copy]"),
   );
   check(
     "direct commenting keeps a named meeting as a secondary action",
@@ -1921,6 +1984,509 @@ async function run() {
       createCommentRequests().length === createsBeforeDisabledSave,
     JSON.stringify({ addHintWhenOff, composerStillOpen, saveHintWhenOff, shortcutsOffArmed }),
   );
+  await remountReview();
+  await waitFor(() => currentCommentCards().length === 4);
+
+  // ---- Saved comment pins on the Story ----
+  const savedPins = () =>
+    Array.from(document.querySelectorAll<HTMLButtonElement>("[data-saved-comment-pin]"));
+  const savedPin = (id: string) =>
+    document.querySelector<HTMLButtonElement>(`[data-saved-comment-pin="${id}"]`);
+  const describePins = () =>
+    savedPins()
+      .map((pin) => {
+        const radius = Number.parseFloat(getComputedStyle(pin).borderTopLeftRadius);
+        return `${pin.textContent}:${radius >= 12 ? "circle" : "rounded-square"}:${pin.getAttribute("aria-label")}`;
+      })
+      .sort()
+      .join(" | ");
+  const markedPins = (mark: "highlighted" | "selected") =>
+    savedPins()
+      .filter((pin) => pin.dataset[mark] === "true")
+      .map((pin) => pin.dataset.savedCommentPin)
+      .sort()
+      .join(",");
+  const highlightedPins = () => markedPins("highlighted");
+  const selectedPins = () => markedPins("selected");
+  const mockComment = (id: string) => comments.find((comment) => comment.id === id)!;
+  const pinsToggle = () => commentsPanel.querySelector<HTMLButtonElement>("[data-show-pins]")!;
+  const storyRootRect = () => root.getBoundingClientRect();
+  // Comment 1 visual-fix Open without stored evidence, comment 2 tracking Completed,
+  // comment 3 visual-fix Open, comment 5 tracking Open; comment 4 is on another Story.
+  resultElement.dataset.stage = "pins-start";
+  mockComment("comment-current-2").kind = "tracking";
+  await remountReview();
+  await waitFor(() => savedPins().length === 4);
+  const pinFor = savedPin("comment-current-4")!;
+  const pinForRect = pinFor.getBoundingClientRect();
+  check(
+    "expanded panel shows a numbered pin at each comment's normalized position",
+    savedPins().length === 4 &&
+      near(
+        (pinForRect.left + pinForRect.width / 2 - storyRootRect().left) / storyRootRect().width,
+        0.61,
+      ) &&
+      near(
+        (pinForRect.top + pinForRect.height / 2 - storyRootRect().top) / storyRootRect().height,
+        0.75,
+      ) &&
+      savedPins().every(
+        (pin) =>
+          pin.hasAttribute("data-sbfx-capture-ignore") &&
+          !pin.closest("#storybook-root") &&
+          !pin.closest(".sbfx-comments-panel"),
+      ) &&
+      !savedPin("comment-other-story") &&
+      pinsToggle().getAttribute("aria-pressed") === "true" &&
+      pinsToggle().getAttribute("aria-label") === "Show pins",
+    describePins(),
+  );
+  resultElement.dataset.stage = "pins-filter";
+  const allPins = describePins();
+  filterOption("visual-fix").click();
+  await waitFor(() => savedPins().length === 2 && !savedPin("comment-current-2"));
+  const visualFixPins = describePins();
+  filterOption("tracking").click();
+  await waitFor(() => savedPins().length === 2 && !savedPin("comment-current-1"));
+  const trackingPins = describePins();
+  filterOption("all").click();
+  await waitFor(() => savedPins().length === 4);
+  check(
+    "pins follow the kind filter and show kind and status",
+    allPins ===
+      [
+        "1:circle:Comment 1, Visual fix, Open",
+        "2:rounded-square:Comment 2, Tracking, Completed",
+        "3:circle:Comment 3, Visual fix, Open",
+        "5:rounded-square:Comment 5, Tracking, Open",
+      ].join(" | ") &&
+      visualFixPins ===
+        [
+          "1:circle:Comment 1, Visual fix, Open",
+          "3:circle:Comment 3, Visual fix, Open",
+        ].join(" | ") &&
+      trackingPins ===
+        [
+          "2:rounded-square:Comment 2, Tracking, Completed",
+          "5:rounded-square:Comment 5, Tracking, Open",
+        ].join(" | ") &&
+      getComputedStyle(savedPin("comment-current-2")!).backgroundColor !==
+        getComputedStyle(savedPin("comment-current-4")!).backgroundColor,
+    JSON.stringify({ allPins, trackingPins, visualFixPins }),
+  );
+  auditSurfaces("saved comment pins", "[data-saved-comment-pin]");
+  const pinPoint = () => {
+    const rect = savedPin("comment-current-3")?.getBoundingClientRect();
+    return rect ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 } : null;
+  };
+  const coveredPoint = pinPoint()!;
+  const coveredBefore = document.elementFromPoint(coveredPoint.x, coveredPoint.y);
+  pinsToggle().click();
+  await waitFor(() => savedPins().length === 0);
+  const showPinsOff =
+    pinsToggle().getAttribute("aria-pressed") === "false" &&
+    !document
+      .elementFromPoint(coveredPoint.x, coveredPoint.y)
+      ?.hasAttribute("data-saved-comment-pin");
+  pinsToggle().click();
+  await waitFor(() => savedPins().length === 4);
+  commentsToggle.click();
+  await waitFor(() => commentsDetail.hidden && savedPins().length === 0);
+  check(
+    "collapsing the panel or turning Show pins off removes every saved pin",
+    coveredBefore?.hasAttribute("data-saved-comment-pin") === true &&
+      showPinsOff &&
+      !document
+        .elementFromPoint(coveredPoint.x, coveredPoint.y)
+        ?.hasAttribute("data-saved-comment-pin") &&
+      !Object.keys(localStorage).some((key) => /pins/i.test(key)) &&
+      !Object.keys(sessionStorage).some((key) => /pins/i.test(key)),
+  );
+  commentsToggle.click();
+  await waitFor(() => !commentsDetail.hidden && savedPins().length === 4);
+
+  // A comment captured in another route or state has no pin.
+  resultElement.dataset.stage = "pins-state";
+  const stateRows: string[] = [];
+  const originalRoute = root.dataset.route;
+  const originalState = root.dataset.prototypeState;
+  for (const [recorded, current, expected] of [
+    [{ routeId: "/order", stateId: "modal-open" }, { routeId: "/order", stateId: "modal-open" }, true],
+    [{ routeId: "/order", stateId: "modal-open" }, { routeId: "/order", stateId: "default" }, false],
+    [{ routeId: "/order" }, { routeId: "/cart" }, false],
+    [{}, { routeId: "/order", stateId: "default" }, true],
+    [{}, {}, true],
+  ] as Array<[Record<string, string>, Record<string, string>, boolean]>) {
+    mockComment("comment-current-4").state = recorded;
+    if (current.routeId) root.dataset.route = current.routeId;
+    else delete root.dataset.route;
+    if (current.stateId) root.dataset.prototypeState = current.stateId;
+    else delete root.dataset.prototypeState;
+    await remountReview();
+    await waitFor(() => currentCommentCards().length === 4);
+    await settle(700);
+    const card = commentsPanel.querySelector<HTMLElement>('[data-comment-id="comment-current-4"]')!;
+    const hasPin = Boolean(savedPin("comment-current-4"));
+    const hasNote =
+      card.querySelector("[data-comment-state-note]")?.textContent === "Captured in another state";
+    stateRows.push(`${hasPin === expected}/${hasNote === !expected}`);
+  }
+  delete mockComment("comment-current-4").state;
+  root.dataset.route = originalRoute!;
+  root.dataset.prototypeState = originalState!;
+  check(
+    "a comment captured in another route or state has no pin and is labelled in the list",
+    stateRows.join(",") === Array(5).fill("true/true").join(","),
+    stateRows.join(","),
+  );
+
+  // Pins never appear in a new comment's screenshot.
+  await remountReview();
+  await waitFor(() => savedPins().length === 4);
+  resultElement.dataset.stage = "pins-capture";
+  const capturedWithPins = await captureVisualCommentTarget(document.body);
+  check(
+    "saved pins are excluded from captures",
+    savedPins().length === 4 &&
+      savedPins().every((pin) => pin.hasAttribute("data-sbfx-capture-ignore")) &&
+      capturedWithPins.width > 0,
+  );
+
+  // A capture target without bounds shows no pins and keeps the list usable.
+  resultElement.dataset.stage = "pins-zero";
+  await remountReview({
+    visualComments: { apiPath: "/__comments", captureSelector: "#zero" },
+  });
+  await waitFor(() => currentCommentCards().length === 4);
+  await settle(700);
+  check(
+    "a capture target without bounds shows no pins and keeps the list usable",
+    savedPins().length === 0 && currentCommentCards().length === 4,
+  );
+  resultElement.dataset.stage = "pins-unresolved";
+  await remountReview({
+    visualComments: { apiPath: "/__comments", captureSelector: "#does-not-exist" },
+  });
+  await waitFor(() => currentCommentCards().length === 4);
+  await settle(700);
+  check(
+    "a capture selector that matches no element shows no pins and keeps the list usable",
+    !document.querySelector("#does-not-exist") &&
+      savedPins().length === 0 &&
+      currentCommentCards().length === 4,
+  );
+
+  // Pin and list correspondence, with a list long enough to scroll.
+  resultElement.dataset.stage = "pinlist-start";
+  mockComment("comment-current-3").pin = { xRatio: 0.25, yRatio: 64 / 240 };
+  const correspondenceComments = Array.from({ length: 8 }, (_, index) => ({
+    id: `comment-pinlist-${index + 1}`,
+    authorName: "Lee",
+    body: `Pin list comment ${index + 1}`,
+    createdAt: `2026-07-20T00:02:${String(index + 10).padStart(2, "0")}.000Z`,
+    kind: "visual-fix",
+    story: { id: "demo--story" },
+  }));
+  comments.push(...correspondenceComments);
+  await remountReview();
+  await waitFor(() => currentCommentCards().length === 12 && Boolean(savedPin("comment-current-3")));
+  const listScroll = commentsPanel.querySelector<HTMLElement>(".sbfx-comments-panel__scroll")!;
+  const targetCard = () =>
+    commentsPanel.querySelector<HTMLElement>('[data-comment-id="comment-current-3"]')!;
+  // The scroll region can be shorter than one card, so "in view" means the
+  // card's top edge or most of its height is inside the region.
+  const cardVisible = () => {
+    const card = targetCard().getBoundingClientRect();
+    const view = listScroll.getBoundingClientRect();
+    const overlap = Math.min(card.bottom, view.bottom) - Math.max(card.top, view.top);
+    return overlap >= Math.min(card.height, view.height) - 1;
+  };
+  listScroll.scrollTop = 0;
+  const hiddenBeforeClick = !cardVisible();
+  let delegatedClicks = 0;
+  const delegatedListener = () => {
+    delegatedClicks += 1;
+  };
+  document.addEventListener("click", delegatedListener);
+  const actionCountBeforePin = actionCount;
+  const mutationsBeforePin = mutationRequests();
+  const overButton = savedPin("comment-current-3")!.getBoundingClientRect();
+  const beneathPin = document
+    .elementsFromPoint(overButton.left + overButton.width / 2, overButton.top + overButton.height / 2)
+    .includes(prototypeButton);
+  savedPin("comment-current-3")!.click();
+  await waitFor(() => targetCard().getAttribute("aria-current") === "true" && cardVisible());
+  await waitFor(() => document.activeElement === targetCard());
+  document.removeEventListener("click", delegatedListener);
+  check(
+    "activating a pin selects its list item without reaching the prototype",
+    hiddenBeforeClick &&
+      beneathPin &&
+      cardVisible() &&
+      document.activeElement === targetCard() &&
+      commentsPanel.querySelectorAll('[aria-current="true"]').length === 1 &&
+      selectedPins() === "comment-current-3" &&
+      actionCount === actionCountBeforePin &&
+      delegatedClicks === 0 &&
+      mutationRequests() === mutationsBeforePin,
+    JSON.stringify({ actionCount, actionCountBeforePin, delegatedClicks, hiddenBeforeClick }),
+  );
+  resultElement.dataset.stage = "pinlist-again";
+  (document.activeElement as HTMLElement | null)?.blur();
+  listScroll.scrollTop = 0;
+  const hiddenBeforeSecondClick = !cardVisible() && document.activeElement !== targetCard();
+  savedPin("comment-current-3")!.click();
+  await waitFor(() => cardVisible() && document.activeElement === targetCard());
+  check(
+    "activating the pin of the selected comment reveals its list item again",
+    hiddenBeforeSecondClick &&
+      targetCard().getAttribute("aria-current") === "true" &&
+      selectedPins() === "comment-current-3" &&
+      mutationRequests() === mutationsBeforePin,
+  );
+  resultElement.dataset.stage = "pinlist-second";
+  const keyboardPin = savedPin("comment-current-2")!;
+  keyboardPin.focus();
+  keyboardPin.click();
+  await waitFor(
+    () =>
+      commentsPanel
+        .querySelector('[data-comment-id="comment-current-2"]')
+        ?.getAttribute("aria-current") === "true",
+  );
+  check(
+    "selecting another pin moves the selection",
+    commentsPanel.querySelectorAll('[aria-current="true"]').length === 1 &&
+      targetCard().getAttribute("aria-current") !== "true" &&
+      selectedPins() === "comment-current-2",
+  );
+  resultElement.dataset.stage = "pinlist-hover";
+  const hoverCard = commentsPanel.querySelector<HTMLElement>('[data-comment-id="comment-current-4"]')!;
+  hoverCard.dispatchEvent(new MouseEvent("mouseenter"));
+  await waitFor(() => savedPin("comment-current-4")?.dataset.highlighted === "true");
+  // Comment 2 stays selected and focused; only the hovered item's pin is highlighted.
+  const highlightedWhileHovering = highlightedPins();
+  const selectedWhileHovering = selectedPins();
+  hoverCard.dispatchEvent(new MouseEvent("mouseleave"));
+  await waitFor(() => savedPin("comment-current-4")?.dataset.highlighted !== "true");
+  hoverCard.focus();
+  await waitFor(() => savedPin("comment-current-4")?.dataset.highlighted === "true");
+  const highlightedWhileFocused = highlightedPins();
+  (document.activeElement as HTMLElement | null)?.blur();
+  await waitFor(() => savedPin("comment-current-4")?.dataset.highlighted !== "true");
+  check(
+    "hovering or focusing a list item highlights only its pin until the pointer or focus leaves",
+    highlightedWhileHovering === "comment-current-4" &&
+      selectedWhileHovering === "comment-current-2" &&
+      highlightedWhileFocused === "comment-current-4" &&
+      highlightedPins() === "" &&
+      mutationRequests() === mutationsBeforePin,
+    JSON.stringify({ highlightedWhileFocused, highlightedWhileHovering, selectedWhileHovering }),
+  );
+  // A saved pin does not block placing a new comment at the same point.
+  resultElement.dataset.stage = "pins-passive";
+  const coveredRect = savedPin("comment-current-3")!.getBoundingClientRect();
+  const covered = {
+    x: coveredRect.left + coveredRect.width / 2,
+    y: coveredRect.top + coveredRect.height / 2,
+  };
+  const pinAt = () =>
+    Boolean(document.elementFromPoint(covered.x, covered.y)?.closest("[data-saved-comment-pin]"));
+  const pinOnTopBeforeCapture = pinAt();
+  const selectionBeforeCapture = selectedPins();
+  pressKey(document.body, { key: "c" });
+  await waitFor(() => capturePrompt() && !pinAt());
+  const pinsShownWhileCapturing = savedPins().length;
+  dispatchPointerSequence(document.elementFromPoint(covered.x, covered.y)!, covered.x, covered.y);
+  await waitFor(() => composer());
+  const passiveWhileComposing = !pinAt() || Boolean(composer()?.contains(document.elementFromPoint(covered.x, covered.y)));
+  const selectionWhileComposing = selectedPins();
+  pressKey(composerBody() ?? document.body, { key: "Escape" });
+  await waitFor(() => !composer() && !captureMode() && pinAt());
+  check(
+    "a point under a saved pin can receive a new comment",
+    pinOnTopBeforeCapture &&
+      pinsShownWhileCapturing === 12 &&
+      passiveWhileComposing &&
+      selectionWhileComposing === selectionBeforeCapture &&
+      actionCount === actionCountBeforePin &&
+      mutationRequests() === mutationsBeforePin,
+    JSON.stringify({ pinOnTopBeforeCapture, pinsShownWhileCapturing, selectionWhileComposing }),
+  );
+  for (const comment of correspondenceComments) {
+    comments.splice(comments.findIndex((entry) => entry.id === comment.id), 1);
+  }
+  delete mockComment("comment-current-3").pin;
+
+  // ---- Panel tracking prompt handoff ----
+  // Comment 1 visual-fix Open, 2 tracking Open, 3 tracking Completed on this
+  // Story; comment 4 tracking Open on another Story; comment 5 tracking Open here.
+  resultElement.dataset.stage = "handoff-start";
+  const clipboardWrites: string[] = [];
+  let rejectClipboard = false;
+  Object.defineProperty(navigator, "clipboard", {
+    configurable: true,
+    value: {
+      writeText: async (text: string) => {
+        if (rejectClipboard) throw new Error("clipboard denied");
+        clipboardWrites.push(text);
+      },
+    },
+  });
+  delete mockComment("comment-current-2").resolvedAt;
+  mockComment("comment-current-3").kind = "tracking";
+  mockComment("comment-current-3").resolvedAt = "2026-07-20T00:40:00.000Z";
+  mockComment("comment-other-story").kind = "tracking";
+  await remountReview();
+  await waitFor(() => commentsPanel.querySelector('[data-panel-tracking-copy="all"]'));
+  const copyAction = (scope: string) =>
+    commentsPanel.querySelector<HTMLButtonElement>(`[data-panel-tracking-copy="${scope}"]`);
+  const copyStatus = () =>
+    commentsPanel.querySelector<HTMLElement>("[data-panel-tracking-status]");
+  const subsections = (prompt: string | undefined) =>
+    Array.from(prompt?.matchAll(/^### Comment (\d+)$/gm) ?? [], (match) => Number(match[1])).join(",");
+  const expectedPanelPrompt = (scope: "all" | "story") => {
+    const meeting = mockMeeting();
+    return formatTrackingPrompt(
+      meeting.comments.flatMap((comment, index) => {
+        const capture = meeting.captures[comment.captureId]!;
+        if (
+          comment.kind !== "tracking" ||
+          comment.resolvedAt ||
+          (scope === "story" && capture.story.id !== "demo--story")
+        ) {
+          return [];
+        }
+        return [
+          {
+            context: buildCommentPromptContext({
+              capture,
+              comment: comment as never,
+              kind: "tracking",
+              ordinal: index + 1,
+              projectRelativeSessionPath,
+            }),
+            screenshotUrl: new URL(
+              capture.image.path,
+              new URL("/__comments/reports/sessions/meeting-1/index.html", location.href),
+            ),
+          },
+        ];
+      }),
+    );
+  };
+  const mutationsBeforeCopy = mutationRequests();
+  copyAction("story")!.click();
+  await waitFor(() => clipboardWrites.length === 1 && Boolean(copyStatus()?.textContent));
+  const storyCopyMessage = copyStatus()?.textContent;
+  copyAction("all")!.click();
+  await waitFor(() => clipboardWrites.length === 2 && copyStatus()?.textContent !== storyCopyMessage);
+  check(
+    "panel copies the open tracking comments of its scope in ordinal order",
+    copyAction("story")?.textContent === "Copy tracking prompts" &&
+      copyAction("all")?.textContent === "Copy all stories" &&
+      subsections(clipboardWrites[0]) === "2,5" &&
+      storyCopyMessage === "Tracking prompt copied. Comments included: 2." &&
+      subsections(clipboardWrites[1]) === "2,4,5" &&
+      copyStatus()?.textContent === "Tracking prompt copied. Comments included: 3." &&
+      copyStatus()?.getAttribute("aria-live") === "polite" &&
+      mutationRequests() === mutationsBeforeCopy,
+    JSON.stringify({
+      all: subsections(clipboardWrites[1]),
+      message: copyStatus()?.textContent,
+      story: subsections(clipboardWrites[0]),
+      storyCopyMessage,
+    }),
+  );
+  check(
+    "panel prompts equal the shared formatter output for the same meeting data",
+    clipboardWrites[0] === expectedPanelPrompt("story") &&
+      clipboardWrites[1] === expectedPanelPrompt("all") &&
+      clipboardWrites[0]!.startsWith("# Tracking Instrumentation Request\n") &&
+      clipboardWrites[0]!.includes(
+        "- Project-relative screenshot path: design-system/figma-export-review/sessions/meeting-1/assets/comment-current-2.png",
+      ) &&
+      clipboardWrites[0]!.includes(
+        `- Screenshot URL: ${location.origin}/__comments/reports/sessions/meeting-1/assets/comment-current-2.png`,
+      ),
+  );
+  resultElement.dataset.stage = "handoff-failure";
+  rejectClipboard = true;
+  copyAction("story")!.click();
+  await waitFor(
+    () =>
+      copyStatus()?.textContent ===
+      "Unable to copy AI prompt. Check browser clipboard permission.",
+  );
+  rejectClipboard = false;
+  failNextMeetingRead = true;
+  copyAction("all")!.click();
+  await settle(150);
+  await waitFor(() => !copyAction("all")!.disabled);
+  check(
+    "clipboard or meeting read failure is reported without a mutation",
+    copyStatus()?.textContent ===
+      "Unable to copy AI prompt. Check browser clipboard permission." &&
+      clipboardWrites.length === 2 &&
+      mutationRequests() === mutationsBeforeCopy,
+    copyStatus()?.textContent ?? "",
+  );
+  resultElement.dataset.stage = "handoff-external";
+  projectRelativeSessionPath = null;
+  await remountReview();
+  await waitFor(() => copyAction("story"));
+  copyAction("story")!.click();
+  await waitFor(() => clipboardWrites.length === 3);
+  check(
+    "a session outside the project reports the project-relative path as unavailable",
+    clipboardWrites[2]!.includes("- Project-relative screenshot path: unavailable") &&
+      !clipboardWrites[2]!.includes("design-system/figma-export-review"),
+  );
+  projectRelativeSessionPath = "design-system/figma-export-review/sessions/meeting-1";
+  mockComment("comment-other-story").resolvedAt = "2026-07-20T00:41:00.000Z";
+  await remountReview();
+  await waitFor(() => copyAction("story"));
+  check(
+    "Copy all stories appears only when another Story has open tracking comments",
+    Boolean(copyAction("story")) && !copyAction("all"),
+  );
+  mockComment("comment-current-2").resolvedAt = "2026-07-20T00:42:00.000Z";
+  mockComment("comment-current-4").resolvedAt = "2026-07-20T00:43:00.000Z";
+  await remountReview();
+  await waitFor(() => copyAction("story"));
+  copyAction("story")!.click();
+  await waitFor(() => copyStatus()?.textContent === "No open tracking comments to copy.");
+  check(
+    "nothing open to copy sends no clipboard write",
+    clipboardWrites.length === 3 && mutationRequests() === mutationsBeforeCopy,
+  );
+  auditSurfaces("panel with the tracking handoff", ".sbfx-comments-panel");
+  resultElement.dataset.stage = "handoff-visual-fix-only";
+  const trackingKinds = comments
+    .filter((comment) => comment.kind === "tracking")
+    .map((comment) => comment.id as string);
+  for (const id of trackingKinds) mockComment(id).kind = "visual-fix";
+  await remountReview();
+  await waitFor(() => currentCommentCards().length === 4);
+  await settle(300);
+  check(
+    "an active meeting with only visual-fix comments renders no copy action",
+    trackingKinds.length > 0 &&
+      Boolean(button("End meeting")) &&
+      !copyAction("story") &&
+      !copyAction("all") &&
+      !copyStatus()?.textContent,
+    String(trackingKinds),
+  );
+  for (const id of trackingKinds) mockComment(id).kind = "tracking";
+  // Restore the fixture data the later sections rely on.
+  delete mockComment("comment-current-2").kind;
+  mockComment("comment-current-2").resolvedAt = "2026-07-20T00:30:00.000Z";
+  delete mockComment("comment-current-3").kind;
+  delete mockComment("comment-current-3").resolvedAt;
+  delete mockComment("comment-other-story").kind;
+  delete mockComment("comment-other-story").resolvedAt;
+  delete mockComment("comment-current-4").resolvedAt;
   await remountReview();
   await waitFor(() => currentCommentCards().length === 4);
 

@@ -285,6 +285,15 @@ function createVisualCommentsController({
         `${operation} returned HTTP ${response.status}${payload.error ? `: ${payload.error}` : "."}`
       );
     },
+    // The whole meeting, including the captures of every Story.
+    getMeeting(sessionId) {
+      return requestJson(
+        fetcher,
+        `${apiPath}/sessions/${encodeURIComponent(sessionId)}`,
+        void 0,
+        `Visual comments GET ${apiPath}/sessions`
+      );
+    },
     getOverview(storyId) {
       return requestJson(
         fetcher,

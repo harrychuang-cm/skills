@@ -298,6 +298,24 @@ report URLs remain readable. Each session report contains its
 snapshots on the addon's dark raised surface, pins, authors, comments, timestamps,
 and Story metadata.
 
+While the panel is expanded, every comment of the current Story also shows as a
+numbered pin on the Story at the point it was placed: a circle for a
+**Visual fix**, a rounded square for **Tracking**, and a subdued color once the
+comment is Completed. Pins follow the kind filter; **Pins** in the panel toolbar
+hides them, and collapsing the panel removes them so they never block the
+prototype while you are using it. Clicking a pin selects its comment in the list
+and never triggers the control beneath it; the selected comment's pin keeps a
+ring, and clicking it again scrolls back to the comment. While you are placing
+a new comment, saved pins stay visible but let clicks through, so a point under
+a pin can be commented on again. Hovering or focusing a list item highlights
+its pin. A pin is a position ratio within the capture
+target, not a link to an element, so it does not follow a component that moves.
+A comment whose screenshot is missing still shows its pin. When `captureSelector`
+is set and matches no element, no pins are shown. A comment
+captured in a different route or state (recorded from the prototype root's
+`data-route` and `data-prototype-state`) shows no pin and is marked
+**Captured in another state** in the list; the addon does not replay state.
+
 Keyboard shortcuts act only in Story view and only while focus is outside an
 input, textarea, select, or contenteditable element, so typing `c` into a
 prototype field is never intercepted. Set `visualComments.shortcuts` to `false`
@@ -310,6 +328,12 @@ when the prototype itself uses the **C** key; **Esc** keeps cancelling.
 | `captureSelector` | Capture target; `"body"` includes portals |
 | `authorStorageKey` | `localStorage` key of the display name |
 | `shortcuts` | `false` disables **C** and **Cmd/Ctrl+Enter** (default `true`) |
+
+Upgrading from 0.11.x: the report page has a new layout (see Reports below), the
+panel gains saved pins and the tracking handoff, and the workspace keeps 38% of
+the viewport height (up to 340px) instead of 46% (up to 420px) while the comments
+panel is expanded, so the comment list has more room. Stored meetings need no
+migration.
 
 Upgrading from 0.10.x: the comment composer and the capture prompt are no longer
 inside the panel, the launcher uses the Comment icon, and the panel list shows
@@ -349,6 +373,18 @@ fall back to text, and the prompt tells an assistant to request a manual image
 attachment instead of guessing when it cannot inspect any screenshot reference.
 No absolute host path, provider command, API key, or AI network request is added.
 
+**Reports.** A meeting report keeps a toolbar pinned while you scroll: the
+meeting title and counts, a kind filter (**All**, **Visual fix**, **Tracking**
+with counts), **Hide completed**, and the tracking batch control. The filter
+state is written to the URL fragment (for example
+`#kind=tracking&completed=hidden`), so a shared link opens the same view; a
+filter never changes what **Copy tracking prompts** collects. At 1024px wide or
+more each capture shows its screenshot beside its comments; narrower windows
+stack them. Timestamps are shown in the viewer's local time as
+`YYYY-MM-DD HH:mm`, with the stored ISO value in the `title`. The capture heading
+is plain text with an **Open story** link when the stored Story URL is a valid
+HTTP(S) URL.
+
 The Trash icon's first activation only opens an accessible in-page confirmation
 without depending on the native dialog API; Cancel, Escape, or clicking the
 backdrop sends no request, and Confirm delete removes the comment, its
@@ -375,10 +411,13 @@ would comment on a design file, then hand the comments to a coding assistant.
    the requirement in free text, and press **Cmd/Ctrl+Enter**.
 3. Open **Reports**. A Tracking card's **Copy AI prompt** produces a
    `# Tracking Instrumentation Request` instead of the visual fix request.
-4. To hand over several at once, use **Copy tracking prompts**. It copies one
-   request containing every Open Tracking comment of the meeting in ordinal
-   order; **Tracking scope** narrows it to one Story. Completed comments and
-   Visual fix comments are never included.
+4. To hand over several at once without leaving the Story, use
+   **Copy tracking prompts** in the panel footer. It copies one request
+   containing the current Story's Open Tracking comments in ordinal order;
+   **Copy all stories** appears beside it when other Stories of the meeting also
+   have Open Tracking comments. The same batch is available on the report, where
+   **Tracking scope** narrows it to one Story. Completed comments and Visual fix
+   comments are never included, and both places produce identical Markdown.
 
 The request asks the assistant to derive four fields per comment — event name,
 parameters, recording timing, and value definitions — to write `unspecified` for

@@ -246,6 +246,16 @@ kind of the last saved comment; saving no longer reloads the preview, and a
 15-second, read-once `sessionStorage` entry carries the kind across reloads from
 other causes. A manual refresh or a new tab starts from Visual fix again.
 
+From addon 0.12.0 the hand-off no longer requires leaving the Story: the panel
+footer offers **Copy tracking prompts** for the current Story's Open Tracking
+comments and **Copy all stories** when other Stories have some too, producing the
+same Markdown as the report. While the panel is expanded, saved comments appear
+as numbered pins on the Story (circle for Visual fix, rounded square for
+Tracking); a pin is a position ratio, so it does not follow a component that
+moves, and a comment captured in another route or state shows no pin. The report
+gains a kind filter and **Hide completed** whose state lives in the URL fragment,
+a side-by-side layout from 1024px wide, and local-time timestamps.
+
 For a prototype that keeps a Data Authority registry, record the resulting
 event as a `proposed` `analytics` contract; see
 `storybook-product-prototype/references/handoff-authority.md`.

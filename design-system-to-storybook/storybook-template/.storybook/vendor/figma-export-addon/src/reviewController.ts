@@ -33,7 +33,9 @@ export type VisualCommentOverview = {
     captureCount: number;
     commentCount: number;
   } | null;
+  activeProjectRelativeSessionPath?: string | null;
   activeReportUrl: string | null;
+  activeTracking?: { open: number; total: number };
   comments: Array<{
     id: string;
     authorName: string;
@@ -41,6 +43,7 @@ export type VisualCommentOverview = {
     createdAt: string;
     kind?: VisualCommentKind;
     ordinal: number;
+    pin?: VisualCommentPin;
     preview: {
       imageUrl: string;
       width: number;
@@ -48,6 +51,7 @@ export type VisualCommentOverview = {
       pin: VisualCommentPin;
     } | null;
     resolvedAt?: string | null;
+    state?: { routeId?: string; stateId?: string };
   }>;
   recentSessions: Array<{
     id: string;
@@ -58,6 +62,35 @@ export type VisualCommentOverview = {
     commentCount: number;
   }>;
   reportUrl: string;
+};
+
+export type VisualCommentMeeting = {
+  captures: Record<
+    string,
+    {
+      capturedAt: string;
+      image: { mimeType: string; path: string };
+      story: {
+        id: string;
+        name: string;
+        prototypeId?: string;
+        routeId?: string;
+        stateId?: string;
+        title: string;
+        url?: string;
+      };
+      viewport: { devicePixelRatio: number; height: number; width: number };
+    }
+  >;
+  comments: Array<{
+    body: string;
+    captureId: string;
+    createdAt: string;
+    id: string;
+    kind?: VisualCommentKind;
+    pin: VisualCommentPin;
+    resolvedAt?: string | null;
+  }>;
 };
 
 type FetchLike = typeof fetch;
@@ -135,6 +168,15 @@ export function createVisualCommentsController({
       if (activeId) return activeId;
       throw new Error(
         `${operation} returned HTTP ${response.status}${payload.error ? `: ${payload.error}` : "."}`,
+      );
+    },
+    // The whole meeting, including the captures of every Story.
+    getMeeting(sessionId: string) {
+      return requestJson<VisualCommentMeeting>(
+        fetcher,
+        `${apiPath}/sessions/${encodeURIComponent(sessionId)}`,
+        undefined,
+        `Visual comments GET ${apiPath}/sessions`,
       );
     },
     getOverview(storyId: string) {

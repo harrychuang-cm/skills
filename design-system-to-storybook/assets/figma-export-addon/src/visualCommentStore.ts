@@ -81,6 +81,8 @@ export type VisualCommentDetailsPatch = {
 export type VisualCommentOverviewComment = VisualComment & {
   kind: VisualCommentKind;
   ordinal: number;
+  // Route and state recorded on the capture; derived, never persisted.
+  state: { routeId?: string; stateId?: string };
   preview: {
     imagePath: string;
     width: number;
@@ -589,6 +591,9 @@ export function createVisualCommentStore(options: VisualCommentStoreOptions = {}
       const activeMeeting = state.activeSessionId
         ? await readMeeting(state.activeSessionId).catch(() => null)
         : null;
+      const trackingComments = (activeMeeting?.comments ?? []).filter(
+        (comment) => resolveVisualCommentKind(comment.kind) === "tracking",
+      );
       const comments: VisualCommentOverviewComment[] = activeMeeting
         ? activeMeeting.comments
             .map((comment, index) => ({ comment, ordinal: index + 1 }))
@@ -612,6 +617,10 @@ export function createVisualCommentStore(options: VisualCommentStoreOptions = {}
                 ...comment,
                 kind: resolveVisualCommentKind(comment.kind),
                 ordinal,
+                state: {
+                  ...(capture?.story.routeId ? { routeId: capture.story.routeId } : {}),
+                  ...(capture?.story.stateId ? { stateId: capture.story.stateId } : {}),
+                },
                 preview: hasPreview
                   ? {
                       imagePath: image.path,
@@ -635,6 +644,14 @@ export function createVisualCommentStore(options: VisualCommentStoreOptions = {}
         recentSessions: recentSessions
           .filter((session) => session.id !== state.activeSessionId)
           .slice(0, 20),
+        activeProjectRelativeSessionPath: activeMeeting
+          ? projectRelativeSessionPath(activeMeeting.session.id)
+          : null,
+        // Counted across every Story of the active meeting.
+        activeTracking: {
+          open: trackingComments.filter((comment) => !comment.resolvedAt).length,
+          total: trackingComments.length,
+        },
         comments,
       };
     },

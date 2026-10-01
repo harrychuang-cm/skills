@@ -34,6 +34,7 @@ import {
   type FigmaWorkspaceSlotHandle,
 } from "./workspace";
 
+import { buildCommentPromptContext, formatTrackingPrompt } from "./visualCommentPrompt";
 import {
   VISUAL_COMMENT_KINDS,
   VISUAL_COMMENT_LIMITS,
@@ -183,6 +184,7 @@ export type FigmaReviewLabels = Partial<{
   anonymousAuthor: string;
   authorName: string;
   cancelCapture: string;
+  capturedInAnotherState: string;
   capturePrompt: string;
   changeAuthorName: string;
   cancelCommentEdit: string;
@@ -200,6 +202,8 @@ export type FigmaReviewLabels = Partial<{
   commentsHeading: string;
   commentsList: string;
   confirmDelete: string;
+  copyAllStories: string;
+  copyTrackingPrompts: string;
   deleteComment: string;
   deleteCommentDescription: string;
   deleteCommentTitle: string;
@@ -225,6 +229,8 @@ export type FigmaReviewLabels = Partial<{
   review: string;
   saveAuthorName: string;
   saveCommentChanges: string;
+  showPins: string;
+  showPinsShort: string;
   startMeeting: string;
   startNamedMeeting: string;
   submitComment: string;
@@ -290,6 +296,7 @@ const defaultLabels = {
   anonymousAuthor: "Anonymous",
   authorName: "Display name",
   cancelCapture: "Cancel capture",
+  capturedInAnotherState: "Captured in another state",
   capturePrompt: "Click where you want to comment",
   changeAuthorName: "Change",
   cancelCommentEdit: "Cancel",
@@ -307,6 +314,8 @@ const defaultLabels = {
   commentsHeading: "Comments",
   commentsList: "Comments on this story",
   confirmDelete: "Confirm delete",
+  copyAllStories: "Copy all stories",
+  copyTrackingPrompts: "Copy tracking prompts",
   deleteComment: "Delete comment",
   deleteCommentDescription:
     "This permanently deletes the comment and its screenshot when it is no longer referenced. This cannot be undone.",
@@ -333,6 +342,8 @@ const defaultLabels = {
   review: "Review",
   saveAuthorName: "Save name",
   saveCommentChanges: "Save changes",
+  showPins: "Show pins",
+  showPinsShort: "Pins",
   startMeeting: "Start meeting",
   startNamedMeeting: "Start a named meeting",
   submitComment: "Save comment",
@@ -599,6 +610,22 @@ function VisualCommentsSection({
     consumeVisualCommentsResume(storyId),
   );
   const [commentFilter, setCommentFilter] = useState<CommentFilter>("all");
+  const [showSavedPins, setShowSavedPins] = useState(true);
+  const [captureTargetRect, setCaptureTargetRect] = useState<{
+    height: number;
+    left: number;
+    top: number;
+    width: number;
+  } | null>(null);
+  const [prototypeState, setPrototypeState] = useState<{
+    routeId?: string;
+    stateId?: string;
+  }>({});
+  const [selectedCommentId, setSelectedCommentId] = useState<string | null>(null);
+  const [highlightedCommentId, setHighlightedCommentId] = useState<string | null>(null);
+  const [focusedCommentId, setFocusedCommentId] = useState<string | null>(null);
+  const [trackingCopyStatus, setTrackingCopyStatus] = useState("");
+  const [isCopyingTracking, setIsCopyingTracking] = useState(false);
   const [isNameEditing, setIsNameEditing] = useState(false);
   const [nameDraft, setNameDraft] = useState("");
   const [isNamedMeetingOpen, setIsNamedMeetingOpen] = useState(false);
@@ -808,6 +835,96 @@ function VisualCommentsSection({
   ]);
 
   const isComposerOpen = Boolean(pendingCapture);
+  const isPanelActive = enabled && options?.enabled !== false && isPanelOpen;
+
+  // Saved pins sit at ratios of the capture target, and the prototype can change
+  // its layout, route, or state without any event this panel could listen to.
+  useEffect(() => {
+    if (!isPanelActive) {
+      setCaptureTargetRect(null);
+      return;
+    }
+    let animationFrame = 0;
+    const sync = () => {
+      // Capture falls back to the Story root for an unmatched selector; pins do
+      // not, because their ratios belong to the configured target.
+      const configured = options?.captureSelector;
+      let target: HTMLElement | null = null;
+      try {
+        target =
+          configured && !document.querySelector(configured)
+            ? null
+            : commentsController.resolveTarget(configured);
+      } catch {
+        // An invalid selector resolves no target.
+      }
+      const rect = target?.getBoundingClientRect();
+      setCaptureTargetRect((current) => {
+        if (!rect?.width || !rect.height) return null;
+        return current &&
+          current.left === rect.left &&
+          current.top === rect.top &&
+          current.width === rect.width &&
+          current.height === rect.height
+          ? current
+          : { height: rect.height, left: rect.left, top: rect.top, width: rect.width };
+      });
+      const metadataRoot = target?.matches("[data-prototype-root]")
+        ? target
+        : target?.querySelector<HTMLElement>("[data-prototype-root]");
+      const routeId = metadataRoot?.dataset.route || undefined;
+      const stateId = metadataRoot?.dataset.prototypeState || undefined;
+      setPrototypeState((current) =>
+        current.routeId === routeId && current.stateId === stateId
+          ? current
+          : { routeId, stateId },
+      );
+    };
+    const scheduleSync = () => {
+      window.cancelAnimationFrame(animationFrame);
+      animationFrame = window.requestAnimationFrame(sync);
+    };
+    sync();
+    window.addEventListener("resize", scheduleSync);
+    document.addEventListener("scroll", scheduleSync, true);
+    const interval = window.setInterval(sync, 500);
+    return () => {
+      window.cancelAnimationFrame(animationFrame);
+      window.removeEventListener("resize", scheduleSync);
+      document.removeEventListener("scroll", scheduleSync, true);
+      window.clearInterval(interval);
+    };
+  }, [isPanelActive, options?.captureSelector]);
+
+  // Which list item holds focus. Focus events also fire while the list is being
+  // re-rendered, so the state is read from the document after the event settles.
+  useEffect(() => {
+    if (!isPanelActive) {
+      setFocusedCommentId(null);
+      return;
+    }
+    let timer = 0;
+    const syncFocus = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        const item = document.activeElement?.closest<HTMLElement>(
+          ".sbfx-comments-panel [data-comment-id]",
+        );
+        setFocusedCommentId(item?.dataset.commentId ?? null);
+      }, 0);
+    };
+    document.addEventListener("focusin", syncFocus);
+    document.addEventListener("focusout", syncFocus);
+    return () => {
+      window.clearTimeout(timer);
+      document.removeEventListener("focusin", syncFocus);
+      document.removeEventListener("focusout", syncFocus);
+    };
+  }, [isPanelActive]);
+
+  useEffect(() => {
+    if (selectedCommentId) revealComment(selectedCommentId);
+  }, [selectedCommentId]);
   const canSubmitComment =
     isComposerOpen &&
     commentsCapability === "available" &&
@@ -924,6 +1041,10 @@ function VisualCommentsSection({
     cancelCapture();
     setCommentBody("");
     setVisualError("");
+    setSelectedCommentId(null);
+    setHighlightedCommentId(null);
+    setFocusedCommentId(null);
+    setTrackingCopyStatus("");
   }, [storyId]);
 
   if (!enabled || options?.enabled === false) return null;
@@ -1126,6 +1247,67 @@ function VisualCommentsSection({
       setVisualError(error instanceof Error ? error.message : "Unable to save comment.");
     } finally {
       setIsBusy(false);
+    }
+  }
+
+  function revealComment(commentId: string) {
+    const item = Array.from(
+      document.querySelectorAll<HTMLElement>(".sbfx-comments-panel [data-comment-id]"),
+    ).find((element) => element.dataset.commentId === commentId);
+    item?.scrollIntoView({ block: "nearest" });
+    item?.focus();
+  }
+
+  // Text only: the prompt lists each screenshot path for the coding agent.
+  async function copyTrackingPrompts(scope: "all" | "story") {
+    const session = overview?.activeSession;
+    if (!session) return;
+    setIsCopyingTracking(true);
+    setTrackingCopyStatus("");
+    try {
+      const meeting = await commentsController.getMeeting(session.id);
+      const reportBase = overview.activeReportUrl
+        ? new URL(overview.activeReportUrl, window.location.href)
+        : null;
+      const entries = meeting.comments.flatMap((comment, index) => {
+        const capture = meeting.captures[comment.captureId];
+        if (
+          !capture ||
+          comment.resolvedAt ||
+          resolveVisualCommentKind(comment.kind) !== "tracking" ||
+          (scope === "story" && capture.story.id !== storyId)
+        ) {
+          return [];
+        }
+        const screenshotUrl = reportBase ? new URL(capture.image.path, reportBase) : null;
+        return [
+          {
+            context: buildCommentPromptContext({
+              capture,
+              comment,
+              kind: "tracking",
+              ordinal: index + 1,
+              projectRelativeSessionPath: overview.activeProjectRelativeSessionPath,
+            }),
+            screenshotUrl:
+              screenshotUrl?.origin === window.location.origin ? screenshotUrl : null,
+          },
+        ];
+      });
+      if (!entries.length) {
+        setTrackingCopyStatus("No open tracking comments to copy.");
+        return;
+      }
+      await navigator.clipboard.writeText(formatTrackingPrompt(entries));
+      setTrackingCopyStatus(
+        `Tracking prompt copied. Comments included: ${entries.length}.`,
+      );
+    } catch {
+      setTrackingCopyStatus(
+        "Unable to copy AI prompt. Check browser clipboard permission.",
+      );
+    } finally {
+      setIsCopyingTracking(false);
     }
   }
 
@@ -1381,6 +1563,27 @@ function VisualCommentsSection({
   }
 
   const displayName = authorName.trim() || labels.anonymousAuthor;
+  // A pin is a ratio of the capture target, so it is only meaningful while the
+  // prototype shows the route and state the comment was captured in.
+  const matchesPrototypeState = (comment: (typeof storyComments)[number]) =>
+    (comment.state?.routeId === undefined ||
+      comment.state.routeId === prototypeState.routeId) &&
+    (comment.state?.stateId === undefined ||
+      comment.state.stateId === prototypeState.stateId);
+  const savedPins =
+    isPanelActive && showSavedPins && captureTargetRect
+      ? listedComments.filter(
+          (comment) =>
+            (comment.pin ?? comment.preview?.pin) && matchesPrototypeState(comment),
+        )
+      : [];
+  const openTrackingOnStory = storyComments.filter(
+    (comment) =>
+      resolveVisualCommentKind(comment.kind) === "tracking" && !comment.resolvedAt,
+  ).length;
+  const hasTrackingComments = (overview?.activeTracking?.total ?? 0) > 0;
+  const otherStoriesHaveOpenTracking =
+    (overview?.activeTracking?.open ?? 0) > openTrackingOnStory;
   const saveShortcutHint = /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘↵" : "Ctrl ↵";
   const composerPlacement = isComposerOpen
     ? getCommentComposerPlacement(livePinPosition, viewportSize, composerHeight)
@@ -1480,24 +1683,41 @@ function VisualCommentsSection({
     ),
     h(
       "div",
-      {
-        "aria-label": labels.filterComments,
-        className: "sbfx-comments-panel__filter",
-        role: "group",
-      },
-      ...(["all", ...VISUAL_COMMENT_KINDS] as CommentFilter[]).map((filter) =>
-        h(
-          "button",
-          {
-            "aria-pressed": filter === commentFilter,
-            className: "sbfx-comments-panel__filter-option",
-            "data-comment-filter": filter,
-            key: filter,
-            onClick: () => setCommentFilter(filter),
-            type: "button",
-          },
-          `${filter === "all" ? labels.filterAllComments : commentKindLabels[filter]} ${commentCounts[filter]}`,
+      { className: "sbfx-comments-panel__toolbar" },
+      h(
+        "div",
+        {
+          "aria-label": labels.filterComments,
+          className: "sbfx-comments-panel__filter",
+          role: "group",
+        },
+        ...(["all", ...VISUAL_COMMENT_KINDS] as CommentFilter[]).map((filter) =>
+          h(
+            "button",
+            {
+              "aria-pressed": filter === commentFilter,
+              className: "sbfx-comments-panel__filter-option",
+              "data-comment-filter": filter,
+              key: filter,
+              onClick: () => setCommentFilter(filter),
+              type: "button",
+            },
+            `${filter === "all" ? labels.filterAllComments : commentKindLabels[filter]} ${commentCounts[filter]}`,
+          ),
         ),
+      ),
+      h(
+        "button",
+        {
+          "aria-label": labels.showPins,
+          "aria-pressed": showSavedPins,
+          className: "sbfx-comments-panel__filter-option sbfx-comments-panel__pins-toggle",
+          "data-show-pins": showSavedPins ? "true" : "false",
+          onClick: () => setShowSavedPins(!showSavedPins),
+          title: labels.showPins,
+          type: "button",
+        },
+        labels.showPinsShort,
       ),
     ),
     h(
@@ -1518,10 +1738,17 @@ function VisualCommentsSection({
               return h(
                 "article",
                 {
+                  "aria-current": selectedCommentId === comment.id ? "true" : undefined,
                   className: "sbfx-comments-panel__comment",
                   "data-comment-id": comment.id,
                   key: comment.id,
+                  onMouseEnter: () => setHighlightedCommentId(comment.id),
+                  onMouseLeave: () =>
+                    setHighlightedCommentId((current) =>
+                      current === comment.id ? null : current,
+                    ),
                   role: "listitem",
+                  tabIndex: -1,
                 },
                 h(
                   "div",
@@ -1547,9 +1774,20 @@ function VisualCommentsSection({
                     comment.resolvedAt ? "Completed" : "Open",
                   ),
                 ),
+                matchesPrototypeState(comment)
+                  ? null
+                  : h(
+                      "p",
+                      {
+                        className: "sbfx-comments-panel__comment-note",
+                        "data-comment-state-note": "true",
+                        key: "state-note",
+                      },
+                      labels.capturedInAnotherState,
+                    ),
                 h(
                   "p",
-                  { className: "sbfx-comments-panel__comment-body" },
+                  { className: "sbfx-comments-panel__comment-body", key: "body" },
                   comment.body,
                 ),
                 h(
@@ -1664,6 +1902,48 @@ function VisualCommentsSection({
     h(
       "footer",
       { className: "sbfx-comments-panel__footer" },
+      overview?.activeSession && hasTrackingComments
+        ? h(
+            "div",
+            { className: "sbfx-comments-panel__handoff", key: "handoff" },
+            h(
+              "button",
+              {
+                className: "sbfx-review__button sbfx-review__button--secondary",
+                "data-panel-tracking-copy": "story",
+                disabled: isCopyingTracking,
+                onClick: () => void copyTrackingPrompts("story"),
+                type: "button",
+              },
+              labels.copyTrackingPrompts,
+            ),
+            otherStoriesHaveOpenTracking
+              ? h(
+                  "button",
+                  {
+                    className: "sbfx-comments-panel__text-button",
+                    "data-panel-tracking-copy": "all",
+                    disabled: isCopyingTracking,
+                    key: "all",
+                    onClick: () => void copyTrackingPrompts("all"),
+                    type: "button",
+                  },
+                  labels.copyAllStories,
+                )
+              : null,
+            h(
+              "p",
+              {
+                "aria-live": "polite",
+                className: "sbfx-comments-panel__handoff-status",
+                "data-panel-tracking-status": "true",
+                hidden: !trackingCopyStatus,
+                key: "status",
+              },
+              trackingCopyStatus,
+            ),
+          )
+        : null,
       isNameEditing
         ? h(
             "div",
@@ -2200,6 +2480,45 @@ function VisualCommentsSection({
             nextOrdinal,
           )
       : null,
+    ...savedPins.map((comment) => {
+      const kind = resolveVisualCommentKind(comment.kind);
+      const pin = (comment.pin ?? comment.preview?.pin)!;
+      return h(
+        "button",
+        {
+          "aria-label": `Comment ${comment.ordinal}, ${commentKindLabels[kind]}, ${comment.resolvedAt ? "Completed" : "Open"}`,
+          className: `sbfx-review__pin sbfx-review__saved-pin sbfx-review__saved-pin--${kind}${comment.resolvedAt ? " sbfx-review__saved-pin--completed" : ""}`,
+          "data-comment-kind": kind,
+          "data-comment-status": comment.resolvedAt ? "completed" : "open",
+          // One pin at a time: the hovered item wins over the focused one.
+          "data-highlighted":
+            (highlightedCommentId ?? focusedCommentId) === comment.id ? "true" : undefined,
+          // While a new comment is being placed, clicks pass through to the Story.
+          "data-passive": isCapturing || isComposerOpen ? "true" : undefined,
+          "data-selected": selectedCommentId === comment.id ? "true" : undefined,
+          "data-saved-comment-pin": comment.id,
+          "data-sbfx-capture-ignore": "true",
+          key: `saved-pin-${comment.id}`,
+          // The pin sits over the prototype; none of its events may reach it.
+          onClick: (event: DomMouseEvent<HTMLButtonElement>) => {
+            event.preventDefault();
+            event.stopPropagation();
+            setSelectedCommentId(comment.id);
+            revealComment(comment.id);
+          },
+          onPointerDown: (event: DomPointerEvent<HTMLButtonElement>) =>
+            event.stopPropagation(),
+          onPointerUp: (event: DomPointerEvent<HTMLButtonElement>) =>
+            event.stopPropagation(),
+          style: {
+            left: `${captureTargetRect!.left + captureTargetRect!.width * pin.xRatio}px`,
+            top: `${captureTargetRect!.top + captureTargetRect!.height * pin.yRatio}px`,
+          },
+          type: "button",
+        },
+        comment.ordinal,
+      );
+    }),
   );
 }
 

@@ -17,7 +17,7 @@
   --sbfx-workspace-inline-size: min(320px, calc(100vw - (var(--sbfx-offset, 24px) * 2)));
   --sbfx-workspace-reserved-inline-size: min(344px, 100vw);
   --sbfx-workspace-block-size: calc(100vh - (var(--sbfx-offset, 24px) * 3) - 36px);
-  --sbfx-workspace-reserved-block-size: min(46vh, 420px);
+  --sbfx-workspace-reserved-block-size: min(38vh, 340px);
 
   position: fixed;
   z-index: var(--sbfx-z-index, 20);

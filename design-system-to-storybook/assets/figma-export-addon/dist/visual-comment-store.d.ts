@@ -51,6 +51,10 @@ type VisualCommentDetailsPatch = {
 type VisualCommentOverviewComment = VisualComment & {
     kind: VisualCommentKind;
     ordinal: number;
+    state: {
+        routeId?: string;
+        stateId?: string;
+    };
     preview: {
         imagePath: string;
         width: number;
@@ -101,6 +105,11 @@ declare function createVisualCommentStore(options?: VisualCommentStoreOptions): 
             closedAt: string | null;
         } | null;
         recentSessions: VisualMeetingSummary[];
+        activeProjectRelativeSessionPath: string | null;
+        activeTracking: {
+            open: number;
+            total: number;
+        };
         comments: VisualCommentOverviewComment[];
     }>;
     getMeeting: (id: string) => Promise<VisualMeetingFile>;

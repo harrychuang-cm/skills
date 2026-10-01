@@ -63,6 +63,23 @@ try {
   assert.equal(overview.activeSession.captureCount, 2);
   assert.equal(overview.activeSession.commentCount, 2);
   assert.deepEqual(overview.recentSessions, [], "active meeting is not duplicated in closed history");
+  assert.deepEqual(
+    overview.comments.map((comment) => comment.state),
+    [
+      { routeId: "/portfolio", stateId: "modal-open" },
+      { routeId: "/portfolio", stateId: "modal-open" },
+    ],
+    "overview derives each comment's recorded route and state from its capture",
+  );
+  assert.equal(
+    overview.activeProjectRelativeSessionPath,
+    `design-system/figma-export-review/sessions/${meetingId}`,
+    "overview exposes the active session path relative to the project root",
+  );
+  assert.ok(
+    (await restarted.getMeeting(meetingId)).comments.every((comment) => !("state" in comment)),
+    "the derived state is never persisted to meeting.json",
+  );
 
   const immutableCommentFields = {
     authorName: first.comment.authorName,
@@ -394,6 +411,11 @@ try {
       "external absolute host paths are not embedded in reports",
     );
     assert.equal((await externalStore.getMeeting(externalMeeting)).version, 1);
+    assert.equal(
+      (await externalStore.getOverview()).activeProjectRelativeSessionPath,
+      null,
+      "a session outside the project root has no project-relative path",
+    );
   } finally {
     await rm(externalProjectRoot, { recursive: true, force: true });
     await rm(externalCommentsRoot, { recursive: true, force: true });
@@ -416,6 +438,38 @@ try {
     gammaRequest.pin = { xRatio: 0.6, yRatio: 0.4 };
     await ordinalStore.createComment(ordinalMeeting, gammaRequest);
 
+    const statelessRequest = request("ordinal-stateless", "Stateless comment");
+    statelessRequest.story = { id: "components-plain--default", title: "Components/Plain", name: "Default" };
+    await ordinalStore.createComment(ordinalMeeting, statelessRequest);
+    assert.deepEqual(
+      (await ordinalStore.getOverview("components-plain--default")).comments.map(
+        (comment) => comment.state,
+      ),
+      [{}],
+      "a comment without a recorded route or state has an empty derived state",
+    );
+    assert.deepEqual(
+      (await ordinalStore.getOverview("components-plain--default")).activeTracking,
+      { open: 0, total: 0 },
+      "a meeting without tracking comments counts none",
+    );
+    const trackingOpenRequest = request("ordinal-tracking-open", "Tracking open comment");
+    trackingOpenRequest.kind = "tracking";
+    trackingOpenRequest.story = { ...trackingOpenRequest.story, id: "components-card--beta" };
+    const trackingOpen = await ordinalStore.createComment(ordinalMeeting, trackingOpenRequest);
+    const trackingDoneRequest = request("ordinal-tracking-done", "Tracking completed comment");
+    trackingDoneRequest.kind = "tracking";
+    const trackingDone = await ordinalStore.createComment(ordinalMeeting, trackingDoneRequest);
+    await ordinalStore.resolveComment(ordinalMeeting, trackingDone.comment.id, true);
+    for (const storyId of [undefined, "components-plain--default"]) {
+      assert.deepEqual(
+        (await ordinalStore.getOverview(storyId)).activeTracking,
+        { open: 1, total: 2 },
+        "activeTracking counts the whole meeting, whatever Story the overview is filtered to",
+      );
+    }
+    await ordinalStore.deleteComment(ordinalMeeting, trackingOpen.comment.id);
+    await ordinalStore.deleteComment(ordinalMeeting, trackingDone.comment.id);
     const filteredOverview = await ordinalStore.getOverview("components-card--beta");
     assert.deepEqual(
       filteredOverview.comments.map((comment) => comment.ordinal),
@@ -446,7 +500,7 @@ try {
     const damagedOverview = await createVisualCommentStore({ cwd: ordinalRoot }).getOverview();
     assert.deepEqual(
       damagedOverview.comments.map((comment) => comment.ordinal),
-      [1, 2, 3],
+      [1, 2, 3, 4],
       "missing evidence still participates in the canonical meeting ordinal sequence",
     );
     assert.equal(damagedOverview.comments[1].preview, null);

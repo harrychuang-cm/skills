@@ -885,7 +885,52 @@ async function evaluateKindContinuation(cdp, sessionId) {
       const notesTitle =
         'Notes ' + today.getFullYear() + '-' + pad(today.getMonth() + 1) + '-' + pad(today.getDate());
       const panelAudit = auditSurfaces('[aria-label="Visual comments"]');
+      // Saved pins on the Story and the panel handoff.
+      const pinSelector = '[data-saved-comment-pin]';
+      await waitUntil(() => document.querySelectorAll(pinSelector).length === 1);
+      const savedPin = document.querySelector(pinSelector);
+      const pinLabel = savedPin?.getAttribute('aria-label');
+      const pinOnStoryLayer =
+        Boolean(savedPin) &&
+        savedPin.hasAttribute('data-sbfx-capture-ignore') &&
+        !document.querySelector('#storybook-root')?.contains(savedPin) &&
+        !panel()?.contains(savedPin);
+      const pinAudit = auditSurfaces(pinSelector);
+      savedPin?.click();
+      const pinSelectsItem = await waitUntil(() =>
+        Boolean(document.querySelector('[data-comment-id][aria-current="true"]')) &&
+          document.querySelectorAll(pinSelector + '[data-selected="true"]').length === 1,
+      );
+      const stateAfterPinClick = document.querySelector('[data-parity-state]')?.textContent;
+      const clipboardWrites = [];
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: { writeText: async (text) => { clipboardWrites.push(text); } },
+      });
+      document.querySelector('[data-panel-tracking-copy="story"]')?.click();
+      await waitUntil(() => clipboardWrites.length === 1);
+      const copyMessage = document.querySelector('[data-panel-tracking-status]')?.textContent;
+      panel()?.querySelector('.sbfx-comments-panel__toggle')?.click();
+      const pinsHiddenWhenCollapsed = await waitUntil(
+        () => document.querySelectorAll(pinSelector).length === 0,
+      );
+      await openPanel();
+      const pinsBackWhenExpanded = await waitUntil(
+        () => document.querySelectorAll(pinSelector).length === 1,
+      );
       return {
+        overview: {
+          copied: clipboardWrites[0] ?? '',
+          copyAllOffered: Boolean(document.querySelector('[data-panel-tracking-copy="all"]')),
+          copyMessage,
+          pinAudit,
+          pinLabel,
+          pinOnStoryLayer,
+          pinSelectsItem,
+          pinsBackWhenExpanded,
+          pinsHiddenWhenCollapsed,
+          stateAfterPinClick,
+        },
         saved: opened && stored,
         direct: {
           armed,
@@ -948,7 +993,28 @@ async function evaluateKindContinuation(cdp, sessionId) {
 
   const direct = saved.direct ?? {};
   const audit = saved.audit ?? {};
+  const overview = saved.overview ?? {};
   return [
+    {
+      name: "saved-pins-and-panel-handoff",
+      passed:
+        overview.pinLabel === "Comment 1, Tracking, Open" &&
+        overview.pinOnStoryLayer === true &&
+        overview.pinSelectsItem === true &&
+        overview.stateAfterPinClick === "State B" &&
+        overview.pinsHiddenWhenCollapsed === true &&
+        overview.pinsBackWhenExpanded === true &&
+        overview.pinAudit?.violations.length === 0 &&
+        overview.copyAllOffered === false &&
+        overview.copyMessage === "Tracking prompt copied. Comments included: 1." &&
+        overview.copied.startsWith("# Tracking Instrumentation Request\n") &&
+        overview.copied.includes("### Comment 1") &&
+        overview.copied.includes('"Kind continuation comment"') &&
+        /- Project-relative screenshot path: (?:unavailable|\S+\/assets\/[a-f0-9]{64}\.(?:png|webp))/.test(
+          overview.copied,
+        ),
+      detail: JSON.stringify({ ...overview, copied: overview.copied?.slice(0, 80) }),
+    },
     {
       name: "direct-comment-shortcut-flow",
       passed:

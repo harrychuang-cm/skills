@@ -27,6 +27,7 @@ type FigmaReviewLabels = Partial<{
     anonymousAuthor: string;
     authorName: string;
     cancelCapture: string;
+    capturedInAnotherState: string;
     capturePrompt: string;
     changeAuthorName: string;
     cancelCommentEdit: string;
@@ -44,6 +45,8 @@ type FigmaReviewLabels = Partial<{
     commentsHeading: string;
     commentsList: string;
     confirmDelete: string;
+    copyAllStories: string;
+    copyTrackingPrompts: string;
     deleteComment: string;
     deleteCommentDescription: string;
     deleteCommentTitle: string;
@@ -69,6 +72,8 @@ type FigmaReviewLabels = Partial<{
     review: string;
     saveAuthorName: string;
     saveCommentChanges: string;
+    showPins: string;
+    showPinsShort: string;
     startMeeting: string;
     startNamedMeeting: string;
     submitComment: string;

@@ -79,6 +79,7 @@ try {
   assert.equal(overview.activeSession.commentCount, 0);
   assert.deepEqual(overview.recentSessions, []);
   assert.equal(overview.reportUrl, `${apiPath}/reports`);
+  assert.equal(overview.activeProjectRelativeSessionPath.startsWith("design-system/"), true);
 
   const commentResponse = await post(`/sessions/${meetingId}/comments`, commentRequest("http-1"));
   assert.equal(commentResponse.status, 201);
@@ -90,6 +91,11 @@ try {
   assert.equal(countedOverview.activeSession.captureCount, 1);
   assert.equal(countedOverview.activeSession.commentCount, 1);
   assert.equal(countedOverview.comments[0].ordinal, 1);
+  assert.deepEqual(countedOverview.comments[0].state, {});
+  assert.equal(
+    countedOverview.activeProjectRelativeSessionPath,
+    `design-system/figma-export-review/sessions/${meetingId}`,
+  );
   assert.deepEqual(
     {
       width: countedOverview.comments[0].preview.width,
@@ -296,6 +302,13 @@ try {
     ["visual-fix", "tracking"],
     "overview exposes every comment kind",
   );
+  for (const query of ["", "?storyId=demo--story", "?storyId=demo--no-such-story"]) {
+    assert.deepEqual(
+      (await (await fetch(`${base}${query}`)).json()).activeTracking,
+      { open: 1, total: 1 },
+      "overview counts the active meeting's tracking comments across every Story",
+    );
+  }
   const beforeKindEditMeeting = await (await fetch(`${base}/sessions/${meetingId}`)).json();
   const kindEditResponse = await patch(
     `/sessions/${meetingId}/comments/${comment.comment.id}`,
@@ -332,7 +345,7 @@ try {
     await fetch(`${base}/reports/sessions/${meetingId}/index.html`)
   ).text();
   assert.equal(
-    (kindEditedReport.match(/data-comment-card data-comment-status="open" data-comment-kind="tracking"/g) ?? []).length,
+    (kindEditedReport.match(/data-comment-card data-comment-ref="[^"]*" data-comment-status="open" data-comment-kind="tracking"/g) ?? []).length,
     2,
     "the regenerated report shows the corrected kind on the card",
   );
