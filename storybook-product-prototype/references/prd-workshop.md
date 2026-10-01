@@ -44,6 +44,10 @@ Use these sections:
 
 ## Non-Goals
 
+## Existing Surfaces
+
+## New Surfaces
+
 ## Core Journeys
 
 ## AI Implementation Scope
@@ -56,6 +60,7 @@ Use these sections:
 - Write observable product behavior, not only implementation tasks.
 - Include non-goals when a reviewer might expect real APIs, auth, persistence, or production logic.
 - Make core journeys specific enough to map to route transitions.
+- Answer discussion item 6 in `Existing Surfaces` (already ships in production; the prototype re-creates it only as context, do not rebuild) and `New Surfaces` (built in this change). The author of the receiving PRD copies these two sections as the 既有／新建畫面 classification; write `無` under either when it is empty rather than omitting it.
 - Name dependencies as components, tokens, services, platform surfaces, or mocked external systems.
 - Discover components by scanning before asking; the user confirms preferences and vetoes, they do not perform discovery. Name dependencies by discovered source (inventory doc, story title, import path), not by guess.
 - Mark unknown web/app frontend, API/data, or integration ownership decisions as open instead of inventing implementation details.

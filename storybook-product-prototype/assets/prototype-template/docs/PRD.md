@@ -26,6 +26,14 @@
 
 - [Production behavior, external system, or edge case intentionally excluded.]
 
+## Existing Surfaces
+
+- [Screens or regions that already ship in production and are re-created here only as context — do not rebuild. Write `無` when every surface is new.]
+
+## New Surfaces
+
+- [Screens or regions built in this change. Write `無` when the prototype only re-creates existing surfaces.]
+
 ## Core Journeys
 
 ### Journey 1: [Name]

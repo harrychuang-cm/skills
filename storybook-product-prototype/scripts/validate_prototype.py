@@ -537,6 +537,7 @@ def validate_docs(
                 validate_integration_ownership(text, warnings)
         if doc_name == "PRODUCTION_HANDOFF.md":
             validate_handoff_scope(text, warnings)
+            validate_blocking_decisions(text, errors, warnings, handoff_ready)
         if doc_name == "ACCEPTANCE.md":
             validate_acceptance_ids(text, errors, warnings, handoff_ready)
 
@@ -763,6 +764,154 @@ def validate_integration_ownership(handoff_text: str, warnings: list[str]) -> No
             "Integration Ownership' field naming who replaces the mock adapters "
             "with real integrations; name a team, system, or person, or record "
             "the open decision in Open Product Decisions"
+        )
+
+
+# Blocking (擋開工) decisions. The receiving engineering repo's lint parses this
+# exact shape, so these rules mirror it: both sides must reach the same verdict
+# for the same document. When the receiver changes its rules, change these too.
+BLOCKING_NEGATION = r"(?:不會?|沒有|無)"
+BLOCKING_WORD_PATTERN = re.compile(r"(?<!不)(?<!不會)(?<!沒有)(?<!無)擋開工")
+BLOCKING_NONE_PATTERN = re.compile(
+    r"[（(]?(?:目前)?(?:無|沒有)(?:項目)?[)）]?[。.]?|n/a|none"
+)
+
+
+def _receiver_mask_fences(text: str) -> str:
+    """Fence masking exactly as the receiving lint does it: fenced lines are
+    blanked, the fence marker lines themselves are kept."""
+    masked: list[str] = []
+    in_fence = False
+    for line in text.splitlines(keepends=True):
+        if re.match(r"\s*(```|~~~)", line):
+            in_fence = not in_fence
+            masked.append(line)
+        else:
+            masked.append(re.sub(r"[^\n]", " ", line) if in_fence else line)
+    return "".join(masked)
+
+
+def _receiver_section(text: str, heading_pattern: str) -> str | None:
+    """Body after the first heading matching ``heading_pattern`` up to the next
+    heading of the same or a higher level; ``None`` when nothing matches."""
+    scan = _receiver_mask_fences(text)
+    opener = re.search(heading_pattern, scan, re.MULTILINE)
+    if not opener:
+        return None
+    level = len(re.match(r"#+", opener.group(0)).group(0))
+    closer = re.search(rf"^#{{1,{level}}}\s", scan[opener.end():], re.MULTILINE)
+    if closer:
+        return text[opener.end():opener.end() + closer.start()]
+    return text[opener.end():]
+
+
+def extract_blocking_decisions(handoff_text: str) -> tuple[list[int], bool, bool]:
+    """(numbers, declares_none, unparsable) for the blocking sub-section.
+
+    The sub-section is the deepest heading whose text contains 擋開工 without a
+    preceding negation; nested sub-sections with a negated heading are dropped.
+    Numbered lines and numbered sub-headings are the blocking decisions. A body
+    whose only content line outside block quotes is 無 (or N/A / None) declares
+    that nothing blocks. ``unparsable`` is true when Open Product Decisions
+    mentions 擋開工 but neither form could be read.
+    """
+    scan = _receiver_mask_fences(handoff_text)
+    headings = [
+        match
+        for match in re.finditer(r"^(#+)[^\n]*$", scan, re.MULTILINE)
+        if BLOCKING_WORD_PATTERN.search(match.group(0))
+    ]
+    numbers: set[int] = set()
+    declares_none = False
+    if headings:
+        top = max(headings, key=lambda match: len(match.group(1)))
+        body = (
+            _receiver_section(handoff_text, rf"^{re.escape(top.group(0))}$") or ""
+        )
+        kept: list[str] = []
+        skip_level: int | None = None
+        for line in _receiver_mask_fences(body).splitlines():
+            heading = re.match(r"(#+)\s", line)
+            if (
+                heading
+                and skip_level is not None
+                and len(heading.group(1)) <= skip_level
+            ):
+                skip_level = None
+            if (
+                heading
+                and skip_level is None
+                and re.search(BLOCKING_NEGATION + "擋開工", line)
+            ):
+                skip_level = len(heading.group(1))
+            if skip_level is None:
+                kept.append(line)
+        text = "\n".join(kept)
+        content = [
+            line.strip()
+            for line in text.splitlines()
+            if line.strip() and not line.lstrip().startswith(">")
+        ]
+        if len(content) == 1 and BLOCKING_NONE_PATTERN.fullmatch(
+            content[0].strip("*_ ").lower()
+        ):
+            declares_none = True
+        else:
+            numbers = {
+                int(number)
+                for number in re.findall(r"^(?:#+\s*)?(\d+)\.\s", text, re.MULTILINE)
+            }
+
+    decisions = (
+        _receiver_section(handoff_text, r"^#+\s*Open Product Decisions[^\n]*$")
+        or handoff_text
+    )
+    unparsable = (
+        not numbers
+        and not declares_none
+        and BLOCKING_WORD_PATTERN.search(_receiver_mask_fences(decisions)) is not None
+    )
+    return sorted(numbers), declares_none, unparsable
+
+
+def validate_blocking_decisions(
+    handoff_text: str,
+    errors: list[str],
+    warnings: list[str],
+    handoff_ready: bool,
+) -> None:
+    """A handoff is not ready while the receiving team would have to answer
+    blocking (擋開工) decisions on the author's behalf.
+
+    Runs only with --handoff-ready: a draft may carry open blocking decisions,
+    a confirmed handoff may not. A document with no blocking sub-section at all
+    only warns, so handoffs written before this contract keep validating.
+    """
+    if not handoff_ready:
+        return
+    numbers, declares_none, unparsable = extract_blocking_decisions(handoff_text)
+    if numbers:
+        errors.append(
+            "docs/PRODUCTION_HANDOFF.md Open Product Decisions still lists "
+            "unresolved blocking (擋開工) decisions "
+            + ", ".join(str(number) for number in numbers)
+            + "; resolve each one with its owner, record the outcome in the "
+            "decision table (status confirmed, with its source), then leave 無 "
+            "as the only line under the 擋開工 heading — the receiving team must "
+            "not have to answer them for you"
+        )
+    elif unparsable:
+        errors.append(
+            "docs/PRODUCTION_HANDOFF.md mentions 擋開工 but has no parsable "
+            "blocking list; put the items as a numbered list (1. 2. …) under a "
+            "heading that contains 擋開工, or write 無 as the only line under it "
+            "when nothing blocks — the receiving lint does not parse prose variants"
+        )
+    elif not declares_none:
+        warnings.append(
+            "docs/PRODUCTION_HANDOFF.md has no 擋開工 sub-section under Open "
+            "Product Decisions; add one and write 無 so the receiving lint can "
+            "confirm nothing blocks"
         )
 
 
@@ -1105,6 +1254,48 @@ def validate_fixture_json_consistency(
                 f"fixture group `{name}` route id sets differ between the .ts and "
                 f".json carriers ({detail}); keep both carriers in sync"
             )
+
+
+def validate_flow_carrier(
+    folder: Path, files: dict[str, Path | None], errors: list[str]
+) -> None:
+    """docs/flow.json must equal a fresh export of the flow source file.
+
+    Runs only with --handoff-ready. The carrier is what a native implementation
+    reads directly, so a stale copy sends it building screens the flow no
+    longer has. The manifest hash only detects edits made after the snapshot;
+    a carrier that was already stale would be published as-is. A prototype
+    that never exported the carrier is not checked.
+    """
+    flow_json = folder / "docs" / "flow.json"
+    if not flow_json.is_file():
+        return
+    flow_path = (
+        files.get("flow")
+        or find_one(folder, "*PrototypeFlow.ts")
+        or find_one(folder, "*Flow.ts")
+    )
+    if flow_path is None or not flow_path.is_file():
+        return
+    try:
+        recorded = json.loads(read(flow_json))
+    except json.JSONDecodeError as exc:
+        errors.append(f"docs/flow.json is not valid JSON: {exc}")
+        return
+
+    # Imported here, not at module top: export_flow imports this module.
+    from export_flow import build_flow_document
+
+    feature = re.sub(r"(Prototype)?Flow\.ts$", "", flow_path.name) or folder.name
+    fresh = build_flow_document(sanitize_meta_source(read(flow_path)), feature)
+    if recorded != fresh:
+        errors.append(
+            f"docs/flow.json is out of date with {flow_path.name}: the flow "
+            "source changed after the export, or the file was written by an "
+            "older export_flow.py. Re-run export_flow.py (and regenerate any "
+            "--kotlin/--swift scaffold made from it) so the receiving "
+            "implementation does not build from a stale flow"
+        )
 
 
 TRANSITION_PRESENTATION_VALUES = {"push", "modal", "sheet", "fullscreen", "replace"}
@@ -2014,7 +2205,9 @@ def main() -> int:
         help=(
             "Also fail docs that still contain scaffold placeholder guidance, "
             "cross-check doc route/fixture references against the flow and data "
-            "files, and require a confirmed Review Status."
+            "files, require docs/flow.json to match a fresh export, and require "
+            "a confirmed Review Status with no unresolved blocking (擋開工) "
+            "decisions."
         ),
     )
     parser.add_argument(
@@ -2112,6 +2305,7 @@ def main() -> int:
             if args.handoff_ready:
                 validate_doc_code_consistency(folder, files, errors, warnings)
                 validate_fixture_json_consistency(folder, files, errors, warnings)
+                validate_flow_carrier(folder, files, errors)
                 validate_transition_presentation(folder, files, errors)
                 validate_surface_viewport_alignment(files, warnings)
 

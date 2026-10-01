@@ -65,6 +65,8 @@ For example, a confirmed response shaped as `data.items` with `nextCursor` can m
 
 Record scope, source, owner, affected behavior, and replacement where applicable in `Open Product Decisions`. Continue independent confirmed work. Unknown API details block the dependent integration, not unrelated UI/mock work; unknown navigation blocks completion of that flow.
 
+A decision that leaves no independent work — nothing can be implemented until it is answered — also goes in the numbered `### 🚧 擋開工` list of `Open Product Decisions`. `--handoff-ready` fails until that list reads `無`, so the receiving team never has to answer it on the author's behalf. Once answered, it stays in the register as a `confirmed` decision with its source. Format and parsing rules: [production-handoff.md](production-handoff.md) → `Open Product Decisions`.
+
 If Builder proposes a `reason` parameter absent from the confirmed `delete_email_failed` analytics specification, retain it as a proposed analytics decision. Do not add it to the formal event payload or production acceptance criteria. A team approval of the product demo does not confirm the proposal.
 
 ## Tracking Comments

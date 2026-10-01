@@ -455,6 +455,7 @@ def main() -> int:
     failures.extend(check_flow_export())
     failures.extend(check_viewport_contracts())
     failures.extend(check_inspector_copies())
+    failures.extend(check_handoff_template_contract())
 
     if failures:
         print("Scaffold/validate smoke test failed:")
@@ -467,9 +468,16 @@ def main() -> int:
     for summary in round_summaries:
         print(summary)
     print("flow parsing: nested objects and both id layers resolve")
-    print("handoff contracts: manifest roundtrip, drift, acceptance ids, dual scope")
+    print(
+        "handoff contracts: manifest roundtrip, drift, acceptance ids, dual scope, "
+        "blocking decisions, flow carrier"
+    )
     print("flow export: layout fields stripped, Swift enum and Kotlin sealed class generated")
     print("viewport contracts: flow.json emission, legacy omission, half-converted warning")
+    print(
+        "handoff template: blocking list and decision register coexist, "
+        "receiver contract and required sections documented"
+    )
     return 0
 
 
@@ -580,8 +588,9 @@ def check_handoff_contracts() -> list[str]:
 
     Exercises the pieces --handoff-ready composes, without needing a fully
     placeholder-free prototype: manifest write/verify roundtrip and drift
-    detection, acceptance-id validation, dual-form scope columns, and the
-    fixture .ts↔.json structural cross-check.
+    detection, acceptance-id validation, dual-form scope columns, the
+    fixture .ts↔.json structural cross-check, the blocking-decision gate, and
+    the docs/flow.json freshness check.
     """
     import json
     sys.path.insert(0, str(SCRIPTS_DIR))
@@ -641,6 +650,213 @@ def check_handoff_contracts() -> list[str]:
         vp.validate_fixture_json_consistency(folder, files, errors, warnings)
         if not any("smokeRoutes" in message for message in errors):
             failures.append("missing fixtures/<group>.json was not reported")
+
+        # The blocking-decision gate must be wired into the document pass, not
+        # only exist as a function: a handoff-ready run fails on open blocking
+        # decisions, a draft run stays silent about them.
+        (docs / "PRODUCTION_HANDOFF.md").write_text(
+            "# Handoff\n\n## Open Product Decisions\n\n### 🚧 擋開工\n\n"
+            "1. 縮放機制\n2. 合成語意\n\n### 不擋開工\n\n3. 文案\n"
+        )
+        errors = []
+        warnings = []
+        vp.validate_docs(folder, errors, warnings, True)
+        if not any("擋開工" in message and "1, 2" in message for message in errors):
+            failures.append(
+                "--handoff-ready did not fail on unresolved blocking decisions"
+            )
+        errors = []
+        warnings = []
+        vp.validate_docs(folder, errors, warnings, False)
+        if any("擋開工" in message for message in errors + warnings):
+            failures.append(
+                "a draft run reported blocking decisions; only --handoff-ready may"
+            )
+
+    failures.extend(check_blocking_decisions(vp))
+    failures.extend(check_flow_carrier(vp))
+    return failures
+
+
+# (label, handoff text, expected (numbers, declares_none, unparsable)). The same
+# table backs the receiving lint and the repo-level handoff check; a case that
+# changes here has to change in all three.
+BLOCKING_DECISION_CASES = [
+    (
+        "numbered list with a non-blocking sibling",
+        "## Open Product Decisions\n\n### 🚧 擋開工\n\n1. a\n2. b\n3. c\n\n"
+        "### 不擋開工\n\n4. d\n",
+        ([1, 2, 3], False, False),
+    ),
+    (
+        "explicit none",
+        "## Open Product Decisions\n\n### 🚧 擋開工\n\n無\n\n### 不擋開工\n\n4. d\n",
+        ([], True, False),
+    ),
+    (
+        "explicit none after a block quote",
+        "## Open Product Decisions\n\n### 🚧 擋開工\n\n> 2026-10-01 全數定案。\n\n無\n",
+        ([], True, False),
+    ),
+    (
+        "prose mention without a heading",
+        "## Open Product Decisions\n\n- **交付範圍未查證（擋開工）**：十二列全為 U。\n",
+        ([], False, True),
+    ),
+    (
+        "never mentioned",
+        "## Open Product Decisions\n\n- 文案 owner 未指派。\n",
+        ([], False, False),
+    ),
+    (
+        "nested negated sub-heading is dropped",
+        "## Open Product Decisions\n\n### 🚧 擋開工\n\n1. a\n\n"
+        "#### 不會擋開工的備註\n\n9. z\n",
+        ([1], False, False),
+    ),
+    (
+        "heading inside a code fence is ignored",
+        "## Open Product Decisions\n\n```md\n### 擋開工\n1. a\n```\n",
+        ([], False, False),
+    ),
+    (
+        "numbered sub-heading",
+        "## Open Product Decisions\n\n### 🚧 擋開工\n\n#### 1. 縮放機制\n\n說明。\n",
+        ([1], False, False),
+    ),
+]
+
+
+def check_blocking_decisions(vp) -> list[str]:
+    """Regression guard for the blocking (擋開工) decision gate.
+
+    The parser has to agree with the receiving lint case by case, and the gate
+    has to fail a handoff-ready run without touching drafts.
+    """
+    failures: list[str] = []
+    for label, text, expected in BLOCKING_DECISION_CASES:
+        actual = vp.extract_blocking_decisions(text)
+        if actual != expected:
+            failures.append(
+                f"blocking decisions ({label}): parsed {actual}, expected {expected}"
+            )
+
+    def run(text: str, handoff_ready: bool) -> tuple[list[str], list[str]]:
+        errors: list[str] = []
+        warnings: list[str] = []
+        vp.validate_blocking_decisions(text, errors, warnings, handoff_ready)
+        return errors, warnings
+
+    numbered = BLOCKING_DECISION_CASES[0][1]
+    errors, warnings = run(numbered, True)
+    if len(errors) != 1 or "1, 2, 3" not in errors[0]:
+        failures.append(f"numbered blocking decisions should yield one error: {errors}")
+    errors, warnings = run(numbered, False)
+    if errors or warnings:
+        failures.append("blocking decisions were reported without --handoff-ready")
+
+    errors, warnings = run(BLOCKING_DECISION_CASES[1][1], True)
+    if errors or warnings:
+        failures.append(f"an explicit 無 still raised: {errors + warnings}")
+
+    errors, warnings = run(BLOCKING_DECISION_CASES[3][1], True)
+    if len(errors) != 1 or "numbered list" not in errors[0]:
+        failures.append(f"a prose-only mention should yield one error: {errors}")
+
+    errors, warnings = run(BLOCKING_DECISION_CASES[4][1], True)
+    if errors or len(warnings) != 1:
+        failures.append(
+            "a handoff without a blocking sub-section should warn, not fail: "
+            f"errors={errors} warnings={warnings}"
+        )
+
+    return failures
+
+
+def check_flow_carrier(vp) -> list[str]:
+    """docs/flow.json may not drift from the flow source it was exported from.
+
+    A stale carrier passes every other check and still sends a native
+    implementation building screens the flow dropped, so a handoff-ready run
+    has to compare the two.
+    """
+    import json
+
+    failures: list[str] = []
+    with tempfile.TemporaryDirectory(prefix="flow-carrier-") as temp_dir:
+        folder = Path(temp_dir) / "alerts-prototype"
+        folder.mkdir()
+        flow = folder / "alertsPrototypeFlow.ts"
+        flow.write_text(
+            'export const alertsPrototypeRouteIds = ["alerts", "alert-detail"] as const;\n'
+            "export const alertsPrototypeRoutes = [\n"
+            '  { id: "alerts", title: "Alerts" },\n'
+            '  { id: "alert-detail", title: "Alert Detail" },\n'
+            "] satisfies AlertsPrototypeRoute[];\n"
+            "export const alertsPrototypeTransitions = [\n"
+            '  { from: "alerts", label: "Open", presentation: "push", to: "alert-detail",\n'
+            '    trigger: "alertRow.click" },\n'
+            "] satisfies AlertsPrototypeTransition[];\n"
+        )
+        files = {"flow": flow}
+
+        errors: list[str] = []
+        vp.validate_flow_carrier(folder, files, errors)
+        if errors:
+            failures.append(f"a prototype without docs/flow.json raised: {errors}")
+
+        export = subprocess.run(
+            [sys.executable, str(SCRIPTS_DIR / "export_flow.py"), str(folder)],
+            capture_output=True,
+            text=True,
+        )
+        if export.returncode != 0:
+            failures.append(
+                f"export_flow.py failed with exit {export.returncode}: "
+                f"{export.stderr.strip() or export.stdout.strip()}"
+            )
+            return failures
+
+        errors = []
+        vp.validate_flow_carrier(folder, files, errors)
+        if errors:
+            failures.append(f"a freshly exported docs/flow.json raised: {errors}")
+
+        flow_json = folder / "docs" / "flow.json"
+        document = json.loads(flow_json.read_text())
+        document["routes"][0]["id"] = "alerts-introduction"
+        flow_json.write_text(json.dumps(document, indent=2) + "\n")
+        errors = []
+        vp.validate_flow_carrier(folder, files, errors)
+        if len(errors) != 1 or "docs/flow.json is out of date" not in errors[0]:
+            failures.append(f"a stale docs/flow.json should yield one error: {errors}")
+
+        # The check has to run as part of --handoff-ready, not only exist.
+        handoff_ready = subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPTS_DIR / "validate_prototype.py"),
+                str(folder),
+                "--handoff-ready",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        if "docs/flow.json is out of date" not in handoff_ready.stdout:
+            failures.append("--handoff-ready did not report the stale docs/flow.json")
+        draft = subprocess.run(
+            [sys.executable, str(SCRIPTS_DIR / "validate_prototype.py"), str(folder)],
+            capture_output=True,
+            text=True,
+        )
+        if "docs/flow.json" in draft.stdout:
+            failures.append("a draft run reported docs/flow.json freshness")
+
+        flow_json.write_text("{ not json")
+        errors = []
+        vp.validate_flow_carrier(folder, files, errors)
+        if len(errors) != 1 or "not valid JSON" not in errors[0]:
+            failures.append(f"an unreadable docs/flow.json should yield one error: {errors}")
 
     return failures
 
@@ -869,6 +1085,138 @@ def check_authority_and_motion() -> list[str]:
             block = vp.extract_doc_section(quoted_doc, "Data Authority").split("```json\n")[1].split("```")[0]
             if json.loads(block)["fixtures"][0]["owner"] != quoted_owner:
                 failures.append("scaffold did not preserve quoted owner in Data Authority JSON")
+    return failures
+
+
+def check_handoff_template_contract() -> list[str]:
+    """The scaffolded handoff has to carry the shapes the receiver reads.
+
+    The blocking (擋開工) list and the decision register live side by side:
+    the gate reads only the list, so the register table under 不擋開工 must
+    never be counted as a blocking decision.
+    """
+    import re
+    sys.path.insert(0, str(SCRIPTS_DIR))
+    import validate_prototype as vp
+
+    failures: list[str] = []
+    template_headings: list[str] = []
+    with tempfile.TemporaryDirectory(prefix="handoff-template-") as temp_dir:
+        target_root = Path(temp_dir)
+        scaffold = subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPTS_DIR / "scaffold_prototype.py"),
+                "Handoff Template",
+                "--target-root",
+                str(target_root),
+                "--framework",
+                "react",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        if scaffold.returncode != 0:
+            failures.append(
+                f"handoff template: scaffold failed with exit {scaffold.returncode}: "
+                f"{scaffold.stderr.strip() or scaffold.stdout.strip()}"
+            )
+            return failures
+        docs = target_root / "handoff-template-prototype" / "docs"
+        handoff = (docs / "PRODUCTION_HANDOFF.md").read_text()
+        template_headings = re.findall(
+            r"^## (.+)$", vp.mask_code_fences(handoff), re.MULTILINE
+        )
+        prd = (docs / "PRD.md").read_text()
+        for heading in ("Existing Surfaces", "New Surfaces"):
+            if not re.search(rf"^## {heading}$", prd, re.MULTILINE):
+                failures.append(
+                    f"handoff template: scaffolded PRD.md has no '{heading}' section"
+                )
+
+        decisions = vp.extract_doc_section(handoff, "Open Product Decisions")
+        blocking_at = decisions.find("### 🚧 擋開工")
+        non_blocking_at = decisions.find("### 不擋開工")
+        register_at = decisions.find("| Decision | Status |")
+        if not 0 <= blocking_at < non_blocking_at:
+            failures.append(
+                "handoff template: Open Product Decisions must hold '### 🚧 擋開工' "
+                "followed by '### 不擋開工'"
+            )
+        elif register_at < non_blocking_at:
+            failures.append(
+                "handoff template: the decision register table must sit under "
+                "'### 不擋開工'"
+            )
+
+        parsed = vp.extract_blocking_decisions(handoff)
+        if parsed != ([1], False, False):
+            failures.append(
+                "handoff template: the scaffolded placeholder should read as "
+                f"blocking decision 1, parsed {parsed}"
+            )
+        cleared, replaced = re.subn(r"(?m)^1\. \[[^\n]*\]$", "無", handoff, count=1)
+        if replaced != 1:
+            failures.append(
+                "handoff template: no numbered placeholder found under the "
+                "blocking heading"
+            )
+        elif vp.extract_blocking_decisions(cleared) != ([], True, False):
+            failures.append(
+                "handoff template: with 無 in place the register table was still "
+                f"counted, parsed {vp.extract_blocking_decisions(cleared)}"
+            )
+
+    # The reference is what an author reads while filling the template, so the
+    # two rules a parser cannot enforce on its own have to be written there.
+    reference = (SCRIPTS_DIR.parent / "references" / "production-handoff.md").read_text()
+    decisions_reference = vp.extract_doc_section(reference, "Open Product Decisions")
+    for needle, rule in (
+        (
+            "status `confirmed` and its source",
+            "an answered blocking decision moves into the register",
+        ),
+        (
+            "No other heading in the handoff may contain",
+            "no other heading may contain 擋開工",
+        ),
+    ):
+        if needle not in decisions_reference:
+            failures.append(
+                f"handoff reference: Open Product Decisions does not state that {rule}"
+            )
+
+    required = re.search(
+        r"^## Required Sections\n.*?```markdown\n(.*?)```", reference, re.DOTALL | re.MULTILINE
+    )
+    listed = set(re.findall(r"^## (.+)$", required.group(1), re.MULTILINE)) if required else set()
+    unlisted = [heading for heading in template_headings if heading not in listed]
+    if not template_headings or unlisted:
+        failures.append(
+            "handoff reference: Required Sections does not list these template "
+            f"headings: {unlisted or 'none parsed'}"
+        )
+
+    contract = vp.extract_doc_section(reference, "Receiver Consumption Contract")
+    lint_part, marker, reader_part = contract.partition(
+        "Read by the author of the receiving PRD"
+    )
+    if "Parsed by the receiver's lint" not in lint_part or not marker:
+        failures.append(
+            "handoff reference: Receiver Consumption Contract must separate what "
+            "the receiver's lint parses from what the receiving PRD author reads"
+        )
+    for needle in ("Review Status", "擋開工"):
+        if needle not in lint_part:
+            failures.append(
+                f"handoff reference: the contract does not list {needle} as lint-parsed"
+            )
+    for needle in ("Existing Surfaces", "Core Journeys", "Component Map", "AC-S-NNN"):
+        if needle not in reader_part:
+            failures.append(
+                f"handoff reference: the contract does not list {needle} as reader-consumed"
+            )
+
     return failures
 
 

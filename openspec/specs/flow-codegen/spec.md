@@ -108,3 +108,53 @@ test_scaffold_validate.py SHALL exercise export_flow.py against the scaffolded p
 
 - **WHEN** test_scaffold_validate.py runs
 - **THEN** an export_flow round runs against a scaffolded prototype and the structural assertions above pass in the same run that validates scaffolding
+
+---
+### Requirement: Exported flow carrier freshness
+
+With `--handoff-ready`, validate_prototype.py SHALL compare `docs/flow.json`, when the file exists, with a fresh export of the prototype flow source produced by the same document builder that export_flow.py uses. Validation SHALL fail when the two differ and SHALL name the flow source file and the export command in the error. Validation SHALL fail when `docs/flow.json` is not valid JSON. A prototype without `docs/flow.json` SHALL NOT be checked, and validation without `--handoff-ready` SHALL NOT report flow carrier freshness.
+
+#### Scenario: Fresh export passes
+
+- **WHEN** `docs/flow.json` was written by export_flow.py from the current flow source
+- **THEN** the flow carrier check reports no error
+
+#### Scenario: Stale carrier fails handoff-ready validation
+
+- **WHEN** `validate_prototype.py --handoff-ready` runs against a prototype whose `docs/flow.json` lists a route id that the flow source no longer declares
+- **THEN** validation exits non-zero
+- **THEN** one error states that `docs/flow.json` is out of date and names the flow source file
+
+#### Scenario: Unreadable carrier fails
+
+- **WHEN** `docs/flow.json` is not valid JSON
+- **THEN** the flow carrier check reports one error stating that the file is not valid JSON
+
+#### Scenario: Missing carrier is not checked
+
+- **WHEN** the prototype has no `docs/flow.json`
+- **THEN** the flow carrier check reports nothing
+
+#### Scenario: Drafts are not checked
+
+- **WHEN** `validate_prototype.py` runs without `--handoff-ready` against a prototype whose `docs/flow.json` is stale
+- **THEN** no flow carrier message is reported
+
+<!-- @trace
+source: gate-handoff-blocking-decisions
+updated: 2026-10-01
+code:
+  - storybook-product-prototype/assets/prototype-template/docs/PRODUCTION_HANDOFF.md
+  - storybook-product-prototype/scripts/validate_prototype.py
+  - storybook-product-prototype/references/production-handoff.md
+  - storybook-product-prototype/assets/prototype-template/docs/PRD.md
+  - storybook-product-prototype/references/prototype-standard.md
+  - storybook-product-prototype/references/handoff-authority.md
+  - storybook-product-prototype/SKILL.md
+  - storybook-product-prototype/references/prd-workshop.md
+  - README.md
+  - docs/skills-usage.md
+  - storybook-product-prototype/references/pipeline-stations.md
+tests:
+  - storybook-product-prototype/scripts/test_scaffold_validate.py
+-->

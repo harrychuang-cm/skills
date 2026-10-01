@@ -77,6 +77,7 @@ Adapt the root path if the project uses `src/screens`, `app`, `packages/ui`, or 
 - Acceptance criteria cover Storybook, docs, UI Flow, interaction, accessibility, and TypeScript.
 - Route ids in `FLOW_SPEC.md` and the `PRODUCTION_HANDOFF.md` map match `*Flow.ts`, and fixture group references match `*Data.ts` exports (`--handoff-ready` verifies this).
 - `PRODUCTION_HANDOFF.md` `Review Status` is `confirmed` by the team demo review before the docs are used as an implementation brief.
+- `Open Product Decisions` carries the `🚧 擋開工` list next to the decision register; the list reads `無` once the handoff is confirmed, and `docs/flow.json`, when exported, matches the flow source (`--handoff-ready` verifies both).
 - Named, dated, scoped Semantic Review checks suggestions, superseded decisions, and all affected docs, flow/data/meta, fixtures, exports, and tests separately from demo confirmation. See [handoff-authority.md](handoff-authority.md).
 - Team-confirmed, recurring gap components are promoted into the hub's shared component library, or recorded as `local` promotion candidates with file paths.
 - Storybook route previews support `prototypeRoute`, expose `data-prototype-route-preview`, and keep `data-prototype-root`.

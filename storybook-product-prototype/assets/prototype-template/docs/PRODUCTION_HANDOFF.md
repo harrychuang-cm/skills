@@ -143,6 +143,12 @@ This section records discovery results for the receiving implementation; it does
 
 ## Open Product Decisions
 
+### 🚧 擋開工
+
+1. [A decision that must be answered before any implementation can start — its owner — what work waits on it. Keep the numbered form: the receiving lint counts these numbers. A decision that limits only part of the work belongs in the table under 不擋開工. Once nothing blocks, replace this whole list with the single line `無`; `--handoff-ready` fails while a numbered item remains.]
+
+### 不擋開工
+
 | Decision | Status | Scope and affected behavior | Source | Owner | Replacement |
 | --- | --- | --- | --- | --- | --- |
 | [Decision, or `none`.] | [`proposed`, `open`, `confirmed`, or `superseded`.] | [Specific dependent behavior; continue independent work.] | [Confirmed evidence or `none`.] | [Named decision owner.] | [Replacement for a superseded decision, or `none`.] |

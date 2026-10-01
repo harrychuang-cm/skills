@@ -151,6 +151,8 @@ Use $ui-screenshot-to-storybook-product on reference/dashboard.png and implement
 
 交接定版與漂移偵測：`--handoff-ready` 全數通過時會產出 `docs/HANDOFF_MANIFEST.json`，記錄每份文件的 sha256、route/fixture 快照、Review Status 和 changelog 版本（可用 `--changelog "摘要"` 標註）。之後用 `--verify-manifest` 可以偵測「團隊 demo 確認後又改了文件」，列出漂移的檔案並以非零 exit code 結束。
 
+交接驗證另外會擋兩件事。第一，`PRODUCTION_HANDOFF.md` 的「🚧 擋開工」清單還有編號項目：要先和 owner 定案、把結論記進「不擋開工」底下的決策表格（Status 填 `confirmed` 並寫來源），清單改成只寫「無」。留著沒答的問題去交接，接手的工程團隊只能自己猜答案。只影響部分工作的未定案決策留在決策表格就好，不會擋住交接。第二，`docs/flow.json` 和流程原始檔對不上：重新執行 `scripts/export_flow.py` 再驗證。
+
 驗收 ID 三層貫穿：`ACCEPTANCE.md` 每條都有穩定 ID — `AC-S-*`（Storybook 驗收）、`AC-H-*`（交接驗收）、`AC-P-*`（產品驗收）。`AC-P-*` 會標記 `(assembly)`（組裝階段用 mock 就能驗）或 `(integration)`（要等真實串接才能驗），讓後面兩棒各自知道要對哪些條目負責。
 
 多平台交接：flow 契約新增 `params`、`deepLink`、`presentation`（push/modal/sheet/fullscreen/replace）、`backBehavior`（pop/popToRoot/dismiss/none）四個 optional 欄位，FLOW_SPEC 的 Production Navigation Map 升級成「Route id × Web path × iOS destination × Android route」表格；`meta.components` 可加 `targets` 欄分別標 web/ios/android，Prototype To Frontend Map 的 Scope 欄支援 `Scope(web)` / `Scope(app)` 雙欄。舊 prototype 不需改動。
@@ -539,7 +541,7 @@ $storybook-product-prototype
 說明：
 
 1. 先用 prototype skill 產出 PRD、Flow、Data Spec、Production Handoff，再用 `--handoff-ready` 定版並產出 `HANDOFF_MANIFEST.json`。
-2. 團隊看過 demo、把 Review Status 改成 confirmed — 這一站沒有自動化能代勞。
+2. 團隊看過 demo、把 Review Status 改成 confirmed — 這一站沒有自動化能代勞。蓋章前先把「🚧 擋開工」清單清空（只寫「無」），否則 `--handoff-ready` 不會通過。
 3. 再用 frontend implementation skill 把 docs 實作到產品 repo，在 mock 模式下走通全流程。
 4. 接著用 data integration skill 把 mock adapter 換成真實 API、auth、cache，並補上 contract test。
 5. 最後用 compare skill 做視覺校正。
@@ -559,7 +561,7 @@ $storybook-product-prototype
 說明：
 
 1. 先用 prototype skill 產出同一份 handoff 文件，再用 `--handoff-ready` 定版 — 原型製作、團隊 demo 確認、交接定版這三站平台中立，平台分岔點在交接定版之後（web 走 `$frontend-product-implementation`，原生走 `$native-product-implementation`）。
-2. 團隊看過 demo、把 Review Status 改成 confirmed — 這一站一樣沒有自動化能代勞。
+2. 團隊看過 demo、把 Review Status 改成 confirmed — 這一站一樣沒有自動化能代勞。蓋章前同樣要先把「🚧 擋開工」清單清空。
 3. 用 native implementation skill 在 mock 模式下把畫面和流程做出來，產出與 web 同格式的 `IMPLEMENTATION_MAP.md`。
 4. 資料串接同樣交給 data integration skill，不因平台分成兩套 — 兩條線的對照表格式相同，這一站不需要知道是哪一條做的。
 5. 最後用 compare skill 做視覺校正，過程中保留合理的平台適配差異。

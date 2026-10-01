@@ -10,6 +10,31 @@ Read [handoff-authority.md](handoff-authority.md) with this reference. `DATA_SPE
 
 Do not describe the prototype as production-ready. Describe the frontend contract and the decisions needed for production integration. Real data sources, auth, backend clients, storage, persistence, and environment-specific wiring are receiving-implementation responsibilities unless the user explicitly scopes them into the prototype.
 
+## Receiver Consumption Contract
+
+The receiving engineering repository does not read the whole handoff. Its PRD is written from a fixed subset of these docs, and its lint re-reads part of that subset straight from the commit the PRD pins. Everything else the skill produces is still required by `validate_prototype.py` and covered by `HANDOFF_MANIFEST.json`, but this receiver does not consume it. Write the consumed items in the exact shape listed here: the lint does not parse prose variants, and the PRD author copies what is there.
+
+Parsed by the receiver's lint (格式要對，lint 才讀得到):
+
+| Item | Where | Shape the lint reads |
+| --- | --- | --- |
+| 審查狀態 Review Status | `PRODUCTION_HANDOFF.md` → `## Review Status` | a bullet list with a `- Status: confirmed` line; prose, or any other status, is rejected |
+| 擋開工決策 | `PRODUCTION_HANDOFF.md` → `## Open Product Decisions` → `### 🚧 擋開工` | a numbered list, or the single line `無`. The lint makes the receiving PRD answer every number, which is why this skill requires the list to read `無` before the status is `confirmed` |
+| 來源文件 | `PRD.md`, `UI_SPEC.md`, `FLOW_SPEC.md`, `ACCEPTANCE.md`, `PRODUCTION_HANDOFF.md` | all five exist at the pinned commit, and the receiving PRD links each one at that same commit |
+
+Read by the author of the receiving PRD (會被照抄進工程 PRD):
+
+| Item | Where | Shape |
+| --- | --- | --- |
+| 既有／新建畫面分類 | `PRD.md` → `## Existing Surfaces` + `## New Surfaces`, and the `Scope` column of `PRODUCTION_HANDOFF.md` → `## Prototype To Frontend Map` | an `A`/`B`/`C`/`U` verdict per screen or region |
+| 使用者旅程 | `PRD.md` → `## Core Journeys` | numbered journeys |
+| 元件對照表、路由、story id | `UI_SPEC.md` → `## Component Map`; `FLOW_SPEC.md` → routes and transitions | a table with route, component, origin, and story id |
+| 設計驗收 | `ACCEPTANCE.md` → `AC-S-NNN` bullets | one criterion per bullet, stable id |
+
+Not consumed by this receiver (still produced, still validated): `DATA_SPEC.md`, `IMPLEMENTATION_GUIDE.md`, `TOKENS.json`, `flow.json`, generated navigation code, `HANDOFF_MANIFEST.json`, and the `Frontend Handoff`, `Production Integration Acceptance`, `Storybook`, `Data`, and `Visual and Design System` sections of `ACCEPTANCE.md`. The receiving PRD pins a commit instead of a manifest digest and covers the rest in its own plan-stage design doc. Do not trim these to match: the validator and the manifest need them, and the web and native implementation skills read them.
+
+Reference every story by its story id, never by a URL. A Storybook that is not published has no stable address, and the id survives a redeploy.
+
 ## Required Sections
 
 Use these sections:
@@ -23,7 +48,11 @@ Use these sections:
 
 ## Target Surfaces
 
+## Scope Classification
+
 ## Prototype To Frontend Map
+
+## Do Not Rebuild
 
 ## Web Implementation Notes
 
@@ -58,6 +87,8 @@ The handoff flow is: Storybook demo → the team confirms the product direction 
 
 `validate_prototype.py --handoff-ready` requires this complete, confirmed record. A legacy draft remains readable, but it must gain actual review evidence before handoff. Product confirmation never confirms an API, analytics parameter, Remote Config key, or UI schema automatically.
 
+Confirmation is not only the stamp. `--handoff-ready` also fails while the `🚧 擋開工` list still carries a numbered decision (see `Open Product Decisions` below) and while `docs/flow.json` no longer matches the flow source file. A blocking decision left open at confirmation does not disappear: the receiving team's lint makes their PRD answer it, and an answer written without the author is the one most likely to contradict the design.
+
 ## Semantic Review
 
 Record `Reviewed by`, `Reviewed on` (ISO date), `Scope`, `Result: passed`, and `Related updates` only after reviewing the actual document content. Check that Builder suggestions remain proposed, superseded decisions have no active paths, and every unknown names its owner and affected behavior. Review the affected Data Spec, Handoff, Flow Spec, Acceptance, fixtures, metadata, exports, and tests together; name the files updated or why each was unaffected. Validation checks completeness and integrity, not external source truth or semantic correctness.
@@ -74,9 +105,13 @@ State whether the production target is:
 
 Add a required `Primary viewport` line mirroring `flow.viewport` — formFactor plus size, for example `Primary viewport: desktop 1280x800`. The prose here mirrors the typed declarations (`meta.surface.target` and `flow.viewport`); `validate_prototype.py` reads the typed fields first and falls back to this section's prose only for legacy prototypes that predate them.
 
-If the target is unknown, write the safest known assumptions and list the blocking decision in `Open Product Decisions`.
+If the target is unknown, write the safest known assumptions and list the decision under `### 🚧 擋開工` in `Open Product Decisions`: no implementation can start against an unknown target.
 
 Known follow-up for desktop prototypes composing storybook-template components: several `tokens-comp.css` component tokens still alias `--sbt-sys-size-viewport-compact-width`, so wide components (tables, calendars, order books) stay capped at 375px until that token pass lands — note affected regions in `Open Product Decisions` when it matters.
+
+## Scope Classification
+
+Keep the legend table from the template: it defines `A`/`B`/`C`/`U` for the receiver, and `validate_prototype.py` expects the heading. The verdicts themselves live in the `Scope` column of `Prototype To Frontend Map`; together with `Existing Surfaces` and `New Surfaces` in `PRD.md` they are the 既有／新建畫面 classification the receiving PRD copies.
 
 ## Prototype To Frontend Map
 
@@ -88,8 +123,9 @@ Map each prototype part to frontend implementation concepts:
   - `B` new — does not exist in production yet. Build it.
   - `C` storybook-only — never ships.
   - `U` unverified — you do not know. Write `U`, and add it to `Open Product Decisions`
-    with an owner. Never guess `B`: a wrong `B` costs the receiver a rebuilt screen,
-    while `U` costs one question.
+    with an owner — in the decision register when it stops only that row, in the
+    `🚧 擋開工` list when nothing can start until it is settled. Never guess `B`: a wrong
+    `B` costs the receiver a rebuilt screen, while `U` costs one question.
 - prototype part (a route, or a region inside a route)
 - production page, screen, sheet, modal, or component — or, for `A`, the existing surface it stands in for
 - what to do: build, do not rebuild, modify just this region, or strip
@@ -121,6 +157,10 @@ Two signals mean a part is almost certainly `A`, not `B`:
 Fill `Do Not Rebuild` with the `A` rows a receiver is most likely to build by mistake,
 plus the evidence that settles each one. The table carries the verdict; that section
 carries the reason, which is what survives a skeptical reader.
+
+## Do Not Rebuild
+
+List the `A` rows from the map that a receiver is most likely to rebuild by mistake, one bullet each, with the evidence that settles it — the two signals under `Prototype To Frontend Map` above are the usual evidence. Delete the section only when the map has no `A` rows.
 
 ## Web Implementation Notes
 
@@ -243,8 +283,6 @@ Record the discovery results so the receiving implementation inherits them inste
 
 Record unresolved choices that would change implementation:
 
-For each decision record `status` (proposed/open/confirmed/superseded), source, owner, scope, affected behavior, and replacement when superseded. A Builder suggestion is proposed, not a production requirement: a suggested `reason` absent from the confirmed `delete_email_failed` event must not appear in formal event payloads or acceptance criteria. Continue independent confirmed work; do not guess blocked behavior.
-
 - platform target or routing model
 - API ownership or response shape
 - auth, permission, or security policy
@@ -252,3 +290,25 @@ For each decision record `status` (proposed/open/confirmed/superseded), source, 
 - analytics taxonomy or event names
 - design-system component gaps
 - release gates, feature flags, or rollout plan
+
+The section has two sub-sections, in this order. Both hold the same kind of decision; what separates them is how much work the open answer stops.
+
+### The blocking list (`### 🚧 擋開工`)
+
+A decision belongs here only when no implementation can start until it is answered: the production target is unknown, the mechanism every screen depends on is undecided, or the scope of what to build is unverified for the whole feature. Anything that stops only part of the work goes in the register below.
+
+Format, because the receiver's lint reads it:
+
+- Use a numbered list (`1.`, `2.`, …). Each item names the decision, one owner, and the work that waits. A numbered sub-heading (`#### 1. …`) counts the same way.
+- Write `無` as the only line when nothing blocks; never leave the sub-section out. A block quote above it — a dated note, for example — is ignored.
+- Bold-lead bullets in prose (`- **擋開工**：…`) are not parsed. `--handoff-ready` rejects a section that mentions 擋開工 without a parsable list, and warns when the sub-section is missing altogether.
+- While the handoff is still a draft, do not stop the whole feature for a blocking item: say which parts may start.
+- A handoff cannot be confirmed with a blocking item open. `--handoff-ready` fails and names the numbers. Resolve each item with its owner — never by guessing — then record the answer in the register with status `confirmed` and its source, remove the item from the list, and leave `無` once the list is empty.
+- No other heading in the handoff may contain `擋開工`. The parser takes the deepest heading that contains it, so a heading such as `### 已定案（原擋開工）` is read as the blocking list. The sibling heading `### 不擋開工` is a negation and is skipped.
+- The same parsing rules live in three places: the receiver's lint, `validate_prototype.py` (`extract_blocking_decisions`), and any repo-level handoff check a hub runs. They share one case table (`BLOCKING_DECISION_CASES` in `scripts/test_scaffold_validate.py`). When the receiver changes a rule, change all three in the same pass.
+
+### The decision register (`### 不擋開工`)
+
+For each decision record `status` (proposed/open/confirmed/superseded), source, owner, scope, affected behavior, and replacement when superseded. A Builder suggestion is proposed, not a production requirement: a suggested `reason` absent from the confirmed `delete_email_failed` event must not appear in formal event payloads or acceptance criteria. Continue independent confirmed work; do not guess blocked behavior.
+
+Keep answered decisions in the register instead of deleting them. A `confirmed` row with its source is how a reader tells "resolved" from "forgotten", and a receiver that pinned an older commit still refers to a former blocking decision by its number — keep that number in the row.

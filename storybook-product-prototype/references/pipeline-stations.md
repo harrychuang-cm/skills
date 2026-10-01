@@ -8,7 +8,7 @@ Use this reference to see where a skill sits in the prototype-to-production chai
 | --- | --- | --- | --- | --- | --- |
 | 1 | Prototype authoring | `storybook-product-prototype` | Product intent, design-system source, existing components | Prototype folder, seven handoff docs, fixtures (`.ts` + `fixtures/*.json`), flow metadata, Storybook stories | `validate_prototype.py`, project typecheck, Storybook build |
 | 2 | Team demo confirmation | The product team (human) | The Storybook story and UI Flow | `Review Status: confirmed` with reviewer, date, and covered scope | **Human gate.** No automation passes this station |
-| 3 | Handoff finalization | `storybook-product-prototype` | Demo-confirmed direction, scoped Semantic Review, classified Data Authority | Version-2 `docs/HANDOFF_MANIFEST.json`, optional `docs/TOKENS.json` and `docs/flow.json` | `--handoff-ready`: review evidence, authority structure, navigation/motion, carrier cross-checks and hashes |
+| 3 | Handoff finalization | `storybook-product-prototype` | Demo-confirmed direction, scoped Semantic Review, classified Data Authority | Version-2 `docs/HANDOFF_MANIFEST.json`, optional `docs/TOKENS.json` and `docs/flow.json` | `--handoff-ready`: review evidence, no open blocking (擋開工) decision, authority structure, navigation/motion, fresh `flow.json`, carrier cross-checks and hashes |
 | 4 | Frontend assembly, mock mode | `frontend-product-implementation` (web) / `native-product-implementation` (iOS, Android) | Manifest digests, docs, `TOKENS.json`, Fake fixtures, classified UI schemas | Production routes/screens, UI models, typed `<Feature>DataSource` + mock, authority-aware `IMPLEMENTATION_MAP.md` | design-system governance gates, mock-mode walkthrough, implementation validation, native build/test, source integrity check |
 | 5 | Data integration | `production-data-integration` | Confirmed transport contracts/sources and semantics, Data Adapter Seams, UI models and Fake examples | Real clients/auth/cache/persistence, DTO-to-UI mappers, swapped injection points, contract tests | Real payload tests against confirmed source contracts, mapper tests, every `AC-P (integration)` criterion settled |
 | 6 | Visual and acceptance QA | `ui-pixel-align-report`, `ui-compare-to-reference` | Running production build, prototype Storybook | Pixel-alignment evidence, applied visual fixes, completed traceability | Every Scope `B` surface compared, acceptance traceability fully resolved |
@@ -27,6 +27,7 @@ Both consume the same documents through the same gates and produce the same `IMP
 ## Gate Rules That Cross Stations
 
 - **Nothing skips station 2.** `--handoff-ready` fails while `Review Status` is `pending`, and every station-4 skill re-checks the status at ingestion. Docs that bypassed the validator do not bypass the receiving check.
+- **No blocking decision crosses station 3.** `--handoff-ready` fails while the handoff's `🚧 擋開工` list carries a numbered decision. A decision that stops all implementation is answered with its owner before confirmation, not by the receiving team; decisions that limit only part of the work travel in the decision register and stop only the dependent behavior.
 - **The manifest pins the version.** Station 4 records the consumed `docsDigest`; `--verify-manifest` at the prototype and `validate_implementation.py` at the implementation both detect a handoff that moved underneath an in-flight implementation.
 - **Scope travels verbatim.** The `A`/`B`/`C`/`U` classification is authored once at station 1–3 and copied, never re-derived, at station 4. `A` needs repo evidence; `U` is a blocking question.
 - **Acceptance ids travel end to end.** `AC-S-*` is settled at station 1, `AC-H-*` at station 3, `AC-P (assembly)` at station 4's mock walkthrough, and `AC-P (integration)` at station 5. Station 6 confirms the table is fully resolved.
@@ -64,9 +65,9 @@ Both consume the same documents through the same gates and produce the same `IMP
       "skill": "storybook-product-prototype",
       "requires": ["demo-confirmation"],
       "verify": [
-        "python3 <skill-root>/scripts/validate_prototype.py <prototype-folder> --handoff-ready --changelog \"<summary>\"",
         "python3 <skill-root>/scripts/export_prototype_contracts.py <prototype-folder>",
-        "python3 <skill-root>/scripts/export_flow.py <prototype-folder>"
+        "python3 <skill-root>/scripts/export_flow.py <prototype-folder>",
+        "python3 <skill-root>/scripts/validate_prototype.py <prototype-folder> --handoff-ready --changelog \"<summary>\""
       ],
       "produces": "docs/HANDOFF_MANIFEST.json"
     },
