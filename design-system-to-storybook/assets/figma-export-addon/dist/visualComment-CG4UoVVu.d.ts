@@ -5,6 +5,7 @@ type VisualCommentOptions = {
     apiPath?: string;
     captureSelector?: string;
     authorStorageKey?: string;
+    shortcuts?: boolean;
 };
 type VisualCommentStoryMetadata = {
     id: string;

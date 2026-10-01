@@ -39,6 +39,7 @@ import {
   VISUAL_COMMENT_LIMITS,
   clampRatio,
   defaultVisualCommentKind,
+  getCommentComposerPlacement,
   getVisualCommentPin,
   isVisualCommentKind,
   normalizeAuthorName,
@@ -77,9 +78,11 @@ type DomPointerEvent<T extends HTMLElement> = PointerEvent & {
 function SvgIcon({
   children,
   size = 14,
+  viewBox = "0 0 14 14",
 }: {
   children?: DomChild;
   size?: number;
+  viewBox?: string;
 }) {
   return h(
     "svg",
@@ -87,7 +90,7 @@ function SvgIcon({
       "aria-hidden": "true",
       fill: "none",
       height: size,
-      viewBox: "0 0 14 14",
+      viewBox,
       width: size,
     },
     children,
@@ -117,6 +120,24 @@ function EditIcon({ size }: { size?: number }) {
     d: "M13.854 2.146l-2-2a.5.5 0 00-.708 0l-1.5 1.5-8.995 8.995a.499.499 0 00-.143.268L.012 13.39a.495.495 0 00.135.463.5.5 0 00.462.134l2.482-.496a.495.495 0 00.267-.143l8.995-8.995 1.5-1.5a.5.5 0 000-.708zM12 3.293l.793-.793L11.5 1.207 10.707 2 12 3.293zm-2-.586L1.707 11 3 12.293 11.293 4 10 2.707zM1.137 12.863l.17-.849.679.679-.849.17z",
     fill: "currentColor",
   }));
+}
+
+// Storybook CommentIcon.
+function CommentIcon({ size }: { size?: number }) {
+  return h(SvgIcon, { size, viewBox: "0 0 14 15" }, [
+    h("path", {
+      d: "M3.5 5.004a.5.5 0 100 1h7a.5.5 0 000-1h-7zM3 8.504a.5.5 0 01.5-.5h7a.5.5 0 010 1h-7a.5.5 0 01-.5-.5z",
+      fill: "currentColor",
+      key: "lines",
+    }),
+    h("path", {
+      "clip-rule": "evenodd",
+      d: "M12.5 12.004H5.707l-1.853 1.854a.5.5 0 01-.351.146h-.006a.499.499 0 01-.497-.5v-1.5H1.5a.5.5 0 01-.5-.5v-9a.5.5 0 01.5-.5h11a.5.5 0 01.5.5v9a.5.5 0 01-.5.5zm-10.5-1v-8h10v8H2z",
+      fill: "currentColor",
+      "fill-rule": "evenodd",
+      key: "bubble",
+    }),
+  ]);
 }
 
 function EyeIcon({ size }: { size?: number }) {
@@ -158,28 +179,43 @@ export type FigmaReviewLabels = Partial<{
   addVisualComment: string;
   adjustCommentPoint: string;
   adjustCommentPointHint: string;
+  adjustPendingPinHint: string;
+  anonymousAuthor: string;
   authorName: string;
   cancelCapture: string;
+  capturePrompt: string;
+  changeAuthorName: string;
   cancelCommentEdit: string;
   cancelDelete: string;
   closeVisualComments: string;
   closeNotes: string;
   commentBody: string;
+  commentComposer: string;
   commentKind: string;
   commentKindTracking: string;
   commentKindVisualFix: string;
+  commentPlaceholderTracking: string;
+  commentPlaceholderVisualFix: string;
+  commentingAs: string;
+  commentsHeading: string;
+  commentsList: string;
   confirmDelete: string;
   deleteComment: string;
   deleteCommentDescription: string;
   deleteCommentTitle: string;
+  dismissError: string;
   endMeeting: string;
   editComment: string;
   editFigmaSource: string;
   evidenceUnavailable: string;
   exported: string;
   figmaSource: string;
+  filterAllComments: string;
+  filterComments: string;
   imported: string;
   needsFix: string;
+  noComments: string;
+  noFilteredComments: string;
   notStarted: string;
   notes: string;
   notesSaved: string;
@@ -187,8 +223,10 @@ export type FigmaReviewLabels = Partial<{
   openSource: string;
   openVisualComments: string;
   review: string;
+  saveAuthorName: string;
   saveCommentChanges: string;
   startMeeting: string;
+  startNamedMeeting: string;
   submitComment: string;
   sourcePlaceholder: string;
   title: string;
@@ -248,29 +286,44 @@ const defaultLabels = {
   adjustCommentPoint: "Adjust comment point",
   adjustCommentPointHint:
     "Click or drag the point. Use arrow keys for 1% steps, or Shift plus arrow keys for 5% steps.",
+  adjustPendingPinHint: "Drag the pin on the story, or focus it and use the arrow keys.",
+  anonymousAuthor: "Anonymous",
   authorName: "Display name",
   cancelCapture: "Cancel capture",
+  capturePrompt: "Click where you want to comment",
+  changeAuthorName: "Change",
   cancelCommentEdit: "Cancel",
   cancelDelete: "Cancel",
   closeVisualComments: "Close comments",
   closeNotes: "Close",
   commentBody: "Comment",
+  commentComposer: "New comment",
   commentKind: "Comment type",
   commentKindTracking: "Tracking",
   commentKindVisualFix: "Visual fix",
+  commentPlaceholderTracking: "Event name, parameters, and when it fires",
+  commentPlaceholderVisualFix: "What should change here?",
+  commentingAs: "Commenting as",
+  commentsHeading: "Comments",
+  commentsList: "Comments on this story",
   confirmDelete: "Confirm delete",
   deleteComment: "Delete comment",
   deleteCommentDescription:
     "This permanently deletes the comment and its screenshot when it is no longer referenced. This cannot be undone.",
   deleteCommentTitle: "Delete comment?",
+  dismissError: "Dismiss",
   endMeeting: "End meeting",
   editComment: "Edit comment",
   editFigmaSource: "Edit Figma source",
   evidenceUnavailable: "Screenshot evidence is unavailable.",
   exported: "Exported",
   figmaSource: "Figma source",
+  filterAllComments: "All",
+  filterComments: "Filter comments",
   imported: "Imported",
   needsFix: "Needs fix",
+  noComments: "No comments on this story yet.",
+  noFilteredComments: "No comments of this type on this story.",
   notStarted: "Not started",
   notes: "Notes",
   notesSaved: "Notes saved",
@@ -278,8 +331,10 @@ const defaultLabels = {
   openSource: "Open source",
   openVisualComments: "Open comments",
   review: "Review",
+  saveAuthorName: "Save name",
   saveCommentChanges: "Save changes",
   startMeeting: "Start meeting",
+  startNamedMeeting: "Start a named meeting",
   submitComment: "Save comment",
   sourcePlaceholder: "https://www.figma.com/design/...",
   title: "Export review",
@@ -374,6 +429,24 @@ function getReviewStatusOptions(labels: Required<FigmaReviewLabels>) {
     { label: labels.approved, value: "approved" },
   ] satisfies Array<{ label: string; value: FigmaReviewStatus }>;
 }
+
+// Title of the meeting created automatically by the first direct comment.
+function notesMeetingTitle(now = new Date()): string {
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `Notes ${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
+
+// Time alone for today's comments, a short date and time otherwise.
+function formatCommentTime(value: string, now = new Date()): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  const time = date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return date.toDateString() === now.toDateString()
+    ? time
+    : `${date.toLocaleDateString([], { day: "numeric", month: "short" })} ${time}`;
+}
+
+type CommentFilter = "all" | VisualCommentKind;
 
 function defaultMeetingTitle(): string {
   return `Design review ${new Date().toLocaleString()}`;
@@ -525,8 +598,22 @@ function VisualCommentsSection({
   const [isPanelOpen, setIsPanelOpen] = useState(() =>
     consumeVisualCommentsResume(storyId),
   );
+  const [commentFilter, setCommentFilter] = useState<CommentFilter>("all");
+  const [isNameEditing, setIsNameEditing] = useState(false);
+  const [nameDraft, setNameDraft] = useState("");
+  const [isNamedMeetingOpen, setIsNamedMeetingOpen] = useState(false);
+  const [composerHeight, setComposerHeight] = useState(180);
+  const [viewportSize, setViewportSize] = useState(() => ({
+    height: window.innerHeight,
+    width: window.innerWidth,
+  }));
+  const composerRef = useRef<HTMLDivElement | null>(null);
+  const composerBodyRef = useRef<HTMLTextAreaElement | null>(null);
+  const nameInputRef = useRef<HTMLInputElement | null>(null);
+  const meetingTitleInputRef = useRef<HTMLInputElement | null>(null);
+  const pinDragPointerRef = useRef<number | null>(null);
+  const shortcutsEnabled = options?.shortcuts !== false;
   const captureControllerRef = useRef<VisualCommentCaptureController | null>(null);
-  const previewDragPointerRef = useRef<number | null>(null);
   const commentPreviewDragRef = useRef<{
     commentId: string;
     pointerId: number;
@@ -546,11 +633,12 @@ function VisualCommentsSection({
     value: VisualCommentKind,
     onSelect: (kind: VisualCommentKind) => void,
     marker: "data-comment-kind-select" | "data-comment-edit-kind",
+    showLabel = true,
   ) =>
     h(
       "div",
       { className: "sbfx-review__field" },
-      h("span", null, labels.commentKind),
+      showLabel ? h("span", null, labels.commentKind) : null,
       h(
         "div",
         {
@@ -576,13 +664,26 @@ function VisualCommentsSection({
         ),
       ),
     );
-  const recentComments = [...(overview?.comments ?? [])]
-    .sort(
-      (left, right) =>
-        right.createdAt.localeCompare(left.createdAt) || right.id.localeCompare(left.id),
-    )
-    .slice(0, 3);
-  const editingComment = recentComments.find(
+  const storyComments = [...(overview?.comments ?? [])].sort(
+    (left, right) =>
+      right.createdAt.localeCompare(left.createdAt) || right.id.localeCompare(left.id),
+  );
+  const commentCounts: Record<CommentFilter, number> = {
+    all: storyComments.length,
+    "visual-fix": storyComments.filter(
+      (comment) => resolveVisualCommentKind(comment.kind) === "visual-fix",
+    ).length,
+    tracking: storyComments.filter(
+      (comment) => resolveVisualCommentKind(comment.kind) === "tracking",
+    ).length,
+  };
+  const listedComments =
+    commentFilter === "all"
+      ? storyComments
+      : storyComments.filter(
+          (comment) => resolveVisualCommentKind(comment.kind) === commentFilter,
+        );
+  const editingComment = storyComments.find(
     (comment) => comment.id === editingCommentId,
   );
   const nextOrdinal = (overview?.activeSession?.commentCount ?? 0) + 1;
@@ -660,12 +761,17 @@ function VisualCommentsSection({
   const draftPin = pendingCapture?.pin ?? pendingPoint?.pin ?? null;
 
   useEffect(() => {
-    if (!enabled || options?.enabled === false || !isPanelOpen || !draftPin) {
+    if (!enabled || options?.enabled === false || !draftPin) {
       setLivePinPosition(null);
       return;
     }
     let animationFrame = 0;
     const syncPosition = () => {
+      setViewportSize((current) =>
+        current.width === window.innerWidth && current.height === window.innerHeight
+          ? current
+          : { height: window.innerHeight, width: window.innerWidth },
+      );
       const target = commentsController.resolveTarget(options?.captureSelector);
       if (!target) {
         setLivePinPosition(null);
@@ -697,10 +803,85 @@ function VisualCommentsSection({
     draftPin?.xRatio,
     draftPin?.yRatio,
     enabled,
-    isPanelOpen,
     options?.captureSelector,
     options?.enabled,
   ]);
+
+  const isComposerOpen = Boolean(pendingCapture);
+  const canSubmitComment =
+    isComposerOpen &&
+    commentsCapability === "available" &&
+    !isBusy &&
+    Boolean(commentBody.trim());
+
+  // The composer is placed from its measured height, so measure after render.
+  useEffect(() => {
+    const height = composerRef.current?.offsetHeight;
+    if (height && Math.abs(height - composerHeight) > 0.5) setComposerHeight(height);
+  });
+
+  useEffect(() => {
+    if (isComposerOpen) composerBodyRef.current?.focus();
+  }, [isComposerOpen]);
+
+  useEffect(() => {
+    if (isNameEditing) nameInputRef.current?.focus();
+  }, [isNameEditing]);
+
+  useEffect(() => {
+    if (isNamedMeetingOpen) meetingTitleInputRef.current?.focus();
+  }, [isNamedMeetingOpen]);
+
+  // Registered on every render so the handler always sees current state.
+  useEffect(() => {
+    if (!enabled || options?.enabled === false) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const dialogOpen = Boolean(editingCommentId || pendingDeleteCommentId);
+      if (event.key === "Escape") {
+        if (isComposerOpen && !dialogOpen) {
+          event.preventDefault();
+          cancelCapture();
+        }
+        return;
+      }
+      if (!shortcutsEnabled || dialogOpen) return;
+      if (isComposerOpen) {
+        if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+          event.preventDefault();
+          event.stopPropagation();
+          if (canSubmitComment) void submitComment();
+        }
+        return;
+      }
+      // composedPath reaches the focused field inside a web component's shadow root.
+      const origin = event.composedPath()[0];
+      const target =
+        origin instanceof Element
+          ? origin
+          : event.target instanceof Element
+            ? event.target
+            : null;
+      if (
+        (event.key === "c" || event.key === "C") &&
+        !event.metaKey &&
+        !event.ctrlKey &&
+        !event.altKey &&
+        !event.shiftKey &&
+        !isCapturing &&
+        commentsCapability === "available" &&
+        !target?.closest("input, textarea, select") &&
+        !(target instanceof HTMLElement && target.isContentEditable)
+      ) {
+        event.preventDefault();
+        event.stopPropagation();
+        armCapture();
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown, true);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown, true);
+    };
+  });
 
   useEffect(() => {
     if (!pendingDeleteCommentId) return;
@@ -738,6 +919,11 @@ function VisualCommentsSection({
     setCommentErrors({});
     setCommentPreviewErrors({});
     commentEditTriggerRef.current = null;
+    // A pending capture shows the previous Story; saving it here would file
+    // that screenshot under this Story.
+    cancelCapture();
+    setCommentBody("");
+    setVisualError("");
   }, [storyId]);
 
   if (!enabled || options?.enabled === false) return null;
@@ -761,7 +947,7 @@ function VisualCommentsSection({
   }
 
   function armCapture() {
-    if (!overview?.activeSession) return;
+    if (commentsCapability !== "available") return;
     captureControllerRef.current?.cancel();
     setVisualError("");
     setPendingCapture(null);
@@ -807,43 +993,39 @@ function VisualCommentsSection({
     );
   }
 
-  function updatePendingPinFromPointer(event: DomPointerEvent<HTMLDivElement>) {
-    updatePendingPin(
-      getVisualCommentPin(
-        event.currentTarget.getBoundingClientRect(),
-        event.clientX,
-        event.clientY,
-      ),
-    );
-  }
-
-  function handlePreviewPointerDown(event: DomPointerEvent<HTMLDivElement>) {
+  function handlePendingPinPointerDown(event: DomPointerEvent<HTMLButtonElement>) {
     if (event.button !== 0) return;
     event.preventDefault();
-    if (event.target instanceof HTMLButtonElement) event.target.focus();
-    previewDragPointerRef.current = event.pointerId;
+    event.stopPropagation();
+    event.currentTarget.focus();
+    pinDragPointerRef.current = event.pointerId;
     try {
       event.currentTarget.setPointerCapture?.(event.pointerId);
     } catch {
       // Synthetic PointerEvents may not have an active browser pointer to capture.
     }
-    updatePendingPinFromPointer(event);
   }
 
-  function handlePreviewPointerMove(event: DomPointerEvent<HTMLDivElement>) {
-    if (previewDragPointerRef.current !== event.pointerId) return;
-    updatePendingPinFromPointer(event);
+  function handlePendingPinPointerMove(event: DomPointerEvent<HTMLButtonElement>) {
+    if (pinDragPointerRef.current !== event.pointerId) return;
+    event.stopPropagation();
+    const rect = commentsController
+      .resolveTarget(options?.captureSelector)
+      ?.getBoundingClientRect();
+    if (!rect?.width || !rect.height) return;
+    updatePendingPin(getVisualCommentPin(rect, event.clientX, event.clientY));
   }
 
-  function handlePreviewPointerEnd(event: DomPointerEvent<HTMLDivElement>) {
-    if (previewDragPointerRef.current !== event.pointerId) return;
-    previewDragPointerRef.current = null;
+  function handlePendingPinPointerEnd(event: DomPointerEvent<HTMLButtonElement>) {
+    if (pinDragPointerRef.current !== event.pointerId) return;
+    event.stopPropagation();
+    pinDragPointerRef.current = null;
     try {
       if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
         event.currentTarget.releasePointerCapture(event.pointerId);
       }
     } catch {
-      // The pointer can already be released after leaving the preview or cancellation.
+      // The pointer can already be released after cancellation.
     }
   }
 
@@ -857,6 +1039,7 @@ function VisualCommentsSection({
     else if (event.key === "ArrowDown") yDelta = step;
     else return;
     event.preventDefault();
+    event.stopPropagation();
     setPendingCapture((current) =>
       current
         ? {
@@ -871,7 +1054,6 @@ function VisualCommentsSection({
   }
 
   function togglePanel() {
-    if (isPanelOpen && isCapturing) cancelCapture();
     if (isPanelOpen) {
       clearVisualCommentsResume(storyId);
       if (editingCommentId) cancelCommentEdit(editingCommentId, false);
@@ -887,7 +1069,7 @@ function VisualCommentsSection({
   }
 
   async function submitComment() {
-    if (!overview?.activeSession || !pendingCapture || !commentBody.trim()) return;
+    if (!pendingCapture || !commentBody.trim()) return;
     const captureRoot = document.querySelector<HTMLElement>(
       options?.captureSelector ?? "#storybook-root",
     );
@@ -929,10 +1111,12 @@ function VisualCommentsSection({
     }
     try {
       preserveOpenPanelDuringMutation(commentKind);
-      await mutate(
-        `/sessions/${encodeURIComponent(overview.activeSession.id)}/comments`,
-        request,
-      );
+      setVisualError("");
+      setIsBusy(true);
+      const sessionId =
+        overview?.activeSession?.id ??
+        (await commentsController.ensureMeeting(notesMeetingTitle()));
+      await mutate(`/sessions/${encodeURIComponent(sessionId)}/comments`, request);
       lastSavedCommentKind = commentKind;
       setPendingCapture(null);
       setPendingPoint(null);
@@ -940,7 +1124,20 @@ function VisualCommentsSection({
     } catch (error) {
       rememberVisualCommentKind(lastSavedCommentKind);
       setVisualError(error instanceof Error ? error.message : "Unable to save comment.");
+    } finally {
+      setIsBusy(false);
     }
+  }
+
+  function saveAuthorName() {
+    const next = nameDraft.trim().slice(0, VISUAL_COMMENT_LIMITS.maxAuthorLength);
+    setAuthorName(next);
+    try {
+      localStorage.setItem(authorStorageKey, next);
+    } catch {
+      // Browser storage can be unavailable in private/restricted contexts.
+    }
+    setIsNameEditing(false);
   }
 
   function beginCommentEdit(
@@ -1183,6 +1380,12 @@ function VisualCommentsSection({
     }
   }
 
+  const displayName = authorName.trim() || labels.anonymousAuthor;
+  const saveShortcutHint = /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘↵" : "Ctrl ↵";
+  const composerPlacement = isComposerOpen
+    ? getCommentComposerPlacement(livePinPosition, viewportSize, composerHeight)
+    : null;
+
   return h(
     Fragment,
     null,
@@ -1206,35 +1409,52 @@ function VisualCommentsSection({
         },
         h(
           "h2",
-          { className: "sbfx-review__label sbfx-comments-panel__subheading" },
-          labels.visualComments,
+          { className: "sbfx-comments-panel__heading" },
+          labels.commentsHeading,
         ),
+        overview?.activeSession
+          ? h(
+              "p",
+              {
+                className: "sbfx-comments-panel__meeting-title",
+                "data-meeting-title": "true",
+              },
+              overview.activeSession.title,
+            )
+          : null,
+      ),
+      h(
+        "div",
+        { className: "sbfx-comments-panel__header-actions" },
         overview?.reportUrl
           ? h(
               "a",
               {
                 className:
                   "sbfx-review__button sbfx-review__button--secondary sbfx-review__report-link sbfx-comments-panel__reports",
+                hidden: !isPanelOpen,
                 href: overview.reportUrl,
+                key: "reports",
                 rel: "noreferrer",
                 target: "_blank",
               },
               "Reports",
             )
           : null,
-      ),
-      h(
-        "button",
-        {
-          "aria-controls": detailId,
-          "aria-expanded": isPanelOpen,
-          "aria-label": isPanelOpen ? labels.closeVisualComments : labels.openVisualComments,
-          className: "sbfx-review__icon-button sbfx-comments-panel__toggle",
-          onClick: togglePanel,
-          title: isPanelOpen ? labels.closeVisualComments : labels.openVisualComments,
-          type: "button",
-        },
-        h(EditIcon, { size: 14 }),
+        h(
+          "button",
+          {
+            "aria-controls": detailId,
+            "aria-expanded": isPanelOpen,
+            "aria-label": isPanelOpen ? labels.closeVisualComments : labels.openVisualComments,
+            className: "sbfx-review__icon-button sbfx-comments-panel__toggle",
+            key: "toggle",
+            onClick: togglePanel,
+            title: isPanelOpen ? labels.closeVisualComments : labels.openVisualComments,
+            type: "button",
+          },
+          h(CommentIcon, { size: 14 }),
+        ),
       ),
     ),
     h(
@@ -1245,338 +1465,328 @@ function VisualCommentsSection({
       hidden: !isPanelOpen,
       id: detailId,
     },
-    overview?.activeSession
-      ? h(
-          Fragment,
-          null,
-          h(
+    h(
+      "button",
+      {
+        "aria-label": labels.addVisualComment,
+        className: "sbfx-review__button sbfx-comments-panel__add",
+        "data-shortcut": shortcutsEnabled ? "C" : undefined,
+        disabled:
+          commentsCapability !== "available" || isBusy || isCapturing || isComposerOpen,
+        onClick: () => armCapture(),
+        type: "button",
+      },
+      labels.addVisualComment,
+    ),
+    h(
+      "div",
+      {
+        "aria-label": labels.filterComments,
+        className: "sbfx-comments-panel__filter",
+        role: "group",
+      },
+      ...(["all", ...VISUAL_COMMENT_KINDS] as CommentFilter[]).map((filter) =>
+        h(
+          "button",
+          {
+            "aria-pressed": filter === commentFilter,
+            className: "sbfx-comments-panel__filter-option",
+            "data-comment-filter": filter,
+            key: filter,
+            onClick: () => setCommentFilter(filter),
+            type: "button",
+          },
+          `${filter === "all" ? labels.filterAllComments : commentKindLabels[filter]} ${commentCounts[filter]}`,
+        ),
+      ),
+    ),
+    h(
+      "div",
+      { className: "sbfx-comments-panel__scroll" },
+      listedComments.length
+        ? h(
             "div",
-            { className: "sbfx-review__meeting" },
-            h(
-              "span",
-              { className: "sbfx-review__meeting-title" },
-              overview.activeSession.title,
-            ),
-          ),
-          h(
-            "p",
-            { className: "sbfx-review__meta" },
-            `${overview.activeSession.captureCount} capture${overview.activeSession.captureCount === 1 ? "" : "s"} · ${overview.activeSession.commentCount} comment${overview.activeSession.commentCount === 1 ? "" : "s"}`,
-          ),
-          isCapturing
-            ? h(
-                "div",
-                { className: "sbfx-review__capture-prompt" },
-                h("p", null, "Click the UI point to capture. Press Escape to cancel."),
+            {
+              "aria-label": labels.commentsList,
+              className: "sbfx-comments-panel__list",
+              key: "list",
+              role: "list",
+            },
+            ...listedComments.map((comment) => {
+              const isCommentBusy = commentMutationId === comment.id;
+              const kind = resolveVisualCommentKind(comment.kind);
+              return h(
+                "article",
+                {
+                  className: "sbfx-comments-panel__comment",
+                  "data-comment-id": comment.id,
+                  key: comment.id,
+                  role: "listitem",
+                },
                 h(
-                  "button",
-                  {
-                    className: "sbfx-review__button sbfx-review__button--secondary",
-                    onClick: cancelCapture,
-                    type: "button",
-                  },
-                  labels.cancelCapture,
-                ),
-              )
-            : pendingCapture
-              ? h(
                   "div",
-                  { className: "sbfx-review__composer" },
+                  { className: "sbfx-comments-panel__comment-meta" },
                   h(
-                    "div",
+                    "span",
+                    { className: "sbfx-comments-panel__comment-ordinal" },
+                    comment.ordinal,
+                  ),
+                  h(
+                    "span",
                     {
-                      className: "sbfx-review__snapshot-preview",
-                      "data-pending-comment-preview": "true",
-                      onPointerCancel: handlePreviewPointerEnd,
-                      onPointerDown: handlePreviewPointerDown,
-                      onPointerMove: handlePreviewPointerMove,
-                      onPointerUp: handlePreviewPointerEnd,
-                      style: {
-                        aspectRatio: `${pendingCapture.capture.width}/${pendingCapture.capture.height}`,
-                      },
+                      className: `sbfx-comments-panel__comment-kind sbfx-comments-panel__comment-kind--${kind}`,
+                      "data-comment-kind": kind,
                     },
-                    h("img", { alt: "Captured UI", src: pendingCapture.capture.dataUrl }),
-                    h("button", {
-                      "aria-label": `${labels.adjustCommentPoint} ${nextOrdinal}`,
-                      "aria-describedby": `${detailId}-point-hint`,
-                      className: "sbfx-review__pin sbfx-review__pin--editable",
-                      "data-pending-comment-pin": "true",
-                      onKeyDown: handlePendingPinKeyDown,
-                      style: {
-                        left: `${pendingCapture.pin.xRatio * 100}%`,
-                        top: `${pendingCapture.pin.yRatio * 100}%`,
-                      },
-                      type: "button",
-                    }, nextOrdinal),
+                    commentKindLabels[kind],
                   ),
                   h(
-                    "p",
+                    "span",
                     {
-                      className: "sbfx-review__meta sbfx-review__point-hint",
-                      id: `${detailId}-point-hint`,
+                      className: `sbfx-comments-panel__comment-status${comment.resolvedAt ? " sbfx-comments-panel__comment-status--completed" : ""}`,
                     },
-                    labels.adjustCommentPointHint,
-                  ),
-                  h(
-                    "label",
-                    { className: "sbfx-review__field" },
-                    h("span", null, labels.authorName),
-                    h("input", {
-                      maxLength: VISUAL_COMMENT_LIMITS.maxAuthorLength,
-                      onChange: (event: DomInputEvent<HTMLInputElement>) =>
-                        setAuthorName((event.currentTarget as HTMLInputElement).value),
-                      value: authorName,
-                    }),
-                  ),
-                  renderCommentKindControl(
-                    commentKind,
-                    setCommentKind,
-                    "data-comment-kind-select",
-                  ),
-                  h(
-                    "label",
-                    { className: "sbfx-review__field" },
-                    h("span", null, labels.commentBody),
-                    h("textarea", {
-                      maxLength: VISUAL_COMMENT_LIMITS.maxBodyLength,
-                      onChange: (event: DomInputEvent<HTMLTextAreaElement>) =>
-                        setCommentBody((event.currentTarget as HTMLTextAreaElement).value),
-                      rows: 2,
-                      value: commentBody,
-                    }),
-                  ),
-                  h(
-                    "div",
-                    { className: "sbfx-review__visual-actions" },
-                    h(
-                      "button",
-                      {
-                        className: "sbfx-review__button",
-                        disabled:
-                          commentsCapability !== "available" || isBusy || !commentBody.trim(),
-                        onClick: () => void submitComment(),
-                        type: "button",
-                      },
-                      labels.submitComment,
-                    ),
-                    h(
-                      "button",
-                      {
-                        className: "sbfx-review__button sbfx-review__button--secondary",
-                        onClick: cancelCapture,
-                        type: "button",
-                      },
-                      labels.closeNotes,
-                    ),
-                  ),
-                )
-              : h(
-                  "div",
-                  { className: "sbfx-review__visual-actions" },
-                  h(
-                    "button",
-                    {
-                      className: "sbfx-review__button",
-                      disabled: commentsCapability !== "available" || isBusy,
-                      onClick: armCapture,
-                      type: "button",
-                    },
-                    labels.addVisualComment,
-                  ),
-                  h(
-                    "button",
-                    {
-                      className: "sbfx-review__button sbfx-review__button--secondary",
-                      disabled: commentsCapability !== "available" || isBusy,
-                      onClick: () => {
-                        preserveOpenPanelDuringMutation();
-                        void mutate(
-                          `/sessions/${encodeURIComponent(overview.activeSession!.id)}/close`,
-                        ).catch((error: unknown) =>
-                          setVisualError(
-                            error instanceof Error ? error.message : "Unable to end meeting.",
-                          ),
-                        );
-                      },
-                      type: "button",
-                    },
-                    labels.endMeeting,
+                    comment.resolvedAt ? "Completed" : "Open",
                   ),
                 ),
-          overview.comments.length
-            ? h(
-                Fragment,
-                null,
                 h(
                   "p",
-                  { className: "sbfx-review__meta" },
-                  `${overview.comments.length} comment${overview.comments.length === 1 ? "" : "s"} on this story`,
+                  { className: "sbfx-comments-panel__comment-body" },
+                  comment.body,
                 ),
                 h(
                   "div",
-                  {
-                    "aria-label": "Recent comments",
-                    className: "sbfx-comments-panel__recent",
-                  },
-                  ...recentComments.map((comment) => {
-                    const isCommentBusy = commentMutationId === comment.id;
-                    return h(
-                      "article",
+                  { className: "sbfx-comments-panel__comment-footer" },
+                  h(
+                    "span",
+                    { className: "sbfx-comments-panel__comment-byline" },
+                    h("strong", null, comment.authorName),
+                    " · ",
+                    h(
+                      "time",
                       {
-                        className: "sbfx-comments-panel__comment",
-                        "data-comment-id": comment.id,
-                        key: comment.id,
+                        dateTime: comment.createdAt,
+                        title: new Date(comment.createdAt).toLocaleString(),
                       },
-                      h(
-                        "div",
-                        { className: "sbfx-comments-panel__comment-meta" },
-                        h("strong", null, comment.authorName),
-                        h(
-                          "span",
-                          {
-                            className: `sbfx-comments-panel__comment-status${comment.resolvedAt ? " sbfx-comments-panel__comment-status--completed" : ""}`,
-                          },
-                          comment.resolvedAt ? "Completed" : "Open",
-                        ),
-                        h(
-                          "span",
-                          {
-                            className: `sbfx-comments-panel__comment-kind sbfx-comments-panel__comment-kind--${resolveVisualCommentKind(comment.kind)}`,
-                            "data-comment-kind": resolveVisualCommentKind(comment.kind),
-                          },
-                          commentKindLabels[resolveVisualCommentKind(comment.kind)],
-                        ),
-                        h(
-                          "time",
-                          { dateTime: comment.createdAt },
-                          new Date(comment.createdAt).toLocaleString(),
-                        ),
-                      ),
-                      h(
-                        "p",
-                        { className: "sbfx-comments-panel__comment-body" },
-                        comment.body,
-                      ),
-                      h(
-                        "div",
-                        { className: "sbfx-comments-panel__comment-actions" },
-                        h(
-                          "button",
-                          {
-                            "aria-label": labels.editComment,
-                            className:
-                              "sbfx-review__icon-button sbfx-comments-panel__comment-action",
-                            disabled: isCommentBusy,
-                            onClick: (event: DomMouseEvent<HTMLButtonElement>) =>
-                              beginCommentEdit(
-                                comment.id,
-                                comment.body,
-                                comment.preview?.pin ?? null,
-                                resolveVisualCommentKind(comment.kind),
-                                event.currentTarget as HTMLButtonElement,
-                              ),
-                            title: labels.editComment,
-                            type: "button",
-                          },
-                          h(EditIcon, { size: 14 }),
-                        ),
-                        h(
-                          "button",
-                          {
-                            "aria-label": labels.deleteComment,
-                            className:
-                              "sbfx-review__icon-button sbfx-comments-panel__comment-action sbfx-comments-panel__comment-action--delete",
-                            disabled: isCommentBusy,
-                            onClick: (event: DomMouseEvent<HTMLButtonElement>) =>
-                              openDeleteDialog(
-                                comment.id,
-                                event.currentTarget as HTMLButtonElement,
-                              ),
-                            title: labels.deleteComment,
-                            type: "button",
-                          },
-                          h(TrashIcon, { size: 14 }),
-                        ),
-                      ),
-                    );
-                  }),
+                      formatCommentTime(comment.createdAt),
+                    ),
+                  ),
+                  h(
+                    "div",
+                    { className: "sbfx-comments-panel__comment-actions" },
+                    h(
+                      "button",
+                      {
+                        "aria-label": labels.editComment,
+                        className:
+                          "sbfx-review__icon-button sbfx-comments-panel__comment-action",
+                        disabled: isCommentBusy,
+                        onClick: (event: DomMouseEvent<HTMLButtonElement>) =>
+                          beginCommentEdit(
+                            comment.id,
+                            comment.body,
+                            comment.preview?.pin ?? null,
+                            kind,
+                            event.currentTarget as HTMLButtonElement,
+                          ),
+                        title: labels.editComment,
+                        type: "button",
+                      },
+                      h(EditIcon, { size: 14 }),
+                    ),
+                    h(
+                      "button",
+                      {
+                        "aria-label": labels.deleteComment,
+                        className:
+                          "sbfx-review__icon-button sbfx-comments-panel__comment-action sbfx-comments-panel__comment-action--delete",
+                        disabled: isCommentBusy,
+                        onClick: (event: DomMouseEvent<HTMLButtonElement>) =>
+                          openDeleteDialog(
+                            comment.id,
+                            event.currentTarget as HTMLButtonElement,
+                          ),
+                        title: labels.deleteComment,
+                        type: "button",
+                      },
+                      h(TrashIcon, { size: 14 }),
+                    ),
+                  ),
                 ),
-              )
-            : null,
-        )
-      : h(
-          "div",
-          { className: "sbfx-review__meeting-start" },
-          h("input", {
-            "aria-label": "Meeting title",
-            maxLength: VISUAL_COMMENT_LIMITS.maxTitleLength,
-            onChange: (event: DomInputEvent<HTMLInputElement>) =>
-              setMeetingTitle((event.currentTarget as HTMLInputElement).value),
-            value: meetingTitle,
-          }),
-          h(
+              );
+            }),
+          )
+        : h(
+            "p",
+            {
+              className: "sbfx-comments-panel__empty",
+              "data-comments-empty": "true",
+              key: "empty",
+            },
+            storyComments.length ? labels.noFilteredComments : labels.noComments,
+          ),
+      overview?.recentSessions.length
+        ? h(
+            "section",
+            {
+              "aria-label": "Recent meetings",
+              className: "sbfx-comments-panel__recent-meetings",
+              key: "recent-meetings",
+            },
+            h("h3", { className: "sbfx-comments-panel__section-heading" }, "Recent meetings"),
+            ...overview.recentSessions.slice(0, 5).map((session) =>
+              h(
+                "article",
+                {
+                  className: "sbfx-comments-panel__meeting-history",
+                  "data-meeting-id": session.id,
+                  key: session.id,
+                },
+                h("strong", null, session.title),
+                h(
+                  "span",
+                  { className: "sbfx-review__meta" },
+                  `${session.commentCount} comment${session.commentCount === 1 ? "" : "s"}`,
+                ),
+                h(
+                  "a",
+                  {
+                    className: "sbfx-comments-panel__text-button",
+                    href: `${apiPath}/reports/sessions/${encodeURIComponent(session.id)}/index.html`,
+                    rel: "noreferrer",
+                    target: "_blank",
+                  },
+                  "Open report",
+                ),
+              ),
+            ),
+          )
+        : null,
+    ),
+    h(
+      "footer",
+      { className: "sbfx-comments-panel__footer" },
+      isNameEditing
+        ? h(
+            "div",
+            {
+              className: "sbfx-comments-panel__identity",
+              "data-commenting-as": "editing",
+              key: "identity-edit",
+            },
+            h("input", {
+              "aria-label": labels.authorName,
+              maxLength: VISUAL_COMMENT_LIMITS.maxAuthorLength,
+              onChange: (event: DomInputEvent<HTMLInputElement>) =>
+                setNameDraft((event.currentTarget as HTMLInputElement).value),
+              onKeyDown: (event: DomKeyboardEvent<HTMLInputElement>) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  saveAuthorName();
+                }
+              },
+              ref: nameInputRef,
+              value: nameDraft,
+            }),
+            h(
+              "button",
+              {
+                className: "sbfx-comments-panel__text-button",
+                onClick: () => saveAuthorName(),
+                type: "button",
+              },
+              labels.saveAuthorName,
+            ),
+          )
+        : h(
+            "p",
+            {
+              className: "sbfx-comments-panel__identity",
+              "data-commenting-as": displayName,
+              key: "identity",
+            },
+            `${labels.commentingAs} `,
+            h("strong", null, displayName),
+            h(
+              "button",
+              {
+                className: "sbfx-comments-panel__text-button",
+                onClick: () => {
+                  setNameDraft(authorName);
+                  setIsNameEditing(true);
+                },
+                type: "button",
+              },
+              labels.changeAuthorName,
+            ),
+          ),
+      overview?.activeSession
+        ? h(
             "button",
             {
-              className: "sbfx-review__button",
-              disabled:
-                commentsCapability !== "available" || isBusy || !meetingTitle.trim(),
+              className: "sbfx-comments-panel__text-button",
+              disabled: commentsCapability !== "available" || isBusy,
+              key: "end-meeting",
               onClick: () => {
                 preserveOpenPanelDuringMutation();
-                void mutate("/sessions", { title: meetingTitle }).catch(
-                  (error: unknown) => {
-                    setVisualError(
-                      error instanceof Error ? error.message : "Unable to start meeting.",
-                    );
-                    void refresh().catch(() => undefined);
-                  },
+                void mutate(
+                  `/sessions/${encodeURIComponent(overview.activeSession!.id)}/close`,
+                ).catch((error: unknown) =>
+                  setVisualError(
+                    error instanceof Error ? error.message : "Unable to end meeting.",
+                  ),
                 );
               },
               type: "button",
             },
-            labels.startMeeting,
-          ),
-        ),
-    overview?.recentSessions.length
-      ? h(
-          "section",
-          {
-            "aria-label": "Recent meetings",
-            className: "sbfx-comments-panel__recent-meetings",
-          },
-          h("h3", { className: "sbfx-review__label" }, "Recent meetings"),
-          ...overview.recentSessions.slice(0, 5).map((session) =>
-            h(
-              "article",
-              {
-                className: "sbfx-comments-panel__meeting-history",
-                "data-meeting-id": session.id,
-                key: session.id,
-              },
-              h("strong", null, session.title),
+            labels.endMeeting,
+          )
+        : isNamedMeetingOpen
+          ? h(
+              "div",
+              { className: "sbfx-review__meeting-start", key: "meeting-start" },
+              h("input", {
+                "aria-label": "Meeting title",
+                maxLength: VISUAL_COMMENT_LIMITS.maxTitleLength,
+                onChange: (event: DomInputEvent<HTMLInputElement>) =>
+                  setMeetingTitle((event.currentTarget as HTMLInputElement).value),
+                ref: meetingTitleInputRef,
+                value: meetingTitle,
+              }),
               h(
-                "span",
-                { className: "sbfx-review__meta" },
-                `${session.commentCount} comment${session.commentCount === 1 ? "" : "s"}`,
-              ),
-              h(
-                "a",
+                "button",
                 {
-                  className:
-                    "sbfx-review__button sbfx-review__button--secondary",
-                  href: `${apiPath}/reports/sessions/${encodeURIComponent(session.id)}/index.html`,
-                  rel: "noreferrer",
-                  target: "_blank",
+                  className: "sbfx-review__button sbfx-review__button--secondary",
+                  disabled:
+                    commentsCapability !== "available" || isBusy || !meetingTitle.trim(),
+                  onClick: () => {
+                    preserveOpenPanelDuringMutation();
+                    void mutate("/sessions", { title: meetingTitle })
+                      .then(() => setIsNamedMeetingOpen(false))
+                      .catch((error: unknown) => {
+                        setVisualError(
+                          error instanceof Error ? error.message : "Unable to start meeting.",
+                        );
+                        void refresh().catch(() => undefined);
+                      });
+                  },
+                  type: "button",
                 },
-                "Open report",
+                labels.startMeeting,
               ),
+            )
+          : h(
+              "button",
+              {
+                className: "sbfx-comments-panel__text-button",
+                key: "named-meeting",
+                onClick: () => setIsNamedMeetingOpen(true),
+                type: "button",
+              },
+              labels.startNamedMeeting,
             ),
-          ),
-        )
-      : null,
+    ),
     reportPending
       ? h("p", { className: "sbfx-review__error" }, "Comment saved; report rebuild pending.")
       : null,
-    visualError ? h("p", { className: "sbfx-review__error" }, visualError) : null,
     commentsCapabilityError
       ? h("p", { className: "sbfx-review__error" }, commentsCapabilityError)
       : null,
@@ -1815,21 +2025,180 @@ function VisualCommentsSection({
         )
       : null,
     ),
-    isPanelOpen && livePinPosition
-      ? h(
-          "span",
-          {
-            "aria-hidden": "true",
-            className: "sbfx-review__pin sbfx-review__live-pin",
-            "data-sbfx-capture-ignore": "true",
-            "data-sbfx-live-comment-pin": "true",
-            style: {
-              left: `${livePinPosition.left}px`,
-              top: `${livePinPosition.top}px`,
+    isCapturing && !isComposerOpen
+      ? createPortal(
+          h(
+            "div",
+            {
+              className: "sbfx-comment-prompt",
+              "data-capture-prompt": "true",
+              "data-sbfx-capture-ignore": "true",
+              role: "status",
             },
-          },
-          nextOrdinal,
+            h("span", null, labels.capturePrompt),
+            h("kbd", { "aria-hidden": "true", className: "sbfx-review__kbd" }, "Esc"),
+            h(
+              "button",
+              {
+                className: "sbfx-review__button sbfx-review__button--secondary",
+                onClick: () => cancelCapture(),
+                type: "button",
+              },
+              labels.cancelCapture,
+            ),
+          ),
+          document.body,
         )
+      : null,
+    visualError && !isComposerOpen
+      ? createPortal(
+          h(
+            "div",
+            {
+              className: "sbfx-comment-toast",
+              "data-comment-error": "true",
+              "data-sbfx-capture-ignore": "true",
+              role: "alert",
+            },
+            h("p", { className: "sbfx-review__error" }, visualError),
+            h(
+              "button",
+              {
+                className: "sbfx-comments-panel__text-button",
+                onClick: () => setVisualError(""),
+                type: "button",
+              },
+              labels.dismissError,
+            ),
+          ),
+          document.body,
+        )
+      : null,
+    composerPlacement
+      ? createPortal(
+          h(
+            "div",
+            {
+              "aria-label": labels.commentComposer,
+              className: "sbfx-comment-composer sbfx-review__composer",
+              "data-comment-composer": "true",
+              "data-composer-dock": "dock" in composerPlacement
+                ? composerPlacement.dock
+                : undefined,
+              "data-sbfx-capture-ignore": "true",
+              ref: composerRef,
+              role: "dialog",
+              style:
+                "dock" in composerPlacement
+                  ? {}
+                  : {
+                      left: `${composerPlacement.left}px`,
+                      top: `${composerPlacement.top}px`,
+                    },
+            },
+            renderCommentKindControl(
+              commentKind,
+              setCommentKind,
+              "data-comment-kind-select",
+              false,
+            ),
+            h("textarea", {
+              "aria-label": labels.commentBody,
+              className: "sbfx-comment-composer__body",
+              maxLength: VISUAL_COMMENT_LIMITS.maxBodyLength,
+              onChange: (event: DomInputEvent<HTMLTextAreaElement>) =>
+                setCommentBody((event.currentTarget as HTMLTextAreaElement).value),
+              placeholder:
+                commentKind === "tracking"
+                  ? labels.commentPlaceholderTracking
+                  : labels.commentPlaceholderVisualFix,
+              ref: composerBodyRef,
+              rows: 3,
+              value: commentBody,
+            }),
+            h(
+              "p",
+              { className: "sbfx-comment-composer__hint", id: `${detailId}-point-hint` },
+              labels.adjustPendingPinHint,
+            ),
+            visualError
+              ? h(
+                  "p",
+                  { "aria-live": "polite", className: "sbfx-review__error", key: "error" },
+                  visualError,
+                )
+              : null,
+            h(
+              "div",
+              { className: "sbfx-comment-composer__actions", key: "actions" },
+              h(
+                "button",
+                {
+                  className: "sbfx-review__button sbfx-review__button--secondary",
+                  "data-comment-composer-cancel": "true",
+                  onClick: () => cancelCapture(),
+                  type: "button",
+                },
+                labels.cancelCommentEdit,
+              ),
+              h(
+                "button",
+                {
+                  "aria-label": labels.submitComment,
+                  className: "sbfx-review__button",
+                  "data-shortcut": shortcutsEnabled ? saveShortcutHint : undefined,
+                  disabled: !canSubmitComment,
+                  onClick: () => void submitComment(),
+                  type: "button",
+                },
+                labels.submitComment,
+              ),
+            ),
+          ),
+          document.body,
+        )
+      : null,
+    livePinPosition
+      ? isComposerOpen
+        ? h(
+            "button",
+            {
+              "aria-describedby": `${detailId}-point-hint`,
+              "aria-label": `${labels.adjustCommentPoint} ${nextOrdinal}`,
+              className:
+                "sbfx-review__pin sbfx-review__pin--editable sbfx-review__live-pin",
+              "data-pending-comment-pin": "true",
+              "data-sbfx-capture-ignore": "true",
+              "data-sbfx-live-comment-pin": "true",
+              onClick: (event: DomMouseEvent<HTMLButtonElement>) =>
+                event.stopPropagation(),
+              onKeyDown: handlePendingPinKeyDown,
+              onPointerCancel: handlePendingPinPointerEnd,
+              onPointerDown: handlePendingPinPointerDown,
+              onPointerMove: handlePendingPinPointerMove,
+              onPointerUp: handlePendingPinPointerEnd,
+              style: {
+                left: `${livePinPosition.left}px`,
+                top: `${livePinPosition.top}px`,
+              },
+              type: "button",
+            },
+            nextOrdinal,
+          )
+        : h(
+            "span",
+            {
+              "aria-hidden": "true",
+              className: "sbfx-review__pin sbfx-review__live-pin",
+              "data-sbfx-capture-ignore": "true",
+              "data-sbfx-live-comment-pin": "true",
+              style: {
+                left: `${livePinPosition.left}px`,
+                top: `${livePinPosition.top}px`,
+              },
+            },
+            nextOrdinal,
+          )
       : null,
   );
 }

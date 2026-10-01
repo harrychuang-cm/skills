@@ -1,4 +1,4 @@
-import { V as VisualCommentKind, a as VisualCommentPin, b as beginVisualCommentCapture, c as VisualCommentCaptureController } from './visualComment-Diazst2e.js';
+import { V as VisualCommentKind, a as VisualCommentPin, b as beginVisualCommentCapture, c as VisualCommentCaptureController } from './visualComment-CG4UoVVu.js';
 
 type FigmaReviewStatus = "not-started" | "exported" | "imported" | "needs-fix" | "approved";
 type FigmaReviewEntry = {
@@ -65,6 +65,7 @@ declare function createVisualCommentsController({ apiPath, fetcher, }: {
         error?: string;
         reportStale?: boolean;
     }>;
+    ensureMeeting(title: string): Promise<string>;
     getOverview(storyId: string): Promise<VisualCommentOverview>;
     patch(path: string, body: unknown): Promise<{
         error?: string;

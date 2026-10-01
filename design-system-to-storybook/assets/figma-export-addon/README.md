@@ -242,34 +242,53 @@ collapsed Export review control shows an outward **Unfold More** pair. The
 compact Figma export surface continues to hide its glyph and uses the full
 Figma-mark-plus-version surface as the accessible Expand control.
 
-### Local visual review meetings
+### Visual comments
 
-The renderer-neutral review helper can also run append-only visual review meetings from a
-separate top-right comments panel. It defaults to a 36px Edit icon launcher whose
-button and 14px icon remain centered in the collapsed surface; open it,
-then the expanded header places the **Visual comments** subheading above a
-compact, content-width outline **Reports** button beside the same Edit control.
-Starting or ending a meeting and saving a comment keep the panel expanded, including
-across a same-Story preview remount triggered by the local evidence write. Choose
-**Add comment**, then click the preview. A numbered, non-interactive Story tag
-appears as soon as the point is selected. The capture-phase handler blocks that
-pointer sequence before the prototype can change state, captures the current
-preview with `html-to-image`, removes nodes marked `data-sbfx-capture-ignore`,
-and opens a comment composer. Before Save, move the point by clicking or dragging
-inside the snapshot preview, or use Arrow keys (1%) and Shift+Arrow keys (5%).
-The Story tag mirrors the final normalized point and is never captured. Other browsers on the
-same Storybook host discover the active meeting through five-second polling.
-While a meeting is active, the panel shows only the current Story's newest three
-comments, with author, timestamp, body, Open/Completed status, body edit,
-the original read-only screenshot plus an adjustable pin, and confirmed deletion.
-Choosing Edit opens a capture-ignored overlay modal instead of expanding the
-editor inside the 320px panel, so the stored screenshot and numbered point are
-shown at a larger responsive size. While editing, click or drag the numbered pin
-or use Arrow keys (1%) and Shift+Arrow keys (5%); **Save changes** stores the body
-and normalized point in one atomic update. Cancel, Escape, or the backdrop
-restores both local drafts and returns focus to Edit. A failed update keeps the
+The renderer-neutral review helper adds a visual comments tool to every included
+Story. Commenting takes four steps and never needs the panel to be open:
+
+1. Press **C**, or open the top-right Comment icon launcher and choose
+   **Add comment**. A prompt appears on the Story; **Esc** cancels.
+2. Click the element. The capture-phase handler blocks that pointer sequence
+   before the prototype can change state, captures the current preview with
+   `html-to-image`, removes nodes marked `data-sbfx-capture-ignore`, and opens a
+   composer beside the numbered pin.
+3. Choose the **Comment type** and type the comment. The body field already has
+   focus. Drag the pin on the Story, or focus it and use Arrow keys (1%) and
+   Shift+Arrow keys (5%), to adjust the point; the composer follows the pin.
+4. Press **Cmd/Ctrl+Enter**, or choose **Save comment**. **Esc** or **Cancel**
+   discards the pin.
+
+No meeting has to be started first. When none is active, the first saved comment
+creates one titled `Notes YYYY-MM-DD` (the local date) and later comments reuse
+it. For a group review, use **Start a named meeting** in the panel footer to give
+the meeting its own title; **End meeting** closes it. Other browsers on the same
+Storybook host discover the active meeting through five-second polling, and a
+comment saved while another browser starts a meeting lands in that meeting.
+
+Saving a comment does not reload the preview. The review status plugin excludes
+its comments directory, review status file, and payload directory from the dev
+server's file watching by itself, so the prototype stays in the state you were
+annotating and no project configuration is needed.
+
+The composer sits beside the pin and flips to the other side near the viewport
+edge; below 720px wide it docks to the bottom edge, or to the top when the pin
+would be covered. It stays open when the panel is collapsed or expanded.
+
+The expanded panel shows the **Comments** heading with the active meeting title,
+**Reports**, the primary **Add comment** action, a kind filter (**All**,
+**Visual fix**, **Tracking**, each with its count), and every comment of the
+current Story in the active meeting, newest first, with its meeting-wide number,
+kind, Open/Completed status, author, and time. The list scrolls inside the panel.
+The footer shows **Commenting as** with the stored display name (or
+`Anonymous`); **Change** sets it once and the composer never asks for it.
+Choosing Edit on a comment opens a capture-ignored overlay modal with the stored
+screenshot and numbered point. While editing, click or drag the numbered pin
+or use Arrow keys (1%) and Shift+Arrow keys (5%); **Save changes** stores the body,
+kind, and normalized point in one atomic update. Cancel, Escape, or the backdrop
+restores the drafts and returns focus to Edit. A failed update keeps the
 modal and drafts open; a successful update closes only the modal and leaves
-Visual comments expanded. Pins use one
+the panel expanded. Pins use one
 meeting-wide `1..N` sequence across Stories and captures; deleting a comment
 recomputes a contiguous sequence. The **Reports** route remains the single place to browse
 active and closed meetings that still contain a capture or comment. Meetings with
@@ -278,6 +297,25 @@ evidence, the index renders one empty state. Canonical meeting JSON and direct s
 report URLs remain readable. Each session report contains its
 snapshots on the addon's dark raised surface, pins, authors, comments, timestamps,
 and Story metadata.
+
+Keyboard shortcuts act only in Story view and only while focus is outside an
+input, textarea, select, or contenteditable element, so typing `c` into a
+prototype field is never intercepted. Set `visualComments.shortcuts` to `false`
+when the prototype itself uses the **C** key; **Esc** keeps cancelling.
+
+| `visualComments` option | Description |
+| --- | --- |
+| `enabled` | Turn visual comments off with `false` |
+| `apiPath` | Same-origin comments API path |
+| `captureSelector` | Capture target; `"body"` includes portals |
+| `authorStorageKey` | `localStorage` key of the display name |
+| `shortcuts` | `false` disables **C** and **Cmd/Ctrl+Enter** (default `true`) |
+
+Upgrading from 0.10.x: the comment composer and the capture prompt are no longer
+inside the panel, the launcher uses the Comment icon, and the panel list shows
+every current-Story comment instead of the newest three. Project CSS that
+targeted the old panel structure needs to be revisited. Stored meetings need no
+migration.
 
 ```ts
 createFigmaExportReviewDecorator(figmaExportOptions, {
@@ -332,9 +370,9 @@ Every visual comment has a kind: **Visual fix** (the default) or **Tracking**.
 Use Tracking to mark an analytics requirement on the Story the same way you
 would comment on a design file, then hand the comments to a coding assistant.
 
-1. Start a meeting, choose **Add comment**, and click the element to instrument.
-2. In the composer, set **Comment type** to **Tracking** and write the
-   requirement in free text.
+1. Press **C** (or choose **Add comment**) and click the element to instrument.
+2. In the composer beside the pin, set **Comment type** to **Tracking**, write
+   the requirement in free text, and press **Cmd/Ctrl+Enter**.
 3. Open **Reports**. A Tracking card's **Copy AI prompt** produces a
    `# Tracking Instrumentation Request` instead of the visual fix request.
 4. To hand over several at once, use **Copy tracking prompts**. It copies one
@@ -364,19 +402,18 @@ losing its screenshot: change **Comment type** in the panel edit modal or in the
 report's inline editor and save.
 
 The composer preselects the kind of the last saved comment, so a run of
-tracking comments needs **Tracking** chosen only once. A Storybook dev server
-reloads the preview whenever comment evidence is written inside the project;
-the panel carries the kind across that reload in a `sessionStorage` entry that
-expires after 15 seconds and is removed as soon as it is read. Any other page
-load — a manual refresh, a reload caused by another participant's comment or a
-source change, or a new tab — starts from **Visual fix** again. The kind is
-never written to `localStorage`.
+tracking comments needs **Tracking** chosen only once. Saving no longer reloads
+the preview, so that preselection normally just stays in the page. For reloads
+from other causes within 15 seconds of a panel request, the kind is also carried
+in a `sessionStorage` entry that is removed as soon as it is read. Any other page
+load — a manual refresh, a source change, or a new tab — starts from
+**Visual fix** again. The kind is never written to `localStorage`.
 
 The batch copy is text only. Each comment lists its repository-root-relative
 screenshot path so a coding agent running at the repository root can open the
 image; a single card's **Copy AI prompt** still attaches the screenshot when the
 browser supports it. Nothing here sends an AI request: the addon only writes
-text to the clipboard. Comments still require an active meeting.
+text to the clipboard.
 
 When the Story belongs to a prototype that keeps a Data Authority registry
 (`DATA_SPEC.md`), the request tells the assistant to record each event as an

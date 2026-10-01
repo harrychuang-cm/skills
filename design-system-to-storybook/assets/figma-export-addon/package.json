@@ -1,6 +1,6 @@
 {
   "name": "@harrychuang/storybook-addon-figma-export",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "description": "Export Storybook stories to Figma import payloads with configurable CSS token layers",
   "type": "module",
   "license": "MIT",
@@ -74,7 +74,7 @@
     "test:package": "npm run build && node test/run-package-contract-test.mjs",
     "test:review-controller": "npm run build && node test/run-review-controller-test.mjs",
     "test:plugin-code": "npm run build && node test/run-plugin-code-test.mjs",
-    "test:visual-comments": "npm run build && node test/run-visual-comment-store-test.mjs && node test/run-visual-comment-http-test.mjs && node test/run-visual-comment-report-test.mjs && node test/run-visual-comment-fixture.mjs"
+    "test:visual-comments": "npm run build && node test/run-visual-comment-store-test.mjs && node test/run-visual-comment-http-test.mjs && node test/run-visual-comment-report-test.mjs && node test/run-visual-comment-fixture.mjs && node test/run-evidence-reload-test.mjs"
   },
   "peerDependencies": {
     "@storybook/icons": "^1.0.0",

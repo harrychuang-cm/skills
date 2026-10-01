@@ -187,13 +187,24 @@ Vite status plugin while the capability report says `unsupported`.
 
 Visual comments are additive to the existing review status, Figma source, and
 notes, but render in a separate top-right panel instead of inside Export review.
-The panel defaults to an Edit icon launcher and expands on demand. The complete
+The panel defaults to a Comment icon launcher and expands on demand. The complete
 workflow is verified in React + Vite and Vue 3 + Vite Story view on Storybook 10.
+
+From addon 0.11.0 the flow is: press **C** or choose **Add comment**, click the
+element, type in the composer that opens beside the pin, and press
+**Cmd/Ctrl+Enter**. No meeting has to be started first: the first saved comment
+creates one titled `Notes YYYY-MM-DD`, and **Start a named meeting** in the panel
+footer remains for group reviews. Saving does not reload the preview, because the
+plugin excludes its evidence paths from the dev server's file watching without
+any project configuration. The display name is set once under **Commenting as**
+in the panel footer. Set `visualComments.shortcuts` to `false` when the prototype
+uses the **C** key itself; **Esc** keeps cancelling.
+
 The browser intercepts the selected
 pointer sequence before prototype handlers, captures the current in-memory UI,
 and stores a normalized pin plus immutable screenshot. Point selection immediately
-shows the next meeting-wide numbered tag. Before Save, the point can be adjusted
-inside the snapshot by click, Pointer Events drag, Arrow keys (1%), or Shift+Arrow
+shows the next meeting-wide numbered tag. Before Save, the pin is adjusted on the
+Story itself by Pointer Events drag, Arrow keys (1%), or Shift+Arrow
 keys (5%). Saved-comment Edit in the Visual comments panel opens a capture-ignored
 overlay modal with a larger responsive screenshot and numbered pin; Reports keeps
 its inline editor. Both surfaces keep the original screenshot read-only while
@@ -230,12 +241,10 @@ No setup change is needed: there is no new option in
 `.storybook/figma-export.config.ts`, and existing meetings load unchanged
 because a comment without a stored kind reads as Visual fix. The kind can be
 corrected later in the panel edit modal or the report editor without replacing
-the screenshot. The addon never calls an AI service and comments still need an
-active meeting. The composer preselects the kind of the last saved comment and
-carries it across the preview reload that a dev server performs when evidence is
-written inside the project (a 15-second, read-once `sessionStorage` entry). A
-manual refresh, another participant's comment, or a new tab starts from Visual
-fix again.
+the screenshot. The addon never calls an AI service. The composer preselects the
+kind of the last saved comment; saving no longer reloads the preview, and a
+15-second, read-once `sessionStorage` entry carries the kind across reloads from
+other causes. A manual refresh or a new tab starts from Visual fix again.
 
 For a prototype that keeps a Data Authority registry, record the resulting
 event as a `proposed` `analytics` contract; see

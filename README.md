@@ -117,7 +117,7 @@ Build or update Storybook from an already extracted design-system package:
 
 1. Read `design-system/` Markdown specs and `tokens/`.
 2. Map token layers and component specs into the target product repo.
-3. Install and configure the Figma export addon for compatible React Storybook 10 projects. Its Visual Comments let reviewers pin comments on a Story; a comment marked **Tracking** carries an analytics requirement, and the report's `Copy tracking prompts` hands every open Tracking comment to a coding assistant as one request (event name, parameters, recording timing, value definitions).
+3. Install and configure the Figma export addon for compatible React Storybook 10 projects. Its Visual Comments let reviewers pin comments on a Story; a comment marked **Tracking** carries an analytics requirement, and the report's `Copy tracking prompts` hands every open Tracking comment to a coding assistant as one request (event name, parameters, recording timing, value definitions). Commenting is press `C`, click, type beside the pin, `Cmd/Ctrl+Enter`: no meeting has to be started first, and saving does not reload the preview.
 4. Plan large inventories into dependency-aware batches when there are many components.
 5. Create or update Storybook foundations, shared components, and stories.
 6. Verify each batch with Storybook, lint/typecheck, tests, or visual checks.

@@ -1,6 +1,6 @@
 // src/review-server.ts
 import { mkdir as mkdir2, readFile as readFile2, readdir as readdir2, writeFile as writeFile2 } from "fs/promises";
-import { basename as basename2, dirname as dirname2, join as join2, resolve as resolve2 } from "path";
+import { basename as basename2, dirname as dirname2, join as join2, resolve as resolve2, sep as sep2 } from "path";
 
 // src/visualComment.ts
 import { toCanvas } from "html-to-image";
@@ -2047,7 +2047,15 @@ function createFigmaReviewStatusPlugin(options = {}) {
     cwd: options.cwd,
     commentsDir: options.commentsDir ?? defaultVisualCommentsDir
   });
+  const evidenceRoots = [commentsStore.root, payloadDir];
+  const isEvidencePath = (candidate) => {
+    const target = resolve2(candidate);
+    return target === filePath || evidenceRoots.some((root) => target === root || target.startsWith(`${root}${sep2}`));
+  };
   return {
+    config() {
+      return { server: { watch: { ignored: [isEvidencePath] } } };
+    },
     configureServer(server) {
       server.middlewares.use(apiPath, (request, response) => {
         void handleReviewStatusRequest({

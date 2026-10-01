@@ -25,6 +25,8 @@ export type VisualCommentOptions = {
   apiPath?: string;
   captureSelector?: string;
   authorStorageKey?: string;
+  // C starts a comment and Meta/Control+Enter saves it; false leaves only Escape.
+  shortcuts?: boolean;
 };
 
 export type VisualCommentStoryMetadata = {
@@ -260,6 +262,43 @@ export async function captureVisualCommentTarget(target: HTMLElement): Promise<V
   } catch (error) {
     throw error instanceof Error ? error : new Error("Unable to encode captured UI.");
   }
+}
+
+export type CommentComposerPlacement =
+  | { dock: "bottom" | "top" }
+  | { left: number; top: number };
+
+const composerWidth = 320;
+const composerPinGap = 24;
+const composerViewportMargin = 12;
+const composerDockBreakpoint = 720;
+
+// Where the comment composer sits for a pin at this viewport position: beside
+// the pin on wide viewports, docked to an edge that leaves the pin visible on
+// narrow ones.
+export function getCommentComposerPlacement(
+  pin: { left: number; top: number } | null,
+  viewport: { height: number; width: number },
+  composerHeight: number,
+): CommentComposerPlacement {
+  const margin = composerViewportMargin;
+  if (!pin) return { dock: "bottom" };
+  if (viewport.width < composerDockBreakpoint) {
+    const bottomDockStart = viewport.height - composerHeight - margin;
+    return { dock: pin.top + 16 > bottomDockStart ? "top" : "bottom" };
+  }
+  const width = Math.min(composerWidth, viewport.width - margin * 2);
+  let left = pin.left + composerPinGap;
+  if (left + width > viewport.width - margin) {
+    left = pin.left - composerPinGap - width;
+  }
+  return {
+    left: Math.max(margin, left),
+    top: Math.min(
+      Math.max(margin, pin.top - composerPinGap),
+      Math.max(margin, viewport.height - composerHeight - margin),
+    ),
+  };
 }
 
 /**

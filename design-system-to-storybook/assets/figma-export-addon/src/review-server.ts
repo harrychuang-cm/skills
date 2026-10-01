@@ -1,6 +1,6 @@
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { basename, dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve, sep } from "node:path";
 import type { FigmaReviewEntry, FigmaReviewStatus } from "./review";
 import {
   VISUAL_COMMENT_LIMITS,
@@ -715,7 +715,22 @@ export function createFigmaReviewStatusPlugin(
     commentsDir: options.commentsDir ?? defaultVisualCommentsDir,
   });
 
+  // Evidence is data, not source. Left watched, every write inside the
+  // project root makes the dev server reload the Story preview and reset the
+  // prototype's state.
+  const evidenceRoots = [commentsStore.root, payloadDir];
+  const isEvidencePath = (candidate: string) => {
+    const target = resolve(candidate);
+    return (
+      target === filePath ||
+      evidenceRoots.some((root) => target === root || target.startsWith(`${root}${sep}`))
+    );
+  };
+
   return {
+    config() {
+      return { server: { watch: { ignored: [isEvidencePath] } } };
+    },
     configureServer(server: MiddlewareServer) {
       server.middlewares.use(apiPath, (request, response) => {
         void handleReviewStatusRequest({

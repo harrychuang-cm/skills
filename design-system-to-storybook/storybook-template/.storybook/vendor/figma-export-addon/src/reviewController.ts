@@ -115,6 +115,28 @@ export function createVisualCommentsController({
         `Visual comments DELETE ${apiPath}${path}`,
       );
     },
+    // Returns the active meeting, creating one with this title when none exists.
+    // HTTP 409 means another browser started one first; that meeting is used.
+    async ensureMeeting(title: string): Promise<string> {
+      const operation = `Visual comments POST ${apiPath}/sessions`;
+      const response = await fetcher(`${apiPath}/sessions`, {
+        body: JSON.stringify({ title }),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      });
+      const payload = (await response.json().catch(() => ({}))) as {
+        activeMeeting?: { id?: string } | null;
+        error?: string;
+        meeting?: { session?: { id?: string } };
+      };
+      const createdId = response.ok ? payload.meeting?.session?.id : undefined;
+      if (createdId) return createdId;
+      const activeId = response.status === 409 ? payload.activeMeeting?.id : undefined;
+      if (activeId) return activeId;
+      throw new Error(
+        `${operation} returned HTTP ${response.status}${payload.error ? `: ${payload.error}` : "."}`,
+      );
+    },
     getOverview(storyId: string) {
       return requestJson<VisualCommentOverview>(
         fetcher,

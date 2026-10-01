@@ -1,7 +1,7 @@
 import { IncomingMessage, ServerResponse } from 'node:http';
 import { FigmaReviewEntry } from './review-controller.js';
 import { createVisualCommentStore } from './visual-comment-store.js';
-import './visualComment-Diazst2e.js';
+import './visualComment-CG4UoVVu.js';
 
 declare const defaultFigmaReviewStatusApiPath = "/__figma_export_review_status";
 declare const defaultFigmaExportPayloadApiPath = "/__figma-export/payloads";
@@ -47,6 +47,13 @@ declare function createFigmaExportPayloadStoreHandler(options: {
     payloadDir: string;
 }): MiddlewareHandler;
 declare function createFigmaReviewStatusPlugin(options?: FigmaReviewStatusPluginOptions): {
+    config(): {
+        server: {
+            watch: {
+                ignored: ((candidate: string) => boolean)[];
+            };
+        };
+    };
     configureServer(server: MiddlewareServer): void;
     name: string;
 };

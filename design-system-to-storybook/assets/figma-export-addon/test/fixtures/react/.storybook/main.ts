@@ -29,13 +29,6 @@ const config: StorybookConfig = {
           name: "sbfx-react-parity-fixture",
           }),
       ],
-      server: {
-        ...viteConfig.server,
-        watch: {
-          ...viteConfig.server?.watch,
-          ignored: ["**/.data/**"],
-        },
-      },
     };
   },
 };

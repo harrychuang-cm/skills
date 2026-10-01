@@ -2961,7 +2961,8 @@ function resolveFigmaExportAddonOptions(options) {
       enabled: options?.visualComments?.enabled ?? true,
       apiPath: options?.visualComments?.apiPath ?? "/__figma_export_review_comments",
       captureSelector: options?.visualComments?.captureSelector ?? "#storybook-root",
-      authorStorageKey: options?.visualComments?.authorStorageKey ?? "sbfx:review-author"
+      authorStorageKey: options?.visualComments?.authorStorageKey ?? "sbfx:review-author",
+      shortcuts: options?.visualComments?.shortcuts ?? true
     }
   };
 }
@@ -4297,7 +4298,7 @@ void (async function importStorybookStory(payload) {
 
 // src/version.ts
 function getAddonVersion() {
-  return true ? "0.10.0" : "dev";
+  return true ? "0.11.0" : "dev";
 }
 
 // src/workspace.ts

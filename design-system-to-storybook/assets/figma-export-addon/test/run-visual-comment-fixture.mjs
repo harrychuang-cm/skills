@@ -118,6 +118,7 @@ try {
   for (const viewport of [
     { height: 800, label: "wide", width: 1000 },
     { height: 800, label: "narrow", width: 640 },
+    { height: 860, label: "desktop", width: 1280 },
   ]) {
     const { targetId } = await cdp.send("Target.createTarget", { url: "about:blank" });
     const { sessionId } = await cdp.send("Target.attachToTarget", { flatten: true, targetId });

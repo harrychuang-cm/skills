@@ -1,4 +1,4 @@
-import { e as VisualCommentOptions } from './visualComment-Diazst2e.js';
+import { e as VisualCommentOptions } from './visualComment-CG4UoVVu.js';
 
 type TokenLayer = "ref" | "sys" | "comp";
 type FigmaVariableType = "BOOLEAN" | "COLOR" | "FLOAT" | "STRING";

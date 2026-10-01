@@ -80,6 +80,7 @@ export function resolveFigmaExportAddonOptions(
       apiPath: options?.visualComments?.apiPath ?? "/__figma_export_review_comments",
       captureSelector: options?.visualComments?.captureSelector ?? "#storybook-root",
       authorStorageKey: options?.visualComments?.authorStorageKey ?? "sbfx:review-author",
+      shortcuts: options?.visualComments?.shortcuts ?? true,
     },
   };
 }

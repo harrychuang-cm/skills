@@ -224,6 +224,10 @@ async function evaluateContract(cdp, sessionId, renderer) {
               detail.getAttribute('data-comments-capability') === 'available';
           });
 
+          [...document.querySelectorAll('button')].find(
+            (entry) => entry.textContent?.trim() === 'Start a named meeting',
+          )?.click();
+          await waitUntil(() => document.querySelector('[aria-label="Meeting title"]'));
           const meetingTitle = document.querySelector(
             '[aria-label="Meeting title"]',
           );
@@ -286,13 +290,22 @@ async function evaluateContract(cdp, sessionId, renderer) {
               action.dispatchEvent(new MouseEvent('click', eventInit));
             }
             const composerReady = await waitUntil(
-              () => Boolean(document.querySelector('[data-pending-comment-preview="true"]')),
+              () => Boolean(document.querySelector('[data-comment-composer="true"]')),
             );
             const pendingPin = document.querySelector(
               '[data-pending-comment-pin="true"]',
             );
-            const leftRatio = Number.parseFloat(pendingPin?.style.left ?? '') / 100;
-            const topRatio = Number.parseFloat(pendingPin?.style.top ?? '') / 100;
+            const captureTargetRect = document
+              .querySelector('#storybook-root')
+              ?.getBoundingClientRect();
+            const leftRatio = captureTargetRect
+              ? (Number.parseFloat(pendingPin?.style.left ?? '') - captureTargetRect.left) /
+                captureTargetRect.width
+              : Number.NaN;
+            const topRatio = captureTargetRect
+              ? (Number.parseFloat(pendingPin?.style.top ?? '') - captureTargetRect.top) /
+                captureTargetRect.height
+              : Number.NaN;
             captureSurfaceComplete =
               composerReady &&
               stateBeforeCapture === 'State B' &&
@@ -304,18 +317,20 @@ async function evaluateContract(cdp, sessionId, renderer) {
               topRatio >= 0 &&
               topRatio <= 1 &&
               !document.querySelector('#storybook-root')?.contains(
-                document.querySelector('[data-pending-comment-preview="true"]'),
+                document.querySelector('[data-comment-composer="true"]'),
               ) &&
+              !document.querySelector('[aria-label="Visual comments"]')?.contains(
+                document.querySelector('[data-comment-composer="true"]'),
+              ) &&
+              !document.querySelector('#storybook-root')?.contains(pendingPin) &&
               Boolean(
                 document
                   .querySelector('[aria-label="Visual comments"]')
                   ?.hasAttribute('data-sbfx-capture-ignore'),
               );
-            [...document.querySelectorAll('button')].find(
-              (entry) => entry.textContent?.trim() === 'Close',
-            )?.click();
+            document.querySelector('[data-comment-composer-cancel="true"]')?.click();
             await waitUntil(
-              () => !document.querySelector('[data-pending-comment-preview="true"]'),
+              () => !document.querySelector('[data-comment-composer="true"]'),
             );
 
             // Tracking kind: chosen in the composer, stored, and labelled.
@@ -519,8 +534,10 @@ async function evaluateContract(cdp, sessionId, renderer) {
             [...document.querySelectorAll('button')].find(
               (entry) => entry.textContent?.trim() === 'End meeting',
             )?.click();
-            meetingEnded = await waitUntil(
-              () => Boolean(document.querySelector('[aria-label="Meeting title"]')),
+            meetingEnded = await waitUntil(() =>
+              [...document.querySelectorAll('button')].some(
+                (entry) => entry.textContent?.trim() === 'Start a named meeting',
+              ),
             );
             historyAvailable = Boolean(
               document.querySelector(
@@ -683,10 +700,75 @@ const kindContinuationHelpers = `
     return waitUntil(() => Boolean(kindControl()));
   };
   const closeComposer = async () => {
-    findButton('Close')?.click();
-    await waitUntil(
-      () => !document.querySelector('[data-pending-comment-preview="true"]'),
-    );
+    document.querySelector('[data-comment-composer-cancel="true"]')?.click();
+    await waitUntil(() => !document.querySelector('[data-comment-composer="true"]'));
+  };
+  const clickStoryAction = () => {
+    const action = document.querySelector('[data-parity-action]');
+    const rect = action.getBoundingClientRect();
+    const eventInit = {
+      bubbles: true,
+      cancelable: true,
+      clientX: rect.left + rect.width * 0.4,
+      clientY: rect.top + rect.height * 0.6,
+      pointerId: 1,
+    };
+    action.dispatchEvent(new PointerEvent('pointerdown', eventInit));
+    action.dispatchEvent(new PointerEvent('pointerup', eventInit));
+    action.dispatchEvent(new MouseEvent('click', eventInit));
+  };
+  // The four comment surface visual rules, read from computed styles.
+  const auditSurfaces = (selector) => {
+    const alpha = (color) => {
+      if (color === 'transparent') return 0;
+      const modern = color.match(/\\/\\s*([\\d.]+%?)\\s*\\)$/);
+      if (modern) {
+        const value = Number.parseFloat(modern[1]);
+        return modern[1].endsWith('%') ? value / 100 : value;
+      }
+      const legacy = color.match(/^rgba\\(([^)]+)\\)$/);
+      return legacy ? Number.parseFloat(legacy[1].split(',')[3] ?? '1') : 1;
+    };
+    const translucent = (color) => alpha(color) > 0 && alpha(color) < 1;
+    const violations = [];
+    let audited = 0;
+    for (const surface of document.querySelectorAll(selector)) {
+      for (const element of [surface, ...surface.querySelectorAll('*')]) {
+        if (!(element instanceof HTMLElement) || element.getClientRects().length === 0) continue;
+        audited += 1;
+        const style = getComputedStyle(element);
+        const listItem = element.closest('.sbfx-comments-panel__comment');
+        const sides = ['Top', 'Right', 'Bottom', 'Left'];
+        const hasBorder = sides.some(
+          (side) => Number.parseFloat(style['border' + side + 'Width']) > 0,
+        );
+        const hasText =
+          element.matches('input, textarea, select') ||
+          [...element.childNodes].some(
+            (node) => node.nodeType === Node.TEXT_NODE && node.textContent?.trim(),
+          );
+        const name = element.tagName.toLowerCase() + '.' + String(element.className).split(' ')[0];
+        if (hasText && Number.parseFloat(style.fontSize) < 12) {
+          violations.push(name + ' font-size ' + style.fontSize);
+        }
+        if (translucent(style.backgroundColor)) violations.push(name + ' background ' + style.backgroundColor);
+        for (const side of sides) {
+          if (
+            Number.parseFloat(style['border' + side + 'Width']) > 0 &&
+            translucent(style['border' + side + 'Color'])
+          ) {
+            violations.push(name + ' border ' + style['border' + side + 'Color']);
+          }
+        }
+        if (style.backgroundImage.includes('gradient')) violations.push(name + ' gradient');
+        if (style.backdropFilter && style.backdropFilter !== 'none') violations.push(name + ' backdrop-filter');
+        if (element === listItem && hasBorder) violations.push(name + ' list item border');
+        if (listItem && element !== listItem && (hasBorder || alpha(style.backgroundColor) > 0)) {
+          violations.push(name + ' nested border or fill');
+        }
+      }
+    }
+    return { audited, violations: [...new Set(violations)].slice(0, 10) };
   };
   const kindEntry = () => sessionStorage.getItem('sbfx:visual-comments-kind');
   const readComposerKind = async () => {
@@ -747,32 +829,79 @@ async function evaluateKindContinuation(cdp, sessionId) {
   const unusable = [];
   try {
     saved = await run(`
-      await openPanel();
-      const title = document.querySelector('[aria-label="Meeting title"]');
-      if (title) {
-        title.value = 'Kind continuation meeting';
-        title.dispatchEvent(new Event('input', { bubbles: true }));
-        await waitUntil(() => findButton('Start meeting') && !findButton('Start meeting').disabled);
-        findButton('Start meeting')?.click();
+      // Direct commenting: no meeting is active, the panel is collapsed, and the
+      // comment is started and saved from the keyboard.
+      await waitUntil(() => Boolean(panel()));
+      if (panel()?.dataset.expanded === 'true') {
+        panel().querySelector('.sbfx-comments-panel__toggle')?.click();
+        await waitUntil(() => panel()?.dataset.expanded === 'false');
       }
-      const opened = await openComposer();
+      const before = await (
+        await fetch('/__sbfx_fixture_comments?storyId=parity-fixture--default')
+      ).json();
+      const shortcut = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key: 'c' });
+      document.body.dispatchEvent(shortcut);
+      const armed = await waitUntil(
+        () => document.documentElement.dataset.sbfxCaptureMode === 'true',
+      );
+      const promptOnStory =
+        Boolean(document.querySelector('[data-capture-prompt="true"]')) &&
+        !panel()?.contains(document.querySelector('[data-capture-prompt="true"]'));
+      const stateBefore = document.querySelector('[data-parity-state]')?.textContent;
+      clickStoryAction();
+      const opened = await waitUntil(() => Boolean(kindControl()));
+      const composerElement = document.querySelector('[data-comment-composer="true"]');
+      const composerOutsidePanel =
+        Boolean(composerElement) &&
+        !panel()?.contains(composerElement) &&
+        !document.querySelector('#storybook-root')?.contains(composerElement) &&
+        !composerElement.querySelector('img, input');
       const defaultKind = kindControl()?.dataset.commentKindValue;
       kindControl()?.querySelector('button[data-comment-kind-option="tracking"]')?.click();
       await waitUntil(() => kindControl()?.dataset.commentKindValue === 'tracking');
       const textarea = document.querySelector('.sbfx-review__composer textarea');
+      const bodyFocused = document.activeElement === textarea;
       if (textarea) {
         textarea.value = 'Kind continuation comment';
         textarea.dispatchEvent(new Event('input', { bubbles: true }));
       }
       await waitUntil(() => findButton('Save comment') && !findButton('Save comment').disabled);
-      findButton('Save comment')?.click();
+      const composerAudit = auditSurfaces('[data-comment-composer="true"], [data-pending-comment-pin="true"]');
+      textarea?.dispatchEvent(
+        new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ctrlKey: true, key: 'Enter' }),
+      );
+      await waitUntil(() => !document.querySelector('[data-comment-composer="true"]'));
+      await openPanel();
       const stored = await waitUntil(() =>
         [...document.querySelectorAll('[data-comment-id]')].some((entry) =>
           entry.textContent?.includes('Kind continuation comment'),
         ),
       );
+      const after = await (
+        await fetch('/__sbfx_fixture_comments?storyId=parity-fixture--default')
+      ).json();
+      const today = new Date();
+      const pad = (value) => String(value).padStart(2, '0');
+      const notesTitle =
+        'Notes ' + today.getFullYear() + '-' + pad(today.getMonth() + 1) + '-' + pad(today.getDate());
+      const panelAudit = auditSurfaces('[aria-label="Visual comments"]');
       return {
         saved: opened && stored,
+        direct: {
+          armed,
+          bodyFocused,
+          composerOutsidePanel,
+          meetingBefore: before.activeSession?.title ?? null,
+          meetingAfter: after.activeSession?.title ?? null,
+          notesTitle,
+          promptOnStory,
+          shortcutPrevented: shortcut.defaultPrevented,
+          stateKept:
+            stateBefore === 'State B' &&
+            document.querySelector('[data-parity-state]')?.textContent === 'State B',
+          storedKind: after.comments?.find((entry) => entry.body === 'Kind continuation comment')?.kind,
+        },
+        audit: { composer: composerAudit, panel: panelAudit },
         detail: [opened, defaultKind, stored, kindEntry()].join('/'),
         persisted: Object.keys(localStorage).filter(
           (key) => /kind/i.test(key) || /tracking|visual-fix/.test(localStorage.getItem(key) ?? ''),
@@ -817,7 +946,32 @@ async function evaluateKindContinuation(cdp, sessionId) {
     `).catch(() => undefined);
   }
 
+  const direct = saved.direct ?? {};
+  const audit = saved.audit ?? {};
   return [
+    {
+      name: "direct-comment-shortcut-flow",
+      passed:
+        direct.meetingBefore === null &&
+        direct.shortcutPrevented === true &&
+        direct.armed === true &&
+        direct.promptOnStory === true &&
+        direct.composerOutsidePanel === true &&
+        direct.bodyFocused === true &&
+        direct.stateKept === true &&
+        direct.storedKind === "tracking" &&
+        direct.meetingAfter === direct.notesTitle,
+      detail: JSON.stringify(direct),
+    },
+    {
+      name: "comment-surface-style-audit",
+      passed:
+        audit.composer?.audited > 0 &&
+        audit.composer.violations.length === 0 &&
+        audit.panel?.audited > 0 &&
+        audit.panel.violations.length === 0,
+      detail: JSON.stringify(audit),
+    },
     {
       name: "tracking-kind-survives-request-reload",
       passed:

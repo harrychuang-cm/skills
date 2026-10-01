@@ -85,6 +85,18 @@ assert.equal(typeof review.createFigmaExportReviewDecorator, "function");
 assert.equal(typeof reviewServer.createFigmaReviewStatusPlugin, "function");
 assert.equal(typeof source.getFigmaSourceUrl, "function");
 
+// Option types added for consumers must reach the published declarations.
+const publishedDeclarations = fs
+  .readdirSync(path.join(addonRoot, "dist"))
+  .filter((file) => file.endsWith(".d.ts"))
+  .map((file) => fs.readFileSync(path.join(addonRoot, "dist", file), "utf8"))
+  .join("\n");
+assert.match(
+  publishedDeclarations,
+  /shortcuts\?: boolean/,
+  "visualComments.shortcuts is part of the published option types",
+);
+
 for (const renderer of ["react", "vue"]) {
   const manifest = JSON.parse(
     fs.readFileSync(
