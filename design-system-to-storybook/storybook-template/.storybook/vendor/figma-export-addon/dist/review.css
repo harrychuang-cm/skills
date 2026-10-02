@@ -2,6 +2,7 @@
 .sbfx-comment-composer,
 .sbfx-comment-prompt,
 .sbfx-comment-toast,
+.sbfx-review__pin-card,
 .sbfx-comments-panel__dialog-backdrop,
 .sbfx-comments-panel__edit-backdrop {
   --sbfx-accent: #6f63ff;
@@ -943,7 +944,7 @@
 
 .sbfx-comments-panel__meeting-history {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   min-inline-size: 0;
   gap: 8px;
@@ -951,10 +952,51 @@
   line-height: 17px;
 }
 
+.sbfx-comments-panel__meeting-copy,
+.sbfx-comments-panel__meeting-title-line,
+.sbfx-comments-panel__meeting-meta {
+  display: flex;
+  align-items: center;
+  min-inline-size: 0;
+  gap: 8px;
+}
+
+.sbfx-comments-panel__meeting-copy {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+}
+
 .sbfx-comments-panel__meeting-history strong {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.sbfx-comments-panel__meeting-active {
+  flex: 0 0 auto;
+  color: var(--sbfx-accent);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.sbfx-comments-panel__meeting-view[aria-checked="true"] {
+  color: #ffffff;
+  background: var(--sbfx-accent);
+}
+
+.sbfx-comments-panel__viewing {
+  margin: 0;
+  overflow: hidden;
+  color: var(--sbfx-muted);
+  font-size: 12px;
+  line-height: 17px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sbfx-comments-panel__viewing strong {
+  color: var(--sbfx-color);
 }
 
 .sbfx-comments-panel__footer {
@@ -1074,7 +1116,8 @@
 
 .sbfx-comment-composer,
 .sbfx-comment-prompt,
-.sbfx-comment-toast {
+.sbfx-comment-toast,
+.sbfx-review__pin-card {
   position: fixed;
   z-index: calc(var(--sbfx-z-index, 20) + 4);
   box-sizing: border-box;
@@ -1352,4 +1395,50 @@
   .sbfx-comments-panel[data-expanded="false"] {
     inline-size: 36px;
   }
+}
+
+/* Saved pin information card: shown beside a hovered or focused pin. */
+.sbfx-review__pin-card {
+  z-index: calc(var(--sbfx-z-index, 20) + 3);
+  display: grid;
+  /* The placed width comes from getSavedPinCardPlacement in visualComment.ts. */
+  inline-size: 264px;
+  padding: 12px;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 17px;
+  pointer-events: none;
+}
+
+.sbfx-review__pin-card p {
+  margin: 0;
+}
+
+.sbfx-review__pin-card-title {
+  font-weight: 700;
+}
+
+.sbfx-review__pin-card-body {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: 13px;
+  line-height: 18px;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.sbfx-review__pin-card-meta,
+.sbfx-review__pin-card-unavailable {
+  color: var(--sbfx-muted);
+}
+
+.sbfx-review__pin-card-image {
+  display: block;
+  inline-size: 100%;
+  max-inline-size: 240px;
+  max-block-size: 180px;
+  object-fit: contain;
+  background: var(--sbfx-surface-raised);
+  border-radius: 8px;
 }

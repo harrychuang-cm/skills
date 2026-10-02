@@ -4775,7 +4775,7 @@ void (async function importStorybookStory(payload) {
 
 // src/version.ts
 function getAddonVersion() {
-  return true ? "0.12.1" : "dev";
+  return true ? "0.13.0" : "dev";
 }
 
 // src/workspace.ts
@@ -5851,6 +5851,29 @@ function getCommentComposerPlacement(pin, viewport, composerHeight) {
     )
   };
 }
+var savedPinCardMaxWidth = 264;
+var savedPinCardGap = 12;
+var savedPinHalfSize = 12;
+function getSavedPinCardPlacement(pin, viewport, cardHeight) {
+  const margin = composerViewportMargin;
+  const width = Math.min(savedPinCardMaxWidth, viewport.width - margin * 2);
+  const offset = savedPinHalfSize + savedPinCardGap;
+  const clampTop = (top2) => Math.min(Math.max(margin, top2), Math.max(margin, viewport.height - margin - cardHeight));
+  const sideTop = clampTop(pin.top - cardHeight / 2);
+  if (pin.left + offset + width <= viewport.width - margin) {
+    return { left: pin.left + offset, top: sideTop, width };
+  }
+  if (pin.left - offset - width >= margin) {
+    return { left: pin.left - offset - width, top: sideTop, width };
+  }
+  const left = Math.min(
+    Math.max(margin, pin.left - width / 2),
+    Math.max(margin, viewport.width - margin - width)
+  );
+  const below = pin.top + offset;
+  const top = below + cardHeight <= viewport.height - margin ? below : clampTop(pin.top - offset - cardHeight);
+  return { left, top, width };
+}
 function beginVisualCommentCapture({
   capture = captureVisualCommentTarget,
   documentRef = document,
@@ -6141,6 +6164,7 @@ function UnfoldMoreDisclosureIcon() {
 var defaultFigmaReviewStatusApiPath = "/__figma_export_review_status";
 var defaultLabels = {
   approved: "Approved",
+  activeMeeting: "Active",
   addVisualComment: "Add comment",
   adjustCommentPoint: "Adjust comment point",
   adjustCommentPointHint: "Click or drag the point. Use arrow keys for 1% steps, or Shift plus arrow keys for 5% steps.",
@@ -6181,6 +6205,7 @@ var defaultLabels = {
   filterAllComments: "All",
   filterComments: "Filter comments",
   imported: "Imported",
+  meetingsHeading: "Meetings",
   needsFix: "Needs fix",
   noComments: "No comments on this story yet.",
   noFilteredComments: "No comments of this type on this story.",
@@ -6193,6 +6218,7 @@ var defaultLabels = {
   review: "Review",
   saveAuthorName: "Save name",
   saveCommentChanges: "Save changes",
+  screenshotUnavailable: "Screenshot unavailable",
   showPins: "Show pins",
   showPinsShort: "Pins",
   startMeeting: "Start meeting",
@@ -6200,6 +6226,9 @@ var defaultLabels = {
   submitComment: "Save comment",
   sourcePlaceholder: "https://www.figma.com/design/...",
   title: "Export review",
+  viewMeeting: "View",
+  viewMeetingHint: "Turn on View for a meeting below to see its comments and pins.",
+  viewingMeeting: "Viewing",
   visualComments: "Visual comments"
 };
 var defaultEntry = {
@@ -6383,12 +6412,21 @@ function VisualCommentsSection({
     () => consumeVisualCommentsResume(storyId)
   );
   const [commentFilter, setCommentFilter] = useState("all");
+  const [viewedMeetingChoice, setViewedMeetingChoice] = useState(null);
+  const viewedMeetingId = viewedMeetingChoice?.storyId === storyId ? viewedMeetingChoice.meetingId : null;
+  const setViewedMeetingId = (meetingId) => setViewedMeetingChoice(meetingId ? { meetingId, storyId } : null);
   const [showSavedPins, setShowSavedPins] = useState(true);
   const [captureTargetRect, setCaptureTargetRect] = useState(null);
   const [prototypeState, setPrototypeState] = useState({});
   const [selectedCommentId, setSelectedCommentId] = useState(null);
   const [highlightedCommentId, setHighlightedCommentId] = useState(null);
   const [focusedCommentId, setFocusedCommentId] = useState(null);
+  const [hoveredPinId, setHoveredPinId] = useState(null);
+  const [focusedPinId, setFocusedPinId] = useState(null);
+  const [pinCardImageErrors, setPinCardImageErrors] = useState({});
+  const [pinCardHeight, setPinCardHeight] = useState(160);
+  const pinCardRef = useRef(null);
+  const pinCardId = useId();
   const [trackingCopyStatus, setTrackingCopyStatus] = useState("");
   const [isCopyingTracking, setIsCopyingTracking] = useState(false);
   const [isNameEditing, setIsNameEditing] = useState(false);
@@ -6449,19 +6487,24 @@ function VisualCommentsSection({
   const storyComments = [...overview?.comments ?? []].sort(
     (left, right) => right.createdAt.localeCompare(left.createdAt) || right.id.localeCompare(left.id)
   );
+  const meetingRows = overview?.meetings ?? [];
+  const viewedMeeting = meetingRows.find(
+    (meeting) => meeting.id === viewedMeetingId && meeting.storyCommentCount > 0
+  ) ?? null;
+  const viewedComments = viewedMeeting ? storyComments.filter((comment) => comment.sessionId === viewedMeeting.id) : [];
   const commentCounts = {
-    all: storyComments.length,
-    "visual-fix": storyComments.filter(
+    all: viewedComments.length,
+    "visual-fix": viewedComments.filter(
       (comment) => resolveVisualCommentKind(comment.kind) === "visual-fix"
     ).length,
-    tracking: storyComments.filter(
+    tracking: viewedComments.filter(
       (comment) => resolveVisualCommentKind(comment.kind) === "tracking"
     ).length
   };
-  const listedComments = commentFilter === "all" ? storyComments : storyComments.filter(
+  const listedComments = commentFilter === "all" ? viewedComments : viewedComments.filter(
     (comment) => resolveVisualCommentKind(comment.kind) === commentFilter
   );
-  const editingComment = storyComments.find(
+  const editingComment = viewedComments.find(
     (comment) => comment.id === editingCommentId
   );
   const nextOrdinal = (overview?.activeSession?.commentCount ?? 0) + 1;
@@ -6472,8 +6515,18 @@ function VisualCommentsSection({
     editingComment?.preview && !commentPreviewErrors[editingComment.id] && editingCommentPin
   );
   const editingCommentDraftIsValid = Boolean(editingCommentDraft.trim()) && editingCommentDraft.trim().length <= VISUAL_COMMENT_LIMITS.maxBodyLength;
+  const overviewRequestRef = useRef(0);
+  const appliedOverviewRequestRef = useRef(0);
+  const requestOverview = async () => {
+    const requestId = ++overviewRequestRef.current;
+    const next = await commentsController.getOverview(storyId);
+    if (requestId !== overviewRequestRef.current) return null;
+    appliedOverviewRequestRef.current = requestId;
+    return next;
+  };
   async function refresh() {
-    setOverview(await commentsController.getOverview(storyId));
+    const next = await requestOverview();
+    if (next) setOverview(next);
     setCommentsCapability("available");
     setCommentsCapabilityError("");
   }
@@ -6482,8 +6535,8 @@ function VisualCommentsSection({
     let active = true;
     const load = async () => {
       try {
-        const next = await commentsController.getOverview(storyId);
-        if (active) {
+        const next = await requestOverview();
+        if (active && next) {
           setOverview(next);
           setCommentsCapability("available");
           setCommentsCapabilityError("");
@@ -6610,6 +6663,7 @@ function VisualCommentsSection({
   useEffect(() => {
     if (!isPanelActive) {
       setFocusedCommentId(null);
+      setFocusedPinId(null);
       return;
     }
     let timer = 0;
@@ -6620,6 +6674,8 @@ function VisualCommentsSection({
           ".sbfx-comments-panel [data-comment-id]"
         );
         setFocusedCommentId(item?.dataset.commentId ?? null);
+        const pin = document.activeElement?.closest("[data-saved-comment-pin]");
+        setFocusedPinId(pin?.dataset.savedCommentPin ?? null);
       }, 0);
     };
     document.addEventListener("focusin", syncFocus);
@@ -6633,10 +6689,17 @@ function VisualCommentsSection({
   useEffect(() => {
     if (selectedCommentId) revealComment(selectedCommentId);
   }, [selectedCommentId]);
+  useEffect(() => {
+    if (overview && viewedMeetingId && !viewedMeeting && appliedOverviewRequestRef.current === overviewRequestRef.current) {
+      setViewedMeetingId(null);
+    }
+  }, [overview, viewedMeetingId]);
   const canSubmitComment = isComposerOpen && commentsCapability === "available" && !isBusy && Boolean(commentBody.trim());
   useEffect(() => {
     const height = composerRef.current?.offsetHeight;
     if (height && Math.abs(height - composerHeight) > 0.5) setComposerHeight(height);
+    const cardHeight = pinCardRef.current?.offsetHeight;
+    if (cardHeight && Math.abs(cardHeight - pinCardHeight) > 0.5) setPinCardHeight(cardHeight);
   });
   useEffect(() => {
     if (isComposerOpen) composerBodyRef.current?.focus();
@@ -6721,6 +6784,9 @@ function VisualCommentsSection({
     setHighlightedCommentId(null);
     setFocusedCommentId(null);
     setTrackingCopyStatus("");
+    setViewedMeetingChoice(null);
+    setHoveredPinId(null);
+    setFocusedPinId(null);
   }, [storyId]);
   if (!enabled || options?.enabled === false) return null;
   async function mutate(path, body) {
@@ -6833,10 +6899,14 @@ function VisualCommentsSection({
       } : current
     );
   }
+  function forgetHoveredPin() {
+    setHoveredPinId(null);
+  }
   function togglePanel() {
     if (isPanelOpen) {
       clearVisualCommentsResume(storyId);
       if (editingCommentId) cancelCommentEdit(editingCommentId, false);
+      forgetHoveredPin();
     }
     setIsPanelOpen(!isPanelOpen);
   }
@@ -6881,6 +6951,7 @@ function VisualCommentsSection({
       setIsBusy(true);
       const sessionId = overview?.activeSession?.id ?? await commentsController.ensureMeeting(notesMeetingTitle());
       await mutate(`/sessions/${encodeURIComponent(sessionId)}/comments`, request);
+      setViewedMeetingId(sessionId);
       lastSavedCommentKind = commentKind;
       setPendingCapture(null);
       setPendingPoint(null);
@@ -6892,6 +6963,13 @@ function VisualCommentsSection({
       setIsBusy(false);
     }
   }
+  function toggleMeetingView(meetingId) {
+    setViewedMeetingId(viewedMeetingId === meetingId ? null : meetingId);
+    setSelectedCommentId(null);
+    setHighlightedCommentId(null);
+    forgetHoveredPin();
+    setTrackingCopyStatus("");
+  }
   function revealComment(commentId) {
     const item = Array.from(
       document.querySelectorAll(".sbfx-comments-panel [data-comment-id]")
@@ -6900,19 +6978,19 @@ function VisualCommentsSection({
     item?.focus();
   }
   async function copyTrackingPrompts(scope) {
-    const session = overview?.activeSession;
+    const session = viewedMeeting;
     if (!session) return;
     setIsCopyingTracking(true);
     setTrackingCopyStatus("");
     try {
       const meeting = await commentsController.getMeeting(session.id);
-      const reportBase = overview.activeReportUrl ? new URL(overview.activeReportUrl, window.location.href) : null;
+      const reportBase = new URL(session.reportUrl, window.location.href);
       const entries = meeting.comments.flatMap((comment, index) => {
         const capture = meeting.captures[comment.captureId];
         if (!capture || comment.resolvedAt || resolveVisualCommentKind(comment.kind) !== "tracking" || scope === "story" && capture.story.id !== storyId) {
           return [];
         }
-        const screenshotUrl = reportBase ? new URL(capture.image.path, reportBase) : null;
+        const screenshotUrl = new URL(capture.image.path, reportBase);
         return [
           {
             context: buildCommentPromptContext({
@@ -6920,9 +6998,9 @@ function VisualCommentsSection({
               comment,
               kind: "tracking",
               ordinal: index + 1,
-              projectRelativeSessionPath: overview.activeProjectRelativeSessionPath
+              projectRelativeSessionPath: session.projectRelativeSessionPath
             }),
-            screenshotUrl: screenshotUrl?.origin === window.location.origin ? screenshotUrl : null
+            screenshotUrl: screenshotUrl.origin === window.location.origin ? screenshotUrl : null
           }
         ];
       });
@@ -6995,8 +7073,13 @@ function VisualCommentsSection({
       });
     }
   }
+  const commentPath = (commentId) => {
+    const comment = overview?.comments.find((entry) => entry.id === commentId);
+    return comment ? `/sessions/${encodeURIComponent(comment.sessionId)}/comments/${encodeURIComponent(commentId)}` : null;
+  };
   async function saveCommentEdit(commentId) {
-    if (!overview?.activeSession) return;
+    const path = commentPath(commentId);
+    if (!overview || !path) return;
     const body = commentDrafts[commentId]?.trim() ?? "";
     if (!body || body.length > VISUAL_COMMENT_LIMITS.maxBodyLength) {
       setCommentErrors((current) => ({
@@ -7009,7 +7092,6 @@ function VisualCommentsSection({
     setCommentErrors((current) => ({ ...current, [commentId]: "" }));
     try {
       preserveOpenPanelDuringMutation();
-      const path = `/sessions/${encodeURIComponent(overview.activeSession.id)}/comments/${encodeURIComponent(commentId)}`;
       const comment = overview.comments.find((entry) => entry.id === commentId);
       const pin = commentPinDrafts[commentId];
       const evidenceImage = document.querySelector(
@@ -7125,13 +7207,13 @@ function VisualCommentsSection({
     }
   }
   async function confirmDeleteComment() {
-    if (!overview?.activeSession || !pendingDeleteCommentId) return;
+    const path = pendingDeleteCommentId ? commentPath(pendingDeleteCommentId) : null;
+    if (!pendingDeleteCommentId || !path) return;
     const commentId = pendingDeleteCommentId;
     setCommentMutationId(commentId);
     setCommentErrors((current) => ({ ...current, [commentId]: "" }));
     try {
       preserveOpenPanelDuringMutation();
-      const path = `/sessions/${encodeURIComponent(overview.activeSession.id)}/comments/${encodeURIComponent(commentId)}`;
       const payload = await commentsController.delete(path);
       setReportPending(Boolean(payload.reportStale));
       closeDeleteDialog(false);
@@ -7152,12 +7234,21 @@ function VisualCommentsSection({
   const savedPins = isPanelActive && showSavedPins && captureTargetRect ? listedComments.filter(
     (comment) => (comment.pin ?? comment.preview?.pin) && matchesPrototypeState(comment)
   ) : [];
-  const openTrackingOnStory = storyComments.filter(
+  const openTrackingOnStory = viewedComments.filter(
     (comment) => resolveVisualCommentKind(comment.kind) === "tracking" && !comment.resolvedAt
   ).length;
-  const hasTrackingComments = (overview?.activeTracking?.total ?? 0) > 0;
-  const otherStoriesHaveOpenTracking = (overview?.activeTracking?.open ?? 0) > openTrackingOnStory;
+  const hasTrackingComments = (viewedMeeting?.tracking.total ?? 0) > 0;
+  const otherStoriesHaveOpenTracking = (viewedMeeting?.tracking.open ?? 0) > openTrackingOnStory;
   const saveShortcutHint = /Mac|iPhone|iPad/.test(navigator.platform) ? "\u2318\u21B5" : "Ctrl \u21B5";
+  const pinCardComment = isCapturing || isComposerOpen ? null : savedPins.find((comment) => comment.id === hoveredPinId) ?? savedPins.find((comment) => comment.id === focusedPinId) ?? null;
+  const savedPinCenter = (comment) => {
+    const pin = comment.pin ?? comment.preview?.pin;
+    return {
+      left: captureTargetRect.left + captureTargetRect.width * pin.xRatio,
+      top: captureTargetRect.top + captureTargetRect.height * pin.yRatio
+    };
+  };
+  const pinCardPlacement = pinCardComment ? getSavedPinCardPlacement(savedPinCenter(pinCardComment), viewportSize, pinCardHeight) : null;
   const composerPlacement = isComposerOpen ? getCommentComposerPlacement(livePinPosition, viewportSize, composerHeight) : null;
   return createElement(
     Fragment,
@@ -7263,7 +7354,10 @@ function VisualCommentsSection({
                   className: "sbfx-comments-panel__filter-option",
                   "data-comment-filter": filter,
                   key: filter,
-                  onClick: () => setCommentFilter(filter),
+                  onClick: () => {
+                    setCommentFilter(filter);
+                    forgetHoveredPin();
+                  },
                   type: "button"
                 },
                 `${filter === "all" ? labels.filterAllComments : commentKindLabels[filter]} ${commentCounts[filter]}`
@@ -7277,7 +7371,10 @@ function VisualCommentsSection({
               "aria-pressed": showSavedPins,
               className: "sbfx-comments-panel__filter-option sbfx-comments-panel__pins-toggle",
               "data-show-pins": showSavedPins ? "true" : "false",
-              onClick: () => setShowSavedPins(!showSavedPins),
+              onClick: () => {
+                setShowSavedPins(!showSavedPins);
+                forgetHoveredPin();
+              },
               title: labels.showPins,
               type: "button"
             },
@@ -7287,7 +7384,26 @@ function VisualCommentsSection({
         createElement(
           "div",
           { className: "sbfx-comments-panel__scroll" },
-          listedComments.length ? createElement(
+          viewedMeeting ? createElement(
+            "p",
+            {
+              className: "sbfx-comments-panel__viewing",
+              "data-viewed-meeting": viewedMeeting.id,
+              key: "viewing"
+            },
+            `${labels.viewingMeeting} `,
+            createElement("strong", null, viewedMeeting.title)
+          ) : null,
+          !viewedMeeting ? createElement(
+            "p",
+            {
+              className: "sbfx-comments-panel__empty",
+              "data-comments-empty": "true",
+              "data-comments-hint": storyComments.length ? "view" : "none",
+              key: "hint"
+            },
+            storyComments.length ? labels.viewMeetingHint : labels.noComments
+          ) : listedComments.length ? createElement(
             "div",
             {
               "aria-label": labels.commentsList,
@@ -7414,48 +7530,85 @@ function VisualCommentsSection({
               "data-comments-empty": "true",
               key: "empty"
             },
-            storyComments.length ? labels.noFilteredComments : labels.noComments
+            viewedComments.length ? labels.noFilteredComments : labels.noComments
           ),
-          overview?.recentSessions.length ? createElement(
+          meetingRows.length ? createElement(
             "section",
             {
-              "aria-label": "Recent meetings",
+              "aria-label": labels.meetingsHeading,
               className: "sbfx-comments-panel__recent-meetings",
-              key: "recent-meetings"
+              key: "meetings"
             },
-            createElement("h3", { className: "sbfx-comments-panel__section-heading" }, "Recent meetings"),
-            ...overview.recentSessions.slice(0, 5).map(
-              (session) => createElement(
+            createElement(
+              "h3",
+              { className: "sbfx-comments-panel__section-heading" },
+              labels.meetingsHeading
+            ),
+            ...meetingRows.map((meeting) => {
+              const isViewed = viewedMeeting?.id === meeting.id;
+              return createElement(
                 "article",
                 {
                   className: "sbfx-comments-panel__meeting-history",
-                  "data-meeting-id": session.id,
-                  key: session.id
+                  "data-meeting-active": meeting.active ? "true" : void 0,
+                  "data-meeting-id": meeting.id,
+                  key: meeting.id
                 },
-                createElement("strong", null, session.title),
                 createElement(
-                  "span",
-                  { className: "sbfx-review__meta" },
-                  `${session.commentCount} comment${session.commentCount === 1 ? "" : "s"}`
+                  "div",
+                  { className: "sbfx-comments-panel__meeting-copy" },
+                  createElement(
+                    "div",
+                    { className: "sbfx-comments-panel__meeting-title-line" },
+                    createElement("strong", { title: meeting.title }, meeting.title),
+                    meeting.active ? createElement(
+                      "span",
+                      { className: "sbfx-comments-panel__meeting-active", key: "active" },
+                      labels.activeMeeting
+                    ) : null
+                  ),
+                  createElement(
+                    "div",
+                    { className: "sbfx-comments-panel__meeting-meta" },
+                    createElement(
+                      "span",
+                      { className: "sbfx-review__meta" },
+                      `${meeting.commentCount} comment${meeting.commentCount === 1 ? "" : "s"}`
+                    ),
+                    createElement(
+                      "a",
+                      {
+                        className: "sbfx-comments-panel__text-button",
+                        href: meeting.reportUrl,
+                        rel: "noreferrer",
+                        target: "_blank"
+                      },
+                      "Open report"
+                    )
+                  )
                 ),
-                createElement(
-                  "a",
+                meeting.storyCommentCount > 0 ? createElement(
+                  "button",
                   {
-                    className: "sbfx-comments-panel__text-button",
-                    href: `${apiPath}/reports/sessions/${encodeURIComponent(session.id)}/index.html`,
-                    rel: "noreferrer",
-                    target: "_blank"
+                    "aria-checked": isViewed ? "true" : "false",
+                    "aria-label": `${labels.viewMeeting} ${meeting.storyCommentCount} \xB7 ${meeting.title}`,
+                    className: "sbfx-comments-panel__filter-option sbfx-comments-panel__meeting-view",
+                    "data-meeting-view": meeting.id,
+                    key: "view",
+                    onClick: () => toggleMeetingView(meeting.id),
+                    role: "switch",
+                    type: "button"
                   },
-                  "Open report"
-                )
-              )
-            )
+                  `${labels.viewMeeting} ${meeting.storyCommentCount}`
+                ) : null
+              );
+            })
           ) : null
         ),
         createElement(
           "footer",
           { className: "sbfx-comments-panel__footer" },
-          overview?.activeSession && hasTrackingComments ? createElement(
+          viewedMeeting && hasTrackingComments ? createElement(
             "div",
             { className: "sbfx-comments-panel__handoff", key: "handoff" },
             createElement(
@@ -7999,6 +8152,9 @@ function VisualCommentsSection({
           },
           onPointerDown: (event) => event.stopPropagation(),
           onPointerUp: (event) => event.stopPropagation(),
+          onMouseEnter: () => setHoveredPinId(comment.id),
+          onMouseLeave: () => setHoveredPinId((current) => current === comment.id ? null : current),
+          "aria-describedby": pinCardComment?.id === comment.id ? pinCardId : void 0,
           style: {
             left: `${captureTargetRect.left + captureTargetRect.width * pin.xRatio}px`,
             top: `${captureTargetRect.top + captureTargetRect.height * pin.yRatio}px`
@@ -8007,7 +8163,56 @@ function VisualCommentsSection({
         },
         comment.ordinal
       );
-    })
+    }),
+    pinCardComment && pinCardPlacement ? createElement(
+      "div",
+      {
+        className: "sbfx-review__pin-card",
+        "data-saved-pin-card": pinCardComment.id,
+        "data-sbfx-capture-ignore": "true",
+        id: pinCardId,
+        key: "saved-pin-card",
+        ref: pinCardRef,
+        role: "tooltip",
+        style: {
+          inlineSize: `${pinCardPlacement.width}px`,
+          left: `${pinCardPlacement.left}px`,
+          top: `${pinCardPlacement.top}px`
+        }
+      },
+      createElement(
+        "p",
+        { className: "sbfx-review__pin-card-title" },
+        `Comment ${pinCardComment.ordinal} \xB7 ${commentKindLabels[resolveVisualCommentKind(pinCardComment.kind)]} \xB7 ${pinCardComment.resolvedAt ? "Completed" : "Open"}`
+      ),
+      createElement("p", { className: "sbfx-review__pin-card-body" }, pinCardComment.body),
+      createElement(
+        "p",
+        { className: "sbfx-review__pin-card-meta" },
+        `${pinCardComment.authorName} \xB7 ${formatCommentTime(pinCardComment.createdAt)}`
+      ),
+      pinCardComment.preview && !pinCardImageErrors[pinCardComment.id] ? createElement("img", {
+        alt: `Screenshot for comment ${pinCardComment.ordinal}`,
+        className: "sbfx-review__pin-card-image",
+        key: `pin-card-image-${pinCardComment.id}`,
+        onError: () => setPinCardImageErrors((current) => ({
+          ...current,
+          [pinCardComment.id]: true
+        })),
+        src: pinCardComment.preview.imageUrl,
+        style: {
+          aspectRatio: `${pinCardComment.preview.width}/${pinCardComment.preview.height}`
+        }
+      }) : createElement(
+        "p",
+        {
+          className: "sbfx-review__pin-card-unavailable",
+          "data-pin-card-screenshot-unavailable": "true",
+          key: "pin-card-unavailable"
+        },
+        labels.screenshotUnavailable
+      )
+    ) : null
   );
 }
 function FigmaExportReview({

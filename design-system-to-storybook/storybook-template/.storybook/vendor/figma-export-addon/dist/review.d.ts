@@ -20,6 +20,7 @@ declare const portalType: unique symbol;
 
 type FigmaReviewLabels = Partial<{
     approved: string;
+    activeMeeting: string;
     addVisualComment: string;
     adjustCommentPoint: string;
     adjustCommentPointHint: string;
@@ -60,6 +61,7 @@ type FigmaReviewLabels = Partial<{
     filterAllComments: string;
     filterComments: string;
     imported: string;
+    meetingsHeading: string;
     needsFix: string;
     noComments: string;
     noFilteredComments: string;
@@ -72,6 +74,7 @@ type FigmaReviewLabels = Partial<{
     review: string;
     saveAuthorName: string;
     saveCommentChanges: string;
+    screenshotUnavailable: string;
     showPins: string;
     showPinsShort: string;
     startMeeting: string;
@@ -79,6 +82,9 @@ type FigmaReviewLabels = Partial<{
     submitComment: string;
     sourcePlaceholder: string;
     title: string;
+    viewMeeting: string;
+    viewMeetingHint: string;
+    viewingMeeting: string;
     visualComments: string;
 }>;
 type FigmaExportReviewOptions = {

@@ -494,6 +494,86 @@ try {
   const directEmptyReportResponse = await fetch(`${base}/reports/sessions/${meetingId}/index.html`);
   assert.equal(directEmptyReportResponse.status, 200, "direct empty session report remains readable");
   assert.match(await directEmptyReportResponse.text(), /This meeting has 0 captures and 0 comments\./);
+  // Screenshot URL follows the comment's meeting: a second store keeps the
+  // main flow's index expectations untouched.
+  const crossRoot = await mkdtemp(join(tmpdir(), "sbfx-comments-http-cross-"));
+  const crossStore = createVisualCommentStore({ cwd: crossRoot });
+  const crossHandler = createVisualCommentsHandler({ basePath: apiPath, store: crossStore });
+  const crossServer = http.createServer((request, response) => {
+    if (request.url?.startsWith(apiPath)) {
+      request.url = request.url.slice(apiPath.length) || "/";
+    }
+    crossHandler(request, response);
+  });
+  await new Promise((resolve) => crossServer.listen(0, "127.0.0.1", resolve));
+  try {
+    const crossOrigin = `http://127.0.0.1:${crossServer.address().port}`;
+    const crossBase = `${crossOrigin}${apiPath}`;
+    const crossPost = (path, body) =>
+      fetch(`${crossBase}${path}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    const firstMeeting = (await (await crossPost("/sessions", { title: "Design review 7/29" })).json())
+      .meeting.session.id;
+    const closedComment = (await (await crossPost(
+      `/sessions/${firstMeeting}/comments`,
+      { ...commentRequest("cross-closed"), kind: "tracking" },
+    )).json()).comment;
+    assert.equal((await crossPost(`/sessions/${firstMeeting}/close`)).status, 200);
+    const secondMeeting = (await (await crossPost("/sessions", { title: "Design review 10/2" })).json())
+      .meeting.session.id;
+    assert.notEqual(secondMeeting, firstMeeting);
+    const activeComment = (await (await crossPost(
+      `/sessions/${secondMeeting}/comments`,
+      commentRequest("cross-active"),
+    )).json()).comment;
+
+    const storyOverview = await (await fetch(`${crossBase}?storyId=demo--story`)).json();
+    assert.deepEqual(
+      storyOverview.comments.map((entry) => [entry.id, entry.sessionId, entry.ordinal]),
+      [
+        [closedComment.id, firstMeeting, 1],
+        [activeComment.id, secondMeeting, 1],
+      ],
+      "the Story overview returns comments from the closed and the active meeting",
+    );
+    const closedImageUrl = storyOverview.comments[0].preview.imageUrl;
+    assert.match(
+      closedImageUrl,
+      new RegExp(`^${apiPath}/reports/sessions/${firstMeeting}/assets/[a-f0-9]{64}\\.png$`),
+      "a closed meeting's screenshot URL addresses that meeting",
+    );
+    assert.equal((await fetch(`${crossOrigin}${closedImageUrl}`)).status, 200);
+    assert.match(
+      storyOverview.comments[1].preview.imageUrl,
+      new RegExp(`^${apiPath}/reports/sessions/${secondMeeting}/assets/`),
+    );
+    assert.deepEqual(
+      storyOverview.meetings.map((meeting) => [meeting.id, meeting.active, meeting.storyCommentCount, meeting.reportUrl]),
+      [
+        [secondMeeting, true, 1, `${apiPath}/reports/sessions/${secondMeeting}/index.html`],
+        [firstMeeting, false, 1, `${apiPath}/reports/sessions/${firstMeeting}/index.html`],
+      ],
+      "each meeting row carries its own report URL",
+    );
+    for (const meeting of storyOverview.meetings) {
+      assert.equal((await fetch(`${crossOrigin}${meeting.reportUrl}`)).status, 200);
+    }
+    assert.deepEqual(storyOverview.meetings[1].tracking, { open: 1, total: 1 });
+
+    const unscopedOverview = await (await fetch(crossBase)).json();
+    assert.deepEqual(
+      unscopedOverview.comments.map((entry) => [entry.id, entry.sessionId]),
+      [[activeComment.id, secondMeeting]],
+      "without storyId only the active meeting's comments are returned",
+    );
+    assert.equal("meetings" in unscopedOverview, false);
+  } finally {
+    await new Promise((resolve) => crossServer.close(resolve));
+    await rm(crossRoot, { recursive: true, force: true });
+  }
   console.log("visual comment HTTP checks passed");
 } finally {
   await new Promise((resolve) => server.close(resolve));

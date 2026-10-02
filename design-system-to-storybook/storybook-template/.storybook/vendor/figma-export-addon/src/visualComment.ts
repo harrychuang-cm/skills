@@ -304,6 +304,48 @@ export function getCommentComposerPlacement(
   };
 }
 
+// The saved pin card: at most 264px wide (a 240px thumbnail plus 12px padding
+// on each side) and never wider than the viewport minus its 12px margins.
+const savedPinCardMaxWidth = 264;
+const savedPinCardGap = 12;
+const savedPinHalfSize = 12;
+
+export type SavedPinCardPlacement = { left: number; top: number; width: number };
+
+/**
+ * Beside the pin on the inline-end side, else the inline-start side; when
+ * neither side has room, below the pin (above near the bottom edge) so the
+ * card never covers the pin it describes.
+ */
+export function getSavedPinCardPlacement(
+  pin: { left: number; top: number },
+  viewport: { height: number; width: number },
+  cardHeight: number,
+): SavedPinCardPlacement {
+  const margin = composerViewportMargin;
+  const width = Math.min(savedPinCardMaxWidth, viewport.width - margin * 2);
+  const offset = savedPinHalfSize + savedPinCardGap;
+  const clampTop = (top: number) =>
+    Math.min(Math.max(margin, top), Math.max(margin, viewport.height - margin - cardHeight));
+  const sideTop = clampTop(pin.top - cardHeight / 2);
+  if (pin.left + offset + width <= viewport.width - margin) {
+    return { left: pin.left + offset, top: sideTop, width };
+  }
+  if (pin.left - offset - width >= margin) {
+    return { left: pin.left - offset - width, top: sideTop, width };
+  }
+  const left = Math.min(
+    Math.max(margin, pin.left - width / 2),
+    Math.max(margin, viewport.width - margin - width),
+  );
+  const below = pin.top + offset;
+  const top =
+    below + cardHeight <= viewport.height - margin
+      ? below
+      : clampTop(pin.top - offset - cardHeight);
+  return { left, top, width };
+}
+
 /**
  * Arms the next pointer sequence before prototype handlers run. The returned
  * controller is also used by the panel Cancel action and unmount cleanup.

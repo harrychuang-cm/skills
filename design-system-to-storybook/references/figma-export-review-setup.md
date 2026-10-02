@@ -256,6 +256,19 @@ moves, and a comment captured in another route or state shows no pin. The report
 gains a kind filter and **Hide completed** whose state lives in the URL fragment,
 a side-by-side layout from 1024px wide, and local-time timestamps.
 
+From addon 0.13.0 the panel's **Meetings** section lists the active meeting, the
+five most recent closed meetings, and any older meeting with comments on the
+current Story. A meeting with comments on the current Story has a **View**
+switch (for example **View 2**); turning it on lays that meeting's comments and
+pins over the Story, with the same numbers as its report, and the list, kind
+counts, Edit, Delete, and **Copy tracking prompts** follow it, closed meetings
+included. One meeting is viewed at a time and every switch starts off, so the
+panel no longer shows the active meeting's comments until its View is on;
+saving a comment turns on the meeting that stored it. Hovering or focusing a
+saved pin shows a card with the comment and the screenshot taken when it was
+made. No configuration change is needed; the overview request with `storyId`
+now returns that Story's comments from every meeting plus a `meetings` list.
+
 For a prototype that keeps a Data Authority registry, record the resulting
 event as a `proposed` `analytics` contract; see
 `storybook-product-prototype/references/handoff-authority.md`.

@@ -1455,7 +1455,12 @@ function createVisualCommentStore(options = {}) {
     `${JSON.stringify(meeting, null, 2)}
 `
   );
-  const listMeetings = async () => {
+  const isMeetingFile = (value) => {
+    if (!value || typeof value !== "object") return false;
+    const meeting = value;
+    return Boolean(meeting.session) && typeof meeting.session === "object" && typeof meeting.session.id === "string" && typeof meeting.session.startedAt === "string" && Boolean(meeting.captures) && typeof meeting.captures === "object" && Array.isArray(meeting.comments);
+  };
+  const readAllMeetings = async () => {
     let entries = [];
     try {
       entries = await readdir(join(root, "sessions"));
@@ -1464,21 +1469,40 @@ function createVisualCommentStore(options = {}) {
       throw error;
     }
     const meetings = await Promise.all(
-      entries.filter((entry) => sessionIdPattern.test(entry)).map(async (id) => {
-        try {
-          const meeting = await readMeeting(id);
-          return {
-            ...meeting.session,
-            captureCount: Object.keys(meeting.captures).length,
-            commentCount: meeting.comments.length
-          };
-        } catch {
-          return null;
-        }
-      })
+      entries.filter((entry) => sessionIdPattern.test(entry)).map((id) => readMeeting(id).catch(() => null))
     );
-    return meetings.filter((meeting) => Boolean(meeting)).sort((a, b) => b.startedAt.localeCompare(a.startedAt));
+    return meetings.filter(isMeetingFile).sort((a, b) => b.session.startedAt.localeCompare(a.session.startedAt));
   };
+  const summarizeMeeting = (meeting) => ({
+    ...meeting.session,
+    captureCount: Object.keys(meeting.captures).length,
+    commentCount: meeting.comments.length
+  });
+  const listMeetings = async () => (await readAllMeetings()).map(summarizeMeeting);
+  const projectOverviewComment = (meeting, comment, ordinal) => {
+    const capture = meeting.captures[comment.captureId];
+    const image = capture?.image;
+    const hasPreview = typeof image?.path === "string" && /^assets\/[a-f0-9]{64}\.(?:png|webp)$/.test(image.path) && typeof image.width === "number" && Number.isFinite(image.width) && image.width > 0 && typeof image.height === "number" && Number.isFinite(image.height) && image.height > 0;
+    return {
+      ...comment,
+      kind: resolveVisualCommentKind(comment.kind),
+      sessionId: meeting.session.id,
+      ordinal,
+      state: {
+        ...capture?.story.routeId ? { routeId: capture.story.routeId } : {},
+        ...capture?.story.stateId ? { stateId: capture.story.stateId } : {}
+      },
+      preview: hasPreview ? {
+        imagePath: image.path,
+        width: image.width,
+        height: image.height,
+        pin: comment.pin
+      } : null
+    };
+  };
+  const storyCommentsOf = (meeting, storyId) => meeting.comments.flatMap(
+    (comment, index) => meeting.captures[comment.captureId]?.story.id === storyId ? [projectOverviewComment(meeting, comment, index + 1)] : []
+  );
   const rebuildReports = async (meeting) => {
     await mkdir(join(root, "sessions"), { recursive: true });
     if (meeting) {
@@ -1541,52 +1565,57 @@ function createVisualCommentStore(options = {}) {
       await rebuildReports(meeting);
     }),
     getOverview: async (storyId) => {
-      const [state, recentSessions] = await Promise.all([
-        readState(),
-        listMeetings()
-      ]);
-      const activeMeeting = state.activeSessionId ? await readMeeting(state.activeSessionId).catch(() => null) : null;
-      const trackingComments = (activeMeeting?.comments ?? []).filter(
-        (comment) => resolveVisualCommentKind(comment.kind) === "tracking"
-      );
-      const comments = activeMeeting ? activeMeeting.comments.map((comment, index) => ({ comment, ordinal: index + 1 })).filter(({ comment }) => {
-        const capture = activeMeeting.captures[comment.captureId];
-        return !storyId || capture?.story.id === storyId;
-      }).map(({ comment, ordinal }) => {
-        const capture = activeMeeting.captures[comment.captureId];
-        const image = capture?.image;
-        const hasPreview = typeof image?.path === "string" && /^assets\/[a-f0-9]{64}\.(?:png|webp)$/.test(image.path) && typeof image.width === "number" && Number.isFinite(image.width) && image.width > 0 && typeof image.height === "number" && Number.isFinite(image.height) && image.height > 0;
+      const [state, meetings] = await Promise.all([readState(), readAllMeetings()]);
+      const activeMeeting = meetings.find((meeting) => meeting.session.id === state.activeSessionId) ?? null;
+      const trackingCounts = (meeting) => {
+        const tracking = (meeting?.comments ?? []).filter(
+          (comment) => resolveVisualCommentKind(comment.kind) === "tracking"
+        );
         return {
-          ...comment,
-          kind: resolveVisualCommentKind(comment.kind),
-          ordinal,
-          state: {
-            ...capture?.story.routeId ? { routeId: capture.story.routeId } : {},
-            ...capture?.story.stateId ? { stateId: capture.story.stateId } : {}
-          },
-          preview: hasPreview ? {
-            imagePath: image.path,
-            width: image.width,
-            height: image.height,
-            pin: comment.pin
-          } : null
+          open: tracking.filter((comment) => !comment.resolvedAt).length,
+          total: tracking.length
         };
-      }) : [];
-      return {
+      };
+      const recentSessions = meetings.filter((meeting) => meeting.session.id !== state.activeSessionId).map(summarizeMeeting);
+      const base = {
         version: 1,
-        activeSession: activeMeeting ? {
-          ...activeMeeting.session,
-          captureCount: Object.keys(activeMeeting.captures).length,
-          commentCount: activeMeeting.comments.length
-        } : null,
-        recentSessions: recentSessions.filter((session) => session.id !== state.activeSessionId).slice(0, 20),
+        activeSession: activeMeeting ? summarizeMeeting(activeMeeting) : null,
+        recentSessions: recentSessions.slice(0, 20),
         activeProjectRelativeSessionPath: activeMeeting ? projectRelativeSessionPath(activeMeeting.session.id) : null,
         // Counted across every Story of the active meeting.
-        activeTracking: {
-          open: trackingComments.filter((comment) => !comment.resolvedAt).length,
-          total: trackingComments.length
-        },
-        comments
+        activeTracking: trackingCounts(activeMeeting)
+      };
+      if (!storyId) {
+        return {
+          ...base,
+          comments: activeMeeting ? activeMeeting.comments.map(
+            (comment, index) => projectOverviewComment(activeMeeting, comment, index + 1)
+          ) : []
+        };
+      }
+      const storyComments = new Map(
+        meetings.map((meeting) => [meeting.session.id, storyCommentsOf(meeting, storyId)])
+      );
+      const recentClosedIds = new Set(
+        recentSessions.slice(0, 5).map((session) => session.id)
+      );
+      const listed = meetings.filter(
+        (meeting) => meeting.session.id === state.activeSessionId || recentClosedIds.has(meeting.session.id) || (storyComments.get(meeting.session.id)?.length ?? 0) > 0
+      );
+      return {
+        ...base,
+        // Oldest meeting first, then canonical order within each meeting.
+        comments: [...meetings].reverse().flatMap((meeting) => storyComments.get(meeting.session.id) ?? []),
+        meetings: listed.map(
+          (meeting) => ({
+            ...meeting.session,
+            active: meeting.session.id === state.activeSessionId,
+            commentCount: meeting.comments.length,
+            storyCommentCount: storyComments.get(meeting.session.id)?.length ?? 0,
+            tracking: trackingCounts(meeting),
+            projectRelativeSessionPath: projectRelativeSessionPath(meeting.session.id)
+          })
+        )
       };
     },
     getMeeting: readMeeting,

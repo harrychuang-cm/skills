@@ -416,6 +416,12 @@ try {
       null,
       "a session outside the project root has no project-relative path",
     );
+    const externalStoryOverview = await externalStore.getOverview("components-button--primary");
+    assert.ok(
+      externalStoryOverview.meetings.length > 0 &&
+        externalStoryOverview.meetings.every((meeting) => meeting.projectRelativeSessionPath === null),
+      "every meeting row outside the project root has no project-relative path",
+    );
   } finally {
     await rm(externalProjectRoot, { recursive: true, force: true });
     await rm(externalCommentsRoot, { recursive: true, force: true });
@@ -699,6 +705,232 @@ try {
     }
   } finally {
     await rm(kindRoot, { recursive: true, force: true });
+  }
+
+  // Story comments across meetings: written as canonical files so startedAt is exact.
+  const crossRoot = await mkdtemp(join(tmpdir(), "sbfx-comments-cross-"));
+  try {
+    const commentsDir = join(crossRoot, "design-system/figma-export-review");
+    const asset = (seed) => `assets/${seed.repeat(64).slice(0, 64)}.png`;
+    const writeMeetingFile = async (id, { title, startedAt, closedAt = null, comments = [] }) => {
+      const captures = {};
+      const records = comments.map((entry, index) => {
+        const captureId = `${id}-capture-${index + 1}`;
+        if (entry.story) {
+          captures[captureId] = {
+            id: captureId,
+            capturedAt: entry.createdAt,
+            story: { id: entry.story, title: "Fixture", name: entry.story },
+            viewport: { width: 375, height: 812, devicePixelRatio: 2, scrollX: 0, scrollY: 0 },
+            image: { path: asset(String(index + 1)), mimeType: "image/png", width: 1, height: 1, cssWidth: 375, cssHeight: 812, sha256: "x", bytes: 1 },
+          };
+        }
+        return {
+          id: entry.id,
+          clientRequestId: `request-${entry.id}`,
+          captureId,
+          authorName: "Harry",
+          body: entry.body ?? entry.id,
+          ...(entry.kind ? { kind: entry.kind } : {}),
+          pin: { xRatio: 0.5, yRatio: 0.5 },
+          createdAt: entry.createdAt,
+          ...(entry.resolved ? { resolvedAt: "2026-10-02T00:00:00.000Z" } : {}),
+        };
+      });
+      await mkdir(join(commentsDir, "sessions", id), { recursive: true });
+      const text = `${JSON.stringify({ version: 1, session: { id, title, startedAt, closedAt }, captures, comments: records }, null, 2)}\n`;
+      await writeFile(join(commentsDir, "sessions", id, "meeting.json"), text);
+      return text;
+    };
+    const setActive = (id) =>
+      writeFile(join(commentsDir, "state.json"), `${JSON.stringify({ version: 1, activeSessionId: id })}\n`);
+
+    // Closed meeting comments are returned for the Story (the cm-chipK case).
+    const inventory = "prototypes-inventory-prototype--default";
+    const reviewText = await writeMeetingFile("20260729-77db03bf", {
+      title: "Design review 7/29/2026, 10:40:02 AM",
+      startedAt: "2026-07-29T02:40:02.000Z",
+      closedAt: "2026-10-02T00:58:11.936Z",
+      comments: [
+        { id: "c1", story: "components-broker-import-broker-import-menu--default", createdAt: "2026-07-29T02:41:00.000Z", resolved: true },
+        { id: "c2", story: "components-feedback-feature-introduction-card--default", createdAt: "2026-07-29T02:42:00.000Z" },
+        { id: "c3", story: inventory, kind: "tracking", body: "下單埋點", createdAt: "2026-07-29T02:43:00.000Z" },
+        { id: "c4", story: inventory, kind: "tracking", body: "設定埋點", createdAt: "2026-07-29T02:44:00.000Z" },
+        { id: "c5", createdAt: "2026-07-29T02:45:00.000Z" },
+      ],
+    });
+    await setActive(null);
+    const crossStore = createVisualCommentStore({ cwd: crossRoot });
+    const closedOverview = await crossStore.getOverview(inventory);
+    assert.deepEqual(
+      closedOverview.comments.map((comment) => [comment.id, comment.sessionId, comment.ordinal, comment.kind]),
+      [
+        ["c3", "20260729-77db03bf", 3, "tracking"],
+        ["c4", "20260729-77db03bf", 4, "tracking"],
+      ],
+      "a closed meeting's comments are returned for the Story with meeting-wide ordinals",
+    );
+    assert.equal(closedOverview.activeSession, null);
+    assert.deepEqual(
+      closedOverview.meetings.map((meeting) => ({
+        id: meeting.id,
+        active: meeting.active,
+        commentCount: meeting.commentCount,
+        storyCommentCount: meeting.storyCommentCount,
+        tracking: meeting.tracking,
+        projectRelativeSessionPath: meeting.projectRelativeSessionPath,
+      })),
+      [{
+        id: "20260729-77db03bf",
+        active: false,
+        commentCount: 5,
+        storyCommentCount: 2,
+        tracking: { open: 2, total: 2 },
+        projectRelativeSessionPath: "design-system/figma-export-review/sessions/20260729-77db03bf",
+      }],
+      "the meeting row carries whole-meeting and Story counts",
+    );
+    assert.ok(
+      closedOverview.comments.every((comment) => !("storyOrdinal" in comment)),
+      "no cross-meeting numbering is introduced",
+    );
+
+    // Comments from an active meeting follow the closed meeting's comments.
+    const activeMeeting = (await crossStore.startMeeting("Design review 10/2")).meeting.session.id;
+    await crossStore.createComment(activeMeeting, {
+      ...request("cross-new", "按鈕改色"),
+      story: { id: inventory, title: "Prototypes/Inventory", name: "Default" },
+    });
+    const mixedOverview = await crossStore.getOverview(inventory);
+    assert.deepEqual(
+      mixedOverview.comments.map((comment) => [comment.id === "c3" || comment.id === "c4" ? comment.id : "new", comment.sessionId, comment.ordinal]),
+      [
+        ["c3", "20260729-77db03bf", 3],
+        ["c4", "20260729-77db03bf", 4],
+        ["new", activeMeeting, 1],
+      ],
+      "comments from every meeting are returned, oldest meeting first",
+    );
+    assert.deepEqual(
+      mixedOverview.meetings.map((meeting) => [meeting.id, meeting.active, meeting.storyCommentCount]),
+      [
+        [activeMeeting, true, 1],
+        ["20260729-77db03bf", false, 2],
+      ],
+    );
+    assert.equal(
+      await readFile(join(commentsDir, "sessions", "20260729-77db03bf", "meeting.json"), "utf8"),
+      reviewText,
+      "reading across meetings never rewrites a closed meeting",
+    );
+
+    // Meeting list combines active, recent, and Story meetings.
+    const listRoot = await mkdtemp(join(tmpdir(), "sbfx-comments-list-"));
+    try {
+      const listDir = join(listRoot, "design-system/figma-export-review");
+      const writeListMeeting = async (id, startedAt, closedAt, comments) => {
+        await mkdir(join(listDir, "sessions", id), { recursive: true });
+        const captures = Object.fromEntries(comments.filter((entry) => entry.story).map((entry) => [
+          `${entry.id}-capture`,
+          {
+            id: `${entry.id}-capture`,
+            capturedAt: startedAt,
+            story: { id: entry.story, title: "Fixture", name: entry.story },
+            viewport: { width: 375, height: 812, devicePixelRatio: 2, scrollX: 0, scrollY: 0 },
+            image: { path: asset("a"), mimeType: "image/png", width: 1, height: 1, cssWidth: 375, cssHeight: 812, sha256: "x", bytes: 1 },
+          },
+        ]));
+        await writeFile(join(listDir, "sessions", id, "meeting.json"), JSON.stringify({
+          version: 1,
+          session: { id, title: id, startedAt, closedAt },
+          captures,
+          comments: comments.map((entry) => ({
+            id: entry.id,
+            clientRequestId: `request-${entry.id}`,
+            captureId: `${entry.id}-capture`,
+            authorName: "Harry",
+            body: entry.id,
+            pin: { xRatio: 0.5, yRatio: 0.5 },
+            createdAt: startedAt,
+          })),
+        }));
+      };
+      for (const day of [1, 2, 3, 4, 5, 6, 7]) {
+        await writeListMeeting(
+          `closed-0${day}`,
+          `2026-08-0${day}T00:00:00.000Z`,
+          `2026-08-0${day}T01:00:00.000Z`,
+          day === 1
+            ? [{ id: "x1", story: "story-x" }, { id: "lost" }]
+            : [{ id: `other-${day}`, story: "story-y" }],
+        );
+      }
+      await writeListMeeting("active-1", "2026-09-01T00:00:00.000Z", null, [{ id: "a1", story: "story-y" }]);
+      await mkdir(listDir, { recursive: true });
+      await writeFile(join(listDir, "state.json"), JSON.stringify({ version: 1, activeSessionId: "active-1" }));
+      const listStore = createVisualCommentStore({ cwd: listRoot });
+      const listOverview = await listStore.getOverview("story-x");
+      assert.deepEqual(
+        listOverview.meetings.map((meeting) => [meeting.id, meeting.storyCommentCount]),
+        [
+          ["active-1", 0],
+          ["closed-07", 0],
+          ["closed-06", 0],
+          ["closed-05", 0],
+          ["closed-04", 0],
+          ["closed-03", 0],
+          ["closed-01", 1],
+        ],
+        "meetings lists the active meeting, the five newest closed meetings, and the Story's meeting",
+      );
+      assert.deepEqual(
+        listOverview.comments.map((comment) => comment.id),
+        ["x1"],
+        "a comment whose capture is missing is not returned for any Story",
+      );
+
+      // A parsed file missing the meeting fields is skipped the same way.
+      for (const damaged of ["{}", JSON.stringify({ version: 1, session: { id: "closed-06", title: "x", startedAt: "2026-08-06T00:00:00.000Z", closedAt: null }, comments: [] })]) {
+        const damagedPath = join(listDir, "sessions", "closed-06", "meeting.json");
+        const original = await readFile(damagedPath, "utf8");
+        await writeFile(damagedPath, damaged);
+        const damagedOverview = await listStore.getOverview("story-x");
+        assert.ok(
+          !damagedOverview.meetings.some((meeting) => meeting.id === "closed-06") &&
+            damagedOverview.comments.map((comment) => comment.id).join(",") === "x1",
+          `a meeting file of ${damaged.slice(0, 20)} is skipped without failing the overview`,
+        );
+        assert.equal(
+          (await listStore.listMeetings()).some((meeting) => meeting.id === "closed-06"),
+          false,
+        );
+        await writeFile(damagedPath, original);
+      }
+
+      // Unreadable meeting file is skipped.
+      await writeFile(join(listDir, "sessions", "closed-05", "meeting.json"), "{ not json");
+      const skippedOverview = await listStore.getOverview("story-x");
+      assert.deepEqual(
+        skippedOverview.meetings.map((meeting) => meeting.id),
+        ["active-1", "closed-07", "closed-06", "closed-04", "closed-03", "closed-02", "closed-01"],
+        "an unreadable meeting is omitted without an error",
+      );
+      assert.deepEqual(skippedOverview.comments.map((comment) => comment.id), ["x1"]);
+
+      // Overview without a Story is unchanged.
+      const unscoped = await listStore.getOverview();
+      assert.deepEqual(
+        unscoped.comments.map((comment) => [comment.id, comment.sessionId, comment.ordinal]),
+        [["a1", "active-1", 1]],
+        "without a Story only the active meeting's comments are returned",
+      );
+      assert.equal("meetings" in unscoped, false, "without a Story there is no meetings field");
+      assert.equal(unscoped.activeSession.id, "active-1");
+    } finally {
+      await rm(listRoot, { recursive: true, force: true });
+    }
+  } finally {
+    await rm(crossRoot, { recursive: true, force: true });
   }
 
   const tempFiles = (await readdir(join(root, "design-system/figma-export-review"))).filter((file) => file.endsWith(".tmp"));

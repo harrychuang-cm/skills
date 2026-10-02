@@ -50,6 +50,7 @@ type VisualCommentDetailsPatch = {
 };
 type VisualCommentOverviewComment = VisualComment & {
     kind: VisualCommentKind;
+    sessionId: string;
     ordinal: number;
     state: {
         routeId?: string;
@@ -61,6 +62,16 @@ type VisualCommentOverviewComment = VisualComment & {
         height: number;
         pin: VisualComment["pin"];
     } | null;
+};
+type VisualOverviewMeeting = VisualMeeting & {
+    active: boolean;
+    commentCount: number;
+    storyCommentCount: number;
+    tracking: {
+        open: number;
+        total: number;
+    };
+    projectRelativeSessionPath: string | null;
 };
 type VisualMeetingFile = {
     version: 1;
@@ -95,22 +106,26 @@ declare function createVisualCommentStore(options?: VisualCommentStoreOptions): 
     listMeetings: () => Promise<VisualMeetingSummary[]>;
     refreshReports: (sessionId?: string) => Promise<void>;
     getOverview: (storyId?: string) => Promise<{
+        comments: VisualCommentOverviewComment[];
         version: 1;
-        activeSession: {
-            captureCount: number;
-            commentCount: number;
-            id: string;
-            title: string;
-            startedAt: string;
-            closedAt: string | null;
-        } | null;
+        activeSession: VisualMeetingSummary | null;
         recentSessions: VisualMeetingSummary[];
         activeProjectRelativeSessionPath: string | null;
         activeTracking: {
             open: number;
             total: number;
         };
+    } | {
         comments: VisualCommentOverviewComment[];
+        meetings: VisualOverviewMeeting[];
+        version: 1;
+        activeSession: VisualMeetingSummary | null;
+        recentSessions: VisualMeetingSummary[];
+        activeProjectRelativeSessionPath: string | null;
+        activeTracking: {
+            open: number;
+            total: number;
+        };
     }>;
     getMeeting: (id: string) => Promise<VisualMeetingFile>;
     startMeeting: (title: string) => Promise<{
@@ -158,4 +173,4 @@ declare function createVisualCommentStore(options?: VisualCommentStoreOptions): 
     }>;
 };
 
-export { type VisualCapture, type VisualComment, type VisualCommentDetailsPatch, type VisualCommentOverviewComment, type VisualCommentReportRenderContext, VisualCommentStoreError, type VisualCommentStoreOptions, type VisualCommentStoreState, type VisualMeeting, type VisualMeetingFile, type VisualMeetingSummary, createVisualCommentStore };
+export { type VisualCapture, type VisualComment, type VisualCommentDetailsPatch, type VisualCommentOverviewComment, type VisualCommentReportRenderContext, VisualCommentStoreError, type VisualCommentStoreOptions, type VisualCommentStoreState, type VisualMeeting, type VisualMeetingFile, type VisualMeetingSummary, type VisualOverviewMeeting, createVisualCommentStore };

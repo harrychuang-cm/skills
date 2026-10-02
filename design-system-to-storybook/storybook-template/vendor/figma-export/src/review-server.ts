@@ -336,19 +336,30 @@ export async function handleVisualCommentsRequest({
     }
     if (method === "GET" && segments.length === 0) {
       const overview = await store.getOverview(url.searchParams.get("storyId") ?? undefined);
+      const sessionReportBase = (sessionId: string) =>
+        `${basePath}/reports/sessions/${encodeURIComponent(sessionId)}`;
       sendJson(response, 200, {
         ...overview,
         comments: overview.comments.map((comment) => ({
           ...comment,
+          // The screenshot lives in the meeting that stores the comment.
           preview: comment.preview
             ? {
-                imageUrl: `${basePath}/reports/sessions/${encodeURIComponent(overview.activeSession!.id)}/assets/${encodeURIComponent(basename(comment.preview.imagePath))}`,
+                imageUrl: `${sessionReportBase(comment.sessionId)}/assets/${encodeURIComponent(basename(comment.preview.imagePath))}`,
                 width: comment.preview.width,
                 height: comment.preview.height,
                 pin: comment.preview.pin,
               }
             : null,
         })),
+        ...("meetings" in overview
+          ? {
+              meetings: overview.meetings.map((meeting) => ({
+                ...meeting,
+                reportUrl: `${sessionReportBase(meeting.id)}/index.html`,
+              })),
+            }
+          : {}),
         reportUrl: `${basePath}/reports`,
         activeReportUrl: overview.activeSession
           ? `${basePath}/reports/sessions/${encodeURIComponent(overview.activeSession.id)}/index.html`

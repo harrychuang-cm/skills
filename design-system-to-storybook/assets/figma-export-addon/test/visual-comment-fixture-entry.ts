@@ -13,6 +13,7 @@ import {
   beginVisualCommentCapture,
   captureVisualCommentTarget,
   getCommentComposerPlacement,
+  getSavedPinCardPlacement,
   hasVisibleCanvasPixels,
   type VisualCommentCapture,
   type VisualCommentCaptureResult,
@@ -70,7 +71,9 @@ function waitFor(test: () => unknown, timeout = 8_000): Promise<void> {
   return new Promise((resolve, reject) => {
     const poll = () => {
       if (test()) resolve();
-      else if (performance.now() - started > timeout) reject(new Error("Timed out waiting for fixture state."));
+      else if (performance.now() - started > timeout) {
+        reject(new Error(`Timed out waiting for fixture state: ${String(test).replace(/\s+/g, " ").slice(0, 240)}`));
+      }
       else setTimeout(poll, 25);
     };
     poll();
@@ -385,9 +388,9 @@ async function run() {
     );
   };
   // The whole meeting, as GET /sessions/<id> returns it.
-  const mockMeeting = () => ({
+  const mockMeetingOf = (list: Array<Record<string, unknown>>) => ({
     captures: Object.fromEntries(
-      comments.map((comment) => [
+      list.map((comment) => [
         `capture-${comment.id}`,
         {
           capturedAt: comment.createdAt,
@@ -397,7 +400,7 @@ async function run() {
         },
       ]),
     ),
-    comments: comments.map((comment) => ({
+    comments: list.map((comment) => ({
       body: comment.body,
       captureId: `capture-${comment.id}`,
       createdAt: comment.createdAt,
@@ -408,7 +411,21 @@ async function run() {
     })),
     version: 1,
   });
+  const mockMeeting = () => mockMeetingOf(comments);
   const comments: Array<Record<string, unknown>> = [];
+  // A closed meeting; it receives a comment on the current Story once the
+  // empty-Story checks are done.
+  const closedComments: Array<Record<string, unknown>> = [];
+  const closedMeetingComment = {
+    id: "comment-closed-1",
+    authorName: "Eve",
+    body: "Previous meeting tracking comment",
+    createdAt: "2026-07-19T08:30:00.000Z",
+    kind: "tracking",
+    pin: { xRatio: 0.82, yRatio: 0.18 },
+    story: { id: "demo--story" },
+  };
+  let meetingOne: { title: string; startedAt: string } | null = null;
   const requests: Array<{ method: string; path: string; body?: unknown }> = [];
   const originalFetch = window.fetch.bind(window);
   window.fetch = async (input, init) => {
@@ -432,12 +449,14 @@ async function run() {
           // Another browser started a meeting first.
           conflictNextMeetingStart = false;
           activeSession = { id: "meeting-1", title: "Weekly design review", startedAt: new Date().toISOString(), closedAt: null, captureCount: comments.length, commentCount: comments.length };
+          meetingOne = { title: activeSession.title, startedAt: activeSession.startedAt };
           return new Response(
             JSON.stringify({ activeMeeting: activeSession, code: "ACTIVE", error: "A meeting is already active." }),
             { status: 409 },
           );
         }
         activeSession = { id: "meeting-1", title: body.title, startedAt: new Date().toISOString(), closedAt: null, captureCount: comments.length, commentCount: comments.length };
+        meetingOne = { title: activeSession.title, startedAt: activeSession.startedAt };
         return new Response(JSON.stringify({ meeting: { session: activeSession }, reportStale: false }), { status: 201 });
       }
       if (method === "POST" && path.endsWith("/comments")) {
@@ -509,16 +528,20 @@ async function run() {
         }
         return new Response(JSON.stringify({ comment: savedComment, reportStale: false }), { status: 201 });
       }
-      if (method === "GET" && path === "/sessions/meeting-1") {
+      if (method === "GET" && (path === "/sessions/meeting-1" || path === "/sessions/meeting-closed")) {
         if (failNextMeetingRead) {
           failNextMeetingRead = false;
           return new Response(JSON.stringify({ error: "Temporary meeting read failure." }), { status: 500 });
         }
-        return new Response(JSON.stringify(mockMeeting()), { status: 200 });
+        return new Response(
+          JSON.stringify(path === "/sessions/meeting-1" ? mockMeeting() : mockMeetingOf(closedComments)),
+          { status: 200 },
+        );
       }
-      const commentMatch = path.match(/^\/sessions\/meeting-1\/comments\/([^/]+)$/);
+      const commentMatch = path.match(/^\/sessions\/(meeting-1|meeting-closed)\/comments\/([^/]+)$/);
+      const commentList = commentMatch?.[1] === "meeting-closed" ? closedComments : comments;
       if (commentMatch && method === "PATCH") {
-        const comment = comments.find((entry) => entry.id === decodeURIComponent(commentMatch[1]));
+        const comment = commentList.find((entry) => entry.id === decodeURIComponent(commentMatch[2]));
         if (!comment) return new Response(JSON.stringify({ error: "Comment not found." }), { status: 404 });
         if (failNextCommentPatch) {
           failNextCommentPatch = false;
@@ -554,11 +577,11 @@ async function run() {
         return new Response(JSON.stringify({ comment, reportStale: false }), { status: 200 });
       }
       if (commentMatch && method === "DELETE") {
-        const commentId = decodeURIComponent(commentMatch[1]);
-        const commentIndex = comments.findIndex((entry) => entry.id === commentId);
+        const commentId = decodeURIComponent(commentMatch[2]);
+        const commentIndex = commentList.findIndex((entry) => entry.id === commentId);
         if (commentIndex < 0) return new Response(JSON.stringify({ error: "Comment not found." }), { status: 404 });
-        comments.splice(commentIndex, 1);
-        if (activeSession) {
+        commentList.splice(commentIndex, 1);
+        if (activeSession && commentList === comments) {
           activeSession = {
             ...activeSession,
             commentCount: Math.max(0, activeSession.commentCount - 1),
@@ -568,19 +591,17 @@ async function run() {
       }
       if (method === "POST" && path.endsWith("/close")) activeSession = null;
       const requestedStoryId = url.searchParams.get("storyId");
-      const storyComments = requestedStoryId
-        ? comments.filter(
-            (comment) =>
-              (comment.story as { id?: string } | undefined)?.id === requestedStoryId,
-          )
-        : comments;
       const trackingComments = comments.filter((comment) => mockKind(comment) === "tracking");
-      const overviewComments = storyComments.map((comment) => {
-        const ordinal = comments.indexOf(comment) + 1;
+      const projectComment = (
+        comment: Record<string, unknown>,
+        sessionId: string,
+        ordinal: number,
+      ) => {
         const pin = mockPin(comment);
         const story = mockStory(comment);
         return {
           ...comment,
+          sessionId,
           pin,
           ordinal,
           state:
@@ -601,7 +622,54 @@ async function run() {
                   pin,
                 },
         };
-      });
+      };
+      const ofStory = (list: Array<Record<string, unknown>>) =>
+        list.filter((comment) => mockStory(comment)?.id === requestedStoryId);
+      const meetingOneComments = (requestedStoryId ? ofStory(comments) : comments).map(
+        (comment) => projectComment(comment, "meeting-1", comments.indexOf(comment) + 1),
+      );
+      const closedStoryComments = requestedStoryId
+        ? ofStory(closedComments).map((comment) =>
+            projectComment(comment, "meeting-closed", closedComments.indexOf(comment) + 1),
+          )
+        : [];
+      const trackingOf = (list: Array<Record<string, unknown>>) => {
+        const tracking = list.filter((comment) => mockKind(comment) === "tracking");
+        return {
+          open: tracking.filter((comment) => !comment.resolvedAt).length,
+          total: tracking.length,
+        };
+      };
+      const meetingRows = [
+        ...(meetingOne
+          ? [{
+              id: "meeting-1",
+              title: activeSession?.title ?? meetingOne.title,
+              startedAt: meetingOne.startedAt,
+              closedAt: activeSession ? null : "2026-07-20T02:00:00.000Z",
+              active: Boolean(activeSession),
+              commentCount: comments.length,
+              storyCommentCount: meetingOneComments.length,
+              tracking: trackingOf(comments),
+              projectRelativeSessionPath,
+              reportUrl: "/__comments/reports/sessions/meeting-1/index.html",
+            }]
+          : []),
+        {
+          id: "meeting-closed",
+          title: "Previous review",
+          startedAt: "2026-07-19T08:00:00.000Z",
+          closedAt: "2026-07-19T09:00:00.000Z",
+          active: false,
+          commentCount: closedComments.length,
+          storyCommentCount: closedStoryComments.length,
+          tracking: trackingOf(closedComments),
+          projectRelativeSessionPath: projectRelativeSessionPath
+            ? "design-system/figma-export-review/sessions/meeting-closed"
+            : null,
+          reportUrl: "/__comments/reports/sessions/meeting-closed/index.html",
+        },
+      ];
       return new Response(
         JSON.stringify({
           activeSession,
@@ -613,7 +681,12 @@ async function run() {
                 total: trackingComments.length,
               }
             : { open: 0, total: 0 },
-          comments: activeSession ? overviewComments : [],
+          comments: requestedStoryId
+            ? [...closedStoryComments, ...(meetingOne ? meetingOneComments : [])]
+            : activeSession
+              ? meetingOneComments
+              : [],
+          ...(requestedStoryId ? { meetings: meetingRows } : {}),
           recentSessions: [{
             id: "meeting-closed",
             title: "Previous review",
@@ -808,8 +881,24 @@ async function run() {
     composer()!.querySelector<HTMLButtonElement>("[data-comment-composer-cancel]")!.click();
     await waitFor(() => !composer() && !livePin());
   };
-  // A plain remount starts collapsed, so reopen the panel before continuing.
-  const remountReview = async (overrides: Partial<FigmaExportReviewProps> = {}) => {
+  const meetingSwitch = (meetingId: string) =>
+    document.querySelector<HTMLButtonElement>(
+      `.sbfx-comments-panel [data-meeting-view="${meetingId}"]`,
+    );
+  // Turn on one meeting's View switch; a no-op when it is already on.
+  const viewMeeting = async (meetingId = "meeting-1") => {
+    await waitFor(() => meetingSwitch(meetingId));
+    if (meetingSwitch(meetingId)!.getAttribute("aria-checked") !== "true") {
+      meetingSwitch(meetingId)!.click();
+    }
+    await waitFor(() => meetingSwitch(meetingId)?.getAttribute("aria-checked") === "true");
+  };
+  // A plain remount starts collapsed with no meeting viewed, so reopen the
+  // panel and view meeting-1 before continuing unless asked not to.
+  const remountReview = async (
+    overrides: Partial<FigmaExportReviewProps> = {},
+    { view = true }: { view?: boolean } = {},
+  ) => {
     mount.render(null);
     await waitFor(() => !document.querySelector(".sbfx-comments-panel"));
     mount.render(h(FigmaExportReview, reviewProps(overrides)));
@@ -827,6 +916,9 @@ async function run() {
         commentsPanel.dataset.expanded === "true" &&
         commentsDetail.getAttribute("data-comments-capability") === "available",
     );
+    if (view && meetingOne && comments.some((comment) => mockStory(comment)?.id === (overrides.storyId ?? "demo--story"))) {
+      await viewMeeting("meeting-1");
+    }
   };
 
   // Comment surface visual rules, audited from computed styles.
@@ -1693,6 +1785,7 @@ async function run() {
       localStorage.getItem("sbfx:review-author") === "Mina",
   );
   check("polling overview uses current story id", requests.some((request) => request.method === "GET" && request.path === ""));
+  closedComments.push(closedMeetingComment);
 
   mount.render(null);
   await waitFor(() => !document.querySelector(".sbfx-comments-panel"));
@@ -1723,6 +1816,127 @@ async function run() {
     kindContinuation() === null,
     JSON.stringify(kindContinuation()),
   );
+
+  // Meeting view switch: every meeting starts off; one meeting at a time.
+  resultElement.dataset.stage = "meeting-view";
+  await waitFor(() => meetingSwitch("meeting-1") && meetingSwitch("meeting-closed"));
+  const savedPinCount = () => document.querySelectorAll("[data-saved-comment-pin]").length;
+  const commentsHint = () =>
+    commentsPanel.querySelector<HTMLElement>("[data-comments-hint]");
+  const meetingRow = (meetingId: string) =>
+    commentsPanel.querySelector<HTMLElement>(
+      `[aria-label="Meetings"] [data-meeting-id="${meetingId}"]`,
+    );
+  const switchState = () =>
+    ["meeting-1", "meeting-closed"]
+      .map((meetingId) => `${meetingId}:${meetingSwitch(meetingId)?.getAttribute("aria-checked")}`)
+      .join(",");
+  check(
+    "panel opens with every meeting off",
+    meetingSwitch("meeting-1")?.textContent === "View 4" &&
+      meetingSwitch("meeting-closed")?.textContent === "View 1" &&
+      meetingSwitch("meeting-1")?.getAttribute("role") === "switch" &&
+      switchState() === "meeting-1:false,meeting-closed:false" &&
+      savedPinCount() === 0 &&
+      currentCommentCards().length === 0 &&
+      commentsHint()?.dataset.commentsHint === "view" &&
+      commentsHint()?.textContent ===
+        "Turn on View for a meeting below to see its comments and pins.",
+    JSON.stringify({ switches: switchState(), pins: savedPinCount(), hint: commentsHint()?.textContent }),
+  );
+  check(
+    "meeting rows show the active mark, comment count, and their own report link",
+    meetingRow("meeting-1")?.querySelector(".sbfx-comments-panel__meeting-active")?.textContent ===
+      "Active" &&
+      !meetingRow("meeting-closed")?.querySelector(".sbfx-comments-panel__meeting-active") &&
+      meetingRow("meeting-1")?.querySelector("a")?.getAttribute("href") ===
+        "/__comments/reports/sessions/meeting-1/index.html" &&
+      meetingRow("meeting-closed")?.querySelector("a")?.getAttribute("href") ===
+        "/__comments/reports/sessions/meeting-closed/index.html" &&
+      meetingRow("meeting-closed")?.textContent?.includes("1 comment") === true &&
+      commentsPanel.querySelectorAll('[aria-label="Meetings"] h3').length === 1 &&
+      commentsPanel.querySelector('[aria-label="Meetings"] h3')?.textContent === "Meetings",
+  );
+  auditSurfaces("panel with meeting switches and no meeting viewed", ".sbfx-comments-panel");
+  const requestsBeforeSwitching = requests.length;
+  const nonPollingRequests = () =>
+    requests.slice(requestsBeforeSwitching).filter((request) => !(request.method === "GET" && request.path === ""));
+  meetingSwitch("meeting-closed")!.click();
+  await waitFor(() => currentCommentCards().length === 1);
+  const viewedCaption = () =>
+    commentsPanel.querySelector<HTMLElement>("[data-viewed-meeting]");
+  check(
+    "turning a meeting on shows that report's comments and pins",
+    switchState() === "meeting-1:false,meeting-closed:true" &&
+      viewedCaption()?.dataset.viewedMeeting === "meeting-closed" &&
+      viewedCaption()?.textContent === "Viewing Previous review" &&
+      currentCommentCards()[0]?.dataset.commentId === "comment-closed-1" &&
+      currentCommentCards()[0]?.querySelector(".sbfx-comments-panel__comment-ordinal")?.textContent === "1" &&
+      savedPinCount() === 1 &&
+      Boolean(document.querySelector('[data-saved-comment-pin="comment-closed-1"]')) &&
+      !commentsHint(),
+    JSON.stringify({ switches: switchState(), caption: viewedCaption()?.textContent, pins: savedPinCount() }),
+  );
+  auditSurfaces("panel viewing a closed meeting", ".sbfx-comments-panel");
+  meetingSwitch("meeting-1")!.click();
+  await waitFor(() => currentCommentCards().length === 4);
+  check(
+    "only one meeting is viewed at a time",
+    switchState() === "meeting-1:true,meeting-closed:false" &&
+      viewedCaption()?.dataset.viewedMeeting === "meeting-1" &&
+      !currentCommentCards().some((card) => card.dataset.commentId === "comment-closed-1") &&
+      !document.querySelector('[data-saved-comment-pin="comment-closed-1"]'),
+    switchState(),
+  );
+  meetingSwitch("meeting-1")!.click();
+  await waitFor(() => currentCommentCards().length === 0);
+  check(
+    "turning the viewed meeting off removes its comments and pins",
+    switchState() === "meeting-1:false,meeting-closed:false" &&
+      savedPinCount() === 0 &&
+      !viewedCaption() &&
+      commentsHint()?.dataset.commentsHint === "view",
+    switchState(),
+  );
+  check(
+    "switching meetings sends no request",
+    nonPollingRequests().length === 0,
+    JSON.stringify(nonPollingRequests()),
+  );
+  const storedMeetingEntries = [localStorage, sessionStorage].flatMap((storage) =>
+    Array.from({ length: storage.length }, (_, index) => storage.key(index)!).filter(
+      (key) =>
+        /meeting/i.test(key) ||
+        /meeting-1|meeting-closed/.test(storage.getItem(key) ?? ""),
+    ),
+  );
+  check(
+    "the viewed meeting is never written to browser storage",
+    storedMeetingEntries.length === 0,
+    JSON.stringify(storedMeetingEntries),
+  );
+  await viewMeeting("meeting-1");
+  await remountReview({ storyId: "demo--other", storyName: "Other" }, { view: false });
+  await waitFor(() => meetingSwitch("meeting-1"));
+  check(
+    "changing Story resets the view and a meeting without this Story's comments has no switch",
+    meetingSwitch("meeting-1")?.getAttribute("aria-checked") === "false" &&
+      meetingSwitch("meeting-1")?.textContent === "View 1" &&
+      !meetingSwitch("meeting-closed") &&
+      Boolean(meetingRow("meeting-closed")?.querySelector("a")) &&
+      savedPinCount() === 0,
+    switchState(),
+  );
+  await remountReview({ storyId: "demo--empty", storyName: "Empty" }, { view: false });
+  await waitFor(() => commentsHint());
+  check(
+    "a Story without comments has no switch and keeps the empty message",
+    !commentsPanel.querySelector("[data-meeting-view]") &&
+      commentsHint()?.dataset.commentsHint === "none" &&
+      commentsHint()?.textContent === "No comments on this story yet.",
+    commentsHint()?.textContent ?? "",
+  );
+  await remountReview();
 
   // The list shows every current-Story comment, with a kind filter.
   await waitFor(() => currentCommentCards().length === 4);
@@ -1951,6 +2165,18 @@ async function run() {
   mount.render(h(FigmaExportReview, reviewProps({ storyId: "demo--other", storyName: "Other" })));
   await waitFor(() => !composer() && !livePin());
   mount.render(h(FigmaExportReview, reviewProps()));
+  // Changing Story resets the view; once the panel shows this Story's
+  // meetings again, view meeting-1.
+  await waitFor(() => meetingSwitch("meeting-1")?.textContent === "View 5");
+  await settle(150);
+  check(
+    "returning to a Story in the same panel starts with no meeting viewed",
+    meetingSwitch("meeting-1")?.getAttribute("aria-checked") === "false" &&
+      !commentsPanel.querySelector("[data-viewed-meeting]") &&
+      document.querySelectorAll("[data-saved-comment-pin]").length === 0,
+    meetingSwitch("meeting-1")?.getAttribute("aria-checked") ?? "missing",
+  );
+  await viewMeeting("meeting-1");
   await waitFor(() => currentCommentCards().length === 5 && button("Add comment")?.disabled === false);
   await openComposer();
   check(
@@ -2346,6 +2572,178 @@ async function run() {
       mutationRequests() === mutationsBeforePin,
     JSON.stringify({ highlightedWhileFocused, highlightedWhileHovering, selectedWhileHovering }),
   );
+  // Saved pin information card: hover or focus shows one card beside the pin.
+  resultElement.dataset.stage = "pin-card";
+  const pinCard = () => document.querySelector<HTMLElement>("[data-saved-pin-card]");
+  const expectedCardTitle = (id: string) => {
+    const comment = mockComment(id);
+    return `Comment ${comments.indexOf(comment) + 1} · ${
+      mockKind(comment) === "tracking" ? "Tracking" : "Visual fix"
+    } · ${comment.resolvedAt ? "Completed" : "Open"}`;
+  };
+  const cardText = (selector: string) => pinCard()?.querySelector(selector)?.textContent ?? "";
+  savedPin("comment-current-2")!.dispatchEvent(new MouseEvent("mouseenter"));
+  await waitFor(() => pinCard()?.dataset.savedPinCard === "comment-current-2");
+  await waitFor(() => {
+    const image = pinCard()?.querySelector<HTMLImageElement>(".sbfx-review__pin-card-image");
+    return Boolean(image?.complete && image.naturalWidth > 0);
+  });
+  const hoverCardRect = pinCard()!.getBoundingClientRect();
+  const hoveredPinRect = savedPin("comment-current-2")!.getBoundingClientRect();
+  check(
+    "hovering a pin shows one card with its comment and screenshot",
+    document.querySelectorAll("[data-saved-pin-card]").length === 1 &&
+      cardText(".sbfx-review__pin-card-title") === expectedCardTitle("comment-current-2") &&
+      cardText(".sbfx-review__pin-card-body") === mockComment("comment-current-2").body &&
+      cardText(".sbfx-review__pin-card-meta").startsWith(`${mockComment("comment-current-2").authorName} · `) &&
+      pinCard()!.querySelector<HTMLImageElement>(".sbfx-review__pin-card-image")!.getBoundingClientRect().width <= 240 &&
+      pinCard()!.getAttribute("data-sbfx-capture-ignore") === "true" &&
+      getComputedStyle(pinCard()!).pointerEvents === "none" &&
+      savedPin("comment-current-2")!.getAttribute("aria-describedby") === pinCard()!.id &&
+      Math.abs(hoverCardRect.left - (hoveredPinRect.right + 12)) <= 1.5,
+    JSON.stringify({
+      title: cardText(".sbfx-review__pin-card-title"),
+      expected: expectedCardTitle("comment-current-2"),
+      cardLeft: hoverCardRect.left,
+      pinRight: hoveredPinRect.right,
+    }),
+  );
+  auditSurfaces("saved pin information card", "[data-saved-pin-card]");
+  savedPin("comment-current-2")!.dispatchEvent(new MouseEvent("mouseleave"));
+  await waitFor(() => !pinCard());
+  check("moving the pointer away removes the card", !pinCard());
+
+  savedPin("comment-current-4")!.focus();
+  await waitFor(() => pinCard()?.dataset.savedPinCard === "comment-current-4");
+  const focusedCardTitle = cardText(".sbfx-review__pin-card-title");
+  (document.activeElement as HTMLElement | null)?.blur();
+  await waitFor(() => !pinCard());
+  check(
+    "keyboard focus shows the card until focus leaves the pin",
+    focusedCardTitle === expectedCardTitle("comment-current-4"),
+    focusedCardTitle,
+  );
+
+  savedPin("comment-current-1")!.dispatchEvent(new MouseEvent("mouseenter"));
+  await waitFor(() => pinCard()?.dataset.savedPinCard === "comment-current-1");
+  const noPreviewText = cardText("[data-pin-card-screenshot-unavailable]");
+  savedPin("comment-current-1")!.dispatchEvent(new MouseEvent("mouseleave"));
+  savedPin("comment-current-3")!.dispatchEvent(new MouseEvent("mouseenter"));
+  await waitFor(
+    () =>
+      pinCard()?.dataset.savedPinCard === "comment-current-3" &&
+      Boolean(pinCard()?.querySelector("[data-pin-card-screenshot-unavailable]")),
+  );
+  check(
+    "a missing or failing screenshot shows Screenshot unavailable",
+    noPreviewText === "Screenshot unavailable" &&
+      cardText("[data-pin-card-screenshot-unavailable]") === "Screenshot unavailable" &&
+      !pinCard()?.querySelector(".sbfx-review__pin-card-image"),
+    noPreviewText,
+  );
+
+  // Hiding the pins under the pointer forgets the hovered pin.
+  savedPin("comment-current-2")!.dispatchEvent(new MouseEvent("mouseenter"));
+  await waitFor(() => pinCard()?.dataset.savedPinCard === "comment-current-2");
+  meetingSwitch("meeting-1")!.click();
+  await waitFor(() => !savedPin("comment-current-2") && !pinCard());
+  meetingSwitch("meeting-1")!.click();
+  await waitFor(() => Boolean(savedPin("comment-current-2")));
+  await settle(150);
+  const cardAfterReturn = pinCard()?.dataset.savedPinCard ?? null;
+  savedPin("comment-current-4")!.focus();
+  await waitFor(() => Boolean(pinCard()));
+  const cardForFocus = pinCard()?.dataset.savedPinCard ?? null;
+  (document.activeElement as HTMLElement | null)?.blur();
+  await waitFor(() => !pinCard());
+  check(
+    "a pin hidden under the pointer does not keep or block its card",
+    cardAfterReturn === null && cardForFocus === "comment-current-4",
+    JSON.stringify({ cardAfterReturn, cardForFocus }),
+  );
+  savedPin("comment-current-3")!.dispatchEvent(new MouseEvent("mouseenter"));
+  await waitFor(() => pinCard()?.dataset.savedPinCard === "comment-current-3");
+
+  // Placement rules, including a phone-width preview where neither side fits.
+  const phone = { height: 812, width: 375 };
+  const placementRows = [
+    { pin: { left: 200, top: 300 }, expected: { left: 68, top: 324, width: 264 } },
+    { pin: { left: 200, top: 700 }, expected: { left: 68, top: 476, width: 264 } },
+    { pin: { left: 100, top: 300 }, expected: { left: 12, top: 324, width: 264 } },
+  ];
+  const placementResults = placementRows.map(({ pin }) => getSavedPinCardPlacement(pin, phone, 200));
+  const overlapsPin = (pin: { left: number; top: number }, card: { left: number; top: number; width: number }) =>
+    card.left < pin.left + 12 &&
+    pin.left - 12 < card.left + card.width &&
+    card.top < pin.top + 12 &&
+    pin.top - 12 < card.top + 200;
+  check(
+    "a phone-width preview places the card below or above the pin without covering it",
+    placementResults.every(
+      (result, index) => JSON.stringify(result) === JSON.stringify(placementRows[index]!.expected),
+    ) &&
+      placementRows.every(({ pin }, index) => !overlapsPin(pin, placementResults[index]!)),
+    JSON.stringify(placementResults),
+  );
+  check(
+    "wide previews keep the card beside the pin on either side and cap its width",
+    JSON.stringify(getSavedPinCardPlacement({ left: 100, top: 300 }, { height: 800, width: 1000 }, 200)) ===
+      JSON.stringify({ left: 124, top: 200, width: 264 }) &&
+      JSON.stringify(getSavedPinCardPlacement({ left: 900, top: 300 }, { height: 800, width: 1000 }, 200)) ===
+        JSON.stringify({ left: 612, top: 200, width: 264 }) &&
+      getSavedPinCardPlacement({ left: 100, top: 300 }, { height: 600, width: 200 }, 200).width === 176,
+    JSON.stringify([
+      getSavedPinCardPlacement({ left: 100, top: 300 }, { height: 800, width: 1000 }, 200),
+      getSavedPinCardPlacement({ left: 900, top: 300 }, { height: 800, width: 1000 }, 200),
+      getSavedPinCardPlacement({ left: 100, top: 300 }, { height: 600, width: 200 }, 200),
+    ]),
+  );
+  check(
+    "the rendered card uses the placed width",
+    getComputedStyle(pinCard()!).width === "264px",
+    getComputedStyle(pinCard()!).width,
+  );
+
+  // The card disappears while a new comment is placed and is never captured.
+  pressKey(document.body, { key: "c" });
+  await waitFor(() => capturePrompt() && !pinCard());
+  check(
+    "starting a new comment removes the card",
+    !pinCard() && !document.querySelector("#storybook-root [data-saved-pin-card]"),
+  );
+  pressKey(document.body, { key: "Escape" });
+  await waitFor(() => !capturePrompt() && !captureMode());
+  savedPin("comment-current-3")!.dispatchEvent(new MouseEvent("mouseleave"));
+  await waitFor(() => !pinCard());
+
+  // Near the inline-end edge the card moves to the pin's inline-start side.
+  const storyRoot = document.querySelector<HTMLElement>("#storybook-root")!;
+  storyRoot.style.marginInlineStart = `${window.innerWidth - 420}px`;
+  mockComment("comment-pinlist-1").pin = { xRatio: 0.9, yRatio: 0.5 };
+  await remountReview();
+  await waitFor(() => {
+    const pin = savedPin("comment-pinlist-1");
+    return Boolean(pin && window.innerWidth - pin.getBoundingClientRect().left < 100);
+  });
+  savedPin("comment-pinlist-1")!.dispatchEvent(new MouseEvent("mouseenter"));
+  await waitFor(() => pinCard()?.dataset.savedPinCard === "comment-pinlist-1");
+  const edgeCardRect = pinCard()!.getBoundingClientRect();
+  const edgePinRect = savedPin("comment-pinlist-1")!.getBoundingClientRect();
+  check(
+    "near the viewport edge the card flips to the inline-start side and stays inside",
+    Math.abs(edgeCardRect.right - (edgePinRect.left - 12)) <= 1.5 &&
+      edgeCardRect.left >= 12 &&
+      edgeCardRect.right <= window.innerWidth - 12 &&
+      edgeCardRect.top >= 12 &&
+      edgeCardRect.bottom <= window.innerHeight - 12,
+    JSON.stringify({ edgeCardRect, edgePinRect, width: window.innerWidth }),
+  );
+  savedPin("comment-pinlist-1")!.dispatchEvent(new MouseEvent("mouseleave"));
+  storyRoot.style.marginInlineStart = "";
+  delete mockComment("comment-pinlist-1").pin;
+  await remountReview();
+  await waitFor(() => currentCommentCards().length === 12 && Boolean(savedPin("comment-current-3")));
+
   // A saved pin does not block placing a new comment at the same point.
   resultElement.dataset.stage = "pins-passive";
   const coveredRect = savedPin("comment-current-3")!.getBoundingClientRect();
@@ -3062,6 +3460,163 @@ async function run() {
       ((requests.filter((request) => request.method === "PATCH").at(-1)?.body ?? {}) as object)),
     JSON.stringify(requests.filter((request) => request.method === "PATCH").at(-1)?.body),
   );
+
+  // Closed meetings: counts, copy, edit, delete, and viewing the meeting a
+  // new comment lands in. Kept last so earlier absolute request counts hold.
+  resultElement.dataset.stage = "closed-meeting";
+  await remountReview({}, { view: false });
+  await viewMeeting("meeting-closed");
+  await waitFor(() => currentCommentCards().length === 1);
+  const closedLabels = filterLabels();
+  await viewMeeting("meeting-1");
+  await waitFor(() => currentCommentCards().some((card) => card.dataset.commentId !== "comment-closed-1"));
+  const meetingOneStoryComments = comments.filter(
+    (comment) => mockStory(comment)?.id === "demo--story",
+  );
+  const expectedMeetingOneLabels = `All ${meetingOneStoryComments.length},Visual fix ${
+    meetingOneStoryComments.filter((comment) => mockKind(comment) === "visual-fix").length
+  },Tracking ${meetingOneStoryComments.filter((comment) => mockKind(comment) === "tracking").length}`;
+  const meetingOneLabels = filterLabels();
+  meetingSwitch("meeting-1")!.click();
+  await waitFor(() => currentCommentCards().length === 0);
+  check(
+    "kind filter counts follow the viewed meeting",
+    closedLabels === "All 1,Visual fix 0,Tracking 1" &&
+      meetingOneLabels === expectedMeetingOneLabels &&
+      filterLabels() === "All 0,Visual fix 0,Tracking 0",
+    JSON.stringify({ closedLabels, meetingOneLabels, expectedMeetingOneLabels, off: filterLabels() }),
+  );
+
+  // Copy works for a closed meeting without an active meeting.
+  const activeSessionBeforeClosed = activeSession;
+  const meetingOneBeforeClosed = meetingOne;
+  activeSession = null;
+  await remountReview({}, { view: false });
+  await settle(150);
+  check(
+    "no copy action while no meeting is viewed",
+    !copyAction("story") && !copyAction("all"),
+  );
+  await viewMeeting("meeting-closed");
+  await waitFor(() => copyAction("story"));
+  const writesBeforeClosedCopy = clipboardWrites.length;
+  copyAction("story")!.click();
+  await waitFor(() => clipboardWrites.length === writesBeforeClosedCopy + 1);
+  const closedMeetingData = mockMeetingOf(closedComments);
+  const expectedClosedPrompt = formatTrackingPrompt(
+    closedMeetingData.comments.flatMap((comment, index) => {
+      const capture = closedMeetingData.captures[comment.captureId]!;
+      if (comment.kind !== "tracking" || comment.resolvedAt || capture.story.id !== "demo--story") {
+        return [];
+      }
+      return [
+        {
+          context: buildCommentPromptContext({
+            capture,
+            comment: comment as never,
+            kind: "tracking",
+            ordinal: index + 1,
+            projectRelativeSessionPath: "design-system/figma-export-review/sessions/meeting-closed",
+          }),
+          screenshotUrl: new URL(
+            capture.image.path,
+            new URL("/__comments/reports/sessions/meeting-closed/index.html", location.href),
+          ),
+        },
+      ];
+    }),
+  );
+  check(
+    "copy works for a closed meeting without an active meeting",
+    !button("End meeting") &&
+      !copyAction("all") &&
+      clipboardWrites.at(-1) === expectedClosedPrompt &&
+      subsections(clipboardWrites.at(-1)) === "1" &&
+      clipboardWrites.at(-1)!.includes(
+        "- Project-relative screenshot path: design-system/figma-export-review/sessions/meeting-closed/assets/comment-closed-1.png",
+      ) &&
+      copyStatus()?.textContent === "Tracking prompt copied. Comments included: 1.",
+    copyStatus()?.textContent ?? "",
+  );
+
+  // Editing a comment of a closed meeting targets that meeting.
+  const closedCard = () =>
+    commentsPanel.querySelector<HTMLElement>(
+      '.sbfx-comments-panel__comment[data-comment-id="comment-closed-1"]',
+    );
+  const meetingOneBodiesBeforeClosedEdit = JSON.stringify(comments.map((comment) => comment.body));
+  closedCard()!.querySelector<HTMLButtonElement>('[aria-label="Edit comment"]')!.click();
+  await waitFor(() => document.querySelector("[data-comment-edit-modal] textarea"));
+  setNativeValue(
+    document.querySelector<HTMLTextAreaElement>("[data-comment-edit-modal] textarea")!,
+    "Edited in a closed meeting",
+  );
+  await waitFor(
+    () => !document.querySelector<HTMLButtonElement>("[data-comment-edit-save]")!.disabled,
+  );
+  document.querySelector<HTMLButtonElement>("[data-comment-edit-save]")!.click();
+  await waitFor(
+    () =>
+      !document.querySelector("[data-comment-edit-modal]") &&
+      closedCard()?.textContent?.includes("Edited in a closed meeting") === true,
+  );
+  const lastPatch = requests.filter((request) => request.method === "PATCH").at(-1);
+  check(
+    "editing a comment of a closed meeting targets that meeting",
+    lastPatch?.path === "/sessions/meeting-closed/comments/comment-closed-1" &&
+      JSON.stringify(comments.map((comment) => comment.body)) === meetingOneBodiesBeforeClosedEdit,
+    JSON.stringify(lastPatch),
+  );
+
+  // Saving a comment views the meeting that stored it.
+  const sessionStartsBeforeSave = requests.filter(
+    (request) => request.method === "POST" && request.path === "/sessions",
+  ).length;
+  await openComposer();
+  setNativeValue(composerBody()!, "Lands in a new Notes meeting");
+  await waitFor(
+    () => !composer()!.querySelector<HTMLButtonElement>('button[aria-label="Save comment"]')!.disabled,
+  );
+  composer()!.querySelector<HTMLButtonElement>('button[aria-label="Save comment"]')!.click();
+  await waitFor(() => !composer() && meetingSwitch("meeting-1")?.getAttribute("aria-checked") === "true");
+  const landedComment = comments.at(-1)!;
+  await waitFor(() => document.querySelector(`[data-saved-comment-pin="${landedComment.id}"]`));
+  const sessionStart = requests
+    .filter((request) => request.method === "POST" && request.path === "/sessions")
+    .at(-1);
+  check(
+    "saving a comment views the meeting that stored it",
+    requests.filter((request) => request.method === "POST" && request.path === "/sessions").length ===
+      sessionStartsBeforeSave + 1 &&
+      String((sessionStart?.body as { title?: string } | undefined)?.title).startsWith("Notes ") &&
+      landedComment.body === "Lands in a new Notes meeting" &&
+      meetingSwitch("meeting-closed")?.getAttribute("aria-checked") === "false" &&
+      Boolean(document.querySelector(`[data-saved-comment-pin="${landedComment.id}"]`)),
+    JSON.stringify({ sessionStart, switches: switchState() }),
+  );
+
+  // Confirmed delete targets the comment's meeting and clears an emptied view.
+  await viewMeeting("meeting-closed");
+  closedCard()!.querySelector<HTMLButtonElement>('[aria-label="Delete comment"]')!.click();
+  await waitFor(() => commentsPanel.querySelector("[data-comment-delete-confirm]"));
+  commentsPanel.querySelector<HTMLButtonElement>("[data-comment-delete-confirm]")!.click();
+  await waitFor(() => !meetingSwitch("meeting-closed"));
+  const lastDelete = requests.filter((request) => request.method === "DELETE").at(-1);
+  check(
+    "confirmed delete targets the comment's meeting and clears the emptied view",
+    lastDelete?.path === "/sessions/meeting-closed/comments/comment-closed-1" &&
+      closedComments.length === 0 &&
+      !commentsPanel.querySelector("[data-viewed-meeting]") &&
+      commentsPanel.querySelector<HTMLElement>("[data-comments-hint]")?.dataset.commentsHint === "view" &&
+      document.querySelectorAll("[data-saved-comment-pin]").length === 0,
+    JSON.stringify(lastDelete),
+  );
+
+  // Restore the fixture data the later sections rely on.
+  comments.splice(comments.indexOf(landedComment), 1);
+  activeSession = activeSessionBeforeClosed;
+  meetingOne = meetingOneBeforeClosed;
+  await remountReview();
 
   const reviewSlot = workspace.querySelector<HTMLElement>('[data-sbfx-workspace-slot="review"]')!;
   const reviewPreferenceBeforeParentCollapse = localStorage.getItem("sbfx:review-collapsed");

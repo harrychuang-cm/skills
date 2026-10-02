@@ -277,9 +277,27 @@ would be covered. It stays open when the panel is collapsed or expanded.
 
 The expanded panel shows the **Comments** heading with the active meeting title,
 **Reports**, the primary **Add comment** action, a kind filter (**All**,
-**Visual fix**, **Tracking**, each with its count), and every comment of the
-current Story in the active meeting, newest first, with its meeting-wide number,
-kind, Open/Completed status, author, and time. The list scrolls inside the panel.
+**Visual fix**, **Tracking**, each with its count), the comment list, and a
+**Meetings** section.
+
+**Meetings** lists the active meeting (marked **Active**), the five most recent
+closed meetings, and any older meeting that holds a comment on the current Story,
+each with its comment count and an **Open report** link. A meeting that holds
+comments on the current Story also has a **View** switch showing how many, for
+example **View 2**. Turning it on lays that meeting's comments over the Story:
+the list, the kind counts, the pins, Edit and Delete, and the tracking handoff
+all follow the viewed meeting, and **Viewing** above the list names it. One
+meeting is viewed at a time; turning another one on turns the first off. Every
+switch starts off when the panel mounts and when you move to another Story, so
+the list first shows **Turn on View for a meeting below to see its comments and
+pins.** (or **No comments on this story yet.** when no meeting has one). Saving a
+comment turns on the meeting that stored it, so the new pin appears at once.
+Comments of a closed meeting can be edited and deleted from the panel as well;
+the requests go to that meeting.
+
+The list shows the viewed meeting's comments on the current Story, newest
+first, with the same numbers as that meeting's report, kind, Open/Completed
+status, author, and time. The list scrolls inside the panel.
 The footer shows **Commenting as** with the stored display name (or
 `Anonymous`); **Change** sets it once and the composer never asks for it.
 Choosing Edit on a comment opens a capture-ignored overlay modal with the stored
@@ -298,7 +316,8 @@ report URLs remain readable. Each session report contains its
 snapshots on the addon's dark raised surface, pins, authors, comments, timestamps,
 and Story metadata.
 
-While the panel is expanded, every comment of the current Story also shows as a
+While the panel is expanded and a meeting is viewed, every comment of the
+current Story in that meeting also shows as a
 numbered pin on the Story at the point it was placed: a circle for a
 **Visual fix**, a rounded square for **Tracking**, and a subdued color once the
 comment is Completed. Pins follow the kind filter; **Pins** in the panel toolbar
@@ -308,7 +327,14 @@ and never triggers the control beneath it; the selected comment's pin keeps a
 ring, and clicking it again scrolls back to the comment. While you are placing
 a new comment, saved pins stay visible but let clicks through, so a point under
 a pin can be commented on again. Hovering or focusing a list item highlights
-its pin. A pin is a position ratio within the capture
+its pin. Hovering or focusing a pin shows a card beside it with the comment,
+its kind and status, author and time, and the screenshot taken when the comment
+was made (or **Screenshot unavailable**); compare it with the Story to tell
+whether a comment from an older meeting still points at the right element. When
+the preview is too narrow for the card on either side of the pin, as in a
+phone-width preview, the card appears below the pin (above it near the bottom
+edge) so it never covers the pin. A
+pin is a position ratio within the capture
 target, not a link to an element, so it does not follow a component that moves.
 A comment whose screenshot is missing still shows its pin. When `captureSelector`
 is set and matches no element, no pins are shown. A comment
@@ -328,6 +354,15 @@ when the prototype itself uses the **C** key; **Esc** keeps cancelling.
 | `captureSelector` | Capture target; `"body"` includes portals |
 | `authorStorageKey` | `localStorage` key of the display name |
 | `shortcuts` | `false` disables **C** and **Cmd/Ctrl+Enter** (default `true`) |
+
+Upgrading from 0.12.x: the panel no longer shows the active meeting's comments
+as soon as it opens. Turn on the meeting's **View** switch under **Meetings**
+(saving a comment does it for you). In exchange, any earlier meeting with
+comments on the current Story can be viewed the same way, without opening its
+report. The comments overview (`GET <apiPath>?storyId=<id>`) now returns that
+Story's comments from every meeting, each with its `sessionId`, plus a
+`meetings` list for the panel; without `storyId` it is unchanged. Stored meetings
+need no migration.
 
 Upgrading from 0.12.0: captures — comment screenshots, the browser reference
 snapshot, and `data-figma-rasterize` — no longer copy every CSS custom property
@@ -419,13 +454,15 @@ would comment on a design file, then hand the comments to a coding assistant.
    the requirement in free text, and press **Cmd/Ctrl+Enter**.
 3. Open **Reports**. A Tracking card's **Copy AI prompt** produces a
    `# Tracking Instrumentation Request` instead of the visual fix request.
-4. To hand over several at once without leaving the Story, use
-   **Copy tracking prompts** in the panel footer. It copies one request
-   containing the current Story's Open Tracking comments in ordinal order;
-   **Copy all stories** appears beside it when other Stories of the meeting also
-   have Open Tracking comments. The same batch is available on the report, where
-   **Tracking scope** narrows it to one Story. Completed comments and Visual fix
-   comments are never included, and both places produce identical Markdown.
+4. To hand over several at once without leaving the Story, view the meeting
+   under **Meetings** and use **Copy tracking prompts** in the panel footer. It
+   copies one request containing the viewed meeting's Open Tracking comments on
+   the current Story in ordinal order; **Copy all stories** appears beside it
+   when other Stories of that meeting also have Open Tracking comments. This
+   works for closed meetings too. The same batch is available on the meeting's
+   report, where **Tracking scope** narrows it to one Story. Completed comments
+   and Visual fix comments are never included, and both places produce identical
+   Markdown.
 
 The request asks the assistant to derive four fields per comment — event name,
 parameters, recording timing, and value definitions — to write `unspecified` for

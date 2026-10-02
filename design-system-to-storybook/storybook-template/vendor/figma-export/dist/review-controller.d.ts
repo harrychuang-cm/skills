@@ -28,6 +28,7 @@ type VisualCommentOverview = {
     };
     comments: Array<{
         id: string;
+        sessionId: string;
         authorName: string;
         body: string;
         createdAt: string;
@@ -45,6 +46,21 @@ type VisualCommentOverview = {
             routeId?: string;
             stateId?: string;
         };
+    }>;
+    meetings?: Array<{
+        id: string;
+        title: string;
+        startedAt: string;
+        closedAt: string | null;
+        active: boolean;
+        commentCount: number;
+        storyCommentCount: number;
+        tracking: {
+            open: number;
+            total: number;
+        };
+        projectRelativeSessionPath: string | null;
+        reportUrl: string;
     }>;
     recentSessions: Array<{
         id: string;

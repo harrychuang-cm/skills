@@ -38,6 +38,8 @@ export type VisualCommentOverview = {
   activeTracking?: { open: number; total: number };
   comments: Array<{
     id: string;
+    // Meeting that stores the comment.
+    sessionId: string;
     authorName: string;
     body: string;
     createdAt: string;
@@ -52,6 +54,19 @@ export type VisualCommentOverview = {
     } | null;
     resolvedAt?: string | null;
     state?: { routeId?: string; stateId?: string };
+  }>;
+  // Present when the overview is requested for a Story: the panel's meeting rows.
+  meetings?: Array<{
+    id: string;
+    title: string;
+    startedAt: string;
+    closedAt: string | null;
+    active: boolean;
+    commentCount: number;
+    storyCommentCount: number;
+    tracking: { open: number; total: number };
+    projectRelativeSessionPath: string | null;
+    reportUrl: string;
   }>;
   recentSessions: Array<{
     id: string;

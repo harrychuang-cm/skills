@@ -183,6 +183,9 @@ async function evaluateContract(cdp, sessionId, renderer) {
         let trackingCommentCreated = false;
         let meetingEnded = false;
         let historyAvailable = false;
+        let viewedAfterSave = false;
+        let closedMeetingViewed = false;
+        let meetingViewDetail = 'not attempted';
         let captureSurfaceComplete = false;
         let crossRendererDataAvailable = renderer === 'react';
         try {
@@ -388,6 +391,14 @@ async function evaluateContract(cdp, sessionId, renderer) {
                   ?.querySelector('[data-comment-kind="tracking"]')
                   ?.textContent === 'Tracking',
             );
+            // Saving views the meeting that stored the comment, so its pin shows.
+            viewedAfterSave =
+              document.querySelector(
+                '[aria-label="Meetings"] [data-meeting-id="' + meetingId + '"] [data-meeting-view]',
+              )?.getAttribute('aria-checked') === 'true' &&
+              (await waitUntil(
+                () => document.querySelectorAll('[data-saved-comment-pin]').length >= 1,
+              ));
             const trackingStored = (
               await (
                 await fetch('/__sbfx_fixture_comments?storyId=parity-fixture--default')
@@ -455,6 +466,14 @@ async function evaluateContract(cdp, sessionId, renderer) {
             );
             const created = await createResponse.json();
             const commentId = created.comment?.id;
+            // Deleting the meeting's only comment on this Story closed its view,
+            // so turn the meeting's View switch on again.
+            const meetingSwitch = () =>
+              document.querySelector(
+                '[aria-label="Meetings"] [data-meeting-id="' + meetingId + '"] [data-meeting-view]',
+              );
+            await waitUntil(() => Boolean(meetingSwitch()), 7000);
+            if (meetingSwitch()?.getAttribute('aria-checked') !== 'true') meetingSwitch()?.click();
             await waitUntil(
               () => document.querySelector('[data-comment-id="' + commentId + '"]'),
               7000,
@@ -504,6 +523,7 @@ async function evaluateContract(cdp, sessionId, renderer) {
                 headers: { 'content-type': 'application/json' },
                 body: JSON.stringify({
                   clientRequestId: 'shared-' + renderer + '-' + Date.now(),
+                  kind: 'tracking',
                   authorName: 'Shared reviewer',
                   body: 'Shared ' + renderer + ' evidence',
                   story: {
@@ -541,11 +561,42 @@ async function evaluateContract(cdp, sessionId, renderer) {
             );
             historyAvailable = Boolean(
               document.querySelector(
-                '[aria-label="Recent meetings"] [data-meeting-id="' +
+                '[aria-label="Meetings"] [data-meeting-id="' +
                   meetingId +
                   '"] a[href*="/reports/sessions/"]',
               ),
             );
+            // The ended meeting can be laid over the Story again with its View switch.
+            const endedSwitch = () =>
+              document.querySelector(
+                '[aria-label="Meetings"] [data-meeting-id="' + meetingId + '"] [data-meeting-view]',
+              );
+            await waitUntil(() => Boolean(endedSwitch()), 7000);
+            if (endedSwitch()?.getAttribute('aria-checked') === 'true') endedSwitch().click();
+            await waitUntil(() => endedSwitch()?.getAttribute('aria-checked') === 'false');
+            const pinsWhileOff = document.querySelectorAll('[data-saved-comment-pin]').length;
+            const hintWhileOff = document.querySelector('[data-comments-hint]')?.dataset.commentsHint;
+            endedSwitch()?.click();
+            const endedShown = await waitUntil(
+              () =>
+                endedSwitch()?.getAttribute('aria-checked') === 'true' &&
+                [...document.querySelectorAll('[data-comment-id]')].some((entry) =>
+                  entry.textContent?.includes('Shared ' + renderer + ' evidence'),
+                ) &&
+                document.querySelectorAll('[data-saved-comment-pin]').length >= 1,
+            );
+            const endedCopyOffered = Boolean(
+              document.querySelector('[data-panel-tracking-copy="story"]'),
+            );
+            closedMeetingViewed =
+              pinsWhileOff === 0 && hintWhileOff === 'view' && endedShown && endedCopyOffered;
+            meetingViewDetail = [
+              viewedAfterSave,
+              pinsWhileOff,
+              hintWhileOff,
+              endedShown,
+              endedCopyOffered,
+            ].join('/');
           }
         } catch {}
 
@@ -632,6 +683,11 @@ async function evaluateContract(cdp, sessionId, renderer) {
             name: 'comment-edit-and-delete',
             passed: commentEdited && commentDeleted,
             detail: commentEdited + '/' + commentDeleted,
+          },
+          {
+            name: 'meeting-view-switch',
+            passed: viewedAfterSave && closedMeetingViewed,
+            detail: meetingViewDetail,
           },
           {
             name: 'meeting-end-and-history',
