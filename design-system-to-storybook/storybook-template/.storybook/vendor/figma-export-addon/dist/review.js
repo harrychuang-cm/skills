@@ -525,6 +525,33 @@ function isStoryIncludedForFigmaExport(title, options) {
 // src/domExport.ts
 import { toPng } from "html-to-image";
 
+// src/captureStyleProperties.ts
+var sharedListKey = /* @__PURE__ */ Symbol.for("sbfx.captureStyleProperties");
+function sharedList() {
+  const host = globalThis;
+  return host[sharedListKey] ??= [];
+}
+var customPropertyReference = /var\(\s*(--[^\s,)]+)/g;
+function collectReferencedCustomProperties(markup) {
+  const names = /* @__PURE__ */ new Set();
+  for (const match of markup.matchAll(customPropertyReference)) {
+    names.add(match[1]);
+  }
+  return [...names];
+}
+function getCaptureStyleProperties(target) {
+  const list = sharedList();
+  if (list.length === 0) {
+    for (const name of Array.from(getComputedStyle(document.documentElement))) {
+      if (!name.startsWith("--")) list.push(name);
+    }
+  }
+  for (const name of collectReferencedCustomProperties(target.outerHTML)) {
+    if (!list.includes(name)) list.push(name);
+  }
+  return list;
+}
+
 // src/color.ts
 var colorContext;
 var normalizedColorCache = /* @__PURE__ */ new Map();
@@ -2660,7 +2687,11 @@ function drawSourceToRasterCapture(source, naturalWidth, naturalHeight) {
 }
 async function captureSubtreeRaster(element) {
   try {
-    const dataUrl = await toPng(element, { cacheBust: false, pixelRatio: 1 });
+    const dataUrl = await toPng(element, {
+      cacheBust: false,
+      includeStyleProperties: getCaptureStyleProperties(element),
+      pixelRatio: 1
+    });
     return dataUrl ? dataUrlToRasterCapture(dataUrl) : void 0;
   } catch {
     return void 0;
@@ -4744,7 +4775,7 @@ void (async function importStorybookStory(payload) {
 
 // src/version.ts
 function getAddonVersion() {
-  return true ? "0.12.0" : "dev";
+  return true ? "0.12.1" : "dev";
 }
 
 // src/workspace.ts
@@ -5748,6 +5779,7 @@ async function captureVisualCommentTarget(target) {
       filter: (node) => !(node instanceof Element && node.hasAttribute("data-sbfx-capture-ignore")),
       fontEmbedCSS: "",
       height: rect.height,
+      includeStyleProperties: getCaptureStyleProperties(target),
       pixelRatio: scale,
       skipFonts: true,
       skipAutoScale: true,

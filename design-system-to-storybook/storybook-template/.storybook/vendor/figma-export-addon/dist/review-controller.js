@@ -1,5 +1,34 @@
 // src/visualComment.ts
 import { toCanvas } from "html-to-image";
+
+// src/captureStyleProperties.ts
+var sharedListKey = /* @__PURE__ */ Symbol.for("sbfx.captureStyleProperties");
+function sharedList() {
+  const host = globalThis;
+  return host[sharedListKey] ??= [];
+}
+var customPropertyReference = /var\(\s*(--[^\s,)]+)/g;
+function collectReferencedCustomProperties(markup) {
+  const names = /* @__PURE__ */ new Set();
+  for (const match of markup.matchAll(customPropertyReference)) {
+    names.add(match[1]);
+  }
+  return [...names];
+}
+function getCaptureStyleProperties(target) {
+  const list = sharedList();
+  if (list.length === 0) {
+    for (const name of Array.from(getComputedStyle(document.documentElement))) {
+      if (!name.startsWith("--")) list.push(name);
+    }
+  }
+  for (const name of collectReferencedCustomProperties(target.outerHTML)) {
+    if (!list.includes(name)) list.push(name);
+  }
+  return list;
+}
+
+// src/visualComment.ts
 var defaultVisualCommentsCaptureSelector = "#storybook-root";
 var VISUAL_COMMENT_LIMITS = {
   maxRequestBytes: 4 * 1024 * 1024,
@@ -94,6 +123,7 @@ async function captureVisualCommentTarget(target) {
       filter: (node) => !(node instanceof Element && node.hasAttribute("data-sbfx-capture-ignore")),
       fontEmbedCSS: "",
       height: rect.height,
+      includeStyleProperties: getCaptureStyleProperties(target),
       pixelRatio: scale,
       skipFonts: true,
       skipAutoScale: true,

@@ -329,6 +329,14 @@ when the prototype itself uses the **C** key; **Esc** keeps cancelling.
 | `authorStorageKey` | `localStorage` key of the display name |
 | `shortcuts` | `false` disables **C** and **Cmd/Ctrl+Enter** (default `true`) |
 
+Upgrading from 0.12.0: captures — comment screenshots, the browser reference
+snapshot, and `data-figma-rasterize` — no longer copy every CSS custom property
+onto every cloned node. In a project with thousands of design tokens that copy
+froze the tab for minutes on a screen of a few hundred nodes. A custom property
+is now copied only when the captured markup references it through `var()` (for
+example `fill="var(--token)"` inside an inline SVG). Nothing to configure or
+migrate.
+
 Upgrading from 0.11.x: the report page has a new layout (see Reports below), the
 panel gains saved pins and the tracking handoff, and the workspace keeps 38% of
 the viewport height (up to 340px) instead of 46% (up to 420px) while the comments
@@ -507,6 +515,7 @@ Projects do not need all three default layers to export. The detector chooses th
 
 - **Toolbar shows "Figma export on" but no export tools appear.** The preview shows a small dismissible "Figma export" notice explaining why: the current story is excluded by `storyTitlePrefix`. Check that the filter covers the story title's top-level namespace: use `Components/`, not a deeper path like `Components/Examples/` (prefixes are `startsWith` matches, so a deep prefix excludes `Components/Actions/...` and every other sibling). Set `storyTitlePrefix: false` to include all stories.
 - **No toolbar toggle on a Docs (autodocs) page.** Intentional: the addon works in Story view only, so the toolbar toggle, export overlay, and review panel all stay hidden on docs pages. Open the entry as a story to export it.
+- **Inline SVG icons look black in a comment screenshot or reference snapshot.** A capture clones an `<svg>` as-is and does not inline styles for its children, so children colored only by a stylesheet rule (for example `.icon path { stroke: currentColor }`) fall back to the SVG defaults. Attributes and inline styles are preserved, including `fill="var(--token)"`.
 - **No notice and no tools.** Confirm the preview imports `@harrychuang/storybook-addon-figma-export/styles.css` and that the decorator (`createFigmaExportDecorator` or `createFigmaExportReviewDecorator`) is registered.
 
 ## API exports

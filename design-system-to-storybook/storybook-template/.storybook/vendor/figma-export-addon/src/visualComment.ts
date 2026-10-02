@@ -1,5 +1,7 @@
 import { toCanvas } from "html-to-image";
 
+import { getCaptureStyleProperties } from "./captureStyleProperties";
+
 export const defaultVisualCommentsApiPath = "/__figma_export_review_comments";
 export const defaultVisualCommentsDir = "design-system/figma-export-review";
 export const defaultVisualCommentsAuthorStorageKey = "sbfx:review-author";
@@ -211,6 +213,7 @@ export async function captureVisualCommentTarget(target: HTMLElement): Promise<V
         !(node instanceof Element && node.hasAttribute("data-sbfx-capture-ignore")),
       fontEmbedCSS: "",
       height: rect.height,
+      includeStyleProperties: getCaptureStyleProperties(target),
       pixelRatio: scale,
       skipFonts: true,
       skipAutoScale: true,

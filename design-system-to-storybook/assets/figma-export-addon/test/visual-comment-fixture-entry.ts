@@ -7,6 +7,7 @@ import {
   type FigmaExportReviewProps,
 } from "../src/review";
 import { syncFigmaExportOverlay } from "../src/overlay";
+import { getCaptureStyleProperties } from "../src/captureStyleProperties";
 import { buildCommentPromptContext, formatTrackingPrompt } from "../src/visualCommentPrompt";
 import {
   beginVisualCommentCapture,
@@ -262,6 +263,16 @@ async function run() {
   bodyController.cancel();
   check("body selector includes portal content", bodyTarget);
 
+  // A token-heavy project registers thousands of custom properties. They exist
+  // before the first capture because html-to-image keeps the first property
+  // list it sees for the rest of the page.
+  const bulkTokenStyle = document.createElement("style");
+  bulkTokenStyle.textContent = `:root { ${Array.from(
+    { length: 6000 },
+    (_, index) => `--sbfx-fixture-bulk-${index}: ${index}px;`,
+  ).join(" ")} }`;
+  document.head.append(bulkTokenStyle);
+
   resultElement.dataset.stage = "bitmap-start";
   const cleanCapture = await captureVisualCommentTarget(root);
   resultElement.dataset.stage = "bitmap-captured";
@@ -287,6 +298,58 @@ async function run() {
   check("capture respects longest side", Math.max(cleanCapture.width, cleanCapture.height) <= 2048);
   check("capture respects 4MP", cleanCapture.width * cleanCapture.height <= 4 * 1024 * 1024);
   check("capture respects 2MiB", atob(cleanCapture.dataUrl.split(",")[1]).length <= 2 * 1024 * 1024);
+
+  // A screen of a few hundred nodes in that token-heavy project. Copying every
+  // custom property onto every clone froze the tab for minutes, while an <svg>
+  // child filled through var() still needs its token — here one that only
+  // appears after the first capture.
+  resultElement.dataset.stage = "token-heavy-capture";
+  const tokenHeavyStyle = document.createElement("style");
+  tokenHeavyStyle.textContent = ":root { --sbfx-fixture-icon: rgb(200 40 160); }";
+  document.head.append(tokenHeavyStyle);
+  const tokenHeavyTarget = document.createElement("div");
+  tokenHeavyTarget.style.cssText =
+    "position: relative; width: 200px; height: 80px; background: rgb(255 255 255);";
+  tokenHeavyTarget.innerHTML =
+    '<svg width="40" height="40" viewBox="0 0 40 40" style="position: absolute; left: 0; top: 0;">' +
+    '<rect width="40" height="40" fill="var(--sbfx-fixture-icon)"></rect></svg>' +
+    "<span></span>".repeat(200);
+  document.body.append(tokenHeavyTarget);
+  const tokenHeavyProperties = getCaptureStyleProperties(tokenHeavyTarget);
+  check("capture copies standard style properties", tokenHeavyProperties.includes("color"));
+  check(
+    "capture copies custom properties the markup references",
+    tokenHeavyProperties.includes("--sbfx-fixture-icon"),
+  );
+  check(
+    "capture skips custom properties the markup does not reference",
+    !tokenHeavyProperties.some((name) => name.startsWith("--sbfx-fixture-bulk-")),
+  );
+  const tokenHeavyStarted = performance.now();
+  try {
+    const tokenHeavyCapture = await captureVisualCommentTarget(tokenHeavyTarget);
+    const tokenHeavyElapsed = Math.round(performance.now() - tokenHeavyStarted);
+    const tokenIconPixel = await sampleCapture(tokenHeavyCapture, 20, 20);
+    check(
+      "token-heavy capture does not block the page",
+      tokenHeavyElapsed < 5_000,
+      `${tokenHeavyElapsed}ms`,
+    );
+    check(
+      "token-heavy capture keeps the color of a var()-filled SVG child",
+      tokenIconPixel[0] > 170 && tokenIconPixel[1] < 80 && tokenIconPixel[2] > 130,
+      Array.from(tokenIconPixel).join(","),
+    );
+  } catch (error) {
+    check(
+      "token-heavy capture does not block the page",
+      false,
+      `${Math.round(performance.now() - tokenHeavyStarted)}ms: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  tokenHeavyTarget.remove();
+  tokenHeavyStyle.remove();
+  bulkTokenStyle.remove();
 
   const transparentCanvas = document.createElement("canvas");
   transparentCanvas.width = 2;

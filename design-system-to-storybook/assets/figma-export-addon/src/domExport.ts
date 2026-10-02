@@ -15,6 +15,7 @@ import type {
   FigmaTransformMatrix,
 } from "./types";
 import { toPng } from "html-to-image";
+import { getCaptureStyleProperties } from "./captureStyleProperties";
 import type { ResolvedFigmaExportAddonOptions } from "./options";
 import {
   isFullyTransparentColor,
@@ -2492,7 +2493,11 @@ async function captureSubtreeRaster(
   element: HTMLElement,
 ): Promise<RasterImageCapture | undefined> {
   try {
-    const dataUrl = await toPng(element, { cacheBust: false, pixelRatio: 1 });
+    const dataUrl = await toPng(element, {
+      cacheBust: false,
+      includeStyleProperties: getCaptureStyleProperties(element),
+      pixelRatio: 1,
+    });
     return dataUrl ? dataUrlToRasterCapture(dataUrl) : undefined;
   } catch {
     return undefined;
