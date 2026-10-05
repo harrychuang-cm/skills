@@ -2,12 +2,31 @@ export const prototypeFlowLayoutStoragePrefix =
   "prototype-inspector:flow-layout";
 export const prototypeFlowLayoutSchemaName =
   "storybook-template.prototype-flow-layout";
-export const prototypeFlowLayoutSchemaVersion = 1;
+export const prototypeFlowLayoutSchemaVersion = 2;
+// Version-1 and unsigned payloads predate viewport signatures; they were
+// always authored against the phone frame.
+export const prototypeFlowLayoutPhoneViewportSignature = "phone:375x812";
 
 export type PrototypeFlowLayoutPosition = {
   x: number;
   y: number;
 };
+
+export type PrototypeFlowLayoutViewport = {
+  formFactor: string;
+  width: number;
+  height: number;
+};
+
+export function getPrototypeFlowLayoutViewportSignature(
+  viewport: PrototypeFlowLayoutViewport | null | undefined,
+): string | null {
+  if (!viewport) {
+    return null;
+  }
+
+  return `${viewport.formFactor}:${viewport.width}x${viewport.height}`;
+}
 
 export type PrototypeFlowLayoutPositions<NodeId extends string = string> =
   Partial<Record<NodeId, PrototypeFlowLayoutPosition>>;
@@ -69,6 +88,7 @@ export function normalizePrototypeFlowLayoutPositions<NodeId extends string>(
 export function createPrototypeFlowLayoutPayload<NodeId extends string>(
   prototypeId: string | null | undefined,
   positions: PrototypeFlowLayoutPositions<NodeId>,
+  viewportSignature?: string | null,
 ) {
   return {
     exportedAt: new Date().toISOString(),
@@ -76,12 +96,44 @@ export function createPrototypeFlowLayoutPayload<NodeId extends string>(
     prototypeId: prototypeId ?? null,
     schema: prototypeFlowLayoutSchemaName,
     version: prototypeFlowLayoutSchemaVersion,
+    viewport: viewportSignature ?? null,
   };
+}
+
+function matchesExpectedViewport(
+  payload: unknown,
+  expectedViewport: string | null | undefined,
+  storageKey: string,
+) {
+  // No expectation: legacy callers keep their pre-signature behavior.
+  if (expectedViewport == null) {
+    return true;
+  }
+
+  const payloadSignature =
+    isRecord(payload) && typeof payload.viewport === "string"
+      ? payload.viewport
+      : null;
+  // Unsigned (v1) payloads were authored against the phone frame.
+  const effectiveSignature =
+    payloadSignature ?? prototypeFlowLayoutPhoneViewportSignature;
+
+  if (effectiveSignature === expectedViewport) {
+    return true;
+  }
+
+  console.info(
+    `Prototype flow layout ${storageKey} was saved for viewport ` +
+      `${effectiveSignature} but the flow now declares ${expectedViewport}; ` +
+      "ignoring saved positions until the flow is re-arranged.",
+  );
+  return false;
 }
 
 export function readPrototypeFlowLayoutPositions<NodeId extends string>(
   storageKey: string,
   nodeIds: ReadonlySet<NodeId>,
+  expectedViewport?: string | null,
 ): PrototypeFlowLayoutPositions<NodeId> {
   if (typeof window === "undefined") {
     return {};
@@ -89,10 +141,16 @@ export function readPrototypeFlowLayoutPositions<NodeId extends string>(
 
   try {
     const storedValue = window.localStorage.getItem(storageKey);
+    if (!storedValue) {
+      return {};
+    }
 
-    return storedValue
-      ? normalizePrototypeFlowLayoutPositions(JSON.parse(storedValue), nodeIds)
-      : {};
+    const payload: unknown = JSON.parse(storedValue);
+    if (!matchesExpectedViewport(payload, expectedViewport, storageKey)) {
+      return {};
+    }
+
+    return normalizePrototypeFlowLayoutPositions(payload, nodeIds);
   } catch (error) {
     console.warn("Unable to read prototype flow layout.", error);
     return {};
@@ -104,6 +162,7 @@ export function writePrototypeFlowLayoutPositions<NodeId extends string>(
   prototypeId: string | null | undefined,
   positions: PrototypeFlowLayoutPositions<NodeId>,
   nodeIds: ReadonlySet<NodeId>,
+  viewportSignature?: string | null,
 ) {
   if (typeof window === "undefined") {
     return;
@@ -123,7 +182,11 @@ export function writePrototypeFlowLayoutPositions<NodeId extends string>(
     window.localStorage.setItem(
       storageKey,
       JSON.stringify(
-        createPrototypeFlowLayoutPayload(prototypeId, normalizedPositions),
+        createPrototypeFlowLayoutPayload(
+          prototypeId,
+          normalizedPositions,
+          viewportSignature,
+        ),
       ),
     );
   } catch (error) {

@@ -564,6 +564,8 @@ The generated report is a static HTML + CSS artifact, usually under `reports/des
 │   ├── assets/
 │   │   ├── prototype-flow-layout/
 │   │   ├── prototype-inspector/
+│   │   ├── prototype-review/
+│   │   │   └── fingerprint.mjs
 │   │   ├── prototype-template/
 │   │   │   └── fixtures/
 │   │   └── prototype-template-vue/

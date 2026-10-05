@@ -2486,6 +2486,18 @@ function PrototypeFlow({ prototype }) {
   const isPanModifierActiveRef = useRef(false);
   const resetConfirmButtonRef = useRef(null);
   const viewportSignature = getPrototypeViewportSignature(prototype);
+  // What the saved layout was last read for. Mounting reads it once (the
+  // useState initializer); the re-read effect only runs when this changes.
+  const storedLayoutSource = useMemo(
+    () =>
+      JSON.stringify([
+        layoutStorageKey,
+        viewportSignature,
+        [...canvasNodeIds].sort(),
+      ]),
+    [canvasNodeIds, layoutStorageKey, viewportSignature],
+  );
+  const storedLayoutSourceRef = useRef(storedLayoutSource);
   const [draggedPositions, setDraggedPositions] = useState(() =>
     readStoredFlowLayoutPositions(layoutStorageKey, canvasNodeIds, viewportSignature),
   );
@@ -2512,19 +2524,15 @@ function PrototypeFlow({ prototype }) {
   const hasCustomLayout = Object.keys(draggedPositions).length > 0;
   const flowExportStoryId = getPrototypeFlowExportStoryId(prototype);
   useEffect(() => {
+    if (storedLayoutSourceRef.current === storedLayoutSource) {
+      return;
+    }
+
+    storedLayoutSourceRef.current = storedLayoutSource;
     setDraggedPositions(
       readStoredFlowLayoutPositions(layoutStorageKey, canvasNodeIds, viewportSignature),
     );
-  }, [canvasNodeIds, layoutStorageKey, viewportSignature]);
-  useEffect(() => {
-    writeStoredFlowLayout(
-      layoutStorageKey,
-      prototype,
-      draggedPositions,
-      canvasNodeIds,
-      viewportSignature,
-    );
-  }, [canvasNodeIds, draggedPositions, layoutStorageKey, prototype, viewportSignature]);
+  }, [canvasNodeIds, layoutStorageKey, storedLayoutSource, viewportSignature]);
   useEffect(() => {
     if (!hasCustomLayout) {
       setIsResetDialogOpen(false);
@@ -2810,6 +2818,7 @@ function PrototypeFlow({ prototype }) {
       setZoomMode("manual");
     }
     setDragState({
+      originPositions: draggedPositions,
       originX: position.x,
       originY: position.y,
       pointerId: event.pointerId,
@@ -2818,23 +2827,37 @@ function PrototypeFlow({ prototype }) {
       startY: event.clientY,
     });
   };
+  const getDragPosition = (event) => ({
+    x: Math.round(
+      dragState.originX + (event.clientX - dragState.startX) / canvasScale,
+    ),
+    y: Math.round(
+      dragState.originY + (event.clientY - dragState.startY) / canvasScale,
+    ),
+  });
   const updateDrag = (event) => {
     if (!dragState || dragState.pointerId !== event.pointerId) {
       return;
     }
 
-    const nextX =
-      dragState.originX + (event.clientX - dragState.startX) / canvasScale;
-    const nextY =
-      dragState.originY + (event.clientY - dragState.startY) / canvasScale;
+    const nextPosition = getDragPosition(event);
 
     setDraggedPositions((positions) => ({
       ...positions,
-      [dragState.routeId]: {
-        x: Math.round(nextX),
-        y: Math.round(nextY),
-      },
+      [dragState.routeId]: nextPosition,
     }));
+  };
+  // The only storage writer: each committed layout action (drag release,
+  // Reset, Import) writes once; opening or re-rendering the UI Flow never does.
+  const commitLayoutPositions = (positions) => {
+    setDraggedPositions(positions);
+    writeStoredFlowLayout(
+      layoutStorageKey,
+      prototype,
+      positions,
+      canvasNodeIds,
+      viewportSignature,
+    );
   };
   const endDrag = (event) => {
     if (!dragState || dragState.pointerId !== event.pointerId) {
@@ -2843,6 +2866,28 @@ function PrototypeFlow({ prototype }) {
 
     event.currentTarget.releasePointerCapture?.(event.pointerId);
     setDragState(null);
+
+    // pointercancel coordinates are unreliable across browsers, so a cancelled
+    // drag keeps the last rendered position instead of the event's.
+    const releasePosition =
+      event.type === "pointercancel"
+        ? draggedPositions[dragState.routeId]
+        : getDragPosition(event);
+    const hasMoved =
+      Boolean(releasePosition) &&
+      (releasePosition.x !== Math.round(dragState.originX) ||
+        releasePosition.y !== Math.round(dragState.originY));
+
+    if (!hasMoved) {
+      // Not a layout action: drop any in-drag preview, leave storage alone.
+      setDraggedPositions(dragState.originPositions);
+      return;
+    }
+
+    commitLayoutPositions({
+      ...draggedPositions,
+      [dragState.routeId]: releasePosition,
+    });
   };
   const zoomBy = (scaleDelta, anchor) => {
     const flowWrap = flowWrapRef.current;
@@ -2894,7 +2939,7 @@ function PrototypeFlow({ prototype }) {
     setIsResetDialogOpen(false);
   };
   const confirmResetLayout = () => {
-    setDraggedPositions({});
+    commitLayoutPositions({});
     setFocusedRouteId(null);
     setIsResetDialogOpen(false);
   };
@@ -2945,7 +2990,7 @@ function PrototypeFlow({ prototype }) {
           return;
         }
 
-        setDraggedPositions(importedPositions);
+        commitLayoutPositions(importedPositions);
         setFocusedRouteId(null);
       } catch (error) {
         console.warn("Unable to import prototype flow layout.", error);
@@ -3939,7 +3984,7 @@ const prototypeReviewApiBasePath = "/prototype-review-api";
 const prototypeReviewStaticBasePath = "/prototype-reviews";
 const prototypeReviewDecisionVerbs = ["keep", "swap", "flag"];
 // 批次間五副本分歧窗口的定位標記：每輪 inspector 變更遞增。
-const prototypeInspectorBuildTag = "flex-b2-2026-09-02";
+const prototypeInspectorBuildTag = "runtime-drift-2026-10-05";
 const prototypeTokenWhitelistPath = "/derived-token-whitelist.json";
 const previewTokenOverridesAttribute = "data-pi-token-overrides";
 

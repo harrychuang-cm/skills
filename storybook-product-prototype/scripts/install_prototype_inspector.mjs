@@ -3,6 +3,7 @@ import {
   existsSync,
   cpSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   writeFileSync,
 } from "node:fs";
@@ -15,6 +16,10 @@ const addonAssetDir = resolve(skillRoot, "assets/prototype-inspector");
 const flowLayoutAssetPath = resolve(
   skillRoot,
   "assets/prototype-flow-layout/prototypeFlowLayout.ts",
+);
+const fingerprintAssetPath = resolve(
+  skillRoot,
+  "assets/prototype-review/fingerprint.mjs",
 );
 
 function parseArgs(argv) {
@@ -122,14 +127,9 @@ function insertAddonEntry(source, entry) {
   );
 }
 
-function installFlowLayoutHelper(projectRoot, force) {
-  const targetPath = resolve(
-    projectRoot,
-    "src/pages/prototypes/prototypeFlowLayout.ts",
-  );
-
-  if (!existsSync(flowLayoutAssetPath)) {
-    throw new Error(`Missing bundled flow layout helper: ${flowLayoutAssetPath}`);
+function installBundledFile(assetPath, targetPath, label, force) {
+  if (!existsSync(assetPath)) {
+    throw new Error(`Missing bundled ${label}: ${assetPath}`);
   }
 
   if (existsSync(targetPath) && !force) {
@@ -140,12 +140,116 @@ function installFlowLayoutHelper(projectRoot, force) {
   }
 
   mkdirSync(dirname(targetPath), { recursive: true });
-  cpSync(flowLayoutAssetPath, targetPath, { force: true });
+  cpSync(assetPath, targetPath, { force: true });
 
   return {
     action: "installed",
     targetPath,
   };
+}
+
+function getFlowLayoutHelperPath(projectRoot) {
+  return resolve(projectRoot, "src/pages/prototypes/prototypeFlowLayout.ts");
+}
+
+// Static import declarations at a statement boundary (line start or right
+// after ";"), including multi-line named lists whose comments may hold any
+// character but "}"; import.meta, dynamic import( and re-exports
+// (export ... from "x") never match. Group 1 is the import clause, group 2 the
+// specifier.
+const importDeclarationPattern =
+  /(?:^|;)[ \t]*import\s+(?:((?:\{[^}]*\}|[^"'`;{}])*?)\s*from\s*)?["']([^"'\n]+)["']/gm;
+// Every import keyword at a statement boundary that is not import.meta,
+// import( or an object key; each one has to be read as a declaration.
+const importKeywordPattern = /(?:^|;)[ \t]*import\b(?!\s*[.(:])/gm;
+// Names the helper declares as exports. Re-exports such as export { a as b }
+// are not recognised, so a helper written that way is reported as missing
+// the name and needs --force.
+const exportDeclarationPattern =
+  /(?:^|;)[ \t]*export\s+(?:(?:async\s+)?function(?:\s*\*\s*|\s+)|(?:const|let|type|interface)\s+)([A-Za-z_$][\w$]*)/gm;
+
+// Names the bundled inspector modules import from the flow layout helper, read
+// from their import declarations so a new import needs no list update. Each
+// specifier resolves from the module's installed location; only named imports
+// ({ name } or { name as alias }) require a helper export.
+function readRequiredHelperExports(targetAddonDir, helperPath) {
+  const names = new Set();
+  const modules = readdirSync(addonAssetDir, { recursive: true })
+    .map(String)
+    .filter((relativePath) => /\.(?:[cm]?js|jsx|tsx?)$/.test(relativePath))
+    .sort();
+
+  for (const relativePath of modules) {
+    const source = readFileSync(resolve(addonAssetDir, relativePath), "utf8");
+    const installedDir = dirname(resolve(targetAddonDir, relativePath));
+    const declarations = [...source.matchAll(importDeclarationPattern)];
+    // A statement this check cannot read could import from the helper, so it
+    // fails instead of being skipped.
+    const readStarts = new Set(
+      declarations.map((match) => match.index + match[0].indexOf("import")),
+    );
+    for (const keyword of source.matchAll(importKeywordPattern)) {
+      const start = keyword.index + keyword[0].lastIndexOf("import");
+      if (!readStarts.has(start)) {
+        const line = source.slice(0, start).split("\n").length;
+        throw new Error(
+          `Cannot read the import statement at ${relativePath}:${line} of the bundled Prototype Inspector, so the flow layout helper exports cannot be checked. Rerun with --force to replace the helper with the bundled one.`,
+        );
+      }
+    }
+    for (const [, clause = "", specifier] of declarations) {
+      if (!/^\.{1,2}\//.test(specifier)) continue;
+      const target = resolve(installedDir, specifier);
+      if (target !== helperPath && `${target}.ts` !== helperPath) continue;
+
+      const namedList = /\{([^}]*)\}/.exec(
+        clause.replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, ""),
+      );
+      for (const entry of namedList ? namedList[1].split(",") : []) {
+        const name = entry.trim().split(/\s+as\s+/)[0];
+        if (name) names.add(name);
+      }
+    }
+  }
+
+  return [...names];
+}
+
+function findMissingHelperExports(helperPath, targetAddonDir) {
+  // Blank out block comments but keep their line breaks, so a commented-out
+  // export does not count as one.
+  const source = readFileSync(helperPath, "utf8").replace(
+    /\/\*[\s\S]*?\*\//g,
+    (comment) => comment.replace(/[^\n]/g, ""),
+  );
+  const exported = new Set(
+    [...source.matchAll(exportDeclarationPattern)].map((match) => match[1]),
+  );
+  return readRequiredHelperExports(targetAddonDir, helperPath).filter(
+    (name) => !exported.has(name),
+  );
+}
+
+function installFlowLayoutHelper(projectRoot, force) {
+  return installBundledFile(
+    flowLayoutAssetPath,
+    getFlowLayoutHelperPath(projectRoot),
+    "flow layout helper",
+    force,
+  );
+}
+
+// preview.js imports the shared fingerprint from
+// ../../scripts/prototype-review/fingerprint.mjs, so it is installed at that
+// project path, where node-side review scripts can share the same frozen
+// implementation, rather than inside the inspector folder.
+function installFingerprint(projectRoot, force) {
+  return installBundledFile(
+    fingerprintAssetPath,
+    resolve(projectRoot, "scripts/prototype-review/fingerprint.mjs"),
+    "fingerprint module",
+    force,
+  );
 }
 
 function main() {
@@ -176,7 +280,21 @@ function main() {
     process.exit(1);
   }
 
+  // Runs before the folder guard so projects that carry both an older
+  // inspector folder and an older helper see the missing names, and before
+  // any write so a refused install leaves the project untouched.
   const targetAddonDir = resolve(storybookDir, "prototype-inspector");
+  const helperPath = getFlowLayoutHelperPath(projectRoot);
+  if (!args.force && existsSync(helperPath)) {
+    const missingExports = findMissingHelperExports(helperPath, targetAddonDir);
+    if (missingExports.length > 0) {
+      console.error(
+        `Existing flow layout helper ${helperPath} is missing exports required by the Prototype Inspector: ${missingExports.join(", ")}. Rerun with --force to replace it with the bundled helper.`,
+      );
+      process.exit(1);
+    }
+  }
+
   if (existsSync(targetAddonDir) && !args.force) {
     throw new Error(
       `${targetAddonDir} already exists. Pass --force to overwrite bundled addon files.`,
@@ -196,6 +314,7 @@ function main() {
   }
 
   const flowLayout = installFlowLayoutHelper(projectRoot, args.force);
+  const fingerprint = installFingerprint(projectRoot, args.force);
 
   console.log(`Installed Prototype Inspector addon into ${targetAddonDir}`);
   if (args.tokenPrefix && args.tokenPrefix !== "sbt") {
@@ -205,6 +324,9 @@ function main() {
   }
   console.log(
     `${flowLayout.action === "installed" ? "Installed" : "Reused"} flow layout helper: ${flowLayout.targetPath}`,
+  );
+  console.log(
+    `${fingerprint.action === "installed" ? "Installed" : "Reused"} fingerprint: ${fingerprint.targetPath}`,
   );
   console.log(`Updated Storybook config: ${mainPath}`);
 }

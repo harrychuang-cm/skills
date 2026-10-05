@@ -245,7 +245,7 @@ tests:
 ---
 ### Requirement: Scaffold and validate smoke test
 
-The skill SHALL provide a self-contained smoke test script runnable with python3 and no third-party dependencies. The script SHALL, for each of react and vue, scaffold a feature into a temporary directory with an explicit `--framework` value and immediately run the validator on the result, and SHALL extend the matrix with viewport rounds: --viewport desktop, --viewport tablet, and --viewport 1440x900 per framework. The script SHALL fail with a non-zero exit code when the scaffolded file set contains a file of the other framework's component format, when the validator's framework detection result is wrong, when missing-file errors occur, when the vue-round validator output is not equivalent to the react-round baseline for the same template state, when the no-flags round's output deviates from the phone-default baseline (flow viewport phone 375x812 defaults and the 720px shell wide cap), when a viewport round's generated flow does not declare the expected formFactor, width, and height, when a viewport round fails validation, or when the inspector runtime files (preview.js and prototype-inspector.css) differ between the skill asset copy and the storybook-template .storybook copy. On success it SHALL exit zero and print a per-round summary.
+The skill SHALL provide a self-contained smoke test script runnable with python3 and no third-party dependencies. The script SHALL, for each of react and vue, scaffold a feature into a temporary directory with an explicit `--framework` value and immediately run the validator on the result, and SHALL extend the matrix with viewport rounds: --viewport desktop, --viewport tablet, and --viewport 1440x900 per framework. The script SHALL fail with a non-zero exit code when the scaffolded file set contains a file of the other framework's component format, when the validator's framework detection result is wrong, when missing-file errors occur, when the vue-round validator output is not equivalent to the react-round baseline for the same template state, when the no-flags round's output deviates from the phone-default baseline (flow viewport phone 375x812 defaults and the 720px shell wide cap), when a viewport round's generated flow does not declare the expected formFactor, width, and height, when a viewport round fails validation, or when the Inspector runtime mirror parity or Inspector import surface check defined by the inspector-runtime-distribution capability fails. On success it SHALL exit zero and print a per-round summary.
 
 #### Scenario: Smoke test passes on both frameworks
 
@@ -266,6 +266,34 @@ The skill SHALL provide a self-contained smoke test script runnable with python3
 
 - **WHEN** a template edit changes the no-flags scaffold output away from the phone-default baseline
 - **THEN** the smoke test exits non-zero naming the deviating file
+
+#### Scenario: Inspector mirror drift fails the smoke test
+
+- **WHEN** any file in the inspector runtime mirror set differs between the skill asset copy and the storybook-template copy
+- **THEN** the smoke test exits non-zero and names the divergent file
+
+##### Example: one-byte drift in the stylesheet
+
+- **GIVEN** the template copy of prototype-inspector.css differs from the skill asset copy in one byte
+- **WHEN** `python3 storybook-product-prototype/scripts/test_scaffold_validate.py` runs
+- **THEN** it exits non-zero and prints a line containing "inspector mirror: prototype-inspector.css differs"
+
+
+<!-- @trace
+source: fix-inspector-runtime-drift
+updated: 2026-10-05
+code:
+  - storybook-product-prototype/scripts/install_prototype_inspector.mjs
+  - storybook-product-prototype/references/storybook-integration.md
+  - design-system-to-storybook/storybook-template/.storybook/prototype-inspector/preview.js
+  - storybook-product-prototype/SKILL.md
+  - storybook-product-prototype/assets/prototype-inspector/preview.js
+  - design-system-to-storybook/storybook-template/src/pages/prototypes/prototypeFlowLayout.ts
+  - README.md
+tests:
+  - storybook-product-prototype/scripts/test_scaffold_validate.py
+  - storybook-product-prototype/scripts/test_install_prototype_inspector.mjs
+-->
 
 ---
 ### Requirement: Documentation states the Vue support scope

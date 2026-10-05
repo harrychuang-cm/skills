@@ -13,9 +13,37 @@ baseline, when the no-flags round deviates from the phone-default baseline
 viewport round's generated flow does not declare the expected formFactor and
 dimensions or fails validation, when the half-converted fixture does not trip
 its warning, when flow.json viewport emission is wrong (present for a
-declaring flow, absent for a legacy one), or when the inspector runtime
-copies (preview.js, prototype-inspector.css) differ between the skill asset
-and the design-system-to-storybook storybook-template .storybook copy.
+declaring flow, absent for a legacy one), when the inspector runtime mirror
+drifts: a file under assets/prototype-inspector/ (walked, .DS_Store
+ignored), the flow layout helper or the review fingerprint differs from its
+design-system-to-storybook storybook-template copy or exists on one side
+only, or when an inspector module imports something an installed project
+cannot load.
+
+The import surface check reads the static import declarations of every
+JavaScript module under assets/prototype-inspector/: `import ... from "x"`
+(brace lists may span lines) and `import "x"`, at the start of a line or
+right after ";". import.meta and dynamic import() are not declarations; any
+other import statement the pattern cannot read fails instead of being
+skipped. Relative specifiers must resolve, from the installed
+.storybook/prototype-inspector/, to a file in that folder or to the flow
+layout helper (src/pages/prototypes/prototypeFlowLayout.ts) or the review
+fingerprint (scripts/prototype-review/fingerprint.mjs) the installer
+places. Each name imported from those two must be exported, as
+`export function|const|let|type|interface <name>` or `export default`, by
+the skill asset copy and the storybook-template copy, or by the asset copy
+alone with a printed notice when the template tree is absent. Bare
+specifiers are limited to react, storybook/* and @storybook/*, so the
+runtime adds no dependency; node: built-ins are allowed only in preset.js,
+which Storybook loads in Node. Re-exports (`export ... from "x"`) are not
+supported: one in an inspector module is not read as an import, and a
+helper name exported only through an export list or a re-export reads as
+missing. The scan is lexical, so an import keyword at statement start
+inside a block comment, a string or a template literal reads as a
+declaration.
+
+Self-tests on temporary trees then prove that the mirror comparison names
+each kind of drift and the import check names each kind of violation.
 """
 
 from __future__ import annotations
@@ -74,9 +102,39 @@ VIEWPORT_ROUNDS = [
     ("custom-1440x900", ["--viewport", "1440x900"], ("desktop", 1440, 900)),
 ]
 
-# Inspector runtime files that must stay byte-identical between the skill
-# asset and the storybook-template .storybook copy.
-INSPECTOR_COPY_FILES = ("preview.js", "prototype-inspector.css")
+# Inspector runtime mirror. Both inspector folders are walked, so a new
+# Inspector module needs no update here; the flow layout helper and the
+# review fingerprint live outside the folder and are compared as pairs of
+# (skill-root relative, storybook-template-root relative) paths.
+STORYBOOK_TEMPLATE_ROOT = (
+    SCRIPTS_DIR.parent.parent / "design-system-to-storybook" / "storybook-template"
+)
+INSPECTOR_ASSET_DIR = Path("assets/prototype-inspector")
+INSPECTOR_TEMPLATE_DIR = Path(".storybook/prototype-inspector")
+INSPECTOR_PAIRED_COPIES = (
+    (
+        Path("assets/prototype-flow-layout/prototypeFlowLayout.ts"),
+        Path("src/pages/prototypes/prototypeFlowLayout.ts"),
+    ),
+    (
+        Path("assets/prototype-review/fingerprint.mjs"),
+        Path("scripts/prototype-review/fingerprint.mjs"),
+    ),
+)
+
+# Inspector import surface. Specifiers resolve as installed under
+# <project>/.storybook/prototype-inspector/ (INSPECTOR_TEMPLATE_DIR). The
+# storybook-template is itself such a project, so the template side of each
+# INSPECTOR_PAIRED_COPIES pair is also where install_prototype_inspector.mjs
+# places that file. Bare specifiers stay within packages every React
+# Storybook project already has; preset.js, which Storybook loads in Node,
+# may also import node: built-ins.
+INSPECTOR_MODULE_SUFFIXES = (".js", ".mjs", ".cjs", ".jsx")
+INSPECTOR_ALLOWED_PACKAGES = ("react", "storybook/*", "@storybook/*")
+INSPECTOR_NODE_MODULE = "preset.js"
+# Tried for a relative specifier: the exact path, then Vite's default
+# resolve.extensions.
+INSPECTOR_RESOLVE_SUFFIXES = ("", ".mjs", ".js", ".mts", ".ts", ".jsx", ".tsx", ".json")
 
 
 def run_round(framework: str, base_dir: Path) -> tuple[list[str], int, str]:
@@ -370,37 +428,727 @@ def check_viewport_contracts() -> list[str]:
     return failures
 
 
-def check_inspector_copies() -> list[str]:
-    """The skill asset and storybook-template inspector copies must match."""
-    skill_root = SCRIPTS_DIR.parent
-    asset_dir = skill_root / "assets" / "prototype-inspector"
-    template_dir = (
-        skill_root.parent
-        / "design-system-to-storybook"
-        / "storybook-template"
-        / ".storybook"
-        / "prototype-inspector"
+def list_inspector_files(folder: Path) -> dict[str, Path]:
+    """Every file under folder, keyed by its POSIX path relative to folder.
+
+    .DS_Store is Finder metadata rather than runtime, so it never counts as
+    drift.
+    """
+    if not folder.is_dir():
+        return {}
+    return {
+        path.relative_to(folder).as_posix(): path
+        for path in folder.rglob("*")
+        if path.is_file() and path.name != ".DS_Store"
+    }
+
+
+def compare_inspector_mirror(skill_root: Path, template_root: Path) -> list[str]:
+    """Name every inspector runtime file that differs or exists on one side.
+
+    Folder files are named by their path inside the inspector folder; paired
+    copies by their file name, followed by both locations.
+    """
+    asset_files = list_inspector_files(skill_root / INSPECTOR_ASSET_DIR)
+    template_files = list_inspector_files(template_root / INSPECTOR_TEMPLATE_DIR)
+    copies = [
+        (name, asset_files.get(name), template_files.get(name), "")
+        for name in sorted(asset_files.keys() | template_files.keys())
+    ]
+    for asset_relative, template_relative in INSPECTOR_PAIRED_COPIES:
+        asset_path = skill_root / asset_relative
+        template_path = template_root / template_relative
+        copies.append(
+            (
+                asset_relative.name,
+                asset_path if asset_path.is_file() else None,
+                template_path if template_path.is_file() else None,
+                f" ({asset_relative.as_posix()} vs "
+                f"storybook-template/{template_relative.as_posix()})",
+            )
+        )
+
+    failures: list[str] = []
+    for name, asset_path, template_path, locations in copies:
+        if asset_path is None and template_path is None:
+            status = "missing from both copies"
+        elif template_path is None:
+            status = "only in skill asset"
+        elif asset_path is None:
+            status = "only in storybook-template"
+        elif asset_path.read_bytes() != template_path.read_bytes():
+            status = "differs"
+        else:
+            continue
+        failures.append(f"inspector mirror: {name} {status}{locations}")
+    return failures
+
+
+def check_inspector_mirror_self_test() -> list[str]:
+    """The mirror comparison has to name each kind of drift it guards against.
+
+    Breaks temporary copies one way at a time and restores them. The skill
+    side is written from the fixture below and the template side is copied
+    from it, so nothing in the real trees (a missing or empty file, drift, a
+    module that happens to share a planted name) can crash or skew this test.
+    """
+    import shutil
+
+    (helper_asset, helper_template), (fingerprint_asset, fingerprint_template) = (
+        INSPECTOR_PAIRED_COPIES
     )
-    if not template_dir.is_dir():
+    # The real regression: the template helper stayed at schema version 1
+    # after the skill asset helper moved to version 2.
+    current_helper = b"export const prototypeFlowLayoutSchemaVersion = 2;\n"
+    stale_helper = b"export const prototypeFlowLayoutSchemaVersion = 1;\n"
+    skill_fixture = {
+        INSPECTOR_ASSET_DIR / "preview.js": b'import "./prototype-inspector.css";\n',
+        INSPECTOR_ASSET_DIR / "prototype-inspector.css": b".prototype-inspector {}\n",
+        INSPECTOR_ASSET_DIR / "panels" / "flow.js": b"export const flowPanel = {};\n",
+        helper_asset: current_helper,
+        fingerprint_asset: b"export function fingerprint() {}\n",
+    }
+
+    failures: list[str] = []
+    with tempfile.TemporaryDirectory(prefix="inspector-mirror-") as temp_dir:
+        skill_root = Path(temp_dir) / "skill"
+        template_root = Path(temp_dir) / "storybook-template"
+        asset_dir = skill_root / INSPECTOR_ASSET_DIR
+        template_dir = template_root / INSPECTOR_TEMPLATE_DIR
+        for relative, content in skill_fixture.items():
+            (skill_root / relative).parent.mkdir(parents=True, exist_ok=True)
+            (skill_root / relative).write_bytes(content)
+        shutil.copytree(asset_dir, template_dir)
+        for asset_relative, template_relative in INSPECTOR_PAIRED_COPIES:
+            template_copy = template_root / template_relative
+            template_copy.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(skill_root / asset_relative, template_copy)
+
+        def expect(label: str, *needles: str) -> None:
+            reported = compare_inspector_mirror(skill_root, template_root)
+            if needles:
+                caught = len(reported) == 1 and all(
+                    needle in reported[0] for needle in needles
+                )
+            else:
+                caught = not reported
+            if not caught:
+                wanted = " + ".join(repr(needle) for needle in needles) or "no drift"
+                failures.append(
+                    f"inspector mirror self-test ({label}): expected {wanted}, "
+                    f"got {reported}"
+                )
+
+        expect("identical copies")
+
+        metadata = (template_dir / ".DS_Store", asset_dir / "panels" / ".DS_Store")
+        for path in metadata:
+            path.write_bytes(b"\x00\x00\x00\x01Bud1")
+        expect(".DS_Store in one copy, top level and nested")
+        for path in metadata:
+            path.unlink()
+
+        preview = template_dir / "preview.js"
+        original = preview.read_bytes()
+        preview.write_bytes(original + b"\n")
+        expect("extra newline byte", "inspector mirror: preview.js differs")
+        preview.write_bytes(original)
+
+        stylesheet = template_dir / "prototype-inspector.css"
+        original = stylesheet.read_bytes()
+        stylesheet.write_bytes(original[:-1] + bytes([original[-1] ^ 1]))
+        expect("one changed byte", "inspector mirror: prototype-inspector.css differs")
+        stylesheet.write_bytes(original)
+
+        new_module = asset_dir / "new-module.js"
+        new_module.write_text("export {};\n")
+        expect(
+            "module only in the skill asset",
+            "inspector mirror: new-module.js only in skill asset",
+        )
+        new_module.unlink()
+
+        nested = template_dir / "panels" / "extra.js"
+        nested.write_text("export {};\n")
+        expect(
+            "nested file only in the template",
+            "inspector mirror: panels/extra.js only in storybook-template",
+        )
+        nested.unlink()
+
+        helper = template_root / helper_template
+        helper.write_bytes(stale_helper)
+        expect(
+            "version-1 template helper",
+            "inspector mirror:",
+            "prototypeFlowLayout.ts",
+            "differs",
+        )
+        helper.write_bytes(current_helper)
+
+        asset_helper = skill_root / helper_asset
+        asset_helper.unlink()
+        expect(
+            "helper missing from the skill asset",
+            "inspector mirror: prototypeFlowLayout.ts only in storybook-template",
+        )
+        asset_helper.write_bytes(current_helper)
+
+        fingerprint = template_root / fingerprint_template
+        asset_fingerprint = skill_root / fingerprint_asset
+        original = fingerprint.read_bytes()
+        fingerprint.unlink()
+        expect(
+            "fingerprint missing from the template",
+            "inspector mirror: fingerprint.mjs only in skill asset",
+        )
+        asset_fingerprint.unlink()
+        expect(
+            "fingerprint missing from both copies",
+            "inspector mirror: fingerprint.mjs missing from both copies",
+        )
+        asset_fingerprint.write_bytes(original)
+        fingerprint.write_bytes(original)
+    return failures
+
+
+def check_inspector_copies() -> list[str]:
+    """Inspector runtime mirror parity between the skill asset and the template.
+
+    The real comparison runs first, then the self-test proves on temporary
+    copies that the comparison still names each kind of drift, so a checker
+    that stops seeing drift fails here instead of passing silently. A crash
+    in the self-test becomes a failure line rather than aborting the smoke
+    test and hiding the real comparison's lines.
+    """
+    failures: list[str] = []
+    template_present = STORYBOOK_TEMPLATE_ROOT.is_dir()
+    if template_present:
+        failures.extend(
+            compare_inspector_mirror(SCRIPTS_DIR.parent, STORYBOOK_TEMPLATE_ROOT)
+        )
+    else:
         # Standalone skill installs do not carry the storybook-template tree;
         # the parity check is only meaningful in the monorepo.
         print(
-            "inspector copies: storybook-template copy not present — skipping "
-            "byte comparison"
+            "inspector mirror: storybook-template tree not present — skipping "
+            "the mirror comparison"
         )
-        return []
-    failures: list[str] = []
-    for name in INSPECTOR_COPY_FILES:
-        if (asset_dir / name).read_bytes() != (template_dir / name).read_bytes():
-            failures.append(
-                f"inspector copies: {name} differs between the skill asset and "
-                "design-system-to-storybook/storybook-template/.storybook — "
-                "mirror the edit on both sides in the same commit"
-            )
-    if not failures:
+    try:
+        failures.extend(check_inspector_mirror_self_test())
+    except Exception as error:
+        # Any crash: main() still has to print the comparison lines above.
+        failures.append(
+            f"inspector mirror self-test: crashed: {type(error).__name__}: {error}"
+        )
+    if template_present and not failures:
+        runtime_files = list_inspector_files(SCRIPTS_DIR.parent / INSPECTOR_ASSET_DIR)
         print(
-            "inspector copies: skill asset and storybook-template copies are "
-            "byte-identical"
+            f"inspector mirror: {len(runtime_files)} runtime files plus the flow "
+            "layout helper and fingerprint are byte-identical between the skill "
+            "asset and storybook-template (drift self-test passed)"
+        )
+    return failures
+
+
+def parse_static_imports(
+    source: str,
+) -> tuple[list[tuple[str, list[str]]], list[tuple[int, str]]]:
+    """Static import declarations of a JavaScript module.
+
+    Returns (declarations, unreadable). Each declaration is (specifier,
+    imported names): a default binding reads as the name "default", a
+    namespace import carries no names, and a brace list may span lines and
+    hold comments. Only the import keyword at statement start (the start of a
+    line or right after ";") counts; import.meta, dynamic import() and an
+    object key named import are not declarations. unreadable holds (line,
+    text) for every other import keyword the pattern cannot read, so the
+    caller fails it instead of skipping it.
+    """
+    import re
+
+    identifier = r"[A-Za-z_$][\w$]*"
+    keyword = re.compile(r"(?:^|;)[ \t]*(import)\b(?!\s*[.(:])", re.MULTILINE)
+    declaration = re.compile(
+        rf"""import\s*
+        (?:
+            (?:(?P<default>{identifier})\s*,\s*)?
+            (?:\*\s*as\s+{identifier}\s+|\{{(?P<names>[^{{}}]*)\}}\s*)
+            from\s*
+          | (?P<default_only>{identifier})\s+from\s*
+        )?
+        (?P<quote>["'])(?P<specifier>[^"'\r\n]+)(?P=quote)""",
+        re.VERBOSE,
+    )
+    named_item = re.compile(
+        rf"""(?:(?P<name>{identifier})|(?P<quote>["'])(?P<text>[^"'\r\n]*)(?P=quote))"""
+        rf"(?:\s+as\s+{identifier})?"
+    )
+
+    declarations: list[tuple[str, list[str]]] = []
+    unreadable: list[tuple[int, str]] = []
+    for keyword_match in keyword.finditer(source):
+        start = keyword_match.start(1)
+        found = declaration.match(source, start)
+        names: list[str] = []
+        if found and found.group("names") is not None:
+            listed = re.sub(
+                r"//[^\n]*|/\*.*?\*/", "", found.group("names"), flags=re.DOTALL
+            )
+            for item in filter(None, (part.strip() for part in listed.split(","))):
+                item_match = named_item.fullmatch(item)
+                if item_match is None:
+                    found = None
+                    break
+                names.append(item_match.group("name") or item_match.group("text"))
+        if found is None:
+            line = source.count("\n", 0, start) + 1
+            text = source[start : start + 120].split("\n", 1)[0].strip()
+            unreadable.append((line, text))
+            continue
+        if found.group("default") or found.group("default_only"):
+            names.insert(0, "default")
+        declarations.append((found.group("specifier"), names))
+    return declarations, unreadable
+
+
+def read_export_names(source: str) -> set[str]:
+    """Names a module exports, as the import surface check reads them.
+
+    Recognises `export function|const|let|type|interface <name>` (async and
+    generator functions included) and `export default` at the start of a
+    line. Export lists and re-exports are not read, and an export inside a
+    /* ... */ block comment does not count.
+    """
+    import re
+
+    # Blank out block comments but keep their line breaks, so a commented-out
+    # export does not count and every real export keeps its line start.
+    source = re.sub(
+        r"/\*.*?\*/",
+        lambda comment: "\n" * comment.group(0).count("\n"),
+        source,
+        flags=re.DOTALL,
+    )
+    pattern = re.compile(
+        r"^[ \t]*export\s+(?:(?P<default>default)\b|"
+        r"(?:(?:async\s+)?function(?:\s*\*\s*|\s+)|(?:const|let|type|interface)\s+)"
+        r"(?P<name>[A-Za-z_$][\w$]*))",
+        re.MULTILINE,
+    )
+    return {
+        "default" if match.group("default") else match.group("name")
+        for match in pattern.finditer(source)
+    }
+
+
+def find_inspector_import_violations(
+    skill_root: Path, template_root: Path | None
+) -> list[str]:
+    """Name every static import an installed Inspector could not load.
+
+    Reads the modules in the skill asset folder and resolves their relative
+    specifiers as installed under <project>/.storybook/prototype-inspector/.
+    Names imported from the helper or the fingerprint are checked against the
+    skill asset copy and, unless template_root is None (no storybook-template
+    tree), the template copy. Names imported from files inside the folder
+    are not checked.
+    """
+    import fnmatch
+    import posixpath
+
+    asset_files = list_inspector_files(skill_root / INSPECTOR_ASSET_DIR)
+    modules = sorted(
+        name for name in asset_files if name.endswith(INSPECTOR_MODULE_SUFFIXES)
+    )
+    if not modules:
+        return [
+            "inspector imports: no JavaScript modules found under "
+            f"{INSPECTOR_ASSET_DIR.as_posix()}/"
+        ]
+    install_dir = INSPECTOR_TEMPLATE_DIR.as_posix()
+    placed_copies = {
+        template_relative.as_posix(): (asset_relative, template_relative)
+        for asset_relative, template_relative in INSPECTOR_PAIRED_COPIES
+    }
+    export_names: dict[Path, set[str]] = {}
+
+    def problems(module: str, specifier: str, names: list[str]) -> list[str]:
+        if specifier.startswith("node:"):
+            if module == INSPECTOR_NODE_MODULE:
+                return []
+            return [
+                f"node: built-ins are allowed only in {INSPECTOR_NODE_MODULE}, "
+                "which Storybook loads in Node"
+            ]
+        if not (specifier in (".", "..") or specifier.startswith(("./", "../"))):
+            if any(
+                fnmatch.fnmatchcase(specifier, pattern)
+                for pattern in INSPECTOR_ALLOWED_PACKAGES
+            ):
+                return []
+            parts = specifier.split("/")
+            package = "/".join(parts[:2] if specifier.startswith("@") else parts[:1])
+            return [
+                f"package {package or specifier} is not allowed; bare imports are "
+                f"limited to {', '.join(INSPECTOR_ALLOWED_PACKAGES)} so the "
+                "Inspector adds no dependency"
+            ]
+
+        target = posixpath.normpath(
+            posixpath.join(posixpath.dirname(f"{install_dir}/{module}"), specifier)
+        )
+        if target == ".." or target.startswith("../"):
+            return [f"resolves to {target}, outside the project"]
+        candidates = [target + suffix for suffix in INSPECTOR_RESOLVE_SUFFIXES]
+        folder = f"{install_dir}/"
+        if any(
+            candidate.startswith(folder) and candidate[len(folder) :] in asset_files
+            for candidate in candidates
+        ):
+            return []
+        placed = next(
+            (
+                placed_copies[candidate]
+                for candidate in candidates
+                if candidate in placed_copies
+            ),
+            None,
+        )
+        if placed is None:
+            return [
+                f"resolves to {target}, which install_prototype_inspector.mjs "
+                "does not ship"
+            ]
+
+        asset_relative, template_relative = placed
+        copies = [(asset_relative.as_posix(), skill_root / asset_relative)]
+        if template_root is not None:
+            copies.append(
+                (
+                    f"storybook-template/{template_relative.as_posix()}",
+                    template_root / template_relative,
+                )
+            )
+        found: list[str] = []
+        for label, path in copies:
+            if not path.is_file():
+                found.append(f"{label} does not exist")
+                continue
+            if path not in export_names:
+                export_names[path] = read_export_names(
+                    path.read_text(encoding="utf-8-sig")
+                )
+            missing = [name for name in names if name not in export_names[path]]
+            if missing:
+                found.append(f"{label} does not export {', '.join(missing)}")
+        return found
+
+    failures: list[str] = []
+    for module in modules:
+        declarations, unreadable = parse_static_imports(
+            asset_files[module].read_text(encoding="utf-8-sig")
+        )
+        for line, text in unreadable:
+            failures.append(
+                f"inspector imports: {module} line {line} — import statement "
+                f"the check cannot parse: {text}"
+            )
+        for specifier, names in declarations:
+            failures.extend(
+                f"inspector imports: {module} imports {specifier} — {reason}"
+                for reason in problems(module, specifier, names)
+            )
+    return failures
+
+
+def check_inspector_imports_self_test() -> list[str]:
+    """The import surface check has to name each kind of violation.
+
+    Each case writes a fresh tree from the fixture below plus one edit, so
+    nothing in the real trees (a missing file, drift, a real violation) can
+    crash or skew this test. The fixture repeats the real runtime's import
+    shapes: multi-line brace lists, the helper and fingerprint imports, a
+    stylesheet import, preset.js's node: imports and import.meta.url, plus a
+    nested module.
+    """
+    (helper_asset, helper_template), (fingerprint_asset, fingerprint_template) = (
+        INSPECTOR_PAIRED_COPIES
+    )
+    helper_specifier = "../../src/pages/prototypes/prototypeFlowLayout"
+    fingerprint_specifier = "../../scripts/prototype-review/fingerprint.mjs"
+    asset_dir = Path("skill") / INSPECTOR_ASSET_DIR
+    preview = asset_dir / "preview.js"
+    template_helper = Path("storybook-template") / helper_template
+    template_fingerprint = Path("storybook-template") / fingerprint_template
+    # The real regression: a helper copy that predates
+    # getPrototypeFlowLayoutViewportSignature, which preview.js imports.
+    stale_helper = (
+        "export type PrototypeFlowLayoutViewport = { width: number; height: number };\n"
+        'export const prototypeFlowLayoutStoragePrefix = "flow-layout:";\n'
+        "export function getPrototypeFlowLayoutStorageKey(id: string) {\n"
+        "  return `${prototypeFlowLayoutStoragePrefix}${id}`;\n"
+        "}\n"
+        "export function readPrototypeFlowLayoutPositions() {\n"
+        "  return {};\n"
+        "}\n"
+    )
+    helper = stale_helper + (
+        "export function getPrototypeFlowLayoutViewportSignature(\n"
+        "  viewport?: PrototypeFlowLayoutViewport,\n"
+        ") {\n"
+        "  return viewport ? `${viewport.width}x${viewport.height}` : null;\n"
+        "}\n"
+    )
+    fingerprint = (
+        "export function computeFingerprint(metaLike) {\n"
+        "  return JSON.stringify(metaLike);\n"
+        "}\n"
+    )
+    fixture = {
+        preview: (
+            "import {\n"
+            "  createElement,\n"
+            "  useState,\n"
+            '} from "react";\n'
+            "\n"
+            'import { UPDATE_GLOBALS } from "storybook/internal/core-events";\n'
+            'import { addons } from "storybook/preview-api";\n'
+            "\n"
+            "import {\n"
+            "  getPrototypeFlowLayoutStorageKey,\n"
+            "  getPrototypeFlowLayoutViewportSignature,\n"
+            "  readPrototypeFlowLayoutPositions,\n"
+            f'}} from "{helper_specifier}";\n'
+            f'import {{ computeFingerprint }} from "{fingerprint_specifier}";\n'
+            "\n"
+            'import "./prototype-inspector.css";\n'
+            "\n"
+            "// Each of these starts a statement without being a declaration.\n"
+            "import.meta.hot?.accept();\n"
+            'import("./panels/flow.js").then((panel) => panel.flowPanel);\n'
+            "const importInputRef = { current: null };\n"
+        ),
+        asset_dir / "preset.js": (
+            'import { dirname, join } from "node:path";\n'
+            'import { fileURLToPath } from "node:url";\n'
+            "\n"
+            "const packageDir = dirname(fileURLToPath(import.meta.url));\n"
+            "\n"
+            "export default {\n"
+            '  previewAnnotations: [join(packageDir, "preview.js")],\n'
+            "};\n"
+        ),
+        asset_dir / "manager.js": (
+            'import { DocumentIcon } from "@storybook/icons";\n'
+            "import {\n"
+            "  addons,\n"
+            "  types,\n"
+            '} from "storybook/manager-api";\n'
+        ),
+        asset_dir / "panels" / "flow.js": (
+            "import {\n"
+            "  prototypeFlowLayoutStoragePrefix, // export const\n"
+            "  readPrototypeFlowLayoutPositions,\n"
+            f'}} from "../{helper_specifier}";\n'
+            'import "../prototype-inspector.css";\n'
+        ),
+        asset_dir / "prototype-inspector.css": ".prototype-inspector {}\n",
+        Path("skill") / helper_asset: helper,
+        template_helper: helper,
+        Path("skill") / fingerprint_asset: fingerprint,
+        template_fingerprint: fingerprint,
+    }
+
+    failures: list[str] = []
+    with tempfile.TemporaryDirectory(prefix="inspector-imports-") as temp_dir:
+
+        def expect(
+            label: str,
+            edits: dict[Path, str],
+            prefix: str = "",
+            *needles: str,
+            template_present: bool = True,
+        ) -> None:
+            case_root = Path(tempfile.mkdtemp(dir=temp_dir))
+            for relative, content in {**fixture, **edits}.items():
+                (case_root / relative).parent.mkdir(parents=True, exist_ok=True)
+                (case_root / relative).write_text(content, encoding="utf-8")
+            reported = find_inspector_import_violations(
+                case_root / "skill",
+                case_root / "storybook-template" if template_present else None,
+            )
+            if prefix:
+                caught = (
+                    len(reported) == 1
+                    and reported[0].startswith(prefix)
+                    and all(needle in reported[0] for needle in needles)
+                )
+            else:
+                caught = not reported
+            if not caught:
+                wanted = (
+                    " + ".join(repr(text) for text in (prefix, *needles) if text)
+                    or "no violation"
+                )
+                failures.append(
+                    f"inspector imports self-test ({label}): expected {wanted}, "
+                    f"got {reported}"
+                )
+
+        expect("unmodified fixture, preset.js node: imports and import.meta.url", {})
+
+        # The spec's classification table, one side-effect import appended to
+        # the module per row: None passes, otherwise the single line names the
+        # module and specifier and its reason contains the given text.
+        for module, specifier, reason in (
+            ("preview.js", "./prototype-inspector.css", None),
+            ("preview.js", helper_specifier, None),
+            ("preview.js", fingerprint_specifier, None),
+            ("preview.js", "../../src/utils/format", "resolves to src/utils/format"),
+            ("preview.js", "storybook/preview-api", None),
+            ("preview.js", "html-to-image", "package html-to-image"),
+            ("preview.js", "react-dom", "package react-dom"),
+            ("preset.js", "node:path", None),
+            ("preview.js", "node:fs", "only in preset.js"),
+            # Beyond the table: an unshipped file inside the folder, and a
+            # nested module whose path climbs out of the project.
+            (
+                "preview.js",
+                "./missing-panel.js",
+                "resolves to .storybook/prototype-inspector/missing-panel.js",
+            ),
+            ("panels/flow.js", "../../../../outside.js", "outside the project"),
+        ):
+            module_path = asset_dir / module
+            edit = {module_path: fixture[module_path] + f'import "{specifier}";\n'}
+            if reason is None:
+                expect(f"{module}: {specifier} allowed", edit)
+            else:
+                expect(
+                    f"{module}: {specifier} violation",
+                    edit,
+                    f"inspector imports: {module} imports {specifier} — ",
+                    reason,
+                )
+
+        helper_line = f"inspector imports: preview.js imports {helper_specifier} — "
+        expect(
+            "template helper lacks an imported name",
+            {template_helper: stale_helper},
+            helper_line,
+            f"storybook-template/{helper_template.as_posix()}",
+            "getPrototypeFlowLayoutViewportSignature",
+        )
+        expect(
+            "no template tree: the skill asset helper is still checked",
+            {Path("skill") / helper_asset: stale_helper},
+            helper_line,
+            helper_asset.as_posix(),
+            "getPrototypeFlowLayoutViewportSignature",
+            template_present=False,
+        )
+        expect(
+            "no template tree: the template helper is not read",
+            {template_helper: stale_helper},
+            template_present=False,
+        )
+        expect(
+            "template fingerprint lacks an imported name",
+            {template_fingerprint: "export function canonicalJson(value) {}\n"},
+            f"inspector imports: preview.js imports {fingerprint_specifier} — ",
+            f"storybook-template/{fingerprint_template.as_posix()} does not export "
+            "computeFingerprint",
+        )
+
+        same_line = (
+            'import "./prototype-inspector.css"; '
+            'import { toPng } from "html-to-image";\n'
+        )
+        expect(
+            "second import after a semicolon on the same line",
+            {preview: fixture[preview] + same_line},
+            "inspector imports: preview.js imports html-to-image — ",
+        )
+        unreadable = 'import * from "./prototype-inspector.css";\n'
+        appended_line = fixture[preview].count("\n") + 1
+        expect(
+            "import statement the pattern cannot read",
+            {preview: fixture[preview] + unreadable},
+            f"inspector imports: preview.js line {appended_line} — ",
+            unreadable.strip(),
+        )
+        unreadable_item = 'import { a b } from "./prototype-inspector.css";\n'
+        expect(
+            "brace-list item the pattern cannot read",
+            {preview: fixture[preview] + unreadable_item},
+            f"inspector imports: preview.js line {appended_line} — ",
+            unreadable_item.strip(),
+        )
+
+        commented_out = (
+            "/*\n"
+            "export function getPrototypeFlowLayoutViewportSignature() {}\n"
+            "*/\n"
+        )
+        expect(
+            "helper export inside a block comment does not count",
+            {template_helper: stale_helper + commented_out},
+            helper_line,
+            f"storybook-template/{helper_template.as_posix()}",
+            "getPrototypeFlowLayoutViewportSignature",
+        )
+        let_helper = stale_helper + (
+            "export let getPrototypeFlowLayoutViewportSignature = () => null;\n"
+        )
+        expect(
+            "helper name exported through export let",
+            {Path("skill") / helper_asset: let_helper, template_helper: let_helper},
+        )
+        default_import = f'import flowLayout from "{helper_specifier}";\n'
+        expect(
+            "default import from a helper without a default export",
+            {preview: fixture[preview] + default_import},
+            helper_line,
+            f"{helper_asset.as_posix()} does not export default",
+            template_present=False,
+        )
+    return failures
+
+
+def check_inspector_imports() -> list[str]:
+    """Inspector import surface: every static import loads once installed.
+
+    The real check runs first, then the self-test proves on synthetic trees
+    that the check still names each kind of violation, so a check that stops
+    seeing violations fails here instead of passing silently. A crash in
+    either becomes a failure line rather than aborting the smoke test, and a
+    self-test crash cannot hide the real check's lines.
+    """
+    template_root = (
+        STORYBOOK_TEMPLATE_ROOT if STORYBOOK_TEMPLATE_ROOT.is_dir() else None
+    )
+    if template_root is None:
+        # Standalone skill installs do not carry the storybook-template tree.
+        print(
+            "inspector imports: storybook-template tree not present — checking "
+            "imported names against the skill asset helper and fingerprint "
+            "only (template copies skipped)"
+        )
+    failures: list[str] = []
+    try:
+        failures.extend(
+            find_inspector_import_violations(SCRIPTS_DIR.parent, template_root)
+        )
+    except Exception as error:
+        failures.append(
+            f"inspector imports: crashed: {type(error).__name__}: {error}"
+        )
+    try:
+        failures.extend(check_inspector_imports_self_test())
+    except Exception as error:
+        failures.append(
+            f"inspector imports self-test: crashed: {type(error).__name__}: {error}"
         )
     return failures
 
@@ -455,6 +1203,7 @@ def main() -> int:
     failures.extend(check_flow_export())
     failures.extend(check_viewport_contracts())
     failures.extend(check_inspector_copies())
+    failures.extend(check_inspector_imports())
     failures.extend(check_handoff_template_contract())
 
     if failures:
@@ -474,6 +1223,11 @@ def main() -> int:
     )
     print("flow export: layout fields stripped, Swift enum and Kotlin sealed class generated")
     print("viewport contracts: flow.json emission, legacy omission, half-converted warning")
+    print(
+        "inspector imports: relative imports resolve to shipped files, helper and "
+        "fingerprint names are exported, packages stay within react and storybook "
+        "(self-test passed)"
+    )
     print(
         "handoff template: blocking list and decision register coexist, "
         "receiver contract and required sections documented"

@@ -16,7 +16,7 @@ When the target was created or upgraded by `design-system-to-storybook/storybook
 3. If the user is still exploring the product idea, run a discussion first and ask one focused product question at a time. Do not create files until route, data, platform, and acceptance scope are clear.
 4. If the user asks to scaffold immediately, use `scripts/scaffold_prototype.py` and then fill the generated docs from the product brief.
 5. If the target project already has a prototype inspector, `prototypeFlowLayout.ts`, Static Flow story, or `parameters.prototype` convention, adapt to it instead of creating a second contract.
-6. If the target project has no prototype inspector and the user asks for UI Flow runtime review, install the bundled Prototype Inspector with `scripts/install_prototype_inspector.mjs`; the installer also adds the shared flow layout helper expected by Static Flow exports.
+6. If the target project has no prototype inspector and the user asks for UI Flow runtime review, install the bundled Prototype Inspector with `scripts/install_prototype_inspector.mjs`; the installer also adds the shared flow layout helper expected by Static Flow exports and the fingerprint module `scripts/prototype-review/fingerprint.mjs` that the runtime imports (see step 9).
 7. If the user only wants metadata or scaffolding, still generate `parameters.prototype` and document that visual UI Flow review requires the runtime viewer.
 
 ## Reference Loading
@@ -189,9 +189,23 @@ If the project needs the Storybook toolbar and Docs/UI Flow/Components/Data runt
 node <skill-root>/scripts/install_prototype_inspector.mjs --project-root <repo-root>
 ```
 
-Use `--force` only when intentionally replacing an existing `.storybook/prototype-inspector` folder or project-level `src/pages/prototypes/prototypeFlowLayout.ts`; re-running with `--force` is also how existing installs pick up bundled addon updates. The installer copies the bundled addon, adds its preset to `.storybook/main.*`, and installs the shared flow layout helper used by the addon and Static Flow exports.
+The installer adds the addon preset to `.storybook/main.*` and writes three groups of files:
+
+- `.storybook/prototype-inspector/` — the Inspector runtime, copied whole from the bundled `assets/prototype-inspector/`.
+- `src/pages/prototypes/prototypeFlowLayout.ts` — the shared flow layout helper used by the addon and Static Flow exports.
+- `scripts/prototype-review/fingerprint.mjs` — the canonical metadata fingerprint module, kept outside the Inspector folder so node-side review scripts can reuse the same implementation.
+
+`preview.js` imports the helper and the fingerprint module by relative path and loads as a global preview annotation, so if either file is missing, no story loads. Without `--force`, an existing helper or fingerprint module is reused, and an existing `.storybook/prototype-inspector` folder stops the install. An existing helper that lacks any export the Inspector imports (for example an older helper without `getPrototypeFlowLayoutViewportSignature`) is refused before anything is written: the installer prints `Existing flow layout helper <path> is missing exports required by the Prototype Inspector: <names>. Rerun with --force to replace it with the bundled helper.`, exits non-zero, and leaves every project file unchanged, including `.storybook/main.*`. Review the helper for project edits before rerunning with `--force`, which replaces it with the bundled helper.
 
 The inspector styles itself through a `--pi-*` token layer that reads `--sbt-*` tokens when the project defines them and falls back to built-in neutral light/dark values otherwise. When the project uses a different token prefix (recorded in the Token Binding discovery), pass `--token-prefix <prefix>` (for example `--token-prefix md`) so the inspector binds to the project's tokens while keeping the fallbacks.
+
+Use `--force` only when intentionally replacing installed files; re-running with `--force` is also how existing installs pick up bundled addon updates. Repeat the project's token prefix on every upgrade, because `--force` re-copies the bundled stylesheet and drops the earlier bridge (omit `--token-prefix` when the project uses the default `--sbt-*` tokens):
+
+```sh
+node <skill-root>/scripts/install_prototype_inspector.mjs --project-root <repo-root> --force --token-prefix <prefix>
+```
+
+Warning: `--force` copies every bundled file over a customized `.storybook/prototype-inspector/` folder (for example a project's own fork of the Inspector runtime) and replaces the helper and fingerprint module with the bundled copies, so project edits to those files are lost. Merge project-specific Inspector changes by hand instead of forcing over them.
 
 The Prototype Inspector is React-only: its preview decorator returns React elements, so it cannot render in Vue (or other non-React) Storybook projects, and the installer aborts without writing files when `.storybook/main.*` references a non-React renderer such as `@storybook/vue3-vite`. In Vue projects, skip this step and review the flow through the `StaticFlow` story plus direct reading of the `docs/` handoff files; the `prototypeRoute` and `prototypeFlowPreview` query modes still work because they are implemented inside the prototype component itself.
 
@@ -229,6 +243,8 @@ Warning: `--force` re-scaffolds regenerate the flow file, so repeat `--viewport`
 In the skill source checkout, run `node storybook-product-prototype/scripts/test_authority_inspector.mjs` after changing the Inspector authority view; it uses the existing Storybook template React dependencies to render valid and unverified cases. This is render/semantic verification, separate from browser visual review.
 
 Run `python3 <skill-root>/scripts/test_scaffold_validate.py` after changing the templates or scripts; it scaffolds and validates one prototype per framework and fails when the two rounds diverge.
+
+Run `node <skill-root>/scripts/test_install_prototype_inspector.mjs` after changing `install_prototype_inspector.mjs` or the bundled Inspector assets; it installs into temporary React Storybook projects and checks the installed files, the fingerprint reuse rule and the refusal of an incompatible flow layout helper.
 
 ## Quality Bar
 
