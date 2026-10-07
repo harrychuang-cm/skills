@@ -11,15 +11,21 @@ import {
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import {
+  VISUAL_COMMENT_ANCHOR_LIMITS,
   VISUAL_COMMENT_LIMITS,
   clampRatio,
   defaultVisualCommentKind,
+  defaultVisualCommentView,
   isFiniteRatio,
   isVisualCommentKind,
+  isVisualCommentView,
   normalizeAuthorName,
   resolveVisualCommentKind,
+  resolveVisualCommentView,
   type CreateVisualCommentRequest,
+  type VisualCommentAnchor,
   type VisualCommentKind,
+  type VisualCommentNearbyAnchor,
 } from "./visualComment";
 import {
   renderVisualCommentIndex,
@@ -68,6 +74,11 @@ export type VisualComment = {
   // Absent on comments stored before kinds existed; those read as visual-fix.
   kind?: VisualCommentKind;
   pin: { xRatio: number; yRatio: number };
+  // Host-declared anchor; absent on comments without one.
+  anchor?: VisualCommentAnchor;
+  // When the comment was moved somewhere its screenshot no longer shows; the
+  // screenshot pin then still marks the captured point.
+  movedAt?: string;
   createdAt: string;
   resolvedAt?: string | null;
 };
@@ -76,10 +87,16 @@ export type VisualCommentDetailsPatch = {
   body?: string;
   pin?: VisualComment["pin"];
   kind?: VisualCommentKind;
+  // Alone (an object): a move. With `pin` and `movedAt`: a restore of exactly
+  // these values, where null removes the anchor or the moved mark.
+  anchor?: VisualCommentAnchor | null;
+  movedAt?: string | null;
 };
 
 export type VisualCommentOverviewComment = VisualComment & {
   kind: VisualCommentKind;
+  // Host-declared view of the capture; `story` when none was recorded.
+  view: string;
   // Meeting that stores the comment; derived, never persisted.
   sessionId: string;
   ordinal: number;
@@ -185,13 +202,25 @@ function normalizeCommentDetailsPatch(
 ): VisualCommentDetailsPatch {
   const patch = assertRecord(value, "patch");
   const keys = Object.keys(patch);
-  if (
-    keys.length === 0 ||
-    keys.some((key) => key !== "body" && key !== "pin" && key !== "kind")
-  ) {
-    fail("patch must contain one or more of body, pin, and kind.");
+  const allowedKeys = ["body", "pin", "kind", "anchor", "movedAt"];
+  if (keys.length === 0 || keys.some((key) => !allowedKeys.includes(key))) {
+    fail("patch must contain one or more of body, pin, kind, anchor, and movedAt.");
   }
+  const has = (key: string) => Object.prototype.hasOwnProperty.call(patch, key);
   const normalized: VisualCommentDetailsPatch = {};
+  if (has("movedAt")) {
+    // A restore sets the whole location at once.
+    if (!has("anchor") || !has("pin")) {
+      fail("movedAt can only be sent with anchor and pin to restore a location.");
+    }
+    normalized.anchor = patch.anchor === null ? null : normalizeAnchor(patch.anchor);
+    normalized.movedAt = patch.movedAt === null ? null : assertPastTimestamp(patch.movedAt, "movedAt");
+  } else if (has("anchor")) {
+    // A move sends only the new anchor; the server decides the screenshot pin.
+    if (patch.anchor === null) fail("anchor can only be null when restoring a location.");
+    if (has("pin")) fail("a move sends anchor without pin.");
+    normalized.anchor = normalizeAnchor(patch.anchor);
+  }
   if (Object.prototype.hasOwnProperty.call(patch, "body")) {
     normalized.body = assertText(patch.body, "body", limits.maxBodyLength);
   }
@@ -216,6 +245,15 @@ function normalizeCommentDetailsPatch(
     normalized.kind = assertKind(patch.kind);
   }
   return normalized;
+}
+
+// An ISO 8601 time that is not in the future (a restored moved mark).
+function assertPastTimestamp(value: unknown, name: string): string {
+  const time = typeof value === "string" ? Date.parse(value) : Number.NaN;
+  if (!Number.isFinite(time) || time > Date.now()) {
+    fail(`${name} must be an ISO 8601 time that is not in the future.`);
+  }
+  return new Date(time).toISOString();
 }
 
 function getPngDimensions(bytes: Buffer): { width: number; height: number } | null {
@@ -342,6 +380,99 @@ function hashKind(kind: VisualCommentKind) {
   return kind === "tracking" ? { kind } : {};
 }
 
+// The anchor enters the replay hash only when present, so requests and
+// comments from before anchors existed keep their hash.
+function hashAnchor(anchor: VisualCommentAnchor | undefined) {
+  return anchor ? { anchor } : {};
+}
+
+function assertBoundedText(value: unknown, name: string, max: number): string {
+  if (typeof value !== "string" || value.length === 0 || value.length > max) {
+    fail(`${name} is invalid.`);
+  }
+  return value;
+}
+
+function optionalBoundedText(
+  record: Record<string, unknown>,
+  key: string,
+  name: string,
+  max: number,
+): Record<string, string> {
+  if (record[key] === undefined) return {};
+  if (typeof record[key] !== "string" || (record[key] as string).length > max) {
+    fail(`${name} is invalid.`);
+  }
+  return (record[key] as string).length > 0 ? { [key]: record[key] as string } : {};
+}
+
+function normalizeNearbyAnchor(value: unknown, index: number): VisualCommentNearbyAnchor {
+  const nearby = assertRecord(value, `anchor.nearby[${index}]`);
+  return {
+    id: assertBoundedText(nearby.id, `anchor.nearby[${index}].id`, VISUAL_COMMENT_ANCHOR_LIMITS.maxIdLength),
+    ...optionalBoundedText(nearby, "label", `anchor.nearby[${index}].label`, VISUAL_COMMENT_ANCHOR_LIMITS.maxLabelLength),
+    dx: assertFinite(nearby.dx, `anchor.nearby[${index}].dx`),
+    dy: assertFinite(nearby.dy, `anchor.nearby[${index}].dy`),
+  };
+}
+
+// Validates a host-declared anchor; unknown keys are dropped like every other
+// request field. Returns undefined when the request has no anchor.
+function normalizeAnchor(value: unknown): VisualCommentAnchor | undefined {
+  if (value === undefined) return undefined;
+  const anchor = assertRecord(value, "anchor");
+  const limits = VISUAL_COMMENT_ANCHOR_LIMITS;
+  if (anchor.type === "element") {
+    const width = assertFinite(anchor.width, "anchor.width");
+    const height = assertFinite(anchor.height, "anchor.height");
+    if (width <= 0 || height <= 0) fail("anchor width and height must be positive.");
+    return {
+      type: "element",
+      id: assertBoundedText(anchor.id, "anchor.id", limits.maxIdLength),
+      ...optionalBoundedText(anchor, "label", "anchor.label", limits.maxLabelLength),
+      ...optionalBoundedText(anchor, "route", "anchor.route", limits.maxRouteLength),
+      x: assertFinite(anchor.x, "anchor.x"),
+      y: assertFinite(anchor.y, "anchor.y"),
+      width,
+      height,
+    };
+  }
+  if (anchor.type === "path") {
+    const t = assertFinite(anchor.t, "anchor.t");
+    if (t < 0 || t > 1) fail("anchor.t must be between 0 and 1.");
+    return {
+      type: "path",
+      id: assertBoundedText(anchor.id, "anchor.id", limits.maxIdLength),
+      ...optionalBoundedText(anchor, "label", "anchor.label", limits.maxLabelLength),
+      t,
+    };
+  }
+  if (anchor.type === "canvas") {
+    if (anchor.nearby !== undefined) {
+      if (!Array.isArray(anchor.nearby) || anchor.nearby.length > limits.maxNearby) {
+        fail(`anchor.nearby must hold at most ${limits.maxNearby} entries.`);
+      }
+    }
+    const nearby = Array.isArray(anchor.nearby)
+      ? anchor.nearby.map(normalizeNearbyAnchor)
+      : [];
+    return {
+      type: "canvas",
+      x: assertFinite(anchor.x, "anchor.x"),
+      y: assertFinite(anchor.y, "anchor.y"),
+      ...(nearby.length ? { nearby } : {}),
+    };
+  }
+  fail("anchor.type must be element, path, or canvas.");
+}
+
+// story.view is stored only when it is not the default `story` view.
+function normalizeStoryView(value: unknown): { view?: string } {
+  if (value === undefined) return {};
+  if (!isVisualCommentView(value)) fail("story.view is invalid.");
+  return value === defaultVisualCommentView ? {} : { view: value };
+}
+
 function normalizeRequest(
   requestValue: unknown,
   limits: VisualCommentLimits,
@@ -377,6 +508,7 @@ function normalizeRequest(
       ...(typeof story.prototypeId === "string" ? { prototypeId: story.prototypeId } : {}),
       ...(typeof story.routeId === "string" ? { routeId: story.routeId } : {}),
       ...(typeof story.stateId === "string" ? { stateId: story.stateId } : {}),
+      ...normalizeStoryView(story.view),
     },
     pin: {
       xRatio: clampRatio(assertFinite(pin.xRatio, "pin.xRatio")),
@@ -402,11 +534,14 @@ function normalizeRequest(
   } satisfies Omit<CreateVisualCommentRequest, "capture"> & {
     capture: Omit<CreateVisualCommentRequest["capture"], "dataUrl">;
   };
+  const anchor = normalizeAnchor(request.anchor);
   const imageHash = createHash("sha256").update(image.bytes).digest("hex");
   const requestHash = createHash("sha256")
-    .update(JSON.stringify({ ...normalized, imageHash, ...hashKind(kind) }))
+    .update(
+      JSON.stringify({ ...normalized, imageHash, ...hashKind(kind), ...hashAnchor(anchor) }),
+    )
     .digest("hex");
-  return { normalized, kind, image, imageHash, requestHash };
+  return { normalized, kind, anchor, image, imageHash, requestHash };
 }
 
 function hashStoredRequest(
@@ -433,6 +568,7 @@ function hashStoredRequest(
         },
         imageHash: capture.image.sha256,
         ...hashKind(resolveVisualCommentKind(comment.kind)),
+        ...hashAnchor(comment.anchor),
       }),
     )
     .digest("hex");
@@ -558,6 +694,7 @@ export function createVisualCommentStore(options: VisualCommentStoreOptions = {}
     return {
       ...comment,
       kind: resolveVisualCommentKind(comment.kind),
+      view: resolveVisualCommentView(capture?.story.view),
       sessionId: meeting.session.id,
       ordinal,
       state: {
@@ -638,8 +775,58 @@ export function createVisualCommentStore(options: VisualCommentStoreOptions = {}
       if (!comment) {
         fail("Comment not found.", "NOT_FOUND", 404);
       }
+      const restoring = Object.prototype.hasOwnProperty.call(patch, "movedAt");
+      if (
+        !restoring &&
+        patch.anchor === undefined &&
+        patch.pin !== undefined &&
+        comment.anchor &&
+        comment.anchor.type !== "element"
+      ) {
+        // The screenshot of a line or canvas comment does not map back to its
+        // anchor, so its pin is fixed.
+        fail("pin cannot be edited for line or canvas comments.");
+      }
+      if (!restoring && patch.anchor === undefined && patch.pin !== undefined && comment.movedAt) {
+        // A moved comment's screenshot no longer shows its anchor.
+        fail("pin cannot be edited for a moved comment.");
+      }
       if (patch.body !== undefined) comment.body = patch.body;
-      if (patch.pin !== undefined) comment.pin = patch.pin;
+      if (restoring) {
+        if (patch.anchor) comment.anchor = patch.anchor;
+        else delete comment.anchor;
+        comment.pin = patch.pin!;
+        if (patch.movedAt) comment.movedAt = patch.movedAt;
+        else delete comment.movedAt;
+      } else if (patch.anchor) {
+        const previous = comment.anchor;
+        comment.anchor = patch.anchor;
+        if (
+          !comment.movedAt &&
+          previous?.type === "element" &&
+          patch.anchor.type === "element" &&
+          previous.id === patch.anchor.id
+        ) {
+          // Still on the captured element, so the screenshot pin follows.
+          comment.pin = {
+            xRatio: Math.min(1, Math.max(0, patch.anchor.x / patch.anchor.width)),
+            yRatio: Math.min(1, Math.max(0, patch.anchor.y / patch.anchor.height)),
+          };
+        } else {
+          comment.movedAt = new Date().toISOString();
+        }
+      } else if (patch.pin !== undefined) {
+        comment.pin = patch.pin;
+        if (comment.anchor?.type === "element") {
+          // The screenshot of a frame comment is the frame, so the new pin
+          // moves the anchor to the same point.
+          comment.anchor = {
+            ...comment.anchor,
+            x: patch.pin.xRatio * comment.anchor.width,
+            y: patch.pin.yRatio * comment.anchor.height,
+          };
+        }
+      }
       if (patch.kind !== undefined) comment.kind = patch.kind;
       await writeMeeting(meeting);
       return withReportStatus({ comment, meeting }, meeting);
@@ -774,7 +961,7 @@ export function createVisualCommentStore(options: VisualCommentStoreOptions = {}
         if (meeting.session.closedAt) {
           fail("Meeting is closed.", "CLOSED", 409);
         }
-        const { normalized, kind, image, imageHash, requestHash } = normalizeRequest(
+        const { normalized, kind, anchor, image, imageHash, requestHash } = normalizeRequest(
           requestValue,
           limits,
         );
@@ -829,6 +1016,7 @@ export function createVisualCommentStore(options: VisualCommentStoreOptions = {}
           body: normalized.body,
           kind,
           pin: normalized.pin,
+          ...(anchor ? { anchor } : {}),
           createdAt: now,
         };
         meeting.captures[captureId] = {

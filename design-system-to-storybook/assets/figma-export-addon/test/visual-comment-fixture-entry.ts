@@ -354,6 +354,90 @@ async function run() {
   tokenHeavyStyle.remove();
   bulkTokenStyle.remove();
 
+  // A flow line painted only by a stylesheet class (UI Flow connections). The
+  // capture must keep its stroke and its unfilled interior, then leave every
+  // style attribute exactly as it found it.
+  resultElement.dataset.stage = "svg-class-paint-capture";
+  const svgPaintStyle = document.createElement("style");
+  svgPaintStyle.textContent =
+    ".sbfx-fixture-flow-line { fill: none; stroke: rgb(124, 58, 237); stroke-width: 6px; }" +
+    ".sbfx-fixture-flow-dot { fill: rgb(124, 58, 237); }";
+  document.head.append(svgPaintStyle);
+  const svgPaintTarget = document.createElement("div");
+  svgPaintTarget.style.cssText =
+    "position: relative; width: 200px; height: 120px; background: rgb(255 255 255);";
+  svgPaintTarget.innerHTML =
+    '<svg width="200" height="120" viewBox="0 0 200 120" style="position: absolute; left: 0; top: 0;">' +
+    '<polyline class="sbfx-fixture-flow-line" points="20,20 180,20 180,100 20,100"></polyline>' +
+    '<circle class="sbfx-fixture-flow-dot" cx="190" cy="110" r="4" style="opacity: 0.9"></circle></svg>';
+  document.body.append(svgPaintTarget);
+  const flowLine = svgPaintTarget.querySelector("polyline")!;
+  const flowDot = svgPaintTarget.querySelector("circle")!;
+  const flowDotStyleBefore = flowDot.getAttribute("style");
+  try {
+    const svgPaintCapture = await captureVisualCommentTarget(svgPaintTarget);
+    const strokePixel = await sampleCapture(svgPaintCapture, 100, 20);
+    const interiorPixel = await sampleCapture(svgPaintCapture, 100, 60);
+    check(
+      "capture keeps a class-styled SVG line's stroke color",
+      strokePixel[3] > 0 &&
+        Math.abs(strokePixel[0] - 124) <= 24 &&
+        Math.abs(strokePixel[1] - 58) <= 24 &&
+        Math.abs(strokePixel[2] - 237) <= 24,
+      Array.from(strokePixel).join(","),
+    );
+    check(
+      "capture keeps a class-styled SVG line's interior unfilled",
+      interiorPixel[0] > 230 && interiorPixel[1] > 230 && interiorPixel[2] > 230,
+      Array.from(interiorPixel).join(","),
+    );
+  } catch (error) {
+    check(
+      "capture keeps a class-styled SVG line's stroke color",
+      false,
+      error instanceof Error ? error.message : String(error),
+    );
+  }
+  check(
+    "capture restores SVG children without a style attribute",
+    !flowLine.hasAttribute("style"),
+    String(flowLine.getAttribute("style")),
+  );
+  check(
+    "capture restores SVG children's original style attribute",
+    flowDot.getAttribute("style") === flowDotStyleBefore,
+    String(flowDot.getAttribute("style")),
+  );
+  // The host changes a line's style while the capture runs (a hover); the
+  // change survives and only the paint the capture added is removed.
+  const hostChangeCapture = captureVisualCommentTarget(svgPaintTarget);
+  const inlineStarted = performance.now();
+  while (!(flowLine.getAttribute("style") ?? "").includes("stroke") && performance.now() - inlineStarted < 2_000) {
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+  }
+  const inlinedBeforeHostChange = (flowLine.getAttribute("style") ?? "").includes("stroke");
+  flowLine.style.opacity = "0.4";
+  await hostChangeCapture.catch(() => undefined);
+  check(
+    "a style the host changes during a capture survives, and the capture's own paint is removed",
+    inlinedBeforeHostChange && flowLine.style.opacity === "0.4" && !flowLine.style.stroke && !flowLine.style.fill,
+    String(flowLine.getAttribute("style")),
+  );
+  flowLine.removeAttribute("style");
+  let svgPaintTimeoutError = "";
+  await captureVisualCommentTarget(svgPaintTarget, { renderTimeoutMs: 0 }).catch((error: Error) => {
+    svgPaintTimeoutError = error.message;
+  });
+  check(
+    "failed capture restores SVG children's style attributes",
+    /timed out/i.test(svgPaintTimeoutError) &&
+      !flowLine.hasAttribute("style") &&
+      flowDot.getAttribute("style") === flowDotStyleBefore,
+    `${svgPaintTimeoutError} | ${flowLine.getAttribute("style")} | ${flowDot.getAttribute("style")}`,
+  );
+  svgPaintTarget.remove();
+  svgPaintStyle.remove();
+
   const transparentCanvas = document.createElement("canvas");
   transparentCanvas.width = 2;
   transparentCanvas.height = 2;
@@ -1613,13 +1697,18 @@ async function run() {
   };
   const actionCountBeforeDrag = actionCount;
   const mutationsBeforeDrag = mutationRequests();
+  // The pin stops a pixel inside the right and bottom edges, where hit
+  // testing still finds the target.
+  const atFarCorner = () =>
+    near(pinRatio().x, (rootRect.width - 1) / rootRect.width, 0.001) &&
+    near(pinRatio().y, (rootRect.height - 1) / rootRect.height, 0.001);
   dragPin(rootRect.right + 100, rootRect.bottom + 100, 7);
-  await waitFor(() => near(pinRatio().x, 1) && near(pinRatio().y, 1));
+  await waitFor(atFarCorner);
   pressKey(pendingPin(), { key: "ArrowRight", shiftKey: true });
   await settle();
   check(
     "pointer and keyboard adjustment clamp the pin to the capture target",
-    near(pinRatio().x, 1) && near(pinRatio().y, 1),
+    atFarCorner(),
     JSON.stringify(pinRatio()),
   );
   dragPin(rootRect.left + rootRect.width * 0.6, rootRect.top + rootRect.height * 0.7, 8);
@@ -2394,6 +2483,44 @@ async function run() {
   commentsToggle.click();
   await waitFor(() => !commentsDetail.hidden && savedPins().length === 4);
 
+  // Dragging a pin without an anchor saves its new normalized position.
+  resultElement.dataset.stage = "pins-drag";
+  const draggedOriginalPin = { ...mockComment("comment-current-3").pin };
+  const dragStart = pinPoint()!;
+  const patchesBeforeDrag = requests.filter((request) => request.method === "PATCH").length;
+  const dragPinElement = savedPin("comment-current-3")!;
+  const dragPointer = (type: string, x: number, y: number) =>
+    dragPinElement.dispatchEvent(
+      new PointerEvent(type, { bubbles: true, button: 0, cancelable: true, clientX: x, clientY: y, pointerId: 1 }),
+    );
+  dragPointer("pointerdown", dragStart.x, dragStart.y);
+  for (let step = 1; step <= 5; step += 1) {
+    dragPointer("pointermove", dragStart.x + step * 4, dragStart.y + step * 2);
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+  }
+  dragPointer("pointerup", dragStart.x + 20, dragStart.y + 10);
+  dragPinElement.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, clientX: dragStart.x + 20, clientY: dragStart.y + 10 }));
+  await waitFor(() => requests.filter((request) => request.method === "PATCH").length > patchesBeforeDrag);
+  await waitFor(() => !savedPin("comment-current-3")?.hasAttribute("data-saving"));
+  const dragPatch = requests.filter((request) => request.method === "PATCH").at(-1)?.body as
+    | { pin?: { xRatio: number; yRatio: number } }
+    | undefined;
+  const expectedDragPin = {
+    xRatio: (dragStart.x + 20 - storyRootRect().left) / storyRootRect().width,
+    yRatio: (dragStart.y + 10 - storyRootRect().top) / storyRootRect().height,
+  };
+  check(
+    "dragging a Story pin without an anchor saves its new normalized position",
+    Boolean(dragPatch?.pin) &&
+      Object.keys(dragPatch ?? {}).join() === "pin" &&
+      near(dragPatch!.pin!.xRatio, expectedDragPin.xRatio) &&
+      near(dragPatch!.pin!.yRatio, expectedDragPin.yRatio),
+    JSON.stringify({ dragPatch, expectedDragPin }),
+  );
+  mockComment("comment-current-3").pin = draggedOriginalPin;
+  await remountReview();
+  await waitFor(() => savedPins().length === 4);
+
   // A comment captured in another route or state has no pin.
   resultElement.dataset.stage = "pins-state";
   const stateRows: string[] = [];
@@ -2503,16 +2630,19 @@ async function run() {
   const beneathPin = document
     .elementsFromPoint(overButton.left + overButton.width / 2, overButton.top + overButton.height / 2)
     .includes(prototypeButton);
+  // Activating a pin also opens its edit panel, which takes the focus.
+  const pinEditField = (id: string) =>
+    document.querySelector<HTMLTextAreaElement>(`[data-comment-edit-panel="${id}"] textarea`);
   savedPin("comment-current-3")!.click();
   await waitFor(() => targetCard().getAttribute("aria-current") === "true" && cardVisible());
-  await waitFor(() => document.activeElement === targetCard());
+  await waitFor(() => document.activeElement === pinEditField("comment-current-3"));
   document.removeEventListener("click", delegatedListener);
   check(
-    "activating a pin selects its list item without reaching the prototype",
+    "activating a pin selects its list item and opens its edit panel without reaching the prototype",
     hiddenBeforeClick &&
       beneathPin &&
       cardVisible() &&
-      document.activeElement === targetCard() &&
+      document.activeElement === pinEditField("comment-current-3") &&
       commentsPanel.querySelectorAll('[aria-current="true"]').length === 1 &&
       selectedPins() === "comment-current-3" &&
       actionCount === actionCountBeforePin &&
@@ -2523,12 +2653,13 @@ async function run() {
   resultElement.dataset.stage = "pinlist-again";
   (document.activeElement as HTMLElement | null)?.blur();
   listScroll.scrollTop = 0;
-  const hiddenBeforeSecondClick = !cardVisible() && document.activeElement !== targetCard();
+  const hiddenBeforeSecondClick = !cardVisible();
   savedPin("comment-current-3")!.click();
-  await waitFor(() => cardVisible() && document.activeElement === targetCard());
+  await waitFor(() => cardVisible() && document.activeElement === pinEditField("comment-current-3"));
   check(
-    "activating the pin of the selected comment reveals its list item again",
+    "activating the pin of the selected comment reveals its list item again and keeps its edit panel",
     hiddenBeforeSecondClick &&
+      Boolean(pinEditField("comment-current-3")) &&
       targetCard().getAttribute("aria-current") === "true" &&
       selectedPins() === "comment-current-3" &&
       mutationRequests() === mutationsBeforePin,
@@ -2543,12 +2674,21 @@ async function run() {
         .querySelector('[data-comment-id="comment-current-2"]')
         ?.getAttribute("aria-current") === "true",
   );
+  await waitFor(() => pinEditField("comment-current-2"));
   check(
-    "selecting another pin moves the selection",
+    "selecting another pin moves the selection and switches the edit panel",
     commentsPanel.querySelectorAll('[aria-current="true"]').length === 1 &&
       targetCard().getAttribute("aria-current") !== "true" &&
-      selectedPins() === "comment-current-2",
+      selectedPins() === "comment-current-2" &&
+      !pinEditField("comment-current-3") &&
+      Boolean(pinEditField("comment-current-2")),
   );
+  // A focused pin that opens the panel hands the focus to its body field.
+  await waitFor(() => document.activeElement === pinEditField("comment-current-2"));
+  document.querySelector<HTMLButtonElement>("[data-comment-edit-panel] [data-comment-edit-cancel]")!.click();
+  await waitFor(() => !document.querySelector("[data-comment-edit-panel]"));
+  // Cancel returns focus to the pin that opened the panel, in the next frame.
+  await waitFor(() => document.activeElement === keyboardPin);
   resultElement.dataset.stage = "pinlist-hover";
   const hoverCard = commentsPanel.querySelector<HTMLElement>('[data-comment-id="comment-current-4"]')!;
   hoverCard.dispatchEvent(new MouseEvent("mouseenter"));
@@ -2951,12 +3091,78 @@ async function run() {
   await remountReview();
   await waitFor(() => currentCommentCards().length === 4);
 
+  // With its pin shown, Edit opens the edit panel beside the pin.
+  resultElement.dataset.stage = "edit-panel";
+  await waitFor(() => savedPins().length === 4);
+  const panelEditOriginalBody = mockComment("comment-current-3").body;
+  const patchesBeforePanelEdit = requests.filter((request) => request.method === "PATCH").length;
+  commentsPanel
+    .querySelector<HTMLElement>('.sbfx-comments-panel__comment[data-comment-id="comment-current-3"]')!
+    .querySelector<HTMLButtonElement>('[aria-label="Edit comment"]')!
+    .click();
+  await waitFor(() => document.querySelector('[data-comment-edit-panel="comment-current-3"]'));
+  const panelEdit = document.querySelector<HTMLElement>('[data-comment-edit-panel="comment-current-3"]')!;
+  const panelOpenedWithoutModal = !document.querySelector("[data-comment-edit-modal]");
+  setNativeValue(panelEdit.querySelector("textarea")!, "Edited beside the pin");
+  await waitFor(() => !panelEdit.querySelector<HTMLButtonElement>("[data-comment-edit-save]")!.disabled);
+  panelEdit.querySelector<HTMLButtonElement>("[data-comment-edit-save]")!.click();
+  await waitFor(() => requests.filter((request) => request.method === "PATCH").length > patchesBeforePanelEdit);
+  await waitFor(() => !document.querySelector("[data-comment-edit-panel]"));
+  const panelEditPatch = requests.filter((request) => request.method === "PATCH").at(-1)?.body as Record<string, unknown>;
+  check(
+    "with its pin shown, Edit opens the edit panel beside the pin and saves the body without a pin",
+    panelOpenedWithoutModal && panelEditPatch?.body === "Edited beside the pin" && !("pin" in (panelEditPatch ?? {})),
+    JSON.stringify(panelEditPatch),
+  );
+  mockComment("comment-current-3").body = panelEditOriginalBody;
+  await remountReview();
+  await waitFor(() => currentCommentCards().length === 4 && savedPins().length === 4);
+
+  // A pin scrolled out of the viewport is not shown: Edit uses the evidence modal.
+  // The Story is pushed below the viewport (narrow layouts cap its height).
+  const rootMarginBeforeScroll = root.style.marginTop;
+  root.style.marginTop = `${window.innerHeight}px`;
+  window.dispatchEvent(new Event("resize"));
+  await waitFor(() => {
+    const pin = savedPin("comment-current-3");
+    return Boolean(pin && pin.getBoundingClientRect().top > window.innerHeight);
+  });
+  commentsPanel
+    .querySelector<HTMLElement>('.sbfx-comments-panel__comment[data-comment-id="comment-current-3"]')!
+    .querySelector<HTMLButtonElement>('[aria-label="Edit comment"]')!
+    .click();
+  await waitFor(
+    () => document.querySelector("[data-comment-edit-modal]") || document.querySelector("[data-comment-edit-panel]"),
+  );
+  check(
+    "Edit on a pin scrolled out of the viewport opens the evidence modal, not the edit panel",
+    Boolean(document.querySelector("[data-comment-edit-modal]")) &&
+      !document.querySelector("[data-comment-edit-panel]"),
+    JSON.stringify({ pinTop: savedPin("comment-current-3")?.getBoundingClientRect().top, viewport: window.innerHeight }),
+  );
+  document.querySelector<HTMLButtonElement>("[data-comment-edit-modal] [data-comment-edit-cancel]")?.click();
+  document.querySelector<HTMLButtonElement>("[data-comment-edit-panel] [data-comment-edit-cancel]")?.click();
+  await waitFor(
+    () => !document.querySelector("[data-comment-edit-modal]") && !document.querySelector("[data-comment-edit-panel]"),
+  );
+  root.style.marginTop = rootMarginBeforeScroll;
+  window.dispatchEvent(new Event("resize"));
+  await waitFor(() => {
+    const pin = savedPin("comment-current-3");
+    return Boolean(pin && pin.getBoundingClientRect().bottom <= window.innerHeight);
+  });
+  // The modal sections below run with pins hidden, so Edit uses the evidence modal.
+  pinsToggle().click();
+  await waitFor(() => savedPins().length === 0);
+
   const createCommentRequestCount = () =>
     requests.filter(
       (request) => request.method === "POST" && request.path.endsWith("/comments"),
     ).length;
+  // Counted from here: earlier sections (such as dragging a pin) also PATCH.
+  const patchesBeforeEdit = requests.filter((request) => request.method === "PATCH").length;
   const patchCount = () =>
-    requests.filter((request) => request.method === "PATCH").length;
+    requests.filter((request) => request.method === "PATCH").length - patchesBeforeEdit;
   const savedEvidenceCard = () =>
     commentsPanel.querySelector<HTMLElement>(
       '.sbfx-comments-panel__comment[data-comment-id="comment-current-4"]',
@@ -3005,6 +3211,8 @@ async function run() {
       viewport: { height: window.innerHeight, width: window.innerWidth },
     }),
   );
+  // The editor takes the focus in the frame after it opens.
+  await waitFor(() => document.activeElement === savedEvidencePreview.querySelector("[data-comment-edit-pin]"));
   check(
     "saved comment modal shows its stored aspect ratio pin and meeting-wide ordinal",
     savedEvidencePreview.style.aspectRatio === "400 / 240" &&
@@ -3139,6 +3347,7 @@ async function run() {
   await waitFor(() =>
     document.querySelector("[data-comment-edit-modal] [data-comment-evidence-unavailable]"),
   );
+  await waitFor(() => document.activeElement === commentEditModal().querySelector("textarea"));
   check(
     "failed evidence image keeps the comment body editor usable",
     commentEditModal().textContent?.includes("Screenshot evidence is unavailable.") === true &&
@@ -3545,6 +3754,11 @@ async function run() {
       '.sbfx-comments-panel__comment[data-comment-id="comment-closed-1"]',
     );
   const meetingOneBodiesBeforeClosedEdit = JSON.stringify(comments.map((comment) => comment.body));
+  // Pins hidden: Edit uses the evidence modal.
+  if (pinsToggle().getAttribute("aria-pressed") === "true") {
+    pinsToggle().click();
+    await waitFor(() => savedPins().length === 0);
+  }
   closedCard()!.querySelector<HTMLButtonElement>('[aria-label="Edit comment"]')!.click();
   await waitFor(() => document.querySelector("[data-comment-edit-modal] textarea"));
   setNativeValue(
@@ -3569,6 +3783,7 @@ async function run() {
   );
 
   // Saving a comment views the meeting that stored it.
+  if (pinsToggle().getAttribute("aria-pressed") !== "true") pinsToggle().click();
   const sessionStartsBeforeSave = requests.filter(
     (request) => request.method === "POST" && request.path === "/sessions",
   ).length;

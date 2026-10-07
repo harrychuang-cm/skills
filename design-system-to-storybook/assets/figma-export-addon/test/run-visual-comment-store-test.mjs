@@ -933,6 +933,285 @@ try {
     await rm(crossRoot, { recursive: true, force: true });
   }
 
+  // Host-declared views and anchors (add-anchored-visual-comments).
+  const anchorRoot = await mkdtemp(join(tmpdir(), "sbfx-comments-anchor-"));
+  try {
+    const anchorStore = createVisualCommentStore({ cwd: anchorRoot });
+    const anchorMeetingId = (await anchorStore.startMeeting("Anchor review")).meeting.session.id;
+    const anchorMeetingPath = join(
+      anchorRoot,
+      "design-system/figma-export-review/sessions",
+      anchorMeetingId,
+      "meeting.json",
+    );
+    const anchoredRequest = (clientRequestId, extra = {}) => ({
+      ...request(clientRequestId, `Anchored ${clientRequestId}`),
+      ...extra,
+    });
+    const commentCount = async () => (await anchorStore.getMeeting(anchorMeetingId)).comments.length;
+    const elementAnchor = {
+      type: "element",
+      id: "route:review",
+      label: "Review Request",
+      route: "review",
+      x: 100,
+      y: 200,
+      width: 375,
+      height: 812,
+    };
+
+    // Example "anchor validation".
+    const validationRows = [
+      { anchor: { type: "element", id: "route:a", x: 10, y: 20, width: 375, height: 812 }, accepted: true },
+      { anchor: { type: "element", id: "", x: 10, y: 20, width: 375, height: 812 }, accepted: false },
+      { anchor: { type: "path", id: "edge:a->b", t: 1.2 }, accepted: false },
+      {
+        anchor: {
+          type: "canvas",
+          x: 600,
+          y: 300,
+          nearby: [
+            { id: "a", dx: 1, dy: 1 },
+            { id: "b", dx: 2, dy: 2 },
+            { id: "c", dx: 3, dy: 3 },
+          ],
+        },
+        accepted: false,
+      },
+      { anchor: { type: "frame", id: "a" }, accepted: false },
+    ];
+    for (const [index, row] of validationRows.entries()) {
+      const before = await commentCount();
+      const create = () =>
+        anchorStore.createComment(anchorMeetingId, anchoredRequest(`validate-${index}`, { anchor: row.anchor }));
+      if (row.accepted) {
+        const created = await create();
+        assert.deepEqual(created.comment.anchor, row.anchor, `anchor row ${index} is stored as sent`);
+        assert.equal(await commentCount(), before + 1);
+      } else {
+        await assert.rejects(
+          create,
+          (error) => error.code === "INVALID" && error.statusCode === 400,
+          `anchor row ${index} is rejected`,
+        );
+        assert.equal(await commentCount(), before, `rejected anchor row ${index} writes nothing`);
+      }
+    }
+
+    // A replayed request from before anchors and views keeps its hash; an
+    // explicit `story` view is the same request.
+    const legacy = await anchorStore.createComment(anchorMeetingId, anchoredRequest("legacy-1"));
+    assert.equal(legacy.comment.anchor, undefined, "a request without anchor stores no anchor");
+    const legacyReplay = await anchorStore.createComment(anchorMeetingId, anchoredRequest("legacy-1"));
+    assert.equal(legacyReplay.replay, true, "a request without anchor or view replays");
+    const explicitStory = anchoredRequest("legacy-1");
+    explicitStory.story = { ...explicitStory.story, view: "story" };
+    assert.equal(
+      (await anchorStore.createComment(anchorMeetingId, explicitStory)).replay,
+      true,
+      "story.view `story` hashes like a request without a view",
+    );
+
+    // Comments saved before views existed read as story without a rewrite.
+    const bytesBeforeOverview = await readFile(anchorMeetingPath, "utf8");
+    const legacyOverview = await anchorStore.getOverview("components-button--primary");
+    assert.equal(
+      legacyOverview.comments.find((comment) => comment.id === legacy.comment.id)?.view,
+      "story",
+      "a capture without story.view reads as the story view",
+    );
+    assert.equal(await readFile(anchorMeetingPath, "utf8"), bytesBeforeOverview, "reading views rewrites nothing");
+
+    // A UI Flow comment records its view; an invalid view is rejected.
+    const flowRequest = anchoredRequest("flow-1", { anchor: elementAnchor });
+    flowRequest.story = { ...flowRequest.story, view: "ui-flow" };
+    const flowComment = await anchorStore.createComment(anchorMeetingId, flowRequest);
+    const storedFlow = await anchorStore.getMeeting(anchorMeetingId);
+    assert.equal(
+      storedFlow.captures[flowComment.comment.captureId].story.view,
+      "ui-flow",
+      "the capture stores story.view",
+    );
+    const flowOverview = await anchorStore.getOverview("components-button--primary");
+    const flowEntry = flowOverview.comments.find((comment) => comment.id === flowComment.comment.id);
+    assert.equal(flowEntry.view, "ui-flow", "the overview reports the recorded view");
+    assert.deepEqual(flowEntry.anchor, elementAnchor, "the overview projects the anchor unchanged");
+    const invalidView = anchoredRequest("flow-invalid");
+    invalidView.story = { ...invalidView.story, view: "UI Flow" };
+    const beforeInvalidView = await commentCount();
+    await assert.rejects(
+      () => anchorStore.createComment(anchorMeetingId, invalidView),
+      (error) => error.code === "INVALID" && error.statusCode === 400,
+    );
+    assert.equal(await commentCount(), beforeInvalidView, "an invalid view writes nothing");
+
+    // The anchor is part of the replay hash only when present.
+    assert.equal(
+      (await anchorStore.createComment(anchorMeetingId, flowRequest)).replay,
+      true,
+      "an anchored request replays",
+    );
+    await assert.rejects(
+      () =>
+        anchorStore.createComment(anchorMeetingId, {
+          ...flowRequest,
+          anchor: { ...elementAnchor, x: 101 },
+        }),
+      (error) => error.code === "CONFLICT" && error.statusCode === 409,
+      "a replay with a different anchor conflicts",
+    );
+
+    // Editing the pin of a frame comment moves its anchor.
+    const edited = await anchorStore.updateCommentDetails(anchorMeetingId, flowComment.comment.id, {
+      pin: { xRatio: 0.5, yRatio: 0.25 },
+    });
+    assert.deepEqual(
+      [edited.comment.anchor.x, edited.comment.anchor.y],
+      [187.5, 203],
+      "the element anchor follows the edited pin",
+    );
+
+    // Line and canvas comments keep their pin.
+    const pathComment = await anchorStore.createComment(
+      anchorMeetingId,
+      anchoredRequest("path-1", { anchor: { type: "path", id: "edge:intake->review", label: "Intake → Review", t: 0.25 } }),
+    );
+    const canvasComment = await anchorStore.createComment(
+      anchorMeetingId,
+      anchoredRequest("canvas-1", {
+        anchor: { type: "canvas", x: 600, y: 300, nearby: [{ id: "route:intake", label: "Intake", dx: 600, dy: 300 }] },
+      }),
+    );
+    for (const comment of [pathComment.comment, canvasComment.comment]) {
+      const bytesBefore = await readFile(anchorMeetingPath, "utf8");
+      await assert.rejects(
+        () => anchorStore.updateCommentDetails(anchorMeetingId, comment.id, { pin: { xRatio: 0.1, yRatio: 0.1 } }),
+        (error) => error.code === "INVALID" && error.statusCode === 400,
+        `a ${comment.anchor.type} comment rejects a pin edit`,
+      );
+      assert.equal(await readFile(anchorMeetingPath, "utf8"), bytesBefore, "a rejected pin edit writes nothing");
+    }
+    assert.equal(
+      (await anchorStore.updateCommentDetails(anchorMeetingId, pathComment.comment.id, { body: "Edited line comment" })).comment.body,
+      "Edited line comment",
+      "a line comment still accepts body edits",
+    );
+
+    // Location edits (add-direct-pin-editing): moves and restores.
+    const isIsoNow = (value) =>
+      typeof value === "string" && Math.abs(Date.parse(value) - Date.now()) < 60_000;
+    const moveTarget = await anchorStore.createComment(
+      anchorMeetingId,
+      anchoredRequest("move-1", { anchor: elementAnchor, pin: { xRatio: 0.2, yRatio: 0.2 } }),
+    );
+    // Moving within the same frame keeps the screenshot pin aligned.
+    const sameFrame = await anchorStore.updateCommentDetails(anchorMeetingId, moveTarget.comment.id, {
+      anchor: { type: "element", id: "route:review", x: 300, y: 203, width: 375, height: 812 },
+    });
+    assert.deepEqual(sameFrame.comment.pin, { xRatio: 0.8, yRatio: 0.25 }, "a same-frame move moves the screenshot pin");
+    assert.equal(sameFrame.comment.anchor.x, 300, "a same-frame move stores the anchor");
+    assert.equal(sameFrame.comment.movedAt, undefined, "a same-frame move is not marked moved");
+    // Moving to another frame keeps the screenshot pin and marks the move.
+    const otherFrame = await anchorStore.updateCommentDetails(anchorMeetingId, moveTarget.comment.id, {
+      anchor: { type: "element", id: "route:handoff", label: "Handoff", x: 40, y: 60, width: 375, height: 812 },
+    });
+    assert.deepEqual(otherFrame.comment.pin, { xRatio: 0.8, yRatio: 0.25 }, "a move to another frame keeps the screenshot pin");
+    assert.equal(otherFrame.comment.anchor.id, "route:handoff", "a move to another frame stores the new anchor");
+    assert.ok(isIsoNow(otherFrame.comment.movedAt), "a move to another frame sets movedAt");
+    const firstMovedAt = otherFrame.comment.movedAt;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    // A moved comment moved again within its new frame keeps its screenshot pin.
+    const movedAgain = await anchorStore.updateCommentDetails(anchorMeetingId, moveTarget.comment.id, {
+      anchor: { type: "element", id: "route:handoff", label: "Handoff", x: 200, y: 400, width: 375, height: 812 },
+    });
+    assert.deepEqual(movedAgain.comment.pin, { xRatio: 0.8, yRatio: 0.25 }, "moving a moved comment again keeps its screenshot pin");
+    assert.ok(movedAgain.comment.movedAt > firstMovedAt, "moving a moved comment again updates movedAt");
+    // A moved comment's screenshot pin cannot be edited alone.
+    const bytesBeforeMovedPin = await readFile(anchorMeetingPath, "utf8");
+    await assert.rejects(
+      () => anchorStore.updateCommentDetails(anchorMeetingId, moveTarget.comment.id, { pin: { xRatio: 0.1, yRatio: 0.1 } }),
+      (error) => error.code === "INVALID" && error.statusCode === 400,
+      "a moved comment rejects a pin edit",
+    );
+    assert.equal(await readFile(anchorMeetingPath, "utf8"), bytesBeforeMovedPin, "a rejected moved pin edit writes nothing");
+    const movedOverview = await anchorStore.getOverview("components-button--primary");
+    assert.equal(
+      movedOverview.comments.find((comment) => comment.id === moveTarget.comment.id)?.movedAt,
+      movedAgain.comment.movedAt,
+      "the overview projects movedAt",
+    );
+    // Restoring puts back exactly the previous location.
+    const restored = await anchorStore.updateCommentDetails(anchorMeetingId, moveTarget.comment.id, {
+      anchor: sameFrame.comment.anchor,
+      pin: sameFrame.comment.pin,
+      movedAt: null,
+    });
+    assert.deepEqual(restored.comment.anchor, sameFrame.comment.anchor, "a restore puts back the anchor");
+    assert.deepEqual(restored.comment.pin, sameFrame.comment.pin, "a restore puts back the pin");
+    assert.equal(restored.comment.movedAt, undefined, "a restore with movedAt null removes the mark");
+    // A restore can also put back a moved mark and remove an anchor.
+    const ratioComment = await anchorStore.createComment(anchorMeetingId, anchoredRequest("move-ratio"));
+    const restoredMark = await anchorStore.updateCommentDetails(anchorMeetingId, ratioComment.comment.id, {
+      anchor: null,
+      pin: { xRatio: 0.2, yRatio: 0.3 },
+      movedAt: firstMovedAt,
+    });
+    assert.equal(restoredMark.comment.anchor, undefined, "a restore with anchor null removes the anchor");
+    assert.equal(restoredMark.comment.movedAt, firstMovedAt, "a restore puts back movedAt");
+    // A move of a comment without an anchor to the canvas marks the move.
+    const canvasMove = await anchorStore.updateCommentDetails(anchorMeetingId, legacy.comment.id, {
+      anchor: { type: "canvas", x: 600, y: 300 },
+    });
+    assert.deepEqual(canvasMove.comment.pin, legacy.comment.pin, "a move to the canvas keeps the screenshot pin");
+    assert.ok(isIsoNow(canvasMove.comment.movedAt), "a move to the canvas sets movedAt");
+
+    // Example "edit request validation".
+    const editRequestRows = [
+      { patch: { anchor: { type: "canvas", x: 600, y: 300 } }, accepted: true },
+      { patch: { anchor: null }, accepted: false },
+      { patch: { anchor: { type: "canvas", x: 600, y: 300 }, pin: { xRatio: 0.1, yRatio: 0.1 } }, accepted: false },
+      { patch: { anchor: null, pin: { xRatio: 0.2, yRatio: 0.3 }, movedAt: null }, accepted: true },
+      {
+        patch: {
+          anchor: { type: "path", id: "edge:a->b", t: 0.5 },
+          pin: { xRatio: 0.2, yRatio: 0.3 },
+          movedAt: "2999-01-01T00:00:00.000Z",
+        },
+        accepted: false,
+      },
+      { patch: { movedAt: null }, accepted: false },
+    ];
+    for (const [index, row] of editRequestRows.entries()) {
+      const target = await anchorStore.createComment(anchorMeetingId, anchoredRequest(`patch-validate-${index}`));
+      const bytesBefore = await readFile(anchorMeetingPath, "utf8");
+      if (row.accepted) {
+        await anchorStore.updateCommentDetails(anchorMeetingId, target.comment.id, row.patch);
+      } else {
+        await assert.rejects(
+          () => anchorStore.updateCommentDetails(anchorMeetingId, target.comment.id, row.patch),
+          (error) => error.code === "INVALID" && error.statusCode === 400,
+          `edit request row ${index} is rejected`,
+        );
+        assert.equal(await readFile(anchorMeetingPath, "utf8"), bytesBefore, `rejected edit request row ${index} writes nothing`);
+      }
+    }
+    // movedAt is not part of the create replay hash: a mark alone keeps replays.
+    const markedRequest = anchoredRequest("mark-only", { anchor: elementAnchor });
+    const marked = await anchorStore.createComment(anchorMeetingId, markedRequest);
+    await anchorStore.updateCommentDetails(anchorMeetingId, marked.comment.id, {
+      anchor: marked.comment.anchor,
+      pin: marked.comment.pin,
+      movedAt: firstMovedAt,
+    });
+    assert.equal(
+      (await anchorStore.createComment(anchorMeetingId, markedRequest)).replay,
+      true,
+      "a comment that only gained movedAt still replays its create request",
+    );
+  } finally {
+    await rm(anchorRoot, { recursive: true, force: true });
+  }
+
   const tempFiles = (await readdir(join(root, "design-system/figma-export-review"))).filter((file) => file.endsWith(".tmp"));
   assert.deepEqual(tempFiles, [], "atomic writes leave no temp files");
   console.log("visual comment store checks passed");

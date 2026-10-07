@@ -105,21 +105,139 @@ function getAddonEntry(mainPath) {
     : 'new URL("./prototype-inspector/preset.js", import.meta.url).pathname';
 }
 
+const inspectorPresetMarker = "prototype-inspector/preset.js";
+const figmaExportAddonName = "@harrychuang/storybook-addon-figma-export";
+
+// The elements of the array literal whose "[" is at openIndex, as
+// { start, end } source ranges (whitespace trimmed), plus the index of its
+// closing "]". Strings, template literals, comments and nested brackets are
+// skipped, so a comma inside an element (an options object) does not split it.
+function readArrayElements(source, openIndex) {
+  const elements = [];
+  let depth = 0;
+  let elementStart = openIndex + 1;
+  const pushElement = (end) => {
+    let start = elementStart;
+    let stop = end;
+    while (start < stop && /\s/.test(source[start])) start += 1;
+    while (stop > start && /\s/.test(source[stop - 1])) stop -= 1;
+    if (stop > start) elements.push({ start, end: stop });
+  };
+  for (let index = openIndex + 1; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === '"' || char === "'" || char === "`") {
+      for (index += 1; index < source.length && source[index] !== char; index += 1) {
+        if (source[index] === "\\") index += 1;
+      }
+    } else if (char === "/" && source[index + 1] === "/") {
+      index = source.indexOf("\n", index);
+      if (index === -1) break;
+    } else if (char === "/" && source[index + 1] === "*") {
+      index = source.indexOf("*/", index + 2) + 1;
+      if (index === 0) break;
+    } else if ("([{".includes(char)) {
+      depth += 1;
+    } else if (")]}".includes(char)) {
+      if (depth === 0) {
+        pushElement(index);
+        return { closeIndex: index, elements };
+      }
+      depth -= 1;
+    } else if (char === "," && depth === 0) {
+      pushElement(index);
+      elementStart = index + 1;
+    }
+  }
+  return null;
+}
+
+// Source with `entry` inserted as an array element right after `element`.
+function insertAfterElement(source, element, entry) {
+  const afterElement = source.slice(element.end);
+  const comma = /^\s*,/.exec(afterElement);
+  if (comma) {
+    const insertAt = element.end + comma[0].length;
+    return `${source.slice(0, insertAt)}\n    ${entry},${source.slice(insertAt)}`;
+  }
+  return `${source.slice(0, element.end)},\n    ${entry}${source.slice(element.end)}`;
+}
+
+// Source without `element`: its line when it sits alone on one, and its comma.
+function removeElement(source, element) {
+  let start = element.start;
+  let end = element.end;
+  const comma = /^\s*,/.exec(source.slice(end));
+  if (comma) {
+    end += comma[0].length;
+  } else {
+    const previousComma = /,\s*$/.exec(source.slice(0, start));
+    if (previousComma) start = previousComma.index;
+  }
+  const lineStart = source.lastIndexOf("\n", start - 1);
+  if (lineStart !== -1 && /^\s*$/.test(source.slice(lineStart + 1, start))) {
+    const lineEnd = /^[ \t]*(?=\n)/.exec(source.slice(end));
+    if (lineEnd) {
+      start = lineStart;
+      end += lineEnd[0].length;
+    }
+  }
+  return `${source.slice(0, start)}${source.slice(end)}`;
+}
+
+// The inspector preset goes right after the figma-export addon when the
+// project lists it (Storybook nests addons listed later inside earlier ones,
+// so the addon's decorator then wraps every Inspector mode), and at the start
+// of the list otherwise. An installed preset that sits before the addon is
+// moved after it; any other existing order is left alone.
 function insertAddonEntry(source, entry) {
-  if (source.includes("prototype-inspector/preset.js")) {
-    return source;
+  const addonsMatch = /addons\s*:\s*\[/.exec(source);
+  const array =
+    addonsMatch?.index !== undefined
+      ? readArrayElements(source, addonsMatch.index + addonsMatch[0].length - 1)
+      : null;
+  const elementText = (element) => source.slice(element.start, element.end);
+  const inspectorIndex =
+    array?.elements.findIndex((element) => elementText(element).includes(inspectorPresetMarker)) ?? -1;
+  const figmaIndex =
+    array?.elements.findIndex((element) => elementText(element).includes(figmaExportAddonName)) ?? -1;
+
+  if (source.includes(inspectorPresetMarker)) {
+    if (inspectorIndex === -1 || figmaIndex === -1 || inspectorIndex > figmaIndex) {
+      return { reordered: false, source };
+    }
+    const inspector = array.elements[inspectorIndex];
+    const withoutInspector = removeElement(source, inspector);
+    const removed = source.length - withoutInspector.length;
+    const figma = array.elements[figmaIndex];
+    return {
+      reordered: true,
+      source: insertAfterElement(
+        withoutInspector,
+        { end: figma.end - removed, start: figma.start - removed },
+        elementText(inspector),
+      ),
+    };
   }
 
-  const addonsMatch = /addons\s*:\s*\[/.exec(source);
+  if (figmaIndex !== -1) {
+    return { reordered: false, source: insertAfterElement(source, array.elements[figmaIndex], entry) };
+  }
+
   if (addonsMatch?.index !== undefined) {
     const insertAt = addonsMatch.index + addonsMatch[0].length;
-    return `${source.slice(0, insertAt)}\n    ${entry},${source.slice(insertAt)}`;
+    return {
+      reordered: false,
+      source: `${source.slice(0, insertAt)}\n    ${entry},${source.slice(insertAt)}`,
+    };
   }
 
   const frameworkMatch = /\n\s*framework\s*:/.exec(source);
   if (frameworkMatch?.index !== undefined) {
     const insertAt = frameworkMatch.index + 1;
-    return `${source.slice(0, insertAt)}  addons: [\n    ${entry},\n  ],\n${source.slice(insertAt)}`;
+    return {
+      reordered: false,
+      source: `${source.slice(0, insertAt)}  addons: [\n    ${entry},\n  ],\n${source.slice(insertAt)}`,
+    };
   }
 
   throw new Error(
@@ -308,15 +426,20 @@ function main() {
     bridgeTokenPrefix(targetAddonDir, args.tokenPrefix);
   }
 
-  const nextSource = insertAddonEntry(source, getAddonEntry(mainPath));
-  if (nextSource !== source) {
-    writeFileSync(mainPath, nextSource);
+  const addonEntry = insertAddonEntry(source, getAddonEntry(mainPath));
+  if (addonEntry.source !== source) {
+    writeFileSync(mainPath, addonEntry.source);
   }
 
   const flowLayout = installFlowLayoutHelper(projectRoot, args.force);
   const fingerprint = installFingerprint(projectRoot, args.force);
 
   console.log(`Installed Prototype Inspector addon into ${targetAddonDir}`);
+  if (addonEntry.reordered) {
+    console.log(
+      `Reordered Storybook addons: the Prototype Inspector preset now follows ${figmaExportAddonName}, so figma-export review runs in every Inspector mode.`,
+    );
+  }
   if (args.tokenPrefix && args.tokenPrefix !== "sbt") {
     console.log(
       `Bridged inspector design tokens onto the --${args.tokenPrefix}-* prefix (built-in fallbacks kept).`,

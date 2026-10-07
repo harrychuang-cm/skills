@@ -7,7 +7,7 @@ import {
   createFigmaExportInitialGlobals,
   type FigmaExportAddonOptions,
 } from "@harrychuang/storybook-addon-figma-export";
-import { createFigmaExportReviewDecorator } from "@harrychuang/storybook-addon-figma-export/review";
+import { configureFigmaExportReview } from "@harrychuang/storybook-addon-figma-export/review";
 import { getFigmaSourceUrl } from "@harrychuang/storybook-addon-figma-export/source";
 import "@harrychuang/storybook-addon-figma-export/styles.css";
 import "@harrychuang/storybook-addon-figma-export/review.css";
@@ -46,7 +46,11 @@ const componentSpecModules = import.meta.glob<string>(
 const figmaDesignSystemFileUrl =
   figmaExportProjectConfig.source.designSystemFileUrlFallback;
 
-const figmaExportReviewDecorator = createFigmaExportReviewDecorator(
+// The addon's preview entry, loaded from the addons list in main.ts, applies
+// review through its host decorator. Because the addon is listed before the
+// Prototype Inspector preset, review and visual comments also follow the
+// Inspector's UI Flow, Docs, Components and Data modes.
+configureFigmaExportReview(
   figmaExportOptions,
   {
     apiPath: figmaExportProjectConfig.review.apiPath,
@@ -81,7 +85,7 @@ const preview: Preview = {
         storybookTemplateProjectConfig.storybook.themeDataAttribute
       ] = storybookTheme;
 
-      return figmaExportReviewDecorator(Story, context);
+      return Story();
     },
   ],
   globalTypes: {

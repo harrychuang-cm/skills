@@ -1,6 +1,11 @@
 import { randomBytes } from "node:crypto";
 
-import { resolveVisualCommentKind, type VisualCommentKind } from "./visualComment";
+import {
+  describeVisualCommentAnchor,
+  resolveVisualCommentKind,
+  resolveVisualCommentView,
+  type VisualCommentKind,
+} from "./visualComment";
 import {
   buildCommentPromptContext,
   createCommentPromptFormatter,
@@ -116,6 +121,9 @@ time{font-variant-numeric:tabular-nums}
 .comment__status--completed{color:var(--sbfx-foreground)}
 .comment__status--completed::before{background:var(--sbfx-success)}
 .comment__kind--tracking{color:var(--sbfx-accent)}
+.comment__view{color:var(--sbfx-muted);font-size:12px;font-weight:600}
+.comment__anchor{margin:0;color:var(--sbfx-muted);font-size:13px;line-height:20px}
+.comment__moved{margin:0;color:var(--sbfx-muted);font-size:13px;line-height:20px}
 .tracking-batch{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px}
 .tracking-batch__controls{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px}
 .tracking-batch label{color:var(--sbfx-muted);font-size:12px;font-weight:700}
@@ -189,7 +197,7 @@ const reportActionScript = `
 ${reportTimeScript}
   // Filters run in the page only and are mirrored in the URL fragment so a
   // shared link opens the same view.
-  const filterState = { kind: "all", completed: "shown" };
+  const filterState = { kind: "all", completed: "shown", view: "all" };
   const readFilterFragment = () => {
     const values = {};
     String(window.location.hash || "").replace(/^#/, "").split("&").forEach((part) => {
@@ -199,6 +207,7 @@ ${reportTimeScript}
     filterState.kind =
       values.kind === "visual-fix" || values.kind === "tracking" ? values.kind : "all";
     filterState.completed = values.completed === "hidden" ? "hidden" : "shown";
+    filterState.view = /^[a-z0-9][a-z0-9-]{0,39}$/.test(values.view || "") ? values.view : "all";
   };
   const applyFilters = () => {
     let totalCards = 0;
@@ -210,7 +219,8 @@ ${reportTimeScript}
       cards.forEach((card) => {
         const visible =
           (filterState.kind === "all" || card.dataset.commentKind === filterState.kind) &&
-          (filterState.completed === "shown" || card.dataset.commentStatus === "open");
+          (filterState.completed === "shown" || card.dataset.commentStatus === "open") &&
+          (filterState.view === "all" || card.dataset.commentView === filterState.view);
         card.hidden = !visible;
         if (visible) visibleInCapture += 1;
         else hiddenComments.add(card.dataset.commentRef);
@@ -234,9 +244,13 @@ ${reportTimeScript}
     if (hideCompleted) {
       hideCompleted.setAttribute("aria-pressed", String(filterState.completed === "hidden"));
     }
+    document.querySelectorAll("[data-report-view]").forEach((button) => {
+      button.setAttribute("aria-pressed", String(button.dataset.reportView === filterState.view));
+    });
   };
   const writeFilterFragment = () => {
-    const fragment = "#kind=" + filterState.kind + "&completed=" + filterState.completed;
+    const fragment =
+      "#kind=" + filterState.kind + "&completed=" + filterState.completed + "&view=" + filterState.view;
     try {
       window.history.replaceState(null, "", fragment);
     } catch {
@@ -726,6 +740,13 @@ ${reportTimeScript}
       applyFilters();
       return;
     }
+    const viewButton = target.closest("button[data-report-view]");
+    if (viewButton instanceof HTMLButtonElement) {
+      filterState.view = viewButton.dataset.reportView;
+      writeFilterFragment();
+      applyFilters();
+      return;
+    }
     const hideCompletedButton = target.closest("button[data-hide-completed]");
     if (hideCompletedButton instanceof HTMLButtonElement) {
       filterState.completed = filterState.completed === "hidden" ? "shown" : "hidden";
@@ -891,6 +912,26 @@ export function renderVisualCommentReport(
               const ordinal = ordinals.get(comment.id) ?? 0;
               const completed = Boolean(comment.resolvedAt);
               const kind = resolveVisualCommentKind(comment.kind);
+              const view = resolveVisualCommentView(capture.story.view);
+              // The screenshot of a line or canvas comment, or of a comment moved
+              // since, does not map back to its anchor, so its point is not editable.
+              const pinEditable =
+                !comment.movedAt && (!comment.anchor || comment.anchor.type === "element");
+              const anchorLine =
+                (comment.anchor
+                  ? `<p class="comment__anchor" data-comment-anchor="${comment.anchor.type}">${escapeHtml(describeVisualCommentAnchor(comment.anchor))}</p>`
+                  : "") +
+                (comment.movedAt
+                  ? '<p class="comment__moved" data-comment-moved>Moved since the screenshot</p>'
+                  : "");
+              const pinEditor = pinEditable
+                ? `<button type="button" class="pin pin--editable" data-comment-edit-pin data-x-ratio="${comment.pin.xRatio}" data-y-ratio="${comment.pin.yRatio}" aria-label="Adjust comment point ${ordinal}" style="left:${ratioPercent(comment.pin.xRatio)}%;top:${ratioPercent(comment.pin.yRatio)}%">${ordinal}</button>`
+                : "";
+              const pointHint = pinEditable
+                ? '<p class="comment__point-hint">Click or drag the point. Use arrow keys for 1% steps, or Shift plus arrow keys for 5% steps.</p>'
+                : comment.movedAt
+                  ? '<p class="comment__point-hint" data-comment-point-fixed>The point marks where the screenshot was taken; the comment has moved since.</p>'
+                  : '<p class="comment__point-hint" data-comment-point-fixed>The point of a line or canvas comment follows its anchor and is not edited here.</p>';
               const endpoint = `../../../sessions/${encodeURIComponent(meeting.session.id)}/comments/${encodeURIComponent(comment.id)}`;
               const portableContext = buildCommentPromptContext({
                 capture,
@@ -901,10 +942,10 @@ export function renderVisualCommentReport(
               });
               const escapedBody = escapeHtml(comment.body);
               return [
-                `<article class="comment" data-comment-card data-comment-ref="${escapeHtml(comment.id)}" data-comment-status="${completed ? "completed" : "open"}" data-comment-kind="${kind}" data-comment-story-id="${escapeHtml(capture.story.id)}" data-comment-endpoint="${escapeHtml(endpoint)}" data-comment-pin-available="true" data-comment-pin-x="${comment.pin.xRatio}" data-comment-pin-y="${comment.pin.yRatio}">`,
-                `<div class="comment__meta"><div class="comment__identity"><strong>${ordinal}. ${escapeHtml(comment.authorName)}</strong><span class="comment__status${completed ? " comment__status--completed" : ""}">${completed ? "Completed" : "Open"}</span><span class="comment__kind comment__kind--${kind}" data-comment-kind-label>${kindLabels[kind]}</span></div>${timeElement(comment.createdAt)}</div>`,
+                `<article class="comment" data-comment-card data-comment-ref="${escapeHtml(comment.id)}" data-comment-status="${completed ? "completed" : "open"}" data-comment-kind="${kind}" data-comment-story-id="${escapeHtml(capture.story.id)}" data-comment-endpoint="${escapeHtml(endpoint)}" data-comment-view="${escapeHtml(view)}" data-comment-pin-available="${pinEditable ? "true" : "false"}" data-comment-pin-x="${comment.pin.xRatio}" data-comment-pin-y="${comment.pin.yRatio}">`,
+                `<div class="comment__meta"><div class="comment__identity"><strong>${ordinal}. ${escapeHtml(comment.authorName)}</strong><span class="comment__status${completed ? " comment__status--completed" : ""}">${completed ? "Completed" : "Open"}</span><span class="comment__kind comment__kind--${kind}" data-comment-kind-label>${kindLabels[kind]}</span><span class="comment__view" data-comment-view-label>${escapeHtml(view)}</span></div>${timeElement(comment.createdAt)}</div>${anchorLine}`,
                 `<p class="comment__body" data-comment-body>${escapedBody}</p>`,
-                `<div class="comment__editor" data-comment-editor hidden><div class="comment__edit-preview" data-comment-edit-preview style="aspect-ratio:${capture.image.width}/${capture.image.height}"><img src="${escapeHtml(capture.image.path)}" alt="Screenshot evidence for comment ${ordinal}" data-comment-edit-image><button type="button" class="pin pin--editable" data-comment-edit-pin data-x-ratio="${comment.pin.xRatio}" data-y-ratio="${comment.pin.yRatio}" aria-label="Adjust comment point ${ordinal}" style="left:${ratioPercent(comment.pin.xRatio)}%;top:${ratioPercent(comment.pin.yRatio)}%">${ordinal}</button></div><p class="comment__point-hint">Click or drag the point. Use arrow keys for 1% steps, or Shift plus arrow keys for 5% steps.</p><p class="comment__evidence-error" data-comment-evidence-error hidden>Screenshot evidence is unavailable. You can still edit the comment text.</p><label>Comment type<select class="comment__kind-draft" data-comment-kind-draft>${(Object.keys(kindLabels) as VisualCommentKind[]).map((option) => `<option value="${option}"${option === kind ? " selected" : ""}>${kindLabels[option]}</option>`).join("")}</select></label><label>Comment<textarea class="comment__draft" data-comment-draft maxlength="2000">${escapedBody}</textarea></label><div class="comment__editor-actions"><button type="button" class="comment__action comment__action--primary" data-comment-edit-action="save">Save changes</button><button type="button" class="comment__action" data-comment-edit-action="cancel">Cancel</button></div></div>`,
+                `<div class="comment__editor" data-comment-editor hidden><div class="comment__edit-preview" data-comment-edit-preview style="aspect-ratio:${capture.image.width}/${capture.image.height}"><img src="${escapeHtml(capture.image.path)}" alt="Screenshot evidence for comment ${ordinal}" data-comment-edit-image>${pinEditor}</div>${pointHint}<p class="comment__evidence-error" data-comment-evidence-error hidden>Screenshot evidence is unavailable. You can still edit the comment text.</p><label>Comment type<select class="comment__kind-draft" data-comment-kind-draft>${(Object.keys(kindLabels) as VisualCommentKind[]).map((option) => `<option value="${option}"${option === kind ? " selected" : ""}>${kindLabels[option]}</option>`).join("")}</select></label><label>Comment<textarea class="comment__draft" data-comment-draft maxlength="2000">${escapedBody}</textarea></label><div class="comment__editor-actions"><button type="button" class="comment__action comment__action--primary" data-comment-edit-action="save">Save changes</button><button type="button" class="comment__action" data-comment-edit-action="cancel">Cancel</button></div></div>`,
                 `<script type="application/json" class="ai-fix-context" data-ai-fix-context>${htmlSafeJson(portableContext)}</script>`,
                 `<div class="comment__actions"><button type="button" class="comment__action comment__action--delete" data-comment-action="delete" aria-label="Delete comment" title="Delete comment">${trashIcon}</button><div class="comment__actions-end"><button type="button" class="comment__action" data-comment-action="copy-ai-prompt">Copy AI prompt</button><button type="button" class="comment__action" data-comment-action="edit">Edit</button><button type="button" class="comment__action comment__action--primary" data-comment-action="resolve">${completed ? "Reopen" : "Complete"}</button></div></div>`,
                 `<p class="comment__copy-status" data-ai-copy-status aria-live="polite" hidden></p><p class="comment__error" data-comment-error aria-live="polite" hidden></p></article>`,
@@ -966,10 +1007,26 @@ export function renderVisualCommentReport(
         `<button type="button" class="chip" data-report-filter="${kind}" aria-pressed="false">${kindLabels[kind]} ${kindCounts[kind]}</button>`,
     )
     .join("")}<button type="button" class="chip" data-hide-completed aria-pressed="false">Hide completed</button></div>`;
+  const viewCounts = new Map<string, number>();
+  for (const comment of meeting.comments) {
+    const capture = meeting.captures[comment.captureId];
+    if (!capture) continue;
+    const view = resolveVisualCommentView(capture.story.view);
+    viewCounts.set(view, (viewCounts.get(view) ?? 0) + 1);
+  }
+  const viewFilter = `<div class="filter" role="group" aria-label="Filter views" data-report-view-filter><button type="button" class="chip" data-report-view="all" aria-pressed="true">All views</button>${[
+    ...viewCounts,
+  ]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(
+      ([view, count]) =>
+        `<button type="button" class="chip" data-report-view="${escapeHtml(view)}" aria-pressed="false">${escapeHtml(view)} ${count}</button>`,
+    )
+    .join("")}</div>`;
   const status = meeting.session.closedAt ? "Closed meeting" : "Active meeting";
   return documentShell(
     meeting.session.title,
-    `<nav class="topline"><a href="../../index.html">← All meetings</a><span class="status">${status}</span></nav><header class="toolbar" data-report-toolbar><div class="toolbar__title"><h1>${escapeHtml(meeting.session.title)}</h1><p class="summary">${captureCount} capture${captureCount === 1 ? "" : "s"} · ${commentCount} comment${commentCount === 1 ? "" : "s"} · Started ${timeElement(meeting.session.startedAt)}${meeting.session.closedAt ? ` · Closed ${timeElement(meeting.session.closedAt)}` : ""}</p></div><div class="toolbar__controls">${filters}${trackingBatch}</div></header><div class="evidence-list">${evidence || '<p class="empty">This meeting has 0 captures and 0 comments. New evidence will appear here after a visual comment is saved.</p>'}</div><p class="empty" data-filter-empty hidden>No comments match these filters.</p>${deleteDialog}`,
+    `<nav class="topline"><a href="../../index.html">← All meetings</a><span class="status">${status}</span></nav><header class="toolbar" data-report-toolbar><div class="toolbar__title"><h1>${escapeHtml(meeting.session.title)}</h1><p class="summary">${captureCount} capture${captureCount === 1 ? "" : "s"} · ${commentCount} comment${commentCount === 1 ? "" : "s"} · Started ${timeElement(meeting.session.startedAt)}${meeting.session.closedAt ? ` · Closed ${timeElement(meeting.session.closedAt)}` : ""}</p></div><div class="toolbar__controls">${filters}${viewFilter}${trackingBatch}</div></header><div class="evidence-list">${evidence || '<p class="empty">This meeting has 0 captures and 0 comments. New evidence will appear here after a visual comment is saved.</p>'}</div><p class="empty" data-filter-empty hidden>No comments match these filters.</p>${deleteDialog}`,
     reportActionScript,
   );
 }

@@ -103,36 +103,125 @@ function hasVisibleCanvasPixels(canvas) {
   }
   return false;
 }
-async function captureVisualCommentTarget(target) {
-  const rect = target.getBoundingClientRect();
-  if (!rect.width || !rect.height) throw new Error("Capture target has zero bounds.");
+var svgPaintProperties = [
+  "fill",
+  "fill-opacity",
+  "stroke",
+  "stroke-width",
+  "stroke-dasharray",
+  "stroke-dashoffset",
+  "stroke-linecap",
+  "stroke-linejoin",
+  "stroke-opacity",
+  "opacity",
+  "visibility",
+  "display"
+];
+function inlineSvgChildPaint(target) {
+  const elements = Array.from(target.querySelectorAll("svg *")).filter(
+    (element) => element instanceof SVGElement
+  );
+  const paints = elements.map((element) => {
+    const computed = getComputedStyle(element);
+    return svgPaintProperties.map((property) => computed.getPropertyValue(property));
+  });
+  const originals = elements.map((element) => element.getAttribute("style"));
+  elements.forEach((element, index) => {
+    svgPaintProperties.forEach((property, propertyIndex) => {
+      const value = paints[index][propertyIndex];
+      if (value) element.style.setProperty(property, value);
+    });
+  });
+  const written = elements.map((element) => element.getAttribute("style"));
+  const writtenValues = elements.map(
+    (element) => svgPaintProperties.map((property) => element.style.getPropertyValue(property))
+  );
+  return () => {
+    elements.forEach((element, index) => {
+      const original = originals[index];
+      if (element.getAttribute("style") === written[index]) {
+        if (original === null) element.removeAttribute("style");
+        else element.setAttribute("style", original);
+        return;
+      }
+      const originalStyle = document.createElement("div").style;
+      if (original !== null) originalStyle.cssText = original;
+      svgPaintProperties.forEach((property, propertyIndex) => {
+        if (!paints[index][propertyIndex]) return;
+        if (element.style.getPropertyValue(property) !== writtenValues[index][propertyIndex]) return;
+        const originalValue = originalStyle.getPropertyValue(property);
+        if (originalValue) {
+          element.style.setProperty(property, originalValue, originalStyle.getPropertyPriority(property));
+        } else {
+          element.style.removeProperty(property);
+        }
+      });
+    });
+  };
+}
+async function captureVisualCommentTarget(target, options = {}) {
+  const clientRect = target.getBoundingClientRect();
+  if (!clientRect.width || !clientRect.height) throw new Error("Capture target has zero bounds.");
+  const rect = {
+    height: options.layout && target.offsetHeight > 0 ? target.offsetHeight : clientRect.height,
+    left: clientRect.left,
+    top: clientRect.top,
+    width: options.layout && target.offsetWidth > 0 ? target.offsetWidth : clientRect.width
+  };
   await nextAnimationFrame();
   await nextAnimationFrame();
   const scale = Math.min(
     2,
+    options.maxScale ?? 2,
     VISUAL_COMMENT_LIMITS.maxImageLongestSide / Math.max(rect.width, rect.height),
     Math.sqrt(VISUAL_COMMENT_LIMITS.maxImagePixels / (rect.width * rect.height))
   );
   const intendedWidth = Math.max(1, Math.trunc(rect.width * scale));
   const intendedHeight = Math.max(1, Math.trunc(rect.height * scale));
-  let canvas = await Promise.race([
-    toCanvas(target, {
-      backgroundColor: resolveCaptureBackground(target),
-      canvasHeight: rect.height,
-      canvasWidth: rect.width,
-      filter: (node) => !(node instanceof Element && node.hasAttribute("data-sbfx-capture-ignore")),
-      fontEmbedCSS: "",
-      height: rect.height,
-      includeStyleProperties: getCaptureStyleProperties(target),
-      pixelRatio: scale,
-      skipFonts: true,
-      skipAutoScale: true,
-      width: rect.width
-    }),
-    new Promise(
-      (_, reject) => window.setTimeout(() => reject(new Error("Timed out rendering captured UI.")), 8e3)
-    )
-  ]);
+  const restoreSvgPaint = inlineSvgChildPaint(target);
+  let canvas;
+  try {
+    canvas = await Promise.race([
+      toCanvas(target, {
+        backgroundColor: resolveCaptureBackground(target),
+        canvasHeight: rect.height,
+        canvasWidth: rect.width,
+        filter: (node) => !(node instanceof Element && node.hasAttribute("data-sbfx-capture-ignore")) && // A canvas capture leaves frame previews empty instead of cloning
+        // every embedded page.
+        !(options.omitIframes && node instanceof HTMLIFrameElement),
+        fontEmbedCSS: "",
+        height: rect.height,
+        includeStyleProperties: getCaptureStyleProperties(target),
+        pixelRatio: scale,
+        skipFonts: true,
+        skipAutoScale: true,
+        ...options.layout ? {
+          style: {
+            inset: "0px auto auto 0px",
+            margin: "0px",
+            position: "relative",
+            rotate: "none",
+            scale: "none",
+            transform: "none",
+            translate: "none"
+          }
+        } : {},
+        width: rect.width
+      }),
+      new Promise(
+        (_, reject) => window.setTimeout(
+          () => reject(new Error("Timed out rendering captured UI.")),
+          options.renderTimeoutMs ?? 8e3
+        )
+      )
+    ]);
+  } finally {
+    restoreSvgPaint();
+  }
+  if (options.drawOver) {
+    const context = canvas.getContext("2d");
+    if (context) await options.drawOver(context, { left: rect.left, scale, top: rect.top });
+  }
   let width = canvas.width;
   let height = canvas.height;
   if (width < 1 || height < 1 || Math.abs(width - intendedWidth) > 1 || Math.abs(height - intendedHeight) > 1) {
@@ -171,6 +260,33 @@ async function captureVisualCommentTarget(target) {
     throw error instanceof Error ? error : new Error("Unable to encode captured UI.");
   }
 }
+var captureSequenceWindowMs = 500;
+var activeSequenceGuard = null;
+function guardClickSequence(documentRef, selector, until) {
+  activeSequenceGuard?.();
+  const types = ["pointerdown", "pointerup", "click", "dblclick", "contextmenu"];
+  const swallow = (event) => {
+    if (performance.now() > until) {
+      dispose();
+      return;
+    }
+    const eventTarget = event.target instanceof Element ? event.target : null;
+    if (eventTarget?.closest("[data-sbfx-capture-ignore]")) return;
+    const target = resolveVisualCommentTarget(selector, documentRef);
+    if (!target || !eventTarget || !target.contains(eventTarget)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation();
+  };
+  const timer = window.setTimeout(() => dispose(), Math.max(0, until - performance.now()));
+  function dispose() {
+    window.clearTimeout(timer);
+    for (const type of types) documentRef.removeEventListener(type, swallow, true);
+    if (activeSequenceGuard === dispose) activeSequenceGuard = null;
+  }
+  for (const type of types) documentRef.addEventListener(type, swallow, true);
+  activeSequenceGuard = dispose;
+}
 function beginVisualCommentCapture({
   capture = captureVisualCommentTarget,
   documentRef = document,
@@ -178,12 +294,16 @@ function beginVisualCommentCapture({
   onCaptured,
   onError,
   onPointSelected,
+  resolveAnchor,
+  captureAnchor,
   selector
 }) {
   let active = true;
   let cancelled = false;
   let pointerStarted = false;
+  let pressedAt = 0;
   let cleanupTimer;
+  activeSequenceGuard?.();
   const cleanup = () => {
     if (!active) return;
     active = false;
@@ -210,21 +330,26 @@ function beginVisualCommentCapture({
     if (!pointerStarted) return;
     swallowPointer(event);
     cleanup();
+    guardClickSequence(documentRef, selector, pressedAt + captureSequenceWindowMs);
   };
   const onKeyDown = (event) => {
     if (event.key !== "Escape") return;
     event.preventDefault();
+    event.stopPropagation();
     cancel();
   };
   const onPointerDown = (event) => {
+    if (event.button !== 0) return;
     const eventTarget = event.target instanceof Element ? event.target : null;
     if (eventTarget?.closest("[data-sbfx-capture-ignore]")) return;
     const target = resolveVisualCommentTarget(selector, documentRef);
     if (!target || !eventTarget || !target.contains(eventTarget)) return;
     pointerStarted = true;
+    pressedAt = performance.now();
     swallowPointer(event);
     const rect = target.getBoundingClientRect();
     const pin = getVisualCommentPin(rect, event.clientX, event.clientY);
+    const anchor = resolveAnchor?.(target, event.clientX, event.clientY, eventTarget);
     const view = documentRef.defaultView ?? window;
     const viewport = {
       width: view.innerWidth,
@@ -233,9 +358,26 @@ function beginVisualCommentCapture({
       scrollX: view.scrollX,
       scrollY: view.scrollY
     };
-    onPointSelected?.({ pin, viewport });
-    void capture(target).then((captured) => {
-      if (!cancelled) onCaptured({ capture: captured, pin, viewport });
+    onPointSelected?.({ pin, ...anchor ? { anchor } : {}, viewport });
+    const { clientX, clientY } = event;
+    const captureWork = anchor && captureAnchor ? captureAnchor(target, anchor).then(async (anchored) => {
+      if (!anchored) return { capture: await capture(target), pin, anchor, viewport };
+      return {
+        anchor,
+        capture: anchored.capture,
+        pin: getVisualCommentPin(anchored.rect, clientX, clientY),
+        pinFrame: anchored.rect,
+        ...anchored.reference ? { pinFrameReference: anchored.reference } : {},
+        viewport
+      };
+    }) : capture(target).then((captured) => ({
+      capture: captured,
+      pin,
+      ...anchor ? { anchor } : {},
+      viewport
+    }));
+    void captureWork.then((result) => {
+      if (!cancelled) onCaptured(result);
     }).catch((error) => {
       if (!cancelled) {
         onError(error instanceof Error ? error : new Error("Unable to capture UI."));

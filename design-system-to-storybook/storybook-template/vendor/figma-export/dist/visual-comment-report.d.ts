@@ -1,5 +1,5 @@
 import { VisualMeetingSummary, VisualMeetingFile, VisualCommentReportRenderContext } from './visual-comment-store.js';
-import './visualComment-CG4UoVVu.js';
+import './visualComment-DFPXUtKq.js';
 
 type CommentPromptContext = {
     version: 1;
@@ -28,6 +28,8 @@ type CommentPromptContext = {
         xRatio: number;
         yRatio: number;
     };
+    location?: string;
+    view?: string;
     viewport: {
         width: number;
         height: number;

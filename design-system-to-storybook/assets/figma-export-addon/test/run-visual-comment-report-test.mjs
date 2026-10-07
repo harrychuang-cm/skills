@@ -1742,6 +1742,129 @@ const filterMeeting = {
   ),
 };
 const filterReport = renderVisualCommentReport(filterMeeting);
+
+// Host-declared views and anchors: comment 1 on the Story, comments 2 and 3 in
+// the ui-flow view, anchored to a frame and to a canvas point.
+const viewMeeting = {
+  ...filterMeeting,
+  session: { ...filterMeeting.session, id: "session-view", title: "View review" },
+  captures: Object.fromEntries(
+    Object.entries(filterMeeting.captures).map(([id, capture], index) => [
+      id,
+      index === 0 ? capture : { ...capture, story: { ...capture.story, view: "ui-flow" } },
+    ]),
+  ),
+  comments: filterMeeting.comments.map((comment, index) =>
+    index === 1
+      ? { ...comment, anchor: { type: "element", id: "route:review", label: "Review", x: 10, y: 20, width: 375, height: 812 } }
+      : index === 2
+        ? {
+            ...comment,
+            anchor: {
+              type: "canvas",
+              x: 600,
+              y: 300,
+              nearby: [
+                { id: "route:intake", label: "Intake", dx: 600, dy: 300 },
+                { id: "route:review", label: "Review", dx: -360, dy: 300 },
+              ],
+            },
+          }
+        : comment,
+  ),
+};
+const viewReport = renderVisualCommentReport(viewMeeting);
+const viewCards = [...viewReport.matchAll(/<article class="comment" data-comment-card[\s\S]*?<\/article>/g)].map((match) => match[0]);
+assert.deepEqual(
+  viewCards.map((card) => card.match(/data-comment-view="([^"]+)"/)?.[1]),
+  ["story", "ui-flow", "ui-flow"],
+  "every card carries its view",
+);
+assert.deepEqual(
+  viewCards.map((card) => card.match(/data-comment-view-label>([^<]+)</)?.[1]),
+  ["story", "ui-flow", "ui-flow"],
+  "every card header shows its view",
+);
+assert.deepEqual(
+  viewCards.map((card) => card.match(/data-comment-anchor="[a-z]+">([^<]+)</)?.[1] ?? null),
+  [null, "On Review", "Canvas near Intake, Review"],
+  "anchored cards describe their location",
+);
+assert.match(viewCards[1], /data-comment-pin-available="true"[\s\S]*data-comment-edit-pin/, "a frame comment keeps pin editing");
+assert.match(viewCards[2], /data-comment-pin-available="false"/, "a canvas comment's pin is not available for editing");
+assert.doesNotMatch(viewCards[2], /data-comment-edit-pin/, "a canvas comment renders no editable pin");
+assert.match(viewCards[2], /data-comment-point-fixed/, "a canvas comment explains why its point is fixed");
+assert.match(
+  viewReport,
+  /<div class="filter" role="group" aria-label="Filter views" data-report-view-filter><button type="button" class="chip" data-report-view="all" aria-pressed="true">All views<\/button><button type="button" class="chip" data-report-view="story" aria-pressed="false">story 1<\/button><button type="button" class="chip" data-report-view="ui-flow" aria-pressed="false">ui-flow 2<\/button><\/div>/,
+  "the report renders a View filter with every view present",
+);
+const viewContext = JSON.parse(
+  viewCards[1].match(/data-ai-fix-context>([\s\S]*?)<\/script>/)[1].replace(/\\u003c/g, "<").replace(/\\u003e/g, ">").replace(/\\u0026/g, "&"),
+);
+assert.equal(viewContext.location, "On Review", "the AI context carries the anchor description");
+assert.equal(viewContext.view, "ui-flow", "the AI context carries the view");
+const viewPrompt = formatVisualFixPrompt(viewContext, null);
+assert.match(viewPrompt, /^- Comment location: On Review$/m, "the prompt lists the comment location");
+assert.match(viewPrompt, /^- Comment view: ui-flow$/m, "the prompt lists the comment view");
+const storyContext = JSON.parse(viewCards[0].match(/data-ai-fix-context>([\s\S]*?)<\/script>/)[1]);
+assert.equal("location" in storyContext || "view" in storyContext, false, "a Story comment's context has no location or view");
+
+// A line comment is described by its label; nearby frames without a label by
+// their id, and a canvas point without nearby frames by its coordinates.
+const describedMeeting = {
+  ...viewMeeting,
+  session: { ...viewMeeting.session, id: "session-described", title: "Described review" },
+  comments: viewMeeting.comments.map((comment, index) =>
+    index === 0
+      ? { ...comment, anchor: { type: "canvas", x: 612.4, y: 300.6 } }
+      : index === 1
+        ? { ...comment, anchor: { type: "path", id: "edge:intake->review", label: "Intake → Review", t: 0.5 } }
+        : { ...comment, anchor: { type: "canvas", x: 600, y: 300, nearby: [{ id: "route:intake", dx: 600, dy: 300 }] } },
+  ),
+};
+const describedCards = [...renderVisualCommentReport(describedMeeting).matchAll(/<article class="comment" data-comment-card[\s\S]*?<\/article>/g)].map((match) => match[0]);
+assert.deepEqual(
+  describedCards.map((card) => card.match(/data-comment-anchor="[a-z]+">([^<]+)</)?.[1] ?? null),
+  ["Canvas point (612, 301)", "On line Intake → Review", "Canvas near route:intake"],
+  "line, unlabelled nearby and bare canvas anchors are described",
+);
+
+// A comment moved since its screenshot (add-direct-pin-editing).
+const movedMeeting = {
+  ...viewMeeting,
+  session: { ...viewMeeting.session, id: "session-moved", title: "Moved review" },
+  comments: viewMeeting.comments.map((comment, index) =>
+    index === 1
+      ? {
+          ...comment,
+          anchor: { type: "element", id: "route:handoff", label: "Handoff", x: 40, y: 60, width: 375, height: 812 },
+          movedAt: "2026-10-06T09:00:00.000Z",
+        }
+      : comment,
+  ),
+};
+const movedCards = [...renderVisualCommentReport(movedMeeting).matchAll(/<article class="comment" data-comment-card[\s\S]*?<\/article>/g)].map((match) => match[0]);
+assert.match(movedCards[1], /<p class="comment__moved" data-comment-moved>Moved since the screenshot<\/p>/, "a moved comment's card says it moved since the screenshot");
+assert.equal(
+  movedCards[1].match(/data-comment-pin-x="([^"]+)" data-comment-pin-y="([^"]+)"/)?.slice(1).join(","),
+  `${viewMeeting.comments[1].pin.xRatio},${viewMeeting.comments[1].pin.yRatio}`,
+  "a moved comment's card keeps the stored screenshot pin",
+);
+assert.match(movedCards[1], /data-comment-pin-available="false"/, "a moved comment's screenshot pin is not editable");
+assert.doesNotMatch(movedCards[1], /data-comment-edit-pin/, "a moved comment renders no editable pin");
+const movedContext = JSON.parse(
+  movedCards[1].match(/data-ai-fix-context>([\s\S]*?)<\/script>/)[1].replace(/\\u003c/g, "<").replace(/\\u003e/g, ">").replace(/\\u0026/g, "&"),
+);
+assert.match(
+  formatVisualFixPrompt(movedContext, null),
+  /^- Comment location: On Handoff \(moved since the screenshot\)$/m,
+  "a moved comment's prompt location line carries the note",
+);
+for (const card of [movedCards[0], movedCards[2]]) {
+  assert.doesNotMatch(card, /data-comment-moved|moved since the screenshot/i, "a comment that never moved has no moved note");
+}
+assert.doesNotMatch(viewPrompt, /moved since the screenshot/, "a prompt for a comment that never moved has no note");
 const browserIndex = renderVisualCommentIndex(
   [
     { id: "active", title: "Current", startedAt: "2026-10-01T05:36:43.790Z", closedAt: null, captureCount: 2, commentCount: 3 },
@@ -1785,7 +1908,9 @@ try {
     filter: path.join(browserDir, "filter.html"),
     index: path.join(browserDir, "index.html"),
     single: path.join(browserDir, "single.html"),
+    view: path.join(browserDir, "view.html"),
   };
+  writeFileSync(pages.view, viewReport);
   writeFileSync(pages.batch, batchReport);
   writeFileSync(pages.filter, filterReport);
   writeFileSync(pages.index, browserIndex);
@@ -1926,10 +2051,10 @@ try {
     assert.deepEqual(
       filterRows,
       [
-        { cards: "1,2,3", fragment: "#kind=all&completed=shown", pins: 3 },
-        { cards: "2,3", fragment: "#kind=tracking&completed=shown", pins: 2 },
-        { cards: "2", fragment: "#kind=tracking&completed=hidden", pins: 1 },
-        { cards: "1", fragment: "#kind=visual-fix&completed=hidden", pins: 1 },
+        { cards: "1,2,3", fragment: "#kind=all&completed=shown&view=all", pins: 3 },
+        { cards: "2,3", fragment: "#kind=tracking&completed=shown&view=all", pins: 2 },
+        { cards: "2", fragment: "#kind=tracking&completed=hidden&view=all", pins: 1 },
+        { cards: "1", fragment: "#kind=visual-fix&completed=hidden&view=all", pins: 1 },
       ],
       "filters narrow the visible cards, hide their pins, and record the selection",
     );
@@ -1981,6 +2106,38 @@ try {
       })()`).then((result) => JSON.stringify(result)),
       JSON.stringify({ cards: "1", copied: "2" }),
       "filtering does not change which comments the batch copy collects",
+    );
+
+    // The View filter narrows cards, joins the fragment, and leaves the batch alone.
+    await open(pages.view);
+    await press('[data-report-view="ui-flow"]');
+    assert.deepEqual(
+      await filterView(),
+      { cards: "2,3", fragment: "#kind=all&completed=shown&view=ui-flow", pins: 2 },
+      "the ui-flow option shows only ui-flow cards and records view=ui-flow",
+    );
+    assert.equal(
+      await evaluate(`document.querySelector('[data-report-view="ui-flow"]').getAttribute("aria-pressed")`),
+      "true",
+    );
+    await open(pages.view, "#kind=all&completed=shown&view=story");
+    assert.equal(await evaluate(visibleCards), "1", "the fragment restores the view filter");
+    await open(pages.view, "#view=UI%20Flow");
+    assert.equal(await evaluate(visibleCards), "1,2,3", "an invalid view in the fragment falls back to All views");
+    await press('[data-report-view="story"]');
+    assert.equal(
+      await evaluate(`(async () => {
+        const writes = [];
+        Object.defineProperty(navigator, "clipboard", {
+          configurable: true,
+          value: { writeText: async (text) => { writes.push(text); } },
+        });
+        document.querySelector("[data-tracking-batch-copy]").click();
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        return [...(writes[0] ?? "").matchAll(/^### Comment (\\d+)$/gm)].map((match) => match[1]).join(",");
+      })()`),
+      "2",
+      "the view filter does not change which comments the batch copy collects",
     );
 
     // A view with no visible card shows one empty message.

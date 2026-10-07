@@ -1,6 +1,6 @@
 # @harrychuang/storybook-addon-figma-export
 
-Storybook 10 addon: export a rendered story into a Figma import payload (payload version 2). Core export works with React, Vue, Svelte, Angular, and Web Components because every preview decorator returns the renderer story result unchanged and the addon UI is plain DOM mounted outside the story root. React + Vite and Vue 3 + Vite have the full verified Export review, Visual Comments, meeting, evidence, persistence, report, and source-action workflow; other renderer/builder combinations retain core export unless the installer capability report says otherwise. The preview and review bundles import no React, React DOM, or Storybook icons. Exports are scoped to `#storybook-root` by default (falling back to `document.body` with a warning). When both tools are enabled, Figma export and Export review share one responsive workspace dock that reserves Story canvas space instead of covering the rendered UI. Prefers a three-layer CSS token model (`ref`, `sys`, `comp`); projects without layered tokens still export with an empty variable set.
+Storybook 10 addon: export a rendered story into a Figma import payload (payload version 2). Core export works with React, Vue, Svelte, Angular, and Web Components because every preview decorator returns the renderer story result unchanged and the addon UI is plain DOM mounted outside the story root. React + Vite and Vue 3 + Vite have the full verified Export review, Visual Comments, meeting, evidence, persistence, report, and source-action workflow; other renderer/builder combinations retain core export unless the installer capability report says otherwise. The preview and review bundles import no React, React DOM, or Storybook icons. Exports are scoped to `#storybook-root` by default (falling back to `document.body` with a warning). When both tools are enabled, Figma export and Export review share one responsive workspace dock that reserves Story canvas space instead of covering the rendered UI (a host-declared pannable canvas keeps its full size, and the dock floats above it). Prefers a three-layer CSS token model (`ref`, `sys`, `comp`); projects without layered tokens still export with an empty variable set.
 
 ## Visual fidelity capture
 
@@ -201,25 +201,24 @@ import {
   createFigmaExportGlobalTypes,
   createFigmaExportInitialGlobals,
 } from "@harrychuang/storybook-addon-figma-export/preview";
-import { createFigmaExportReviewDecorator } from "@harrychuang/storybook-addon-figma-export/review";
+import { configureFigmaExportReview } from "@harrychuang/storybook-addon-figma-export/review";
 import { getFigmaSourceUrl } from "@harrychuang/storybook-addon-figma-export/source";
 import { figmaExportProjectConfig } from "./figma-export.config";
 import "@harrychuang/storybook-addon-figma-export/styles.css";
 
+configureFigmaExportReview(figmaExportOptions, {
+  apiPath: figmaExportProjectConfig.review.apiPath,
+  visualComments: figmaExportProjectConfig.review.visualComments,
+  getFigmaSourceUrl(context) {
+    return getFigmaSourceUrl(context.parameters, context.title ?? "", {
+      componentSpecModules,
+      designSystemFileUrl,
+      nodeOverrides,
+    });
+  },
+});
+
 const preview: Preview = {
-  decorators: [
-    createFigmaExportReviewDecorator(figmaExportOptions, {
-      apiPath: figmaExportProjectConfig.review.apiPath,
-      visualComments: figmaExportProjectConfig.review.visualComments,
-      getFigmaSourceUrl(context) {
-        return getFigmaSourceUrl(context.parameters, context.title ?? "", {
-          componentSpecModules,
-          designSystemFileUrl,
-          nodeOverrides,
-        });
-      },
-    }),
-  ],
   globalTypes: {
     ...createFigmaExportGlobalTypes(figmaExportOptions),
   },
@@ -228,6 +227,17 @@ const preview: Preview = {
   },
 };
 ```
+
+`configureFigmaExportReview` hands the export overlay and the review panel to
+the decorator the addon already registers for every story (Storybook loads the
+addon's `./preview` entry, which exports `decorators`), so nothing goes into
+`decorators`. Because that decorator belongs to the addon, it wraps the
+decorators of addons listed after it in `main.ts`. List
+`@harrychuang/storybook-addon-figma-export` before any addon whose decorator
+renders its own view, such as the Prototype Inspector preset, so the panel and
+comments also work in that view. `createFigmaExportReviewDecorator` still works;
+when a project keeps it next to `configureFigmaExportReview`, the panel mounts
+once.
 
 The default source resolver reads `parameters.figmaSourceUrl`,
 `parameters.figma.url`, or `parameters.design.url`. Use `getFigmaSourceUrl`
@@ -300,13 +310,26 @@ first, with the same numbers as that meeting's report, kind, Open/Completed
 status, author, and time. The list scrolls inside the panel.
 The footer shows **Commenting as** with the stored display name (or
 `Anonymous`); **Change** sets it once and the composer never asks for it.
-Choosing Edit on a comment opens a capture-ignored overlay modal with the stored
-screenshot and numbered point. While editing, click or drag the numbered pin
-or use Arrow keys (1%) and Shift+Arrow keys (5%); **Save changes** stores the body,
-kind, and normalized point in one atomic update. Cancel, Escape, or the backdrop
-restores the drafts and returns focus to Edit. A failed update keeps the
-modal and drafts open; a successful update closes only the modal and leaves
-the panel expanded. Pins use one
+Clicking a comment's pin, or choosing Edit on a comment whose pin is shown,
+opens an edit panel beside that pin, placed like the composer (it flips near the
+viewport edge and docks to the top or bottom edge below 720px). It shows the
+screenshot taken with the comment, with the comment number marking its point
+(at most 296 × 200 pixels; **Moved since the screenshot** below it when the
+comment has moved), then **Comment type**, the body, **Cancel**, and **Save
+changes**; the pin's hover card stays hidden while its panel is open. The panel follows the pin while the canvas pans or the pin is
+dragged, a press outside does not close it, and **Save changes** stores the body
+and kind; move the pin itself by dragging it. When the pin is off screen, the
+panel first asks the page to show its location (see Comment views and anchors);
+when no pin can be shown, for example a comment listed from another view, a pin
+scrolled out of the viewport, or with **Pins** off, Edit opens a capture-ignored
+overlay modal with the stored screenshot and numbered point. In the modal, click
+or drag the numbered pin or use Arrow keys (1%) and Shift+Arrow keys (5%) when
+the point can be edited; a line, canvas, or moved comment shows its point fixed
+(with **Moved since the screenshot** for a moved one). **Save changes** stores the
+body, a changed kind, and an edited point in one atomic update. In both, Cancel or Escape (and
+the modal's backdrop) restores the drafts and returns focus to Edit; a failed
+update keeps the drafts open, and a successful update closes the editor and
+leaves the panel expanded. Pins use one
 meeting-wide `1..N` sequence across Stories and captures; deleting a comment
 recomputes a contiguous sequence. The **Reports** route remains the single place to browse
 active and closed meetings that still contain a capture or comment. Meetings with
@@ -322,9 +345,23 @@ numbered pin on the Story at the point it was placed: a circle for a
 **Visual fix**, a rounded square for **Tracking**, and a subdued color once the
 comment is Completed. Pins follow the kind filter; **Pins** in the panel toolbar
 hides them, and collapsing the panel removes them so they never block the
-prototype while you are using it. Clicking a pin selects its comment in the list
-and never triggers the control beneath it; the selected comment's pin keeps a
-ring, and clicking it again scrolls back to the comment. While you are placing
+prototype while you are using it. Clicking a pin selects its comment in the list,
+opens its edit panel, and never triggers the control beneath it; the selected
+comment's pin keeps a ring, clicking it again scrolls back to the comment, and
+clicking another pin switches the panel to that comment (an unsaved draft is
+dropped, as with **Cancel**). Dragging a pin (past 4
+pixels) moves the comment: the pin follows the pointer, Escape puts it back, and
+releasing it saves the new location at once. A focused pin also moves with the
+Arrow keys (1 pixel, 10 with Shift) and is saved 600 ms after the last key or
+when it loses focus. After a move the panel shows **Comment moved.** with
+**Undo** for 5 seconds; a failed move puts the pin back and says why. The
+release is resolved like a new comment: a frame, then a line within 8 pixels,
+then the canvas (see Comment views and anchors); a comment without an anchor
+keeps a ratio position, and an anchored comment dropped where nothing resolves
+goes back with **Drop the pin on a frame, a line or the canvas.** Moving a
+comment within the frame it was captured on keeps its screenshot point in step;
+any other move keeps the screenshot as it was and marks the comment **Moved
+since the screenshot** in the list, the pin card, the report, and the AI prompt. While you are placing
 a new comment, saved pins stay visible but let clicks through, so a point under
 a pin can be commented on again. Hovering or focusing a list item highlights
 its pin. Hovering or focusing a pin shows a card beside it with the comment,
@@ -334,8 +371,9 @@ whether a comment from an older meeting still points at the right element. When
 the preview is too narrow for the card on either side of the pin, as in a
 phone-width preview, the card appears below the pin (above it near the bottom
 edge) so it never covers the pin. A
-pin is a position ratio within the capture
-target, not a link to an element, so it does not follow a component that moves.
+pin is a position ratio within the capture target, not a link to an element, so
+it does not follow a component that moves, unless the page declares anchors
+(see Comment views and anchors below).
 A comment whose screenshot is missing still shows its pin. When `captureSelector`
 is set and matches no element, no pins are shown. A comment
 captured in a different route or state (recorded from the prototype root's
@@ -354,6 +392,33 @@ when the prototype itself uses the **C** key; **Esc** keeps cancelling.
 | `captureSelector` | Capture target; `"body"` includes portals |
 | `authorStorageKey` | `localStorage` key of the display name |
 | `shortcuts` | `false` disables **C** and **Cmd/Ctrl+Enter** (default `true`) |
+
+Upgrading from 0.14.x: saved pins can be dragged (and moved with the Arrow
+keys) to move their comments, with **Undo**, and clicking a pin or Edit opens an
+edit panel beside the pin, with the comment's screenshot, instead of a centered
+modal whenever the pin is shown. Line and canvas comments now capture the pages
+of the visible frames (up to 12) into their screenshot. Moving needs the 0.15.0
+review server: the comment edit request gains `anchor` (a move) and, together
+with `anchor` and `pin`, `movedAt` (a restore), and an older server rejects
+them, so the panel puts the pin back and shows the error. A comment moved
+somewhere its screenshot no longer shows stores `movedAt` and reads **Moved
+since the screenshot**; its screenshot point is then fixed. Stored meetings need
+no migration.
+
+Upgrading from 0.13.x: call `configureFigmaExportReview(figmaExportOptions,
+reviewOptions)` once at module level in `.storybook/preview.ts` and remove
+`createFigmaExportReviewDecorator(...)` from `decorators`. The addon's own
+decorator then renders the panel, including in views that a later addon renders
+itself (such as the Prototype Inspector's UI Flow), so list the addon before
+those addons in `main.ts`. Keeping the old decorator still works and the panel
+mounts once, but those views stay without comments. Comments gain optional
+`anchor` and `story.view` fields (see Comment views and anchors); a 0.13.0
+server ignores them, and stored meetings need no migration. Comment screenshots
+now keep the paint of SVG children styled by stylesheet rules, and the workspace
+reservation now also narrows a fluid `#storybook-root` (its size variables used
+to be scoped to the workspace and never reached the Story root), except a Story
+root that holds a host-declared canvas (`data-sbfx-canvas`): a canvas pans, so
+it keeps its full size and the workspace floats above it.
 
 Upgrading from 0.12.x: the panel no longer shows the active meeting's comments
 as soon as it opens. Turn on the meeting's **View** switch under **Meetings**
@@ -443,6 +508,64 @@ pixel-perfect browser chrome capture. Rollback may remove the UI/middleware but
 must not delete the review directory; retained reports and canonical data stay
 readable.
 
+### Comment views and anchors
+
+A host page, such as a canvas that lays several screens side by side, can tell
+the addon which view is showing and what a comment sticks to. The addon reads
+these attributes only inside the capture target (the export attribute inside the
+export scope) and matches anchor ids by attribute value, so an id may contain
+characters such as `>` or `:`.
+
+| Attribute | Where | Meaning |
+| --- | --- | --- |
+| `data-sbfx-view="<name>"` | The host's root element | Current comment view. Names match `^[a-z0-9][a-z0-9-]{0,39}$`; anything else, or no attribute, is `story` |
+| `data-sbfx-anchor="<id>"`, optional `data-sbfx-anchor-label`, `data-sbfx-anchor-route` | An HTML element people comment on, such as a frame | Element anchor: the pin keeps its point inside the element in layout pixels; the first element in document order wins |
+| `data-sbfx-anchor="<id>"` with `data-sbfx-anchor-kind="path"`, optional `data-sbfx-anchor-label` | An SVG `polyline`, `polygon`, `line`, or `path` | Path anchor: a click within 8 CSS pixels of the line sticks to that position along it |
+| `data-sbfx-canvas` | The canvas container | Canvas anchor scope: a click elsewhere on the canvas is stored in world coordinates with up to two nearby element anchors; pins outside it are hidden |
+| `data-sbfx-canvas-world` | The panned and zoomed layer inside the canvas (`transform-origin: 0 0`) | World coordinate system |
+| `data-sbfx-comments="unavailable"` | Any element in the capture target | Comments are not offered: **C** and **Add comment** show **Comments are not available in this view.** |
+| `data-sbfx-export="unavailable"`, optional `data-sbfx-export-label`, `data-sbfx-export-href` | Any element in the export scope | Figma export is not offered: the export panel shows a notice and, when given, a same-origin link instead of the export actions |
+
+A click resolves to an element anchor first, then a path anchor, then the
+canvas; with none of them it is an ordinary ratio pin. The screenshot pin is
+always stored as well.
+
+The host tells the addon about movement and receives requests through two
+events:
+
+- When anchored elements move without a re-render (panning, zooming), dispatch
+  `new CustomEvent("sbfx:anchors-moved", { bubbles: true })` on `document` or
+  any element in it. The addon repositions every visible anchored pin inside the
+  handler, so pins stay on their frame in the same frame of animation.
+- **Show location** on a comment whose anchor is off screen dispatches a
+  bubbling, cancelable `sbfx:reveal-anchor` event on `document` with
+  `detail = { commentId, view, anchor }`. Bring the anchor into view and call
+  `preventDefault()`; otherwise the panel shows **This location is not
+  available in this view.**
+
+Each comment records its view (`capture.story.view`, omitted for `story`). The
+panel lists and pins the current view's comments; the **Comment views** switch
+shows other views' comments in the list, and their pins appear only in their
+own view. Reports have a **View** filter, and the handoff prompt adds
+`Comment view` and `Comment location` lines. An element-anchored comment
+captures the element itself; when the element holds a same-origin preview
+iframe whose page runs the review runtime, the screenshot is that page. Path and
+canvas comments capture the canvas and draw into it the pages of up to 12
+visible frames whose same-origin preview iframe runs the review runtime (a frame
+that fails or takes longer than 4 seconds stays empty); element comments
+without such an iframe capture the element at its layout size. When an anchored element's size has
+changed since the comment, the list marks **Layout changed since this comment**.
+Every saved pin can be dragged to a new frame, line, or canvas point; the
+modal's point editing stays limited to comments without an anchor and
+element-anchored comments that have not moved since their screenshot, and the
+others show their screenshot with the point fixed.
+
+While placing a pin, only the primary button places it; other buttons reach the
+page and keep capture mode on. The rest of the placing click sequence (a second
+press within 500 ms, its click, `dblclick`, and `contextmenu`) never reaches the
+page, and Escape in capture mode, the composer, and the Edit and Delete dialogs
+never reaches page key handlers.
+
 ### Tracking comments
 
 Every visual comment has a kind: **Visual fix** (the default) or **Tracking**.
@@ -480,9 +603,10 @@ A short comment such as `依埋點文件的 order_submit_click` also works when 
 repository already documents the event; the assistant asks about anything left
 `unspecified`.
 
-The kind label appears in the panel's recent comments, in the edit modal, and on
-every report card. A comment saved with the wrong kind can be corrected without
-losing its screenshot: change **Comment type** in the panel edit modal or in the
+The kind label appears in the panel's recent comments, in the edit panel and
+modal, and on every report card. A comment saved with the wrong kind can be
+corrected without losing its screenshot: change **Comment type** in the edit
+panel beside its pin (or the edit modal when the pin is not shown) or in the
 report's inline editor and save.
 
 The composer preselects the kind of the last saved comment, so a run of
@@ -552,8 +676,9 @@ Projects do not need all three default layers to export. The detector chooses th
 
 - **Toolbar shows "Figma export on" but no export tools appear.** The preview shows a small dismissible "Figma export" notice explaining why: the current story is excluded by `storyTitlePrefix`. Check that the filter covers the story title's top-level namespace: use `Components/`, not a deeper path like `Components/Examples/` (prefixes are `startsWith` matches, so a deep prefix excludes `Components/Actions/...` and every other sibling). Set `storyTitlePrefix: false` to include all stories.
 - **No toolbar toggle on a Docs (autodocs) page.** Intentional: the addon works in Story view only, so the toolbar toggle, export overlay, and review panel all stay hidden on docs pages. Open the entry as a story to export it.
-- **Inline SVG icons look black in a comment screenshot or reference snapshot.** A capture clones an `<svg>` as-is and does not inline styles for its children, so children colored only by a stylesheet rule (for example `.icon path { stroke: currentColor }`) fall back to the SVG defaults. Attributes and inline styles are preserved, including `fill="var(--token)"`.
-- **No notice and no tools.** Confirm the preview imports `@harrychuang/storybook-addon-figma-export/styles.css` and that the decorator (`createFigmaExportDecorator` or `createFigmaExportReviewDecorator`) is registered.
+- **Inline SVG icons look black in a reference snapshot.** The browser reference snapshot and `data-figma-rasterize` clone an `<svg>` as-is and do not inline styles for its children, so children colored only by a stylesheet rule (for example `.icon path { stroke: currentColor }`) fall back to the SVG defaults. Attributes and inline styles are preserved, including `fill="var(--token)"`. Comment screenshots inline the computed paint of SVG children for the duration of the capture, so they keep these colors.
+- **No notice and no tools.** Confirm the preview imports `@harrychuang/storybook-addon-figma-export/styles.css` and that the addon is set up: `configureFigmaExportReview` is called in `preview.ts`, or a decorator (`createFigmaExportDecorator` or `createFigmaExportReviewDecorator`) is registered.
+- **No panel or comments in a view another addon renders (for example UI Flow).** List `@harrychuang/storybook-addon-figma-export` before that addon in `main.ts` `addons` and use `configureFigmaExportReview`; a decorator inside `preview.ts` is wrapped by the other addon and never runs in its view.
 
 ## API exports
 
@@ -561,7 +686,7 @@ Projects do not need all three default layers to export. The detector chooses th
 - `@harrychuang/storybook-addon-figma-export/preview` — decorator and globals helpers
 - `@harrychuang/storybook-addon-figma-export/preset` — Storybook preset (used automatically via `addons`)
 - `@harrychuang/storybook-addon-figma-export/manager` — toolbar registration (side effect)
-- `@harrychuang/storybook-addon-figma-export/review` — optional export review panel and decorator
+- `@harrychuang/storybook-addon-figma-export/review` — optional export review panel: `configureFigmaExportReview` and the older `createFigmaExportReviewDecorator`
 - `@harrychuang/storybook-addon-figma-export/review-server` — optional Vite middleware for persisted review state
 - `@harrychuang/storybook-addon-figma-export/source` — source URL resolver helpers for story parameters and documented Figma node fallbacks
 - `@harrychuang/storybook-addon-figma-export/styles.css` — exporter and review overlay styles

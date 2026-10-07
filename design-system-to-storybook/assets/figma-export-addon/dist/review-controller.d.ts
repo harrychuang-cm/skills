@@ -1,4 +1,4 @@
-import { V as VisualCommentKind, a as VisualCommentPin, b as beginVisualCommentCapture, c as VisualCommentCaptureController } from './visualComment-CG4UoVVu.js';
+import { V as VisualCommentKind, a as VisualCommentPin, b as VisualCommentAnchor, c as beginVisualCommentCapture, d as VisualCommentCaptureController } from './visualComment-DFPXUtKq.js';
 
 type FigmaReviewStatus = "not-started" | "exported" | "imported" | "needs-fix" | "approved";
 type FigmaReviewEntry = {
@@ -46,6 +46,9 @@ type VisualCommentOverview = {
             routeId?: string;
             stateId?: string;
         };
+        view?: string;
+        anchor?: VisualCommentAnchor;
+        movedAt?: string;
     }>;
     meetings?: Array<{
         id: string;
@@ -87,6 +90,7 @@ type VisualCommentMeeting = {
             stateId?: string;
             title: string;
             url?: string;
+            view?: string;
         };
         viewport: {
             devicePixelRatio: number;
@@ -101,6 +105,8 @@ type VisualCommentMeeting = {
         id: string;
         kind?: VisualCommentKind;
         pin: VisualCommentPin;
+        anchor?: VisualCommentAnchor;
+        movedAt?: string;
         resolvedAt?: string | null;
     }>;
 };

@@ -24,7 +24,7 @@
 - Static Flow keeps flow-only nodes as metadata cards, but route cards use real route UI.
 - Static Flow route cards reserve the same route UI width and height as UI Flow previews.
 - Static Flow applies saved UI Flow route and node positions before falling back to metadata positions.
-- Static Flow uses the same dotted canvas, route card chrome, decision node shape, edge colors, arrowheads, and label pills as UI Flow.
+- Static Flow keeps the UI Flow geometry: each route card and the decision node sit at the same offsets from each other as the frames in UI Flow.
 - Layout export includes schema, version, prototypeId, exportedAt, and positions.
 - Layout import applies matching positions and rejects non-matching layouts.
 

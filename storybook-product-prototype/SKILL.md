@@ -218,6 +218,7 @@ Run the checks that fit the target repo:
 - Project typecheck, usually `npm run typecheck`
 - Storybook render or build, usually `npm run storybook` or `npm run storybook:build`
 - Manual Storybook review of Story, Docs, UI Flow, Components, and Data if the project has a prototype inspector; in the Components mode, confirm every route lists its composition and story links open the right stories.
+- Manual UI Flow canvas check when the bundled inspector is installed or its assets changed, in Chrome, Safari and Firefox: a trackpad pinch zooms the canvas and never the Storybook page (once with the pointer over the canvas, once over the zoom group); Shift+1 and Shift+0 fit and zoom to 100% without triggering Storybook shortcuts; pressing 1 still focuses the Storybook sidebar; Tab to Zoom in and press Space zooms exactly one step; text and frames are sharp once zooming stops; the zoom and layout groups stay put while panning; with the Storybook toolbar zoom at 150%, a dragged frame still follows the pointer; with `globals=figmaExport:on` the zoom and layout groups are fully visible and clickable. With figma-export addon 0.14.0 or later and `globals=figmaExport:on`, also check UI Flow comments in the same three browsers: leave one comment on a frame, one on a transition line and one on blank canvas; after panning, zooming and dragging the frame each pin is still on its spot; Escape closes the comment composer without cancelling a drag; the Story view's comment list does not show the UI Flow comments; the Figma export panel in UI Flow points to Static Flow.
 - The UX self-review pass from `references/visual-quality.md`: hierarchy, interaction states, contrast, and token binding checked against the rendered stories.
 - Manual `StaticFlow` story review when future Figma export or design review depends on a stable flow artifact.
 - Handoff review with `--handoff-ready` before using the docs as an engineering or AI implementation brief: it cross-checks doc route/fixture references, fixture carriers and acceptance ids, Data Authority structure/source fields, named/dated/scoped demo and semantic review records, and explicit navigation/motion intent; it also fails while the `🚧 擋開工` list still carries a numbered decision and while `docs/flow.json` (when present) differs from a fresh `export_flow.py` export. On a fully passing run it writes version-2 `docs/HANDOFF_MANIFEST.json`: docs plus Flow/Data/Meta, fixtures, and existing flow/token export hashes, both digests, and a changelog. Pass `--changelog "<summary>"` to label the reviewed version. `--production-ready` remains only a backward-compatible alias; the check does not establish external source truth or semantic correctness.
@@ -245,6 +246,17 @@ In the skill source checkout, run `node storybook-product-prototype/scripts/test
 Run `python3 <skill-root>/scripts/test_scaffold_validate.py` after changing the templates or scripts; it scaffolds and validates one prototype per framework and fails when the two rounds diverge.
 
 Run `node <skill-root>/scripts/test_install_prototype_inspector.mjs` after changing `install_prototype_inspector.mjs` or the bundled Inspector assets; it installs into temporary React Storybook projects and checks the installed files, the fingerprint reuse rule and the refusal of an incompatible flow layout helper.
+
+After changing the UI Flow canvas (`flow-canvas.js`, `flow-canvas-geometry.js` or their CSS), run both canvas tests in the skill source checkout:
+
+- `node --test storybook-product-prototype/scripts/test_flow_canvas_geometry.test.mjs` checks the routing and label helpers against golden outputs recorded from the pre-camera `preview.js`, and the camera math (zoom steps, wheel and pointer classification, fit, shortcuts) against fixed example tables.
+- `node storybook-product-prototype/scripts/test_flow_canvas_ssr.mjs` server-renders the canvas with the Storybook template React dependencies and checks its layers, control names, frame labels, zoom menu and contrast.
+
+To measure canvas performance, create a disposable Storybook copy with generated bench prototypes and measure a running Storybook in system Chrome:
+
+- `node <skill-root>/scripts/create_flow_bench_fixture.mjs --out <new folder outside the repo>` copies the Storybook template and adds bench prototypes, including a 100-route flow; it is also a ready-made fixture for the manual canvas check.
+- `node <skill-root>/scripts/bench_flow_canvas.mjs --url "<UI Flow iframe URL>" --project-root <that folder> --out <json>` records open time, DOM size, memory, drag and gesture commit counts and layout writes as JSON.
+- `node <skill-root>/scripts/check_flow_canvas_comments.mjs --url "<prototype story iframe URL>"` checks the canvas against figma-export review comments in system Chrome on that fixture (it carries figma-export addon 0.14.0 or later): anchor movement notifications during pan and drag, location requests, keys handled by the comment composer, capture taking precedence over frame interaction, and comments placed on frames, lines and blank canvas.
 
 ## Quality Bar
 

@@ -85,6 +85,42 @@ assert.equal(typeof review.createFigmaExportReviewDecorator, "function");
 assert.equal(typeof reviewServer.createFigmaReviewStatusPlugin, "function");
 assert.equal(typeof source.getFigmaSourceUrl, "function");
 
+// Self-registered review decorator: Storybook applies the preview entry's
+// decorators from the addons list; the review entry registers through the
+// global symbol registry because each entry is bundled separately.
+assert.equal(typeof review.configureFigmaExportReview, "function");
+assert.ok(
+  Array.isArray(preview.decorators) && preview.decorators.length === 1,
+  "the preview entry exports exactly one decorator",
+);
+assert.equal(preview.decorators[0], preview.figmaExportHostDecorator);
+const storyResult = { story: "result" };
+assert.equal(
+  preview.figmaExportHostDecorator(() => storyResult, { id: "demo--story" }),
+  storyResult,
+  "without configureFigmaExportReview the host decorator passes the story through",
+);
+review.configureFigmaExportReview({ storyTitlePrefix: false }, {});
+const legacyDecorator = review.createFigmaExportReviewDecorator({ storyTitlePrefix: false });
+assert.equal(
+  preview.figmaExportHostDecorator(
+    () => legacyDecorator(() => storyResult, { id: "demo--story" }),
+    { id: "demo--story", globals: { figmaExport: "on" } },
+  ),
+  storyResult,
+  "a legacy decorator inside a host render returns the story result unchanged",
+);
+const previewBundle = fs.readFileSync(path.join(addonRoot, "dist", "preview.js"), "utf8");
+const previewImports = [
+  ...previewBundle.matchAll(/^import\s+(?:[^"';]*?\s+from\s+)?["']([^"']+)["']/gm),
+].map((match) => match[1]);
+for (const specifier of previewImports) {
+  assert.ok(
+    !/^react(?:-dom)?(?:\/|$)/.test(specifier) && !/review/.test(specifier),
+    `dist/preview.js must not import ${specifier}`,
+  );
+}
+
 // Option types added for consumers must reach the published declarations.
 const publishedDeclarations = fs
   .readdirSync(path.join(addonRoot, "dist"))

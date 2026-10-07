@@ -7,9 +7,10 @@ Also use this reference before wiring `.storybook/main.*` or `.storybook/preview
 The addon has two preview UIs:
 
 - `createFigmaExportDecorator`: shows the export overlay for copying JSON or plugin-console code.
-- `createFigmaExportReviewDecorator`: returns the story result unchanged while synchronizing the export/review DOM workspace and Open source action outside the story root.
+- `configureFigmaExportReview` (addon 0.14.0+): called once at module level in `.storybook/preview.*`; hands the export overlay, the review workspace, and the Open source action to the decorator the addon registers itself, so they also run in views another addon renders (such as the Prototype Inspector's UI Flow).
+- `createFigmaExportReviewDecorator`: the older form of the same UI as a `decorators` entry. It still works, and the panel mounts once when a project keeps it next to `configureFigmaExportReview`, but views rendered by an addon listed after this one get no panel or comments.
 
-For this skill, use `createFigmaExportReviewDecorator` by default. Do not configure only `createFigmaExportDecorator` unless the user explicitly opts out of review/Open source.
+For this skill, use `configureFigmaExportReview` by default. Do not configure only `createFigmaExportDecorator` unless the user explicitly opts out of review/Open source.
 
 ## Installer And Config
 
@@ -75,9 +76,9 @@ The generated config covers:
 
 ## Configuration Rules
 
-1. Add `"@harrychuang/storybook-addon-figma-export"` to `.storybook/main.*` `addons`, preserving existing addons.
+1. Add `"@harrychuang/storybook-addon-figma-export"` to `.storybook/main.*` `addons`, preserving existing addons. Place it before the Prototype Inspector preset (`./prototype-inspector/preset.js`) and any other addon whose decorator renders its own view: an addon's decorator wraps the decorators of addons listed after it, so the wrong order leaves those views without the panel. The generated wiring places it this way.
 2. Import `figmaExportProjectConfig` from `.storybook/figma-export.config.ts` and build `figmaExportOptions` from that config.
-3. Merge `createFigmaExportReviewDecorator`, `globalTypes`, and `initialGlobals` into the existing preview export. Do not overwrite existing decorators or globals.
+3. Call `configureFigmaExportReview(figmaExportOptions, reviewOptions)` once at module level and merge `globalTypes` and `initialGlobals` into the existing preview export. Do not overwrite existing decorators or globals, and do not add a review decorator to `decorators`.
 4. Use plain `createFigmaExportDecorator` only if the user explicitly opts out of review/Open source.
 5. Set `tokenPrefix` only when the CSS token prefix is explicit or auto-detection would be ambiguous.
 6. Keep `tokenLayers` aligned to `ref`, `sys`, and `comp` unless the extraction uses different segment names.
@@ -90,7 +91,8 @@ The generated config covers:
 
 Common causes:
 
-- `.storybook/preview.*` imports only `createFigmaExportDecorator`, not `createFigmaExportReviewDecorator`.
+- `.storybook/preview.*` imports only `createFigmaExportDecorator` and never calls `configureFigmaExportReview` (or registers `createFigmaExportReviewDecorator`).
+- The overlay works on stories but not in a view another addon renders, such as UI Flow: the addon is listed after that addon in `.storybook/main.*` `addons`, or the project still uses `createFigmaExportReviewDecorator` instead of `configureFigmaExportReview`.
 - `.storybook/preview.*` does not import `@harrychuang/storybook-addon-figma-export/styles.css`; this stylesheet includes both exporter and review overlay styles.
 - Storybook toolbar global `figmaExport` is still `off`; the review overlay renders only after the toolbar is toggled on.
 - `figmaExportOptions.storyTitlePrefix` excludes the current story title. When this happens with the toolbar on, the preview shows a dismissible "Figma export" notice naming the configured prefixes. Check first that the filter covers the story's top-level namespace: the correct level is `Components/`, not `Components/Examples/`. Use `false` to include all stories, or include every top-level namespace such as `Components/`, `Pages/`, and `Foundations/`.
@@ -117,7 +119,7 @@ import {
   createFigmaExportInitialGlobals,
   type FigmaExportAddonOptions,
 } from "@harrychuang/storybook-addon-figma-export";
-import { createFigmaExportReviewDecorator } from "@harrychuang/storybook-addon-figma-export/review";
+import { configureFigmaExportReview } from "@harrychuang/storybook-addon-figma-export/review";
 import { getFigmaSourceUrl } from "@harrychuang/storybook-addon-figma-export/source";
 import "@harrychuang/storybook-addon-figma-export/styles.css";
 
@@ -125,19 +127,17 @@ import { figmaExportProjectConfig } from "./figma-export.config";
 
 const figmaExportOptions: FigmaExportAddonOptions = figmaExportProjectConfig.addon;
 
-export const decorators = [
-  createFigmaExportReviewDecorator(figmaExportOptions, {
-    apiPath: figmaExportProjectConfig.review.apiPath,
-    enabled: figmaExportProjectConfig.review.enabled,
-    visualComments: figmaExportProjectConfig.review.visualComments,
-    getFigmaSourceUrl: (context, componentTitle) =>
-      getFigmaSourceUrl(context.parameters, componentTitle, {
-        componentSpecModules,
-        designSystemFileUrl: figmaExportProjectConfig.source.designSystemFileUrlFallback,
-        nodeOverrides: figmaExportProjectConfig.source.nodeOverrides,
-      }),
-  }),
-];
+configureFigmaExportReview(figmaExportOptions, {
+  apiPath: figmaExportProjectConfig.review.apiPath,
+  enabled: figmaExportProjectConfig.review.enabled,
+  visualComments: figmaExportProjectConfig.review.visualComments,
+  getFigmaSourceUrl: (context, componentTitle) =>
+    getFigmaSourceUrl(context.parameters, componentTitle, {
+      componentSpecModules,
+      designSystemFileUrl: figmaExportProjectConfig.source.designSystemFileUrlFallback,
+      nodeOverrides: figmaExportProjectConfig.source.nodeOverrides,
+    }),
+});
 
 export const globalTypes = {
   ...createFigmaExportGlobalTypes(figmaExportOptions),
@@ -268,6 +268,28 @@ saving a comment turns on the meeting that stored it. Hovering or focusing a
 saved pin shows a card with the comment and the screenshot taken when it was
 made. No configuration change is needed; the overview request with `storyId`
 now returns that Story's comments from every meeting plus a `meetings` list.
+
+From addon 0.14.0 a host page can declare comment views and anchors with DOM
+attributes (`data-sbfx-view`, `data-sbfx-anchor`, `data-sbfx-anchor-kind="path"`,
+`data-sbfx-canvas`, `data-sbfx-canvas-world`, `data-sbfx-comments="unavailable"`,
+`data-sbfx-export="unavailable"`) and two events (`sbfx:anchors-moved`,
+`sbfx:reveal-anchor`); see the addon README section "Comment views and
+anchors". Comments record their view, the panel and the report filter by view,
+and a pin on a frame, a connection line, or empty canvas keeps its place through
+panning and zooming. Comment screenshots keep the color of SVG children styled
+by stylesheet rules. To upgrade wiring, replace the `createFigmaExportReviewDecorator`
+entry in `decorators` with a module-level `configureFigmaExportReview` call and
+list the addon before the Prototype Inspector preset in `addons`; stored
+meetings need no migration.
+
+From addon 0.15.0 saved pins can be dragged to move their comments (Arrow keys
+move a focused pin; **Undo** is offered for 5 seconds), and clicking a pin or Edit opens an edit panel beside the pin, with the
+comment's screenshot, instead of a centered modal while the pin is shown. Line
+and canvas comments capture the pages of the visible frames (up to 12). A move
+is resolved like a new comment (frame, line, canvas); moving a comment off the
+frame it was captured on marks it **Moved since the screenshot** and keeps the
+screenshot point fixed. The review server must be 0.15.0 as well; an older one
+rejects moves. No wiring change is needed.
 
 For a prototype that keeps a Data Authority registry, record the resulting
 event as a `proposed` `analytics` contract; see

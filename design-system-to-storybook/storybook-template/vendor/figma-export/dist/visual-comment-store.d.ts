@@ -1,4 +1,4 @@
-import { C as CreateVisualCommentRequest, V as VisualCommentKind, d as VISUAL_COMMENT_LIMITS } from './visualComment-CG4UoVVu.js';
+import { C as CreateVisualCommentRequest, V as VisualCommentKind, b as VisualCommentAnchor, e as VISUAL_COMMENT_LIMITS } from './visualComment-DFPXUtKq.js';
 
 type VisualCommentLimits = {
     [Key in keyof typeof VISUAL_COMMENT_LIMITS]: number;
@@ -40,6 +40,8 @@ type VisualComment = {
         xRatio: number;
         yRatio: number;
     };
+    anchor?: VisualCommentAnchor;
+    movedAt?: string;
     createdAt: string;
     resolvedAt?: string | null;
 };
@@ -47,9 +49,12 @@ type VisualCommentDetailsPatch = {
     body?: string;
     pin?: VisualComment["pin"];
     kind?: VisualCommentKind;
+    anchor?: VisualCommentAnchor | null;
+    movedAt?: string | null;
 };
 type VisualCommentOverviewComment = VisualComment & {
     kind: VisualCommentKind;
+    view: string;
     sessionId: string;
     ordinal: number;
     state: {

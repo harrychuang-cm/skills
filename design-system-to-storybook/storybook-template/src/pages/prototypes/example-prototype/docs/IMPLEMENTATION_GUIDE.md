@@ -18,7 +18,7 @@
 - Use generated design tokens instead of hardcoded design values.
 - Static Flow route cards should render `ExamplePrototype` with `initialRouteId` and `isFlowPreview` so export content matches UI Flow iframe previews.
 - Static Flow route preview rows should reserve the same width and height as the marked UI Flow route preview surface; card borders and headers are outer chrome, not part of the route UI size.
-- Static Flow visual conventions should stay aligned with UI Flow: dotted canvas, route chrome, flow-only node shapes, dashed edges, arrowheads, color variants, and label pills.
+- Static Flow stays geometry-aligned with UI Flow: saved positions, frame box sizes and the route UI size contract; canvas background, frame chrome and label styling are not required to match.
 
 ## Verification
 

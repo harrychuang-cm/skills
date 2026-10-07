@@ -63,6 +63,7 @@ const cases = [
     "unreadable inspector import stops the helper check",
     testUnreadableInspectorImportStopsHelperCheck,
   ],
+  ["addon order outcomes", testAddonOrderOutcomes],
 ];
 
 try {
@@ -409,6 +410,66 @@ function readImportSpecifiers(file) {
     );
   }
   return declarations.map((match) => match[1]);
+}
+
+// Example "addon order outcomes": the inspector preset follows the
+// figma-export addon, so the addon's decorator wraps every Inspector mode.
+function testAddonOrderOutcomes(project) {
+  const inspectorEntry = 'new URL("./prototype-inspector/preset.js", import.meta.url).pathname';
+  const entries = {
+    docs: '"@storybook/addon-docs"',
+    "figma-export": '"@harrychuang/storybook-addon-figma-export"',
+    inspector: inspectorEntry,
+  };
+  const rows = [
+    [["docs", "figma-export"], ["docs", "figma-export", "inspector"], false],
+    [["docs"], ["inspector", "docs"], false],
+    [["inspector", "docs", "figma-export"], ["docs", "figma-export", "inspector"], true],
+    [["docs", "figma-export", "inspector"], ["docs", "figma-export", "inspector"], false],
+  ];
+  const reorderLine =
+    "Reordered Storybook addons: the Prototype Inspector preset now follows @harrychuang/storybook-addon-figma-export, so figma-export review runs in every Inspector mode.";
+  const mainPath = path.join(project, ".storybook", "main.ts");
+  const inspectorDir = path.join(project, ".storybook", "prototype-inspector");
+  for (const [before, after, reordered] of rows) {
+    fs.rmSync(inspectorDir, { recursive: true, force: true });
+    const original = `const config = {
+  stories: ["../src/**/*.stories.@(ts|tsx)"],
+  addons: [
+${before.map((name) => `    ${entries[name]},`).join("\n")}
+  ],
+  framework: { name: "@storybook/react-vite", options: {} },
+};
+export default config;
+`;
+    fs.writeFileSync(mainPath, original);
+    const result = run(project, "--force");
+    assert.equal(result.status, 0, `${before.join(", ")}: ${result.stderr}`);
+    const written = fs.readFileSync(mainPath, "utf8");
+    const addons = written.match(/addons:\s*\[([\s\S]*?)\n  \]/)?.[1] ?? "";
+    const order = [...addons.matchAll(/@storybook\/addon-docs|@harrychuang\/storybook-addon-figma-export|prototype-inspector\/preset\.js/g)].map(
+      ([match]) =>
+        match === "@storybook/addon-docs"
+          ? "docs"
+          : match.startsWith("@harrychuang")
+            ? "figma-export"
+            : "inspector",
+    );
+    assert.deepEqual(order, after, `addons ${before.join(", ")} become ${after.join(", ")}`);
+    if (before.join() === after.join()) {
+      assert.equal(written, original, `${before.join(", ")}: an already ordered main config is unchanged`);
+    }
+    assert.equal(
+      result.stdout.split("\n").includes(reorderLine),
+      reordered,
+      `${before.join(", ")}: reorder line ${reordered ? "printed" : "absent"}`,
+    );
+    // The rewritten config still parses as a module.
+    assert.doesNotThrow(
+      () => new Function(written.replace("export default config;", "return config;").replace(/import\.meta\.url/g, '"file:///x"')),
+      `${before.join(", ")}: rewritten main config is valid JavaScript`,
+    );
+  }
 }
 
 function createReactProject(name) {

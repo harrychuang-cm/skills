@@ -522,14 +522,14 @@ function isStoryIncludedForFigmaExport(title, options) {
   return options.storyTitlePrefix.some((prefix) => title.startsWith(prefix));
 }
 
-// src/domExport.ts
-import { toPng } from "html-to-image";
+// src/visualComment.ts
+import { toCanvas } from "html-to-image";
 
 // src/captureStyleProperties.ts
 var sharedListKey = /* @__PURE__ */ Symbol.for("sbfx.captureStyleProperties");
 function sharedList() {
-  const host = globalThis;
-  return host[sharedListKey] ??= [];
+  const host2 = globalThis;
+  return host2[sharedListKey] ??= [];
 }
 var customPropertyReference = /var\(\s*(--[^\s,)]+)/g;
 function collectReferencedCustomProperties(markup) {
@@ -551,6 +551,986 @@ function getCaptureStyleProperties(target) {
   }
   return list;
 }
+
+// src/visualComment.ts
+var defaultVisualCommentsCaptureSelector = "#storybook-root";
+var VISUAL_COMMENT_KINDS = ["visual-fix", "tracking"];
+var defaultVisualCommentKind = "visual-fix";
+function isVisualCommentKind(value) {
+  return VISUAL_COMMENT_KINDS.includes(value);
+}
+function resolveVisualCommentKind(value) {
+  return isVisualCommentKind(value) ? value : defaultVisualCommentKind;
+}
+var defaultVisualCommentView = "story";
+var visualCommentViewPattern = /^[a-z0-9][a-z0-9-]{0,39}$/;
+function isVisualCommentView(value) {
+  return typeof value === "string" && visualCommentViewPattern.test(value);
+}
+function resolveVisualCommentView(value) {
+  return isVisualCommentView(value) ? value : defaultVisualCommentView;
+}
+function describeVisualCommentAnchor(anchor) {
+  if (anchor.type === "element") return `On ${anchor.label ?? anchor.id}`;
+  if (anchor.type === "path") return `On line ${anchor.label ?? anchor.id}`;
+  const names = (anchor.nearby ?? []).map((entry) => entry.label ?? entry.id);
+  return names.length ? `Canvas near ${names.join(", ")}` : `Canvas point (${Math.round(anchor.x)}, ${Math.round(anchor.y)})`;
+}
+var VISUAL_COMMENT_ANCHOR_LIMITS = {
+  maxIdLength: 200,
+  maxLabelLength: 120,
+  maxRouteLength: 240,
+  maxNearby: 2
+};
+var VISUAL_COMMENT_LIMITS = {
+  maxRequestBytes: 4 * 1024 * 1024,
+  maxImageBytes: 2 * 1024 * 1024,
+  maxImageLongestSide: 2048,
+  maxImagePixels: 4 * 1024 * 1024,
+  maxSessionAssetsBytes: 100 * 1024 * 1024,
+  maxTitleLength: 120,
+  maxAuthorLength: 80,
+  maxBodyLength: 2e3
+};
+function clampRatio(value) {
+  return Math.min(1, Math.max(0, value));
+}
+function normalizeAuthorName(value) {
+  const name = typeof value === "string" ? value.trim() : "";
+  return name || "Anonymous";
+}
+function resolveVisualCommentTarget(selector, documentRef = document) {
+  const candidates = [selector, defaultVisualCommentsCaptureSelector, "body"].filter((value, index, values) => Boolean(value) && values.indexOf(value) === index);
+  for (const candidate of candidates) {
+    const element = documentRef.querySelector(candidate);
+    if (element) return element;
+  }
+  return null;
+}
+function getVisualCommentPin(rect, clientX, clientY) {
+  return {
+    xRatio: clampRatio((clientX - rect.left) / rect.width),
+    yRatio: clampRatio((clientY - rect.top) / rect.height)
+  };
+}
+function nextAnimationFrame() {
+  return new Promise((resolve) => requestAnimationFrame(() => resolve()));
+}
+function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error ?? new Error("Unable to read capture."));
+    reader.readAsDataURL(blob);
+  });
+}
+function encodeCanvas(canvas, quality) {
+  return new Promise(
+    (resolve, reject) => canvas.toBlob(
+      (value) => value ? resolve(value) : reject(new Error("Unable to encode capture.")),
+      "image/webp",
+      quality
+    )
+  );
+}
+function isTransparentColor(value) {
+  const normalized = value.trim().toLowerCase();
+  if (!normalized || normalized === "transparent") return true;
+  const functional = normalized.match(/^rgba?\((.*)\)$/);
+  if (!functional) return false;
+  const channels = functional[1].trim().split(/[\s,\/]+/).filter(Boolean);
+  return channels.length >= 4 && Number.parseFloat(channels.at(-1) ?? "1") === 0;
+}
+function resolveCaptureBackground(target) {
+  let current = target;
+  while (current) {
+    const backgroundColor = getComputedStyle(current).backgroundColor;
+    if (!isTransparentColor(backgroundColor)) return backgroundColor;
+    current = current.parentElement;
+  }
+  return "rgb(255 255 255)";
+}
+function hasVisibleCanvasPixels(canvas) {
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  if (!context) throw new Error("Unable to inspect captured UI pixels.");
+  const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+  for (let index = 3; index < pixels.length; index += 4) {
+    if (pixels[index] !== 0) return true;
+  }
+  return false;
+}
+var svgPaintProperties = [
+  "fill",
+  "fill-opacity",
+  "stroke",
+  "stroke-width",
+  "stroke-dasharray",
+  "stroke-dashoffset",
+  "stroke-linecap",
+  "stroke-linejoin",
+  "stroke-opacity",
+  "opacity",
+  "visibility",
+  "display"
+];
+function inlineSvgChildPaint(target) {
+  const elements = Array.from(target.querySelectorAll("svg *")).filter(
+    (element) => element instanceof SVGElement
+  );
+  const paints = elements.map((element) => {
+    const computed = getComputedStyle(element);
+    return svgPaintProperties.map((property) => computed.getPropertyValue(property));
+  });
+  const originals = elements.map((element) => element.getAttribute("style"));
+  elements.forEach((element, index) => {
+    svgPaintProperties.forEach((property, propertyIndex) => {
+      const value = paints[index][propertyIndex];
+      if (value) element.style.setProperty(property, value);
+    });
+  });
+  const written = elements.map((element) => element.getAttribute("style"));
+  const writtenValues = elements.map(
+    (element) => svgPaintProperties.map((property) => element.style.getPropertyValue(property))
+  );
+  return () => {
+    elements.forEach((element, index) => {
+      const original = originals[index];
+      if (element.getAttribute("style") === written[index]) {
+        if (original === null) element.removeAttribute("style");
+        else element.setAttribute("style", original);
+        return;
+      }
+      const originalStyle = document.createElement("div").style;
+      if (original !== null) originalStyle.cssText = original;
+      svgPaintProperties.forEach((property, propertyIndex) => {
+        if (!paints[index][propertyIndex]) return;
+        if (element.style.getPropertyValue(property) !== writtenValues[index][propertyIndex]) return;
+        const originalValue = originalStyle.getPropertyValue(property);
+        if (originalValue) {
+          element.style.setProperty(property, originalValue, originalStyle.getPropertyPriority(property));
+        } else {
+          element.style.removeProperty(property);
+        }
+      });
+    });
+  };
+}
+async function captureVisualCommentTarget(target, options = {}) {
+  const clientRect = target.getBoundingClientRect();
+  if (!clientRect.width || !clientRect.height) throw new Error("Capture target has zero bounds.");
+  const rect = {
+    height: options.layout && target.offsetHeight > 0 ? target.offsetHeight : clientRect.height,
+    left: clientRect.left,
+    top: clientRect.top,
+    width: options.layout && target.offsetWidth > 0 ? target.offsetWidth : clientRect.width
+  };
+  await nextAnimationFrame();
+  await nextAnimationFrame();
+  const scale = Math.min(
+    2,
+    options.maxScale ?? 2,
+    VISUAL_COMMENT_LIMITS.maxImageLongestSide / Math.max(rect.width, rect.height),
+    Math.sqrt(VISUAL_COMMENT_LIMITS.maxImagePixels / (rect.width * rect.height))
+  );
+  const intendedWidth = Math.max(1, Math.trunc(rect.width * scale));
+  const intendedHeight = Math.max(1, Math.trunc(rect.height * scale));
+  const restoreSvgPaint = inlineSvgChildPaint(target);
+  let canvas;
+  try {
+    canvas = await Promise.race([
+      toCanvas(target, {
+        backgroundColor: resolveCaptureBackground(target),
+        canvasHeight: rect.height,
+        canvasWidth: rect.width,
+        filter: (node) => !(node instanceof Element && node.hasAttribute("data-sbfx-capture-ignore")) && // A canvas capture leaves frame previews empty instead of cloning
+        // every embedded page.
+        !(options.omitIframes && node instanceof HTMLIFrameElement),
+        fontEmbedCSS: "",
+        height: rect.height,
+        includeStyleProperties: getCaptureStyleProperties(target),
+        pixelRatio: scale,
+        skipFonts: true,
+        skipAutoScale: true,
+        ...options.layout ? {
+          style: {
+            inset: "0px auto auto 0px",
+            margin: "0px",
+            position: "relative",
+            rotate: "none",
+            scale: "none",
+            transform: "none",
+            translate: "none"
+          }
+        } : {},
+        width: rect.width
+      }),
+      new Promise(
+        (_, reject) => window.setTimeout(
+          () => reject(new Error("Timed out rendering captured UI.")),
+          options.renderTimeoutMs ?? 8e3
+        )
+      )
+    ]);
+  } finally {
+    restoreSvgPaint();
+  }
+  if (options.drawOver) {
+    const context = canvas.getContext("2d");
+    if (context) await options.drawOver(context, { left: rect.left, scale, top: rect.top });
+  }
+  let width = canvas.width;
+  let height = canvas.height;
+  if (width < 1 || height < 1 || Math.abs(width - intendedWidth) > 1 || Math.abs(height - intendedHeight) > 1) {
+    throw new Error(
+      `Captured image dimensions are invalid (${width}\xD7${height}; expected ${intendedWidth}\xD7${intendedHeight}).`
+    );
+  }
+  if (!hasVisibleCanvasPixels(canvas)) {
+    throw new Error("Captured image contains no visible pixels. Try again after the UI finishes rendering.");
+  }
+  try {
+    let encoded = await encodeCanvas(canvas, 0.82);
+    for (let attempt = 0; encoded.size > VISUAL_COMMENT_LIMITS.maxImageBytes && attempt < 4; attempt += 1) {
+      const ratio = Math.min(0.85, Math.sqrt(VISUAL_COMMENT_LIMITS.maxImageBytes / encoded.size) * 0.92);
+      width = Math.max(1, Math.floor(width * ratio));
+      height = Math.max(1, Math.floor(height * ratio));
+      const previous = document.createElement("canvas");
+      previous.width = canvas.width;
+      previous.height = canvas.height;
+      previous.getContext("2d")?.drawImage(canvas, 0, 0);
+      canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("Unable to resize capture canvas.");
+      context.drawImage(previous, 0, 0, width, height);
+      encoded = await encodeCanvas(canvas, Math.max(0.5, 0.76 - attempt * 0.08));
+    }
+    if (encoded.size > VISUAL_COMMENT_LIMITS.maxImageBytes) {
+      throw new Error("Captured image exceeds the 2 MiB limit.");
+    }
+    const mimeType = encoded.type === "image/webp" ? "image/webp" : "image/png";
+    const dataUrl = await blobToDataUrl(encoded);
+    return { dataUrl, mimeType, width, height, cssWidth: rect.width, cssHeight: rect.height };
+  } catch (error) {
+    throw error instanceof Error ? error : new Error("Unable to encode captured UI.");
+  }
+}
+var composerWidth = 320;
+var composerPinGap = 24;
+var composerViewportMargin = 12;
+var composerDockBreakpoint = 720;
+function getCommentComposerPlacement(pin, viewport, composerHeight) {
+  const margin = composerViewportMargin;
+  if (!pin) return { dock: "bottom" };
+  if (viewport.width < composerDockBreakpoint) {
+    const bottomDockStart = viewport.height - composerHeight - margin;
+    return { dock: pin.top + 16 > bottomDockStart ? "top" : "bottom" };
+  }
+  const width = Math.min(composerWidth, viewport.width - margin * 2);
+  let left = pin.left + composerPinGap;
+  if (left + width > viewport.width - margin) {
+    left = pin.left - composerPinGap - width;
+  }
+  return {
+    left: Math.max(margin, left),
+    top: Math.min(
+      Math.max(margin, pin.top - composerPinGap),
+      Math.max(margin, viewport.height - composerHeight - margin)
+    )
+  };
+}
+var savedPinCardMaxWidth = 264;
+var savedPinCardGap = 12;
+var savedPinHalfSize = 12;
+function getSavedPinCardPlacement(pin, viewport, cardHeight) {
+  const margin = composerViewportMargin;
+  const width = Math.min(savedPinCardMaxWidth, viewport.width - margin * 2);
+  const offset = savedPinHalfSize + savedPinCardGap;
+  const clampTop = (top2) => Math.min(Math.max(margin, top2), Math.max(margin, viewport.height - margin - cardHeight));
+  const sideTop = clampTop(pin.top - cardHeight / 2);
+  if (pin.left + offset + width <= viewport.width - margin) {
+    return { left: pin.left + offset, top: sideTop, width };
+  }
+  if (pin.left - offset - width >= margin) {
+    return { left: pin.left - offset - width, top: sideTop, width };
+  }
+  const left = Math.min(
+    Math.max(margin, pin.left - width / 2),
+    Math.max(margin, viewport.width - margin - width)
+  );
+  const below = pin.top + offset;
+  const top = below + cardHeight <= viewport.height - margin ? below : clampTop(pin.top - offset - cardHeight);
+  return { left, top, width };
+}
+var captureSequenceWindowMs = 500;
+var activeSequenceGuard = null;
+function guardClickSequence(documentRef, selector, until) {
+  activeSequenceGuard?.();
+  const types = ["pointerdown", "pointerup", "click", "dblclick", "contextmenu"];
+  const swallow = (event) => {
+    if (performance.now() > until) {
+      dispose();
+      return;
+    }
+    const eventTarget = event.target instanceof Element ? event.target : null;
+    if (eventTarget?.closest("[data-sbfx-capture-ignore]")) return;
+    const target = resolveVisualCommentTarget(selector, documentRef);
+    if (!target || !eventTarget || !target.contains(eventTarget)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation();
+  };
+  const timer = window.setTimeout(() => dispose(), Math.max(0, until - performance.now()));
+  function dispose() {
+    window.clearTimeout(timer);
+    for (const type of types) documentRef.removeEventListener(type, swallow, true);
+    if (activeSequenceGuard === dispose) activeSequenceGuard = null;
+  }
+  for (const type of types) documentRef.addEventListener(type, swallow, true);
+  activeSequenceGuard = dispose;
+}
+function beginVisualCommentCapture({
+  capture = captureVisualCommentTarget,
+  documentRef = document,
+  onCancel,
+  onCaptured,
+  onError,
+  onPointSelected,
+  resolveAnchor,
+  captureAnchor,
+  selector
+}) {
+  let active = true;
+  let cancelled = false;
+  let pointerStarted = false;
+  let pressedAt = 0;
+  let cleanupTimer;
+  activeSequenceGuard?.();
+  const cleanup = () => {
+    if (!active) return;
+    active = false;
+    if (cleanupTimer !== void 0) window.clearTimeout(cleanupTimer);
+    documentRef.removeEventListener("pointerdown", onPointerDown, true);
+    documentRef.removeEventListener("pointerup", swallowPointer, true);
+    documentRef.removeEventListener("click", onClick, true);
+    documentRef.removeEventListener("keydown", onKeyDown, true);
+    delete documentRef.documentElement.dataset.sbfxCaptureMode;
+  };
+  const cancel = () => {
+    if (cancelled) return;
+    cancelled = true;
+    cleanup();
+    onCancel?.();
+  };
+  const swallowPointer = (event) => {
+    if (!pointerStarted) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation();
+  };
+  const onClick = (event) => {
+    if (!pointerStarted) return;
+    swallowPointer(event);
+    cleanup();
+    guardClickSequence(documentRef, selector, pressedAt + captureSequenceWindowMs);
+  };
+  const onKeyDown = (event) => {
+    if (event.key !== "Escape") return;
+    event.preventDefault();
+    event.stopPropagation();
+    cancel();
+  };
+  const onPointerDown = (event) => {
+    if (event.button !== 0) return;
+    const eventTarget = event.target instanceof Element ? event.target : null;
+    if (eventTarget?.closest("[data-sbfx-capture-ignore]")) return;
+    const target = resolveVisualCommentTarget(selector, documentRef);
+    if (!target || !eventTarget || !target.contains(eventTarget)) return;
+    pointerStarted = true;
+    pressedAt = performance.now();
+    swallowPointer(event);
+    const rect = target.getBoundingClientRect();
+    const pin = getVisualCommentPin(rect, event.clientX, event.clientY);
+    const anchor = resolveAnchor?.(target, event.clientX, event.clientY, eventTarget);
+    const view = documentRef.defaultView ?? window;
+    const viewport = {
+      width: view.innerWidth,
+      height: view.innerHeight,
+      devicePixelRatio: view.devicePixelRatio,
+      scrollX: view.scrollX,
+      scrollY: view.scrollY
+    };
+    onPointSelected?.({ pin, ...anchor ? { anchor } : {}, viewport });
+    const { clientX, clientY } = event;
+    const captureWork = anchor && captureAnchor ? captureAnchor(target, anchor).then(async (anchored) => {
+      if (!anchored) return { capture: await capture(target), pin, anchor, viewport };
+      return {
+        anchor,
+        capture: anchored.capture,
+        pin: getVisualCommentPin(anchored.rect, clientX, clientY),
+        pinFrame: anchored.rect,
+        ...anchored.reference ? { pinFrameReference: anchored.reference } : {},
+        viewport
+      };
+    }) : capture(target).then((captured) => ({
+      capture: captured,
+      pin,
+      ...anchor ? { anchor } : {},
+      viewport
+    }));
+    void captureWork.then((result) => {
+      if (!cancelled) onCaptured(result);
+    }).catch((error) => {
+      if (!cancelled) {
+        onError(error instanceof Error ? error : new Error("Unable to capture UI."));
+      }
+    }).finally(() => {
+      if (active) cleanupTimer = window.setTimeout(cleanup, 2e3);
+    });
+  };
+  documentRef.documentElement.dataset.sbfxCaptureMode = "true";
+  documentRef.addEventListener("pointerdown", onPointerDown, true);
+  documentRef.addEventListener("pointerup", swallowPointer, true);
+  documentRef.addEventListener("click", onClick, true);
+  documentRef.addEventListener("keydown", onKeyDown, true);
+  return { cancel };
+}
+
+// src/commentAnchors.ts
+function closestOrInside(target, selector) {
+  if (!target) return null;
+  return target.matches(selector) ? target : target.querySelector(selector);
+}
+function readCommentView(target) {
+  const element = closestOrInside(target, "[data-sbfx-view]");
+  return element ? resolveVisualCommentView(element.getAttribute("data-sbfx-view")) : defaultVisualCommentView;
+}
+function areCommentsUnavailable(target) {
+  return Boolean(closestOrInside(target, '[data-sbfx-comments="unavailable"]'));
+}
+var defaultExportUnavailableLabel = "Figma export is not available in this view.";
+function readExportAvailability(scope) {
+  const element = closestOrInside(scope, '[data-sbfx-export="unavailable"]');
+  if (!element) return { available: true };
+  const label = element.getAttribute("data-sbfx-export-label")?.trim() || defaultExportUnavailableLabel;
+  const hrefValue = element.getAttribute("data-sbfx-export-href");
+  let href;
+  if (hrefValue) {
+    try {
+      const url = new URL(hrefValue, window.location.href);
+      if (url.origin === window.location.origin) href = url.href;
+    } catch {
+    }
+  }
+  return { available: false, label, ...href ? { href } : {} };
+}
+var pathAnchorHitDistance = 8;
+var pathSampleScreenStep = 8;
+var pathRefineScreenStep = 0.5;
+var anchorSelector = "[data-sbfx-anchor]";
+var elementAnchorSelector = '[data-sbfx-anchor]:not([data-sbfx-anchor-kind="path"])';
+var pathAnchorSelector = '[data-sbfx-anchor][data-sbfx-anchor-kind="path"]';
+function anchorLabel(element) {
+  const label = element.getAttribute("data-sbfx-anchor-label");
+  return label ? { label: label.slice(0, VISUAL_COMMENT_ANCHOR_LIMITS.maxLabelLength) } : {};
+}
+function anchorId(element) {
+  return (element.getAttribute("data-sbfx-anchor") ?? "").slice(0, VISUAL_COMMENT_ANCHOR_LIMITS.maxIdLength);
+}
+function findAnchorElement(scope, id) {
+  for (const element of scope.querySelectorAll(anchorSelector)) {
+    if (element.getAttribute("data-sbfx-anchor") === id) return element;
+  }
+  return null;
+}
+function hitElementAt(target, clientX, clientY) {
+  const documentRef = target.ownerDocument;
+  for (const element of documentRef.elementsFromPoint(clientX, clientY)) {
+    if (element.closest("[data-sbfx-capture-ignore]")) continue;
+    if (target === element || target.contains(element)) return element;
+  }
+  return null;
+}
+function elementLayoutScale(element) {
+  const rect = element.getBoundingClientRect();
+  const html = element;
+  const width = html.offsetWidth ?? 0;
+  const height = html.offsetHeight ?? 0;
+  return {
+    rect,
+    x: width > 0 ? rect.width / width : 1,
+    y: height > 0 ? rect.height / height : 1
+  };
+}
+function getCanvasFrame(canvas) {
+  const world = canvas.querySelector("[data-sbfx-canvas-world]");
+  if (!world) return null;
+  const worldRect = world.getBoundingClientRect();
+  let scale;
+  if (world.offsetWidth > 0) {
+    scale = worldRect.width / world.offsetWidth;
+  } else {
+    const matrix = new DOMMatrixReadOnly(getComputedStyle(world).transform);
+    const canvasHtml = canvas;
+    const outer = canvasHtml.offsetWidth > 0 ? canvas.getBoundingClientRect().width / canvasHtml.offsetWidth : 1;
+    scale = (matrix.a || 1) * outer;
+  }
+  if (!Number.isFinite(scale) || scale <= 0) return null;
+  return { canvas, originX: worldRect.left, originY: worldRect.top, scale };
+}
+function clientToWorld(frame, clientX, clientY) {
+  return { x: (clientX - frame.originX) / frame.scale, y: (clientY - frame.originY) / frame.scale };
+}
+function worldToClient(frame, x, y) {
+  return { x: frame.originX + x * frame.scale, y: frame.originY + y * frame.scale };
+}
+function isGeometryElement(element) {
+  return typeof element.getTotalLength === "function";
+}
+function svgPointMapper(element) {
+  const svg = element.ownerSVGElement;
+  const ctm = element.getCTM();
+  if (svg && ctm && svg.clientWidth > 0 && svg.clientHeight > 0) {
+    const svgRect = svg.getBoundingClientRect();
+    const scaleX = svgRect.width / svg.clientWidth;
+    const scaleY = svgRect.height / svg.clientHeight;
+    return (point) => {
+      const local = point.matrixTransform(ctm);
+      return { x: svgRect.left + local.x * scaleX, y: svgRect.top + local.y * scaleY };
+    };
+  }
+  const screen = element.getScreenCTM();
+  if (!screen) return null;
+  return (point) => {
+    const mapped = point.matrixTransform(screen);
+    return { x: mapped.x, y: mapped.y };
+  };
+}
+function pathPointAt(element, t) {
+  if (!isGeometryElement(element)) return null;
+  const map = svgPointMapper(element);
+  if (!map) return null;
+  const length = element.getTotalLength();
+  return map(element.getPointAtLength(Math.min(1, Math.max(0, t)) * length));
+}
+function nearestOnSegments(element, map, clientX, clientY) {
+  let vertices = [];
+  if (element instanceof SVGPolylineElement || element instanceof SVGPolygonElement) {
+    vertices = Array.from(element.points, (point) => new DOMPoint(point.x, point.y));
+    if (element instanceof SVGPolygonElement && vertices.length > 1) vertices.push(vertices[0]);
+  } else if (element instanceof SVGLineElement) {
+    vertices = [
+      new DOMPoint(element.x1.baseVal.value, element.y1.baseVal.value),
+      new DOMPoint(element.x2.baseVal.value, element.y2.baseVal.value)
+    ];
+  } else {
+    return null;
+  }
+  if (vertices.length < 2) return null;
+  const client = vertices.map(map);
+  const lengths = vertices.slice(1).map(
+    (vertex, index) => Math.hypot(vertex.x - vertices[index].x, vertex.y - vertices[index].y)
+  );
+  const total = lengths.reduce((sum, length) => sum + length, 0);
+  if (!(total > 0)) return null;
+  let best = { distance: Infinity, position: 0 };
+  let travelled = 0;
+  for (let index = 0; index < lengths.length; index += 1) {
+    const start = client[index];
+    const end = client[index + 1];
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    const squared = dx * dx + dy * dy;
+    const u = squared > 0 ? Math.min(1, Math.max(0, ((clientX - start.x) * dx + (clientY - start.y) * dy) / squared)) : 0;
+    const distance = Math.hypot(start.x + dx * u - clientX, start.y + dy * u - clientY);
+    if (distance < best.distance) best = { distance, position: travelled + lengths[index] * u };
+    travelled += lengths[index];
+  }
+  return { distance: best.distance, t: best.position / total };
+}
+function findPathAnchorAt(target, clientX, clientY) {
+  let best = null;
+  for (const element of target.querySelectorAll(pathAnchorSelector)) {
+    if (!isGeometryElement(element) || element.closest("[data-sbfx-capture-ignore]")) continue;
+    const bounds = element.getBoundingClientRect();
+    if (clientX < bounds.left - pathAnchorHitDistance || clientX > bounds.right + pathAnchorHitDistance || clientY < bounds.top - pathAnchorHitDistance || clientY > bounds.bottom + pathAnchorHitDistance) {
+      continue;
+    }
+    const map = svgPointMapper(element);
+    if (!map) continue;
+    const exact = nearestOnSegments(element, map, clientX, clientY);
+    if (exact) {
+      if (exact.distance <= pathAnchorHitDistance && (!best || exact.distance < best.distance)) {
+        best = { element, ...exact };
+      }
+      continue;
+    }
+    const length = element.getTotalLength();
+    if (!(length > 0)) continue;
+    const origin = map(new DOMPoint(0, 0));
+    const unit = map(new DOMPoint(1, 0));
+    const pixelsPerUnit = Math.hypot(unit.x - origin.x, unit.y - origin.y) || 1;
+    const sampleStep = pathSampleScreenStep / pixelsPerUnit;
+    const refineStep = pathRefineScreenStep / pixelsPerUnit;
+    const distanceAt = (position) => {
+      const point = map(element.getPointAtLength(position));
+      return Math.hypot(point.x - clientX, point.y - clientY);
+    };
+    let nearest = 0;
+    let nearestDistance = Infinity;
+    for (let position = 0; position <= length + sampleStep; position += sampleStep) {
+      const clamped = Math.min(length, position);
+      const distance = distanceAt(clamped);
+      if (distance < nearestDistance) {
+        nearestDistance = distance;
+        nearest = clamped;
+      }
+    }
+    const from = Math.max(0, nearest - sampleStep);
+    const to = Math.min(length, nearest + sampleStep);
+    for (let position = from; position <= to; position += refineStep) {
+      const distance = distanceAt(position);
+      if (distance < nearestDistance) {
+        nearestDistance = distance;
+        nearest = position;
+      }
+    }
+    if (nearestDistance <= pathAnchorHitDistance && (!best || nearestDistance < best.distance)) {
+      best = { element, t: nearest / length, distance: nearestDistance };
+    }
+  }
+  return best;
+}
+function worldRectOf(frame, element) {
+  const rect = element.getBoundingClientRect();
+  const topLeft = clientToWorld(frame, rect.left, rect.top);
+  const bottomRight = clientToWorld(frame, rect.right, rect.bottom);
+  return { left: topLeft.x, top: topLeft.y, right: bottomRight.x, bottom: bottomRight.y };
+}
+function nearbyAnchors(frame, worldX, worldY) {
+  const candidates = [];
+  for (const element of frame.canvas.querySelectorAll(elementAnchorSelector)) {
+    if (element.closest("[data-sbfx-capture-ignore]")) continue;
+    const id = anchorId(element);
+    if (!id || candidates.some((candidate) => candidate.entry.id === id)) continue;
+    const rect = worldRectOf(frame, element);
+    const dx = Math.max(rect.left - worldX, 0, worldX - rect.right);
+    const dy = Math.max(rect.top - worldY, 0, worldY - rect.bottom);
+    candidates.push({
+      distance: Math.hypot(dx, dy),
+      entry: { id, ...anchorLabel(element), dx: worldX - rect.left, dy: worldY - rect.top }
+    });
+  }
+  return candidates.sort((left, right) => left.distance - right.distance).slice(0, VISUAL_COMMENT_ANCHOR_LIMITS.maxNearby).map((candidate) => candidate.entry);
+}
+function resolveCommentAnchor(target, clientX, clientY, pressed) {
+  const hit = pressed && (target === pressed || target.contains(pressed)) && !pressed.closest("[data-sbfx-capture-ignore]") ? pressed : hitElementAt(target, clientX, clientY);
+  const elementAnchor = hit?.closest(elementAnchorSelector);
+  if (elementAnchor && target.contains(elementAnchor) && !elementAnchor.closest("[data-sbfx-capture-ignore]")) {
+    const id = anchorId(elementAnchor);
+    const html = elementAnchor;
+    const { rect, x: scaleX, y: scaleY } = elementLayoutScale(elementAnchor);
+    const width = html.offsetWidth > 0 ? html.offsetWidth : rect.width;
+    const height = html.offsetHeight > 0 ? html.offsetHeight : rect.height;
+    const route = elementAnchor.getAttribute("data-sbfx-anchor-route");
+    if (id && width > 0 && height > 0) {
+      return {
+        type: "element",
+        id,
+        ...anchorLabel(elementAnchor),
+        ...route ? { route: route.slice(0, VISUAL_COMMENT_ANCHOR_LIMITS.maxRouteLength) } : {},
+        x: (clientX - rect.left) / scaleX,
+        y: (clientY - rect.top) / scaleY,
+        width,
+        height
+      };
+    }
+  }
+  const path = findPathAnchorAt(target, clientX, clientY);
+  if (path) {
+    return { type: "path", id: anchorId(path.element), ...anchorLabel(path.element), t: path.t };
+  }
+  const canvas = hit?.closest("[data-sbfx-canvas]");
+  if (canvas && target.contains(canvas)) {
+    const frame = getCanvasFrame(canvas);
+    if (frame) {
+      const world = clientToWorld(frame, clientX, clientY);
+      const nearby = nearbyAnchors(frame, world.x, world.y);
+      return { type: "canvas", x: world.x, y: world.y, ...nearby.length ? { nearby } : {} };
+    }
+  }
+  return void 0;
+}
+function containsPoint(rect, x, y) {
+  return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
+}
+function visibleIn(target, element, x, y) {
+  const view = target.ownerDocument.defaultView ?? window;
+  if (x < 0 || y < 0 || x > view.innerWidth || y > view.innerHeight) return false;
+  if (!containsPoint(target.getBoundingClientRect(), x, y)) return false;
+  const canvas = element?.closest("[data-sbfx-canvas]");
+  return !canvas || containsPoint(canvas.getBoundingClientRect(), x, y);
+}
+function placeAnchoredPin(target, anchor) {
+  if (anchor.type === "canvas") {
+    const canvas = target.matches("[data-sbfx-canvas]") ? target : target.querySelector("[data-sbfx-canvas]");
+    const frame = canvas ? getCanvasFrame(canvas) : null;
+    if (!canvas || !frame) return null;
+    const point2 = worldToClient(frame, anchor.x, anchor.y);
+    return visibleIn(target, canvas, point2.x, point2.y) ? { left: point2.x, top: point2.y } : null;
+  }
+  const element = findAnchorElement(target, anchor.id);
+  if (!element) return null;
+  let point;
+  if (anchor.type === "path") {
+    point = pathPointAt(element, anchor.t);
+  } else {
+    const { rect, x: scaleX, y: scaleY } = elementLayoutScale(element);
+    point = { x: rect.left + anchor.x * scaleX, y: rect.top + anchor.y * scaleY };
+  }
+  if (!point || !visibleIn(target, element, point.x, point.y)) return null;
+  return { left: point.x, top: point.y };
+}
+function getPinDragBounds(target) {
+  const view = target.ownerDocument.defaultView ?? window;
+  const bounds = target.getBoundingClientRect();
+  let left = Math.max(0, bounds.left);
+  let top = Math.max(0, bounds.top);
+  let right = Math.min(view.innerWidth, bounds.right);
+  let bottom = Math.min(view.innerHeight, bounds.bottom);
+  const canvas = target.matches("[data-sbfx-canvas]") ? target : target.querySelector("[data-sbfx-canvas]");
+  if (canvas) {
+    const canvasRect = canvas.getBoundingClientRect();
+    left = Math.max(left, canvasRect.left);
+    top = Math.max(top, canvasRect.top);
+    right = Math.min(right, canvasRect.right);
+    bottom = Math.min(bottom, canvasRect.bottom);
+  }
+  return { height: Math.max(0, bottom - top), left, top, width: Math.max(0, right - left) };
+}
+var anchorsMovedEvent = "sbfx:anchors-moved";
+function hasCanvasLayoutChanged(target, anchor) {
+  if (anchor.type !== "canvas" || !anchor.nearby?.length) return false;
+  const canvas = target.matches("[data-sbfx-canvas]") ? target : target.querySelector("[data-sbfx-canvas]");
+  const frame = canvas ? getCanvasFrame(canvas) : null;
+  if (!canvas || !frame) return false;
+  return anchor.nearby.some((entry) => {
+    const element = findAnchorElement(canvas, entry.id);
+    if (!element) return false;
+    const rect = worldRectOf(frame, element);
+    return Math.abs(rect.left + entry.dx - anchor.x) > 1 || Math.abs(rect.top + entry.dy - anchor.y) > 1;
+  });
+}
+var revealAnchorEvent = "sbfx:reveal-anchor";
+var captureHookKey = /* @__PURE__ */ Symbol.for("sbfx.captureHook");
+function plainRect(rect) {
+  return { height: rect.height, left: rect.left, top: rect.top, width: rect.width };
+}
+function registerVisualCommentCaptureHook(captureSelector) {
+  if (typeof window === "undefined") return;
+  const hook = async (options) => {
+    const target = resolveVisualCommentTarget(captureSelector);
+    if (!target) throw new Error("The embedded preview has no capture target.");
+    const rect = plainRect(target.getBoundingClientRect());
+    return { capture: await captureVisualCommentTarget(target, { maxScale: options?.maxScale }), rect };
+  };
+  window[captureHookKey] = hook;
+}
+function frameCaptureHook(frame) {
+  try {
+    const hook = frame.contentWindow?.[captureHookKey];
+    return typeof hook === "function" ? hook : null;
+  } catch {
+    return null;
+  }
+}
+var canvasFrameLimit = 12;
+var canvasFrameMinSize = 24;
+var canvasFrameBudgetMs = 4e3;
+var canvasFrameConcurrency = 2;
+function frameToClientMapper(frame) {
+  const frameRect = frame.getBoundingClientRect();
+  const scaleX = frame.clientWidth > 0 ? frameRect.width / frame.clientWidth : 1;
+  const scaleY = frame.clientHeight > 0 ? frameRect.height / frame.clientHeight : 1;
+  const { clientLeft, clientTop } = frame;
+  return {
+    frameRect,
+    scaleX,
+    toClient: (rect) => ({
+      height: rect.height * scaleY,
+      left: frameRect.left + (clientLeft + rect.left) * scaleX,
+      top: frameRect.top + (clientTop + rect.top) * scaleY,
+      width: rect.width * scaleX
+    })
+  };
+}
+function intersectRects(first, second) {
+  const left = Math.max(first.left, second.left);
+  const top = Math.max(first.top, second.top);
+  const right = Math.min(first.right, second.right);
+  const bottom = Math.min(first.bottom, second.bottom);
+  return right > left && bottom > top ? { height: bottom - top, left, top, width: right - left } : null;
+}
+async function loadCaptureImage(dataUrl) {
+  const image = new Image();
+  image.src = dataUrl;
+  await image.decode();
+  return image;
+}
+function captureCanvasWithFrames(canvas) {
+  const bounds = canvas.getBoundingClientRect();
+  const frames = Array.from(canvas.querySelectorAll("iframe")).map((frame) => {
+    const mapper = frameToClientMapper(frame);
+    return { hook: frameCaptureHook(frame), mapper, visible: intersectRects(mapper.frameRect, bounds) };
+  }).filter(
+    (entry) => Boolean(entry.hook && entry.visible) && entry.visible.width >= canvasFrameMinSize && entry.visible.height >= canvasFrameMinSize
+  ).sort((first, second) => second.visible.width * second.visible.height - first.visible.width * first.visible.height).slice(0, canvasFrameLimit);
+  return captureVisualCommentTarget(canvas, {
+    omitIframes: true,
+    drawOver: async (context, origin) => {
+      const layers = frames.map(() => null);
+      const deadline = performance.now() + canvasFrameBudgetMs;
+      let next = 0;
+      const worker = async () => {
+        while (next < frames.length && performance.now() < deadline) {
+          const index = next;
+          next += 1;
+          const { hook, mapper, visible } = frames[index];
+          try {
+            const framed = await Promise.race([
+              hook({ maxScale: Math.min(2, Math.max(0.25, mapper.scaleX * origin.scale)) }),
+              new Promise(
+                (_, reject) => window.setTimeout(
+                  () => reject(new Error("Frame capture ran out of time.")),
+                  Math.max(0, deadline - performance.now())
+                )
+              )
+            ]);
+            if (performance.now() > deadline) continue;
+            layers[index] = {
+              image: await loadCaptureImage(framed.capture.dataUrl),
+              rect: mapper.toClient(framed.rect),
+              visible
+            };
+          } catch {
+          }
+        }
+      };
+      await Promise.all(Array.from({ length: canvasFrameConcurrency }, worker));
+      const { left, scale, top } = origin;
+      for (const layer of layers) {
+        if (!layer) continue;
+        context.save();
+        context.beginPath();
+        context.rect(
+          (layer.visible.left - left) * scale,
+          (layer.visible.top - top) * scale,
+          layer.visible.width * scale,
+          layer.visible.height * scale
+        );
+        context.clip();
+        context.drawImage(
+          layer.image,
+          (layer.rect.left - left) * scale,
+          (layer.rect.top - top) * scale,
+          layer.rect.width * scale,
+          layer.rect.height * scale
+        );
+        context.restore();
+      }
+    }
+  });
+}
+function referenceFrame(anchorElement, anchor, rect, box = anchorElement.getBoundingClientRect()) {
+  if (anchor.type === "element") {
+    if (!box.width || !box.height) return void 0;
+    return {
+      kind: "element",
+      id: anchor.id,
+      left: (rect.left - box.left) / box.width,
+      top: (rect.top - box.top) / box.height,
+      width: rect.width / box.width,
+      height: rect.height / box.height
+    };
+  }
+  const frame = getCanvasFrame(anchorElement);
+  if (!frame) return void 0;
+  const start = clientToWorld(frame, rect.left, rect.top);
+  const end = clientToWorld(frame, rect.left + rect.width, rect.top + rect.height);
+  return { kind: "world", x: start.x, y: start.y, width: end.x - start.x, height: end.y - start.y };
+}
+function resolveFrameReference(target, reference) {
+  if (reference.kind === "element") {
+    const element = findAnchorElement(target, reference.id);
+    const box = element?.getBoundingClientRect();
+    if (!box?.width || !box.height) return null;
+    return {
+      height: reference.height * box.height,
+      left: box.left + reference.left * box.width,
+      top: box.top + reference.top * box.height,
+      width: reference.width * box.width
+    };
+  }
+  const canvas = target.matches("[data-sbfx-canvas]") ? target : target.querySelector("[data-sbfx-canvas]");
+  const frame = canvas ? getCanvasFrame(canvas) : null;
+  if (!frame) return null;
+  const start = worldToClient(frame, reference.x, reference.y);
+  const end = worldToClient(frame, reference.x + reference.width, reference.y + reference.height);
+  return { height: end.y - start.y, left: start.x, top: start.y, width: end.x - start.x };
+}
+async function captureAnchoredComment(target, anchor) {
+  let element;
+  if (anchor.type === "element") {
+    element = findAnchorElement(target, anchor.id);
+  } else {
+    const line = anchor.type === "path" ? findAnchorElement(target, anchor.id) : null;
+    element = line?.closest("[data-sbfx-canvas]") ?? (target.matches("[data-sbfx-canvas]") ? target : target.querySelector("[data-sbfx-canvas]"));
+  }
+  if (!element) return null;
+  const rect = plainRect(element.getBoundingClientRect());
+  const reference = referenceFrame(element, anchor, rect);
+  if (anchor.type !== "element") {
+    try {
+      return { capture: await captureCanvasWithFrames(element), rect, reference };
+    } catch {
+      return { capture: await captureVisualCommentTarget(element, { omitIframes: true }), rect, reference };
+    }
+  }
+  const frame = element.querySelector("iframe");
+  const hook = frame ? frameCaptureHook(frame) : null;
+  if (frame && hook) {
+    const mapper = frameToClientMapper(frame);
+    const anchorBox = element.getBoundingClientRect();
+    try {
+      const framed = await hook();
+      const framedRect = mapper.toClient(framed.rect);
+      return {
+        capture: framed.capture,
+        rect: framedRect,
+        reference: referenceFrame(element, anchor, framedRect, anchorBox)
+      };
+    } catch {
+      return {
+        capture: await captureVisualCommentTarget(element, { layout: true, omitIframes: true }),
+        rect,
+        reference
+      };
+    }
+  }
+  try {
+    return { capture: await captureVisualCommentTarget(element, { layout: true }), rect, reference };
+  } catch {
+    return {
+      capture: await captureVisualCommentTarget(element, { layout: true, omitIframes: true }),
+      rect,
+      reference
+    };
+  }
+}
+
+// src/domExport.ts
+import { toPng } from "html-to-image";
 
 // src/color.ts
 var colorContext;
@@ -4775,7 +5755,7 @@ void (async function importStorybookStory(payload) {
 
 // src/version.ts
 function getAddonVersion() {
-  return true ? "0.13.0" : "dev";
+  return true ? "0.15.0" : "dev";
 }
 
 // src/workspace.ts
@@ -5177,8 +6157,20 @@ function buildOverlay() {
     "Copy design to Figma"
   );
   actions.append(json.button, file.button, script.button, design.button);
-  aside.append(header, info, actions);
+  const unavailable = document.createElement("p");
+  unavailable.className = "sbfx-exporter__unavailable";
+  unavailable.dataset.exportUnavailable = "true";
+  unavailable.hidden = true;
+  const unavailableLabel = document.createTextNode("");
+  const unavailableLink = document.createElement("a");
+  unavailableLink.className = "sbfx-exporter__unavailable-link";
+  unavailableLink.target = "_blank";
+  unavailableLink.rel = "noopener noreferrer";
+  unavailableLink.textContent = "Open";
+  unavailable.append(unavailableLabel, " ", unavailableLink);
+  aside.append(header, info, actions, unavailable);
   return {
+    actions,
     aside,
     buttons: {
       design: { button: design.button, icon: design.iconSpan, label: design.label },
@@ -5191,8 +6183,39 @@ function buildOverlay() {
     subtitle,
     summary,
     toggle,
-    toggleIcon
+    toggleIcon,
+    unavailable,
+    unavailableLabel,
+    unavailableLink
   };
+}
+function renderExportAvailability() {
+  if (!overlayRefs) return true;
+  const availability = readExportAvailability(resolveExportScope().scope);
+  const { actions, aside, info, unavailable, unavailableLabel, unavailableLink } = overlayRefs;
+  aside.dataset.exportAvailable = availability.available ? "true" : "false";
+  actions.hidden = !availability.available;
+  info.hidden = !availability.available;
+  unavailable.hidden = availability.available;
+  if (!availability.available) {
+    if (unavailableLabel.textContent !== availability.label) {
+      unavailableLabel.textContent = availability.label;
+    }
+    unavailableLink.hidden = !availability.href;
+    if (availability.href && unavailableLink.href !== availability.href) {
+      unavailableLink.href = availability.href;
+    }
+  }
+  return availability.available;
+}
+var availabilityTimer = 0;
+function startAvailabilityWatch() {
+  if (availabilityTimer) return;
+  availabilityTimer = window.setInterval(renderExportAvailability, 500);
+}
+function stopAvailabilityWatch() {
+  window.clearInterval(availabilityTimer);
+  availabilityTimer = 0;
 }
 function renderOverlay() {
   if (!overlayRefs || !overlayState) return;
@@ -5205,6 +6228,8 @@ function renderOverlay() {
   if (overlayWorkspace?.root.isConnected) {
     overlayWorkspace.root.dataset.exportCollapsed = collapsed ? "true" : "false";
   }
+  if (collapsed) document.documentElement.dataset.sbfxWorkspaceCollapsed = "true";
+  else delete document.documentElement.dataset.sbfxWorkspaceCollapsed;
   const toggleLabel = collapsed ? "Expand Figma export panel" : "Collapse Figma export panel";
   toggle.setAttribute("aria-expanded", String(!collapsed));
   toggle.setAttribute("aria-label", toggleLabel);
@@ -5226,6 +6251,7 @@ function renderOverlay() {
   } else if (status !== "copying" && progress) {
     progress.remove();
   }
+  renderExportAvailability();
   Object.keys(buttons).forEach((format) => {
     const entry = buttons[format];
     if (!entry) return;
@@ -5245,6 +6271,7 @@ function setOverlayStatus(status, summary) {
 }
 async function handleCopy(format) {
   if (!overlayState) return;
+  if (!renderExportAvailability()) return;
   const { context, options } = overlayState;
   const componentTitle = getExportComponentTitle(context.title, options);
   const { scope, warning } = resolveExportScope();
@@ -5336,6 +6363,7 @@ async function handleCopy(format) {
   }
 }
 function unmountOverlay() {
+  stopAvailabilityWatch();
   if (overlayRefs) {
     overlayRefs.aside.remove();
     overlayRefs = null;
@@ -5343,6 +6371,7 @@ function unmountOverlay() {
   if (overlayWorkspace?.root.isConnected) {
     delete overlayWorkspace.root.dataset.exportCollapsed;
   }
+  delete document.documentElement.dataset.sbfxWorkspaceCollapsed;
   overlayWorkspace?.release();
   overlayWorkspace = null;
   overlayState = null;
@@ -5445,6 +6474,21 @@ function syncFigmaExportOverlay(context, options) {
     overlayWorkspace.slot.append(overlayRefs.aside);
   }
   renderOverlay();
+  startAvailabilityWatch();
+  window.setTimeout(renderExportAvailability, 0);
+}
+
+// src/reviewRegistry.ts
+var registryKey = /* @__PURE__ */ Symbol.for("sbfx.review.registry");
+var activeRenderKey = /* @__PURE__ */ Symbol.for("sbfx.review.activeRender");
+function host() {
+  return globalThis;
+}
+function registerFigmaReviewSync(registration) {
+  host()[registryKey] = registration;
+}
+function isHostRenderActive() {
+  return Boolean(host()[activeRenderKey]);
 }
 
 // src/preview.ts
@@ -5519,6 +6563,10 @@ function buildCommentPromptContext({
       mimeType: capture.image.mimeType
     },
     pin: comment.pin,
+    ...comment.anchor ? {
+      location: describeVisualCommentAnchor(comment.anchor) + (comment.movedAt ? " (moved since the screenshot)" : "")
+    } : {},
+    ...resolveVisualCommentView(capture.story.view) !== "story" ? { view: resolveVisualCommentView(capture.story.view) } : {},
     viewport: {
       width: capture.viewport.width,
       height: capture.viewport.height,
@@ -5560,6 +6608,8 @@ function createCommentPromptFormatter() {
       "- Viewport: " + context.viewport.width + " \xD7 " + context.viewport.height + " @ " + context.viewport.devicePixelRatio + "x",
       "- Comment position: x " + (context.pin.xRatio * 100).toFixed(2) + "%, y " + (context.pin.yRatio * 100).toFixed(2) + "%"
     ];
+    if (typeof context.location === "string") lines.push("- Comment location: " + context.location);
+    if (typeof context.view === "string") lines.push("- Comment view: " + context.view);
     if (typeof context.story.prototypeId === "string") lines.push("- Prototype ID: " + context.story.prototypeId);
     if (typeof context.story.routeId === "string") lines.push("- Route ID: " + context.story.routeId);
     if (typeof context.story.stateId === "string") lines.push("- State ID: " + context.story.stateId);
@@ -5670,290 +6720,6 @@ var {
   formatTrackingPrompt,
   formatVisualFixPrompt
 } = createCommentPromptFormatter();
-
-// src/visualComment.ts
-import { toCanvas } from "html-to-image";
-var defaultVisualCommentsCaptureSelector = "#storybook-root";
-var VISUAL_COMMENT_KINDS = ["visual-fix", "tracking"];
-var defaultVisualCommentKind = "visual-fix";
-function isVisualCommentKind(value) {
-  return VISUAL_COMMENT_KINDS.includes(value);
-}
-function resolveVisualCommentKind(value) {
-  return isVisualCommentKind(value) ? value : defaultVisualCommentKind;
-}
-var VISUAL_COMMENT_LIMITS = {
-  maxRequestBytes: 4 * 1024 * 1024,
-  maxImageBytes: 2 * 1024 * 1024,
-  maxImageLongestSide: 2048,
-  maxImagePixels: 4 * 1024 * 1024,
-  maxSessionAssetsBytes: 100 * 1024 * 1024,
-  maxTitleLength: 120,
-  maxAuthorLength: 80,
-  maxBodyLength: 2e3
-};
-function clampRatio(value) {
-  return Math.min(1, Math.max(0, value));
-}
-function normalizeAuthorName(value) {
-  const name = typeof value === "string" ? value.trim() : "";
-  return name || "Anonymous";
-}
-function resolveVisualCommentTarget(selector, documentRef = document) {
-  const candidates = [selector, defaultVisualCommentsCaptureSelector, "body"].filter((value, index, values) => Boolean(value) && values.indexOf(value) === index);
-  for (const candidate of candidates) {
-    const element = documentRef.querySelector(candidate);
-    if (element) return element;
-  }
-  return null;
-}
-function getVisualCommentPin(rect, clientX, clientY) {
-  return {
-    xRatio: clampRatio((clientX - rect.left) / rect.width),
-    yRatio: clampRatio((clientY - rect.top) / rect.height)
-  };
-}
-function nextAnimationFrame() {
-  return new Promise((resolve) => requestAnimationFrame(() => resolve()));
-}
-function blobToDataUrl(blob) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(reader.error ?? new Error("Unable to read capture."));
-    reader.readAsDataURL(blob);
-  });
-}
-function encodeCanvas(canvas, quality) {
-  return new Promise(
-    (resolve, reject) => canvas.toBlob(
-      (value) => value ? resolve(value) : reject(new Error("Unable to encode capture.")),
-      "image/webp",
-      quality
-    )
-  );
-}
-function isTransparentColor(value) {
-  const normalized = value.trim().toLowerCase();
-  if (!normalized || normalized === "transparent") return true;
-  const functional = normalized.match(/^rgba?\((.*)\)$/);
-  if (!functional) return false;
-  const channels = functional[1].trim().split(/[\s,\/]+/).filter(Boolean);
-  return channels.length >= 4 && Number.parseFloat(channels.at(-1) ?? "1") === 0;
-}
-function resolveCaptureBackground(target) {
-  let current = target;
-  while (current) {
-    const backgroundColor = getComputedStyle(current).backgroundColor;
-    if (!isTransparentColor(backgroundColor)) return backgroundColor;
-    current = current.parentElement;
-  }
-  return "rgb(255 255 255)";
-}
-function hasVisibleCanvasPixels(canvas) {
-  const context = canvas.getContext("2d", { willReadFrequently: true });
-  if (!context) throw new Error("Unable to inspect captured UI pixels.");
-  const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
-  for (let index = 3; index < pixels.length; index += 4) {
-    if (pixels[index] !== 0) return true;
-  }
-  return false;
-}
-async function captureVisualCommentTarget(target) {
-  const rect = target.getBoundingClientRect();
-  if (!rect.width || !rect.height) throw new Error("Capture target has zero bounds.");
-  await nextAnimationFrame();
-  await nextAnimationFrame();
-  const scale = Math.min(
-    2,
-    VISUAL_COMMENT_LIMITS.maxImageLongestSide / Math.max(rect.width, rect.height),
-    Math.sqrt(VISUAL_COMMENT_LIMITS.maxImagePixels / (rect.width * rect.height))
-  );
-  const intendedWidth = Math.max(1, Math.trunc(rect.width * scale));
-  const intendedHeight = Math.max(1, Math.trunc(rect.height * scale));
-  let canvas = await Promise.race([
-    toCanvas(target, {
-      backgroundColor: resolveCaptureBackground(target),
-      canvasHeight: rect.height,
-      canvasWidth: rect.width,
-      filter: (node) => !(node instanceof Element && node.hasAttribute("data-sbfx-capture-ignore")),
-      fontEmbedCSS: "",
-      height: rect.height,
-      includeStyleProperties: getCaptureStyleProperties(target),
-      pixelRatio: scale,
-      skipFonts: true,
-      skipAutoScale: true,
-      width: rect.width
-    }),
-    new Promise(
-      (_, reject) => window.setTimeout(() => reject(new Error("Timed out rendering captured UI.")), 8e3)
-    )
-  ]);
-  let width = canvas.width;
-  let height = canvas.height;
-  if (width < 1 || height < 1 || Math.abs(width - intendedWidth) > 1 || Math.abs(height - intendedHeight) > 1) {
-    throw new Error(
-      `Captured image dimensions are invalid (${width}\xD7${height}; expected ${intendedWidth}\xD7${intendedHeight}).`
-    );
-  }
-  if (!hasVisibleCanvasPixels(canvas)) {
-    throw new Error("Captured image contains no visible pixels. Try again after the UI finishes rendering.");
-  }
-  try {
-    let encoded = await encodeCanvas(canvas, 0.82);
-    for (let attempt = 0; encoded.size > VISUAL_COMMENT_LIMITS.maxImageBytes && attempt < 4; attempt += 1) {
-      const ratio = Math.min(0.85, Math.sqrt(VISUAL_COMMENT_LIMITS.maxImageBytes / encoded.size) * 0.92);
-      width = Math.max(1, Math.floor(width * ratio));
-      height = Math.max(1, Math.floor(height * ratio));
-      const previous = document.createElement("canvas");
-      previous.width = canvas.width;
-      previous.height = canvas.height;
-      previous.getContext("2d")?.drawImage(canvas, 0, 0);
-      canvas = document.createElement("canvas");
-      canvas.width = width;
-      canvas.height = height;
-      const context = canvas.getContext("2d");
-      if (!context) throw new Error("Unable to resize capture canvas.");
-      context.drawImage(previous, 0, 0, width, height);
-      encoded = await encodeCanvas(canvas, Math.max(0.5, 0.76 - attempt * 0.08));
-    }
-    if (encoded.size > VISUAL_COMMENT_LIMITS.maxImageBytes) {
-      throw new Error("Captured image exceeds the 2 MiB limit.");
-    }
-    const mimeType = encoded.type === "image/webp" ? "image/webp" : "image/png";
-    const dataUrl = await blobToDataUrl(encoded);
-    return { dataUrl, mimeType, width, height, cssWidth: rect.width, cssHeight: rect.height };
-  } catch (error) {
-    throw error instanceof Error ? error : new Error("Unable to encode captured UI.");
-  }
-}
-var composerWidth = 320;
-var composerPinGap = 24;
-var composerViewportMargin = 12;
-var composerDockBreakpoint = 720;
-function getCommentComposerPlacement(pin, viewport, composerHeight) {
-  const margin = composerViewportMargin;
-  if (!pin) return { dock: "bottom" };
-  if (viewport.width < composerDockBreakpoint) {
-    const bottomDockStart = viewport.height - composerHeight - margin;
-    return { dock: pin.top + 16 > bottomDockStart ? "top" : "bottom" };
-  }
-  const width = Math.min(composerWidth, viewport.width - margin * 2);
-  let left = pin.left + composerPinGap;
-  if (left + width > viewport.width - margin) {
-    left = pin.left - composerPinGap - width;
-  }
-  return {
-    left: Math.max(margin, left),
-    top: Math.min(
-      Math.max(margin, pin.top - composerPinGap),
-      Math.max(margin, viewport.height - composerHeight - margin)
-    )
-  };
-}
-var savedPinCardMaxWidth = 264;
-var savedPinCardGap = 12;
-var savedPinHalfSize = 12;
-function getSavedPinCardPlacement(pin, viewport, cardHeight) {
-  const margin = composerViewportMargin;
-  const width = Math.min(savedPinCardMaxWidth, viewport.width - margin * 2);
-  const offset = savedPinHalfSize + savedPinCardGap;
-  const clampTop = (top2) => Math.min(Math.max(margin, top2), Math.max(margin, viewport.height - margin - cardHeight));
-  const sideTop = clampTop(pin.top - cardHeight / 2);
-  if (pin.left + offset + width <= viewport.width - margin) {
-    return { left: pin.left + offset, top: sideTop, width };
-  }
-  if (pin.left - offset - width >= margin) {
-    return { left: pin.left - offset - width, top: sideTop, width };
-  }
-  const left = Math.min(
-    Math.max(margin, pin.left - width / 2),
-    Math.max(margin, viewport.width - margin - width)
-  );
-  const below = pin.top + offset;
-  const top = below + cardHeight <= viewport.height - margin ? below : clampTop(pin.top - offset - cardHeight);
-  return { left, top, width };
-}
-function beginVisualCommentCapture({
-  capture = captureVisualCommentTarget,
-  documentRef = document,
-  onCancel,
-  onCaptured,
-  onError,
-  onPointSelected,
-  selector
-}) {
-  let active = true;
-  let cancelled = false;
-  let pointerStarted = false;
-  let cleanupTimer;
-  const cleanup = () => {
-    if (!active) return;
-    active = false;
-    if (cleanupTimer !== void 0) window.clearTimeout(cleanupTimer);
-    documentRef.removeEventListener("pointerdown", onPointerDown, true);
-    documentRef.removeEventListener("pointerup", swallowPointer, true);
-    documentRef.removeEventListener("click", onClick, true);
-    documentRef.removeEventListener("keydown", onKeyDown, true);
-    delete documentRef.documentElement.dataset.sbfxCaptureMode;
-  };
-  const cancel = () => {
-    if (cancelled) return;
-    cancelled = true;
-    cleanup();
-    onCancel?.();
-  };
-  const swallowPointer = (event) => {
-    if (!pointerStarted) return;
-    event.preventDefault();
-    event.stopPropagation();
-    event.stopImmediatePropagation();
-  };
-  const onClick = (event) => {
-    if (!pointerStarted) return;
-    swallowPointer(event);
-    cleanup();
-  };
-  const onKeyDown = (event) => {
-    if (event.key !== "Escape") return;
-    event.preventDefault();
-    cancel();
-  };
-  const onPointerDown = (event) => {
-    const eventTarget = event.target instanceof Element ? event.target : null;
-    if (eventTarget?.closest("[data-sbfx-capture-ignore]")) return;
-    const target = resolveVisualCommentTarget(selector, documentRef);
-    if (!target || !eventTarget || !target.contains(eventTarget)) return;
-    pointerStarted = true;
-    swallowPointer(event);
-    const rect = target.getBoundingClientRect();
-    const pin = getVisualCommentPin(rect, event.clientX, event.clientY);
-    const view = documentRef.defaultView ?? window;
-    const viewport = {
-      width: view.innerWidth,
-      height: view.innerHeight,
-      devicePixelRatio: view.devicePixelRatio,
-      scrollX: view.scrollX,
-      scrollY: view.scrollY
-    };
-    onPointSelected?.({ pin, viewport });
-    void capture(target).then((captured) => {
-      if (!cancelled) onCaptured({ capture: captured, pin, viewport });
-    }).catch((error) => {
-      if (!cancelled) {
-        onError(error instanceof Error ? error : new Error("Unable to capture UI."));
-      }
-    }).finally(() => {
-      if (active) cleanupTimer = window.setTimeout(cleanup, 2e3);
-    });
-  };
-  documentRef.documentElement.dataset.sbfxCaptureMode = "true";
-  documentRef.addEventListener("pointerdown", onPointerDown, true);
-  documentRef.addEventListener("pointerup", swallowPointer, true);
-  documentRef.addEventListener("click", onClick, true);
-  documentRef.addEventListener("keydown", onKeyDown, true);
-  return { cancel };
-}
 
 // src/reviewController.ts
 function createReviewStatusController({
@@ -6166,6 +6932,7 @@ var defaultLabels = {
   approved: "Approved",
   activeMeeting: "Active",
   addVisualComment: "Add comment",
+  commentsUnavailable: "Comments are not available in this view.",
   adjustCommentPoint: "Adjust comment point",
   adjustCommentPointHint: "Click or drag the point. Use arrow keys for 1% steps, or Shift plus arrow keys for 5% steps.",
   adjustPendingPinHint: "Drag the pin on the story, or focus it and use the arrow keys.",
@@ -6173,6 +6940,16 @@ var defaultLabels = {
   authorName: "Display name",
   cancelCapture: "Cancel capture",
   capturedInAnotherState: "Captured in another state",
+  commentViews: "Comment views",
+  layoutChanged: "Layout changed since this comment",
+  locationUnavailable: "This location is not available in this view.",
+  showLocation: "Show location",
+  pinDropUnavailable: "Drop the pin on a frame, a line or the canvas.",
+  pinMoveFailed: "Couldn't move the comment.",
+  commentMoved: "Comment moved.",
+  undoMove: "Undo",
+  movedSinceScreenshot: "Moved since the screenshot",
+  otherViewPinsNote: "These comments' pins appear only in their own view.",
   capturePrompt: "Click where you want to comment",
   changeAuthorName: "Change",
   cancelCommentEdit: "Cancel",
@@ -6304,6 +7081,24 @@ function formatCommentTime(value, now = /* @__PURE__ */ new Date()) {
   const time = date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   return date.toDateString() === now.toDateString() ? time : `${date.toLocaleDateString([], { day: "numeric", month: "short" })} ${time}`;
 }
+var editPanelPreviewMaxWidth = 296;
+var editPanelPreviewMaxHeight = 200;
+function editPanelPreviewSize(width, height) {
+  const ratio = width > 0 && height > 0 ? width / height : 1;
+  let previewWidth = editPanelPreviewMaxWidth;
+  let previewHeight = previewWidth / ratio;
+  if (previewHeight > editPanelPreviewMaxHeight) {
+    previewHeight = editPanelPreviewMaxHeight;
+    previewWidth = previewHeight * ratio;
+  }
+  return { height: previewHeight, width: previewWidth };
+}
+function isCommentPinEditable(comment) {
+  return !comment.movedAt && (!comment.anchor || comment.anchor.type === "element");
+}
+var savedPinDragThreshold = 4;
+var savedPinKeyboardSaveDelayMs = 600;
+var savedPinUndoWindowMs = 5e3;
 function defaultMeetingTitle() {
   return `Design review ${(/* @__PURE__ */ new Date()).toLocaleString()}`;
 }
@@ -6391,6 +7186,7 @@ function VisualCommentsSection({
   });
   const [pendingCapture, setPendingCapture] = useState(null);
   const [pendingPoint, setPendingPoint] = useState(null);
+  const pendingViewRef = useRef(null);
   const [livePinPosition, setLivePinPosition] = useState(null);
   const [isCapturing, setIsCapturing] = useState(false);
   const [isBusy, setIsBusy] = useState(false);
@@ -6404,6 +7200,9 @@ function VisualCommentsSection({
   const [commentErrors, setCommentErrors] = useState({});
   const [commentPreviewErrors, setCommentPreviewErrors] = useState({});
   const [editingCommentId, setEditingCommentId] = useState(null);
+  const [commentEditSurface, setCommentEditSurface] = useState("modal");
+  const commentEditPanelRef = useRef(null);
+  const [commentEditPanelHeight, setCommentEditPanelHeight] = useState(200);
   const [commentMutationId, setCommentMutationId] = useState(null);
   const [pendingDeleteCommentId, setPendingDeleteCommentId] = useState(
     null
@@ -6418,6 +7217,18 @@ function VisualCommentsSection({
   const [showSavedPins, setShowSavedPins] = useState(true);
   const [captureTargetRect, setCaptureTargetRect] = useState(null);
   const [prototypeState, setPrototypeState] = useState({});
+  const [hostDeclarations, setHostDeclarations] = useState({ commentsUnavailable: false, view: defaultVisualCommentView });
+  const anchoredPinsRef = useRef(/* @__PURE__ */ new Map());
+  const [, setAnchoredVisibilityVersion] = useState(0);
+  const [pendingLocations, setPendingLocations] = useState({});
+  const [draggingPinId, setDraggingPinId] = useState(null);
+  const pinDragRef = useRef(null);
+  const suppressPinClickRef = useRef(null);
+  const [pinNotice, setPinNotice] = useState(null);
+  const pinNoticeTimerRef = useRef(0);
+  useEffect(() => () => window.clearTimeout(pinNoticeTimerRef.current), []);
+  const [listedViewChoice, setListedViewChoice] = useState(null);
+  const [locationNotices, setLocationNotices] = useState({});
   const [selectedCommentId, setSelectedCommentId] = useState(null);
   const [highlightedCommentId, setHighlightedCommentId] = useState(null);
   const [focusedCommentId, setFocusedCommentId] = useState(null);
@@ -6446,6 +7257,7 @@ function VisualCommentsSection({
   const captureControllerRef = useRef(null);
   const commentPreviewDragRef = useRef(null);
   const commentEditPinRef = useRef(null);
+  const commentEditImageRef = useRef(null);
   const commentEditTextareaRef = useRef(null);
   const commentEditTriggerRef = useRef(null);
   const deleteCancelRef = useRef(null);
@@ -6492,16 +7304,28 @@ function VisualCommentsSection({
     (meeting) => meeting.id === viewedMeetingId && meeting.storyCommentCount > 0
   ) ?? null;
   const viewedComments = viewedMeeting ? storyComments.filter((comment) => comment.sessionId === viewedMeeting.id) : [];
+  const listedView = listedViewChoice ?? hostDeclarations.view;
+  const isListingCurrentView = listedView === hostDeclarations.view;
+  const viewedInListedView = viewedComments.filter(
+    (comment) => resolveVisualCommentView(comment.view) === listedView
+  );
+  const otherViewCounts = [
+    ...viewedComments.reduce((counts, comment) => {
+      const view = resolveVisualCommentView(comment.view);
+      if (view !== listedView) counts.set(view, (counts.get(view) ?? 0) + 1);
+      return counts;
+    }, /* @__PURE__ */ new Map())
+  ].sort(([left], [right]) => left.localeCompare(right));
   const commentCounts = {
-    all: viewedComments.length,
-    "visual-fix": viewedComments.filter(
+    all: viewedInListedView.length,
+    "visual-fix": viewedInListedView.filter(
       (comment) => resolveVisualCommentKind(comment.kind) === "visual-fix"
     ).length,
-    tracking: viewedComments.filter(
+    tracking: viewedInListedView.filter(
       (comment) => resolveVisualCommentKind(comment.kind) === "tracking"
     ).length
   };
-  const listedComments = commentFilter === "all" ? viewedComments : viewedComments.filter(
+  const listedComments = commentFilter === "all" ? viewedInListedView : viewedInListedView.filter(
     (comment) => resolveVisualCommentKind(comment.kind) === commentFilter
   );
   const editingComment = viewedComments.find(
@@ -6509,11 +7333,10 @@ function VisualCommentsSection({
   );
   const nextOrdinal = (overview?.activeSession?.commentCount ?? 0) + 1;
   const editingCommentDraft = editingComment ? commentDrafts[editingComment.id] ?? editingComment.body : "";
-  const editingCommentPin = editingComment ? commentPinDrafts[editingComment.id] ?? editingComment.preview?.pin ?? null : null;
+  const editingCommentPin = editingComment && isCommentPinEditable(editingComment) ? commentPinDrafts[editingComment.id] ?? editingComment.preview?.pin ?? null : null;
   const editingCommentKind = editingComment ? commentKindDrafts[editingComment.id] ?? resolveVisualCommentKind(editingComment.kind) : defaultVisualCommentKind;
-  const editingCommentHasPreview = Boolean(
-    editingComment?.preview && !commentPreviewErrors[editingComment.id] && editingCommentPin
-  );
+  const editingCommentScreenshot = editingComment?.preview && !commentPreviewErrors[editingComment.id] ? editingComment.preview : null;
+  const editingCommentHasPreview = Boolean(editingCommentScreenshot && editingCommentPin);
   const editingCommentDraftIsValid = Boolean(editingCommentDraft.trim()) && editingCommentDraft.trim().length <= VISUAL_COMMENT_LIMITS.maxBodyLength;
   const overviewRequestRef = useRef(0);
   const appliedOverviewRequestRef = useRef(0);
@@ -6574,12 +7397,15 @@ function VisualCommentsSection({
     };
   }, [isPanelOpen]);
   const draftPin = pendingCapture?.pin ?? pendingPoint?.pin ?? null;
+  const draftAnchor = pendingCapture?.anchor ?? pendingPoint?.anchor;
+  const draftAnchorKey = draftAnchor ? JSON.stringify(draftAnchor) : "";
   useEffect(() => {
     if (!enabled || options?.enabled === false || !draftPin) {
       setLivePinPosition(null);
       return;
     }
     let animationFrame = 0;
+    let settleTimer = 0;
     const syncPosition = () => {
       setViewportSize(
         (current) => current.width === window.innerWidth && current.height === window.innerHeight ? current : { height: window.innerHeight, width: window.innerWidth }
@@ -6587,6 +7413,10 @@ function VisualCommentsSection({
       const target = commentsController.resolveTarget(options?.captureSelector);
       if (!target) {
         setLivePinPosition(null);
+        return;
+      }
+      if (draftAnchor) {
+        setLivePinPosition(placeAnchoredPin(target, draftAnchor));
         return;
       }
       const rect = target.getBoundingClientRect();
@@ -6603,17 +7433,38 @@ function VisualCommentsSection({
       window.cancelAnimationFrame(animationFrame);
       animationFrame = window.requestAnimationFrame(syncPosition);
     };
+    const onAnchorsMoved = () => {
+      if (!draftAnchor) return;
+      const target = commentsController.resolveTarget(options?.captureSelector);
+      const placement = target ? placeAnchoredPin(target, draftAnchor) : null;
+      const pinElement = document.querySelector("[data-sbfx-live-comment-pin]");
+      if (pinElement) {
+        if (placement) {
+          pinElement.style.left = `${placement.left}px`;
+          pinElement.style.top = `${placement.top}px`;
+          pinElement.style.display = "";
+        } else {
+          pinElement.style.display = "none";
+        }
+      }
+      window.clearTimeout(settleTimer);
+      settleTimer = window.setTimeout(syncPosition, 120);
+    };
     syncPosition();
     window.addEventListener("resize", scheduleSync);
     document.addEventListener("scroll", scheduleSync, true);
+    document.addEventListener(anchorsMovedEvent, onAnchorsMoved);
     return () => {
       window.cancelAnimationFrame(animationFrame);
+      window.clearTimeout(settleTimer);
       window.removeEventListener("resize", scheduleSync);
       document.removeEventListener("scroll", scheduleSync, true);
+      document.removeEventListener(anchorsMovedEvent, onAnchorsMoved);
     };
   }, [
     draftPin?.xRatio,
     draftPin?.yRatio,
+    draftAnchorKey,
     enabled,
     options?.captureSelector,
     options?.enabled
@@ -6644,6 +7495,11 @@ function VisualCommentsSection({
       setPrototypeState(
         (current) => current.routeId === routeId && current.stateId === stateId ? current : { routeId, stateId }
       );
+      const view = readCommentView(target);
+      const commentsUnavailable = areCommentsUnavailable(target);
+      setHostDeclarations(
+        (current) => current.view === view && current.commentsUnavailable === commentsUnavailable ? current : { commentsUnavailable, view }
+      );
     };
     const scheduleSync = () => {
       window.cancelAnimationFrame(animationFrame);
@@ -6657,6 +7513,49 @@ function VisualCommentsSection({
       window.cancelAnimationFrame(animationFrame);
       window.removeEventListener("resize", scheduleSync);
       document.removeEventListener("scroll", scheduleSync, true);
+      window.clearInterval(interval);
+    };
+  }, [isPanelActive, options?.captureSelector]);
+  useEffect(() => {
+    setListedViewChoice(null);
+    setLocationNotices({});
+  }, [hostDeclarations.view, storyId]);
+  useEffect(() => {
+    if (!isPanelActive) return;
+    const syncAnchoredPins = () => {
+      const target = commentsController.resolveTarget(options?.captureSelector);
+      if (!target) return;
+      let visibilityChanged = false;
+      for (const pinElement of document.querySelectorAll(
+        "[data-saved-comment-pin][data-anchored-pin]"
+      )) {
+        const anchor = anchoredPinsRef.current.get(pinElement.dataset.savedCommentPin ?? "");
+        if (!anchor) continue;
+        if (pinDragRef.current?.dragging && pinDragRef.current.commentId === pinElement.dataset.savedCommentPin) {
+          continue;
+        }
+        const placement = placeAnchoredPin(target, anchor);
+        const wasHidden = pinElement.style.display === "none";
+        if (placement) {
+          pinElement.style.left = `${placement.left}px`;
+          pinElement.style.top = `${placement.top}px`;
+          pinElement.style.display = "";
+        } else {
+          pinElement.style.display = "none";
+        }
+        if (wasHidden !== !placement) visibilityChanged = true;
+      }
+      if (visibilityChanged) setAnchoredVisibilityVersion((version) => version + 1);
+      placeCommentEditPanel();
+    };
+    document.addEventListener(anchorsMovedEvent, syncAnchoredPins);
+    window.addEventListener("resize", syncAnchoredPins);
+    document.addEventListener("scroll", syncAnchoredPins, true);
+    const interval = window.setInterval(syncAnchoredPins, 500);
+    return () => {
+      document.removeEventListener(anchorsMovedEvent, syncAnchoredPins);
+      window.removeEventListener("resize", syncAnchoredPins);
+      document.removeEventListener("scroll", syncAnchoredPins, true);
       window.clearInterval(interval);
     };
   }, [isPanelActive, options?.captureSelector]);
@@ -6698,6 +7597,11 @@ function VisualCommentsSection({
   useEffect(() => {
     const height = composerRef.current?.offsetHeight;
     if (height && Math.abs(height - composerHeight) > 0.5) setComposerHeight(height);
+    const editPanelHeight = commentEditPanelRef.current?.offsetHeight;
+    if (editPanelHeight && Math.abs(editPanelHeight - commentEditPanelHeight) > 0.5) {
+      setCommentEditPanelHeight(editPanelHeight);
+    }
+    placeCommentEditPanel();
     const cardHeight = pinCardRef.current?.offsetHeight;
     if (cardHeight && Math.abs(cardHeight - pinCardHeight) > 0.5) setPinCardHeight(cardHeight);
   });
@@ -6717,6 +7621,7 @@ function VisualCommentsSection({
       if (event.key === "Escape") {
         if (isComposerOpen && !dialogOpen) {
           event.preventDefault();
+          event.stopPropagation();
           cancelCapture();
         }
         return;
@@ -6732,7 +7637,8 @@ function VisualCommentsSection({
       }
       const origin = event.composedPath()[0];
       const target = origin instanceof Element ? origin : event.target instanceof Element ? event.target : null;
-      if ((event.key === "c" || event.key === "C") && !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey && !isCapturing && commentsCapability === "available" && !target?.closest("input, textarea, select") && !(target instanceof HTMLElement && target.isContentEditable)) {
+      if ((event.key === "c" || event.key === "C") && !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey && !isCapturing && commentsCapability === "available" && !target?.closest("input, textarea, select") && !(target instanceof HTMLElement && target.isContentEditable) && // A view that declines comments leaves C to the page.
+      !areCommentsUnavailable(commentsController.resolveTarget(options?.captureSelector))) {
         event.preventDefault();
         event.stopPropagation();
         armCapture();
@@ -6749,24 +7655,30 @@ function VisualCommentsSection({
     const handleEscape = (event) => {
       if (event.key !== "Escape") return;
       event.preventDefault();
+      event.stopPropagation();
       closeDeleteDialog();
     };
-    document.addEventListener("keydown", handleEscape);
+    document.addEventListener("keydown", handleEscape, true);
     return () => {
-      document.removeEventListener("keydown", handleEscape);
+      document.removeEventListener("keydown", handleEscape, true);
     };
   }, [pendingDeleteCommentId]);
   useEffect(() => {
     if (!editingCommentId) return;
-    (commentEditPinRef.current ?? commentEditTextareaRef.current)?.focus();
+    const focusFrame = window.requestAnimationFrame(() => {
+      const modalPin = commentEditPinRef.current?.isConnected ? commentEditPinRef.current : null;
+      (modalPin ?? commentEditTextareaRef.current)?.focus();
+    });
     const handleEscape = (event) => {
       if (event.key !== "Escape") return;
       event.preventDefault();
+      event.stopPropagation();
       cancelCommentEdit(editingCommentId);
     };
-    document.addEventListener("keydown", handleEscape);
+    document.addEventListener("keydown", handleEscape, true);
     return () => {
-      document.removeEventListener("keydown", handleEscape);
+      window.cancelAnimationFrame(focusFrame);
+      document.removeEventListener("keydown", handleEscape, true);
     };
   }, [editingCommentId]);
   useEffect(() => {
@@ -6808,12 +7720,14 @@ function VisualCommentsSection({
   }
   function armCapture() {
     if (commentsCapability !== "available") return;
+    if (areCommentsUnavailable(commentsController.resolveTarget(options?.captureSelector))) return;
     captureControllerRef.current?.cancel();
     setVisualError("");
     setPendingCapture(null);
     setPendingPoint(null);
     setCommentKind(lastSavedCommentKind);
     setIsCapturing(true);
+    pendingViewRef.current = null;
     captureControllerRef.current = commentsController.beginCapture({
       onCancel: () => {
         setIsCapturing(false);
@@ -6829,7 +7743,14 @@ function VisualCommentsSection({
         setPendingPoint(null);
         setVisualError(error.message);
       },
-      onPointSelected: setPendingPoint,
+      onPointSelected: (selection) => {
+        pendingViewRef.current = readCommentView(
+          commentsController.resolveTarget(options?.captureSelector)
+        );
+        setPendingPoint(selection);
+      },
+      resolveAnchor: resolveCommentAnchor,
+      captureAnchor: captureAnchoredComment,
       selector: options?.captureSelector
     });
   }
@@ -6840,14 +7761,52 @@ function VisualCommentsSection({
     setPendingCapture(null);
     setPendingPoint(null);
   }
-  function updatePendingPin(pin) {
-    const normalizedPin = {
-      xRatio: clampRatio(pin.xRatio),
-      yRatio: clampRatio(pin.yRatio)
-    };
-    setPendingCapture(
-      (current) => current ? { ...current, pin: normalizedPin } : current
+  function pendingPinFrame() {
+    if (pendingCapture?.pinFrameReference) {
+      const target = commentsController.resolveTarget(options?.captureSelector);
+      const live = target ? resolveFrameReference(target, pendingCapture.pinFrameReference) : null;
+      if (live?.width && live.height) return live;
+    }
+    if (pendingCapture?.pinFrame) return pendingCapture.pinFrame;
+    const rect = commentsController.resolveTarget(options?.captureSelector)?.getBoundingClientRect();
+    return rect?.width && rect.height ? rect : null;
+  }
+  function clampPendingPin(pin) {
+    const target = commentsController.resolveTarget(options?.captureSelector);
+    const frame = pendingPinFrame();
+    if (!target || !frame) return pin;
+    const bounds = getPinDragBounds(target);
+    const left = Math.max(frame.left, bounds.left);
+    const top = Math.max(frame.top, bounds.top);
+    const right = Math.min(frame.left + frame.width, bounds.left + bounds.width) - 1;
+    const bottom = Math.min(frame.top + frame.height, bounds.top + bounds.height) - 1;
+    if (right <= left || bottom <= top) return pin;
+    const x = Math.min(right, Math.max(left, frame.left + frame.width * pin.xRatio));
+    const y = Math.min(bottom, Math.max(top, frame.top + frame.height * pin.yRatio));
+    return { xRatio: (x - frame.left) / frame.width, yRatio: (y - frame.top) / frame.height };
+  }
+  function anchorAtPin(pin) {
+    const target = commentsController.resolveTarget(options?.captureSelector);
+    const frame = pendingPinFrame();
+    if (!target || !frame) return void 0;
+    return resolveCommentAnchor(
+      target,
+      frame.left + frame.width * pin.xRatio,
+      frame.top + frame.height * pin.yRatio
     );
+  }
+  function updatePendingPin(pin) {
+    const visiblePin = clampPendingPin(pin);
+    const normalizedPin = {
+      xRatio: clampRatio(visiblePin.xRatio),
+      yRatio: clampRatio(visiblePin.yRatio)
+    };
+    const anchor = anchorAtPin(normalizedPin);
+    setPendingCapture((current) => {
+      if (!current) return current;
+      const { anchor: _previous, ...rest } = current;
+      return { ...rest, pin: normalizedPin, ...anchor ? { anchor } : {} };
+    });
   }
   function handlePendingPinPointerDown(event) {
     if (event.button !== 0) return;
@@ -6863,9 +7822,9 @@ function VisualCommentsSection({
   function handlePendingPinPointerMove(event) {
     if (pinDragPointerRef.current !== event.pointerId) return;
     event.stopPropagation();
-    const rect = commentsController.resolveTarget(options?.captureSelector)?.getBoundingClientRect();
-    if (!rect?.width || !rect.height) return;
-    updatePendingPin(getVisualCommentPin(rect, event.clientX, event.clientY));
+    const frame = pendingPinFrame();
+    if (!frame) return;
+    updatePendingPin(getVisualCommentPin(frame, event.clientX, event.clientY));
   }
   function handlePendingPinPointerEnd(event) {
     if (pinDragPointerRef.current !== event.pointerId) return;
@@ -6889,15 +7848,11 @@ function VisualCommentsSection({
     else return;
     event.preventDefault();
     event.stopPropagation();
-    setPendingCapture(
-      (current) => current ? {
-        ...current,
-        pin: {
-          xRatio: clampRatio(current.pin.xRatio + xDelta),
-          yRatio: clampRatio(current.pin.yRatio + yDelta)
-        }
-      } : current
-    );
+    if (!pendingCapture) return;
+    updatePendingPin({
+      xRatio: pendingCapture.pin.xRatio + xDelta,
+      yRatio: pendingCapture.pin.yRatio + yDelta
+    });
   }
   function forgetHoveredPin() {
     setHoveredPinId(null);
@@ -6920,6 +7875,7 @@ function VisualCommentsSection({
       options?.captureSelector ?? "#storybook-root"
     );
     const metadataRoot = captureRoot?.matches("[data-prototype-root]") ? captureRoot : captureRoot?.querySelector("[data-prototype-root]");
+    const view = pendingViewRef.current ?? readCommentView(captureRoot);
     const request = {
       authorName: normalizeAuthorName(authorName).slice(
         0,
@@ -6930,6 +7886,7 @@ function VisualCommentsSection({
       capture: pendingCapture.capture,
       clientRequestId: globalThis.crypto?.randomUUID?.() ?? `comment-${Date.now()}-${Math.random().toString(36).slice(2)}`,
       pin: pendingCapture.pin,
+      ...pendingCapture.anchor ? { anchor: pendingCapture.anchor } : {},
       story: {
         id: storyId,
         name: storyName,
@@ -6937,7 +7894,8 @@ function VisualCommentsSection({
         ...storyUrl ? { url: storyUrl } : {},
         ...metadataRoot?.dataset.prototypeRoot ? { prototypeId: metadataRoot.dataset.prototypeRoot } : {},
         ...metadataRoot?.dataset.route ? { routeId: metadataRoot.dataset.route } : {},
-        ...metadataRoot?.dataset.prototypeState ? { stateId: metadataRoot.dataset.prototypeState } : {}
+        ...metadataRoot?.dataset.prototypeState ? { stateId: metadataRoot.dataset.prototypeState } : {},
+        ...view !== defaultVisualCommentView ? { view } : {}
       },
       viewport: pendingCapture.viewport
     };
@@ -6952,6 +7910,8 @@ function VisualCommentsSection({
       const sessionId = overview?.activeSession?.id ?? await commentsController.ensureMeeting(notesMeetingTitle());
       await mutate(`/sessions/${encodeURIComponent(sessionId)}/comments`, request);
       setViewedMeetingId(sessionId);
+      setListedViewChoice(null);
+      pendingViewRef.current = null;
       lastSavedCommentKind = commentKind;
       setPendingCapture(null);
       setPendingPoint(null);
@@ -6970,12 +7930,53 @@ function VisualCommentsSection({
     forgetHoveredPin();
     setTrackingCopyStatus("");
   }
-  function revealComment(commentId) {
+  function showAnchoredLocation(comment) {
+    if (!comment.anchor) return;
+    const request = new CustomEvent(revealAnchorEvent, {
+      bubbles: true,
+      cancelable: true,
+      detail: {
+        anchor: comment.anchor,
+        commentId: comment.id,
+        view: resolveVisualCommentView(comment.view)
+      }
+    });
+    const handled = !document.dispatchEvent(request);
+    setLocationNotices((current) => {
+      const { [comment.id]: _removed, ...rest } = current;
+      return handled ? rest : { ...rest, [comment.id]: labels.locationUnavailable };
+    });
+    if (!handled) return;
+    setSelectedCommentId(comment.id);
+    window.requestAnimationFrame(() => setAnchoredVisibilityVersion((version) => version + 1));
+  }
+  function revealComment(commentId, { focus = true } = {}) {
     const item = Array.from(
       document.querySelectorAll(".sbfx-comments-panel [data-comment-id]")
     ).find((element) => element.dataset.commentId === commentId);
     item?.scrollIntoView({ block: "nearest" });
-    item?.focus();
+    if (focus) item?.focus();
+  }
+  function activateSavedPin(comment, pinElement) {
+    setSelectedCommentId(comment.id);
+    revealComment(comment.id, { focus: false });
+    if (editingCommentId === comment.id && commentEditSurface === "panel") {
+      window.requestAnimationFrame(() => commentEditTextareaRef.current?.focus());
+      return;
+    }
+    if (editingCommentId) {
+      if (commentEditPanelRef.current?.contains(document.activeElement)) {
+        document.activeElement.blur();
+      }
+      cancelCommentEdit(editingCommentId, false);
+    }
+    beginCommentEdit(
+      comment.id,
+      comment.body,
+      isCommentPinEditable(comment) ? comment.preview?.pin ?? null : null,
+      resolveVisualCommentKind(comment.kind),
+      pinElement
+    );
   }
   async function copyTrackingPrompts(scope) {
     const session = viewedMeeting;
@@ -7029,8 +8030,41 @@ function VisualCommentsSection({
     }
     setIsNameEditing(false);
   }
+  function isSavedPinShown(commentId) {
+    const pinElement = document.querySelector(
+      `[data-saved-comment-pin="${CSS.escape(commentId)}"]`
+    );
+    if (!pinElement || pinElement.style.display === "none") return false;
+    const rect = pinElement.getBoundingClientRect();
+    const x = rect.left + rect.width / 2;
+    const y = rect.top + rect.height / 2;
+    return x >= 0 && y >= 0 && x <= window.innerWidth && y <= window.innerHeight;
+  }
   function beginCommentEdit(commentId, body, pin, kind, trigger) {
     commentEditTriggerRef.current = trigger;
+    if (isSavedPinShown(commentId)) {
+      openCommentEdit(commentId, body, pin, kind, "panel");
+      return;
+    }
+    const comment = overview?.comments.find((entry) => entry.id === commentId);
+    const pinPlaced = document.querySelector(`[data-saved-comment-pin="${CSS.escape(commentId)}"]`);
+    if (comment?.anchor && pinPlaced) {
+      const request = new CustomEvent(revealAnchorEvent, {
+        bubbles: true,
+        cancelable: true,
+        detail: { anchor: comment.anchor, commentId, view: resolveVisualCommentView(comment.view) }
+      });
+      if (!document.dispatchEvent(request)) {
+        window.requestAnimationFrame(
+          () => openCommentEdit(commentId, body, pin, kind, isSavedPinShown(commentId) ? "panel" : "modal")
+        );
+        return;
+      }
+    }
+    openCommentEdit(commentId, body, pin, kind, "modal");
+  }
+  function openCommentEdit(commentId, body, pin, kind, surface) {
+    setCommentEditSurface(surface);
     setEditingCommentId(commentId);
     setCommentDrafts({ [commentId]: body });
     setCommentPinDrafts(pin ? { [commentId]: { ...pin } } : {});
@@ -7094,11 +8128,9 @@ function VisualCommentsSection({
       preserveOpenPanelDuringMutation();
       const comment = overview.comments.find((entry) => entry.id === commentId);
       const pin = commentPinDrafts[commentId];
-      const evidenceImage = document.querySelector(
-        `[data-comment-edit-modal] img[alt="Screenshot evidence for comment ${comment?.ordinal ?? ""}"]`
-      );
+      const evidenceImage = commentEditImageRef.current;
       const includePin = Boolean(
-        comment?.preview && !commentPreviewErrors[commentId] && evidenceImage?.complete && evidenceImage.naturalWidth > 0 && pin
+        commentEditSurface === "modal" && comment && isCommentPinEditable(comment) && comment.preview && !commentPreviewErrors[commentId] && evidenceImage?.isConnected && evidenceImage.complete && evidenceImage.naturalWidth > 0 && pin
       );
       const kindDraft = commentKindDrafts[commentId];
       const includeKind = Boolean(
@@ -7193,6 +8225,255 @@ function VisualCommentsSection({
     });
     setCommentErrors((current) => ({ ...current, [commentId]: "" }));
   }
+  function restoreSavedPinElement(drag) {
+    drag.element.style.left = drag.originLeft;
+    drag.element.style.top = drag.originTop;
+    placeCommentEditPanel();
+  }
+  function placeCommentEditPanel() {
+    const panel = commentEditPanelRef.current;
+    const commentId = panel?.dataset.commentEditPanel;
+    if (!panel || !commentId) return;
+    const pinElement = document.querySelector(
+      `[data-saved-comment-pin="${CSS.escape(commentId)}"]`
+    );
+    if (!pinElement || pinElement.style.display === "none") return;
+    const rect = pinElement.getBoundingClientRect();
+    const placement = getCommentComposerPlacement(
+      { left: rect.left + rect.width / 2, top: rect.top + rect.height / 2 },
+      { height: window.innerHeight, width: window.innerWidth },
+      panel.offsetHeight || commentEditPanelHeight
+    );
+    if ("dock" in placement) {
+      panel.dataset.composerDock = placement.dock;
+      panel.style.left = "";
+      panel.style.top = "";
+    } else {
+      delete panel.dataset.composerDock;
+      panel.style.left = `${placement.left}px`;
+      panel.style.top = `${placement.top}px`;
+    }
+  }
+  function endSavedPinDrag() {
+    const drag = pinDragRef.current;
+    pinDragRef.current = null;
+    if (!drag) return null;
+    window.clearTimeout(drag.keyboardTimer);
+    if (drag.onKeyDown) window.removeEventListener("keydown", drag.onKeyDown, true);
+    if (drag.onBlur) drag.element.removeEventListener("blur", drag.onBlur);
+    try {
+      if (drag.element.hasPointerCapture?.(drag.pointerId)) {
+        drag.element.releasePointerCapture(drag.pointerId);
+      }
+    } catch {
+    }
+    return drag;
+  }
+  function cancelSavedPinDrag() {
+    const drag = endSavedPinDrag();
+    if (!drag) return;
+    if (drag.dragging) {
+      restoreSavedPinElement(drag);
+      if (!drag.keyboard) suppressPinClickRef.current = drag.commentId;
+      setDraggingPinId(null);
+    }
+  }
+  function listenForMoveEscape(drag) {
+    drag.onKeyDown = (keyEvent) => {
+      if (keyEvent.key !== "Escape") return;
+      keyEvent.preventDefault();
+      keyEvent.stopPropagation();
+      cancelSavedPinDrag();
+    };
+    window.addEventListener("keydown", drag.onKeyDown, true);
+  }
+  function handleSavedPinPointerDown(comment, event) {
+    event.stopPropagation();
+    suppressPinClickRef.current = null;
+    const waiting = pinDragRef.current?.keyboard ? pinDragRef.current : null;
+    if (waiting) {
+      commitSavedPinKeyboardMove(waiting.commentId);
+      if (waiting.commentId === comment.id) return;
+    }
+    if (event.button !== 0 || isCapturing || isComposerOpen || pendingLocations[comment.id]) return;
+    const element = event.currentTarget;
+    const rect = element.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    const target = commentsController.resolveTarget(options?.captureSelector);
+    pinDragRef.current = {
+      bounds: target ? getPinDragBounds(target) : { height: window.innerHeight, left: 0, top: 0, width: window.innerWidth },
+      center: { left: centerX, top: centerY },
+      commentId: comment.id,
+      dragging: false,
+      element,
+      offsetX: event.clientX - centerX,
+      offsetY: event.clientY - centerY,
+      originLeft: element.style.left,
+      originTop: element.style.top,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY
+    };
+    try {
+      element.setPointerCapture?.(event.pointerId);
+    } catch {
+    }
+  }
+  function handleSavedPinPointerMove(comment, event) {
+    const drag = pinDragRef.current;
+    if (!drag || drag.commentId !== comment.id || drag.pointerId !== event.pointerId) return;
+    event.stopPropagation();
+    if (!drag.dragging) {
+      const distance = Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY);
+      if (distance <= savedPinDragThreshold) return;
+      drag.dragging = true;
+      listenForMoveEscape(drag);
+      setDraggingPinId(comment.id);
+      setPinNotice(null);
+    }
+    const { bounds } = drag;
+    const left = Math.min(bounds.left + bounds.width, Math.max(bounds.left, event.clientX - drag.offsetX));
+    const top = Math.min(bounds.top + bounds.height, Math.max(bounds.top, event.clientY - drag.offsetY));
+    drag.center = { left, top };
+    drag.element.style.left = `${left}px`;
+    drag.element.style.top = `${top}px`;
+    placeCommentEditPanel();
+  }
+  function handleSavedPinKeyDown(comment, event) {
+    suppressPinClickRef.current = null;
+    const active = pinDragRef.current;
+    const step = event.shiftKey ? 10 : 1;
+    const delta = event.key === "ArrowLeft" ? { x: -step, y: 0 } : event.key === "ArrowRight" ? { x: step, y: 0 } : event.key === "ArrowUp" ? { x: 0, y: -step } : event.key === "ArrowDown" ? { x: 0, y: step } : null;
+    if (!delta) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (isCapturing || isComposerOpen || pendingLocations[comment.id]) return;
+    let drag = active;
+    if (!drag?.keyboard || drag.commentId !== comment.id) {
+      if (drag) return;
+      const element = event.currentTarget;
+      const rect = element.getBoundingClientRect();
+      const target = commentsController.resolveTarget(options?.captureSelector);
+      drag = {
+        bounds: target ? getPinDragBounds(target) : { height: window.innerHeight, left: 0, top: 0, width: window.innerWidth },
+        center: { left: rect.left + rect.width / 2, top: rect.top + rect.height / 2 },
+        commentId: comment.id,
+        dragging: true,
+        element,
+        keyboard: true,
+        offsetX: 0,
+        offsetY: 0,
+        originLeft: element.style.left,
+        originTop: element.style.top,
+        pointerId: -1,
+        startX: 0,
+        startY: 0
+      };
+      drag.onBlur = () => commitSavedPinKeyboardMove(comment.id);
+      element.addEventListener("blur", drag.onBlur);
+      listenForMoveEscape(drag);
+      pinDragRef.current = drag;
+      setDraggingPinId(comment.id);
+      setPinNotice(null);
+    }
+    const { bounds } = drag;
+    const left = Math.min(bounds.left + bounds.width, Math.max(bounds.left, drag.center.left + delta.x));
+    const top = Math.min(bounds.top + bounds.height, Math.max(bounds.top, drag.center.top + delta.y));
+    drag.center = { left, top };
+    drag.element.style.left = `${left}px`;
+    drag.element.style.top = `${top}px`;
+    placeCommentEditPanel();
+    window.clearTimeout(drag.keyboardTimer);
+    drag.keyboardTimer = window.setTimeout(
+      () => commitSavedPinKeyboardMove(comment.id),
+      savedPinKeyboardSaveDelayMs
+    );
+  }
+  function commitSavedPinKeyboardMove(commentId) {
+    const drag = pinDragRef.current;
+    if (!drag?.keyboard || drag.commentId !== commentId) return;
+    endSavedPinDrag();
+    setDraggingPinId(null);
+    void relocateSavedComment(commentId, drag);
+  }
+  function handleSavedPinPointerUp(comment, event) {
+    const drag = pinDragRef.current;
+    if (!drag || drag.commentId !== comment.id || drag.pointerId !== event.pointerId) return;
+    event.stopPropagation();
+    endSavedPinDrag();
+    if (!drag.dragging) return;
+    suppressPinClickRef.current = comment.id;
+    setDraggingPinId(null);
+    void relocateSavedComment(comment.id, drag);
+  }
+  async function relocateSavedComment(commentId, drag) {
+    const comment = overview?.comments.find((entry) => entry.id === commentId);
+    const path = commentPath(commentId);
+    const target = commentsController.resolveTarget(options?.captureSelector);
+    if (!comment || !path || !target) {
+      restoreSavedPinElement(drag);
+      return;
+    }
+    const { left, top } = drag.center;
+    const anchor = resolveCommentAnchor(target, left, top);
+    let location;
+    if (anchor) {
+      location = { anchor };
+    } else if (!comment.anchor) {
+      location = { pin: getVisualCommentPin(target.getBoundingClientRect(), left, top) };
+    } else {
+      restoreSavedPinElement(drag);
+      setPinNotice({ text: labels.pinDropUnavailable, tone: "error" });
+      return;
+    }
+    const previousPin = comment.pin ?? comment.preview?.pin;
+    const previous = previousPin ? { anchor: comment.anchor ?? null, movedAt: comment.movedAt ?? null, pin: previousPin } : null;
+    setPendingLocations((current) => ({ ...current, [commentId]: location }));
+    try {
+      preserveOpenPanelDuringMutation();
+      const payload = await commentsController.patch(path, location);
+      setReportPending(Boolean(payload.reportStale));
+      await refresh();
+      if (previous) showMovedNotice(commentId, previous);
+    } catch (error) {
+      restoreSavedPinElement(drag);
+      setPinNotice({
+        text: `${labels.pinMoveFailed} ${error instanceof Error ? error.message : ""}`.trim(),
+        tone: "error"
+      });
+    } finally {
+      setPendingLocations((current) => {
+        const { [commentId]: _settled, ...rest } = current;
+        return rest;
+      });
+    }
+  }
+  function showMovedNotice(commentId, previous) {
+    window.clearTimeout(pinNoticeTimerRef.current);
+    const notice = { text: labels.commentMoved, tone: "info", undo: { commentId, previous } };
+    setPinNotice(notice);
+    pinNoticeTimerRef.current = window.setTimeout(() => {
+      setPinNotice((current) => current === notice ? null : current);
+    }, savedPinUndoWindowMs);
+  }
+  async function undoSavedPinMove(commentId, previous) {
+    window.clearTimeout(pinNoticeTimerRef.current);
+    setPinNotice(null);
+    const path = commentPath(commentId);
+    if (!path) return;
+    try {
+      preserveOpenPanelDuringMutation();
+      const payload = await commentsController.patch(path, previous);
+      setReportPending(Boolean(payload.reportStale));
+      await refresh();
+    } catch (error) {
+      setPinNotice({
+        text: `${labels.pinMoveFailed} ${error instanceof Error ? error.message : ""}`.trim(),
+        tone: "error"
+      });
+    }
+  }
   function openDeleteDialog(commentId, trigger) {
     deleteTriggerRef.current = trigger;
     setPendingDeleteCommentId(commentId);
@@ -7231,17 +8512,55 @@ function VisualCommentsSection({
   }
   const displayName = authorName.trim() || labels.anonymousAuthor;
   const matchesPrototypeState = (comment) => (comment.state?.routeId === void 0 || comment.state.routeId === prototypeState.routeId) && (comment.state?.stateId === void 0 || comment.state.stateId === prototypeState.stateId);
-  const savedPins = isPanelActive && showSavedPins && captureTargetRect ? listedComments.filter(
-    (comment) => (comment.pin ?? comment.preview?.pin) && matchesPrototypeState(comment)
+  const savedPins = isPanelActive && showSavedPins && captureTargetRect && !hostDeclarations.commentsUnavailable && // Another view's comments are listed without pins: their pins belong there.
+  isListingCurrentView ? listedComments.filter(
+    (comment) => (comment.pin ?? comment.preview?.pin) && matchesPrototypeState(comment) && // An anchored pin belongs to the view it was placed in.
+    (!comment.anchor || resolveVisualCommentView(comment.view) === hostDeclarations.view)
+  ).map(
+    (comment) => pendingLocations[comment.id] ? { ...comment, ...pendingLocations[comment.id] } : comment
   ) : [];
+  const pinTarget = savedPins.some((comment) => comment.anchor) ? commentsController.resolveTarget(options?.captureSelector) : null;
+  const anchoredPlacements = new Map(
+    savedPins.filter((comment) => comment.anchor).map((comment) => [
+      comment.id,
+      pinTarget ? placeAnchoredPin(pinTarget, comment.anchor) : null
+    ])
+  );
+  anchoredPinsRef.current = new Map(
+    savedPins.filter((comment) => comment.anchor).map((comment) => [comment.id, comment.anchor])
+  );
+  const listTarget = listedComments.some((comment) => comment.anchor) ? commentsController.resolveTarget(options?.captureSelector) : null;
+  const anchorStatus = new Map(
+    listedComments.filter((comment) => comment.anchor).map((comment) => {
+      const inCurrentView = resolveVisualCommentView(comment.view) === hostDeclarations.view;
+      const placement = listTarget && inCurrentView ? placeAnchoredPin(listTarget, comment.anchor) : null;
+      return [
+        comment.id,
+        {
+          hidden: inCurrentView && !placement,
+          layoutChanged: listTarget ? hasCanvasLayoutChanged(listTarget, comment.anchor) : false
+        }
+      ];
+    })
+  );
   const openTrackingOnStory = viewedComments.filter(
     (comment) => resolveVisualCommentKind(comment.kind) === "tracking" && !comment.resolvedAt
   ).length;
   const hasTrackingComments = (viewedMeeting?.tracking.total ?? 0) > 0;
   const otherStoriesHaveOpenTracking = (viewedMeeting?.tracking.open ?? 0) > openTrackingOnStory;
   const saveShortcutHint = /Mac|iPhone|iPad/.test(navigator.platform) ? "\u2318\u21B5" : "Ctrl \u21B5";
-  const pinCardComment = isCapturing || isComposerOpen ? null : savedPins.find((comment) => comment.id === hoveredPinId) ?? savedPins.find((comment) => comment.id === focusedPinId) ?? null;
+  const editingInPanelId = editingCommentId && commentEditSurface === "panel" ? editingCommentId : null;
+  const pinCardComment = isCapturing || isComposerOpen || draggingPinId ? null : savedPins.find((comment) => comment.id === hoveredPinId && comment.id !== editingInPanelId) ?? savedPins.find((comment) => comment.id === focusedPinId && comment.id !== editingInPanelId) ?? null;
+  const movingPinCenter = (commentId) => {
+    const drag = pinDragRef.current;
+    return drag?.dragging && drag.commentId === commentId ? drag.center : null;
+  };
   const savedPinCenter = (comment) => {
+    const moving = movingPinCenter(comment.id);
+    if (moving) return moving;
+    if (comment.anchor) {
+      return anchoredPlacements.get(comment.id) ?? { left: -9999, top: -9999 };
+    }
     const pin = comment.pin ?? comment.preview?.pin;
     return {
       left: captureTargetRect.left + captureTargetRect.width * pin.xRatio,
@@ -7324,7 +8643,15 @@ function VisualCommentsSection({
           hidden: !isPanelOpen,
           id: detailId
         },
-        createElement(
+        hostDeclarations.commentsUnavailable ? createElement(
+          "p",
+          {
+            className: "sbfx-comments-panel__unavailable",
+            "data-comments-unavailable": "true",
+            role: "status"
+          },
+          labels.commentsUnavailable
+        ) : createElement(
           "button",
           {
             "aria-label": labels.addVisualComment,
@@ -7381,6 +8708,67 @@ function VisualCommentsSection({
             labels.showPinsShort
           )
         ),
+        otherViewCounts.length || !isListingCurrentView ? createElement(
+          "div",
+          {
+            "aria-label": labels.commentViews,
+            className: "sbfx-comments-panel__views",
+            "data-listed-view": listedView,
+            role: "group"
+          },
+          ...otherViewCounts.map(
+            ([view, count]) => createElement(
+              "button",
+              {
+                className: "sbfx-comments-panel__filter-option sbfx-comments-panel__view-option",
+                "data-comment-view-option": view,
+                key: view,
+                onClick: () => {
+                  setListedViewChoice(view === hostDeclarations.view ? null : view);
+                  setSelectedCommentId(null);
+                  setHighlightedCommentId(null);
+                  forgetHoveredPin();
+                },
+                type: "button"
+              },
+              `${view} \xB7 ${count}`
+            )
+          ),
+          isListingCurrentView ? null : createElement(
+            "p",
+            {
+              className: "sbfx-comments-panel__view-note",
+              "data-comment-view-note": listedView,
+              key: "view-note"
+            },
+            labels.otherViewPinsNote
+          )
+        ) : null,
+        // Outside the scrolling list, so a scrolled list never hides it.
+        pinNotice ? createElement(
+          "p",
+          {
+            className: "sbfx-comments-panel__pin-notice",
+            "data-pin-notice": pinNotice.tone,
+            key: "pin-notice",
+            role: "status"
+          },
+          pinNotice.text,
+          pinNotice.undo ? createElement(
+            "button",
+            {
+              className: "sbfx-comments-panel__text-button",
+              "data-pin-undo": pinNotice.undo.commentId,
+              key: "undo",
+              onClick: () => {
+                const { commentId, previous } = pinNotice.undo;
+                void undoSavedPinMove(commentId, previous);
+              },
+              type: "button"
+            },
+            labels.undoMove
+          ) : null
+        ) : null,
         createElement(
           "div",
           { className: "sbfx-comments-panel__scroll" },
@@ -7461,6 +8849,54 @@ function VisualCommentsSection({
                   },
                   labels.capturedInAnotherState
                 ),
+                comment.anchor ? createElement(
+                  "p",
+                  {
+                    className: "sbfx-comments-panel__comment-anchor",
+                    "data-comment-anchor": comment.anchor.type,
+                    key: "anchor"
+                  },
+                  describeVisualCommentAnchor(comment.anchor)
+                ) : null,
+                anchorStatus.get(comment.id)?.layoutChanged ? createElement(
+                  "p",
+                  {
+                    className: "sbfx-comments-panel__comment-note",
+                    "data-comment-layout-changed": "true",
+                    key: "layout-changed"
+                  },
+                  labels.layoutChanged
+                ) : null,
+                comment.movedAt ? createElement(
+                  "p",
+                  {
+                    className: "sbfx-comments-panel__comment-note",
+                    "data-comment-moved": "true",
+                    key: "moved"
+                  },
+                  labels.movedSinceScreenshot
+                ) : null,
+                anchorStatus.get(comment.id)?.hidden ? createElement(
+                  "button",
+                  {
+                    className: "sbfx-review__button sbfx-comments-panel__show-location",
+                    "data-comment-show-location": comment.id,
+                    key: "show-location",
+                    onClick: () => showAnchoredLocation(comment),
+                    type: "button"
+                  },
+                  labels.showLocation
+                ) : null,
+                locationNotices[comment.id] ? createElement(
+                  "p",
+                  {
+                    className: "sbfx-comments-panel__comment-note",
+                    "data-comment-location-notice": "true",
+                    key: "location-notice",
+                    role: "status"
+                  },
+                  locationNotices[comment.id]
+                ) : null,
                 createElement(
                   "p",
                   { className: "sbfx-comments-panel__comment-body", key: "body" },
@@ -7495,7 +8931,7 @@ function VisualCommentsSection({
                         onClick: (event) => beginCommentEdit(
                           comment.id,
                           comment.body,
-                          comment.preview?.pin ?? null,
+                          isCommentPinEditable(comment) ? comment.preview?.pin ?? null : null,
                           kind,
                           event.currentTarget
                         ),
@@ -7530,7 +8966,7 @@ function VisualCommentsSection({
               "data-comments-empty": "true",
               key: "empty"
             },
-            viewedComments.length ? labels.noFilteredComments : labels.noComments
+            viewedInListedView.length ? labels.noFilteredComments : labels.noComments
           ),
           meetingRows.length ? createElement(
             "section",
@@ -7758,7 +9194,136 @@ function VisualCommentsSection({
         reportPending ? createElement("p", { className: "sbfx-review__error" }, "Comment saved; report rebuild pending.") : null,
         commentsCapabilityError ? createElement("p", { className: "sbfx-review__error" }, commentsCapabilityError) : null
       ),
-      editingComment ? createPortal(createElement(
+      editingComment && commentEditSurface === "panel" ? createPortal(
+        createElement(
+          "div",
+          {
+            "aria-label": `${labels.editComment} ${editingComment.ordinal}`,
+            className: "sbfx-comment-composer sbfx-review__composer sbfx-comments-panel__edit-panel",
+            "data-comment-edit-panel": editingComment.id,
+            "data-sbfx-capture-ignore": "true",
+            key: `edit-panel-${editingComment.id}`,
+            ref: commentEditPanelRef,
+            role: "dialog",
+            style: (() => {
+              const pin = savedPins.find((comment) => comment.id === editingComment.id);
+              const placement = getCommentComposerPlacement(
+                pin ? savedPinCenter(pin) : null,
+                viewportSize,
+                commentEditPanelHeight
+              );
+              return "dock" in placement ? {} : { left: `${placement.left}px`, top: `${placement.top}px` };
+            })()
+          },
+          // The screenshot taken with the comment, its point marked by the
+          // ordinal; the comment itself moves by dragging its pin.
+          editingComment.preview && !commentPreviewErrors[editingComment.id] ? createElement(
+            "div",
+            {
+              className: "sbfx-comments-panel__edit-panel-preview",
+              "data-comment-edit-panel-preview": "true",
+              key: "preview",
+              style: (() => {
+                const size = editPanelPreviewSize(
+                  editingComment.preview.width,
+                  editingComment.preview.height
+                );
+                return { blockSize: `${size.height}px`, inlineSize: `${size.width}px` };
+              })()
+            },
+            createElement("img", {
+              alt: `Screenshot for comment ${editingComment.ordinal}`,
+              onError: () => setCommentPreviewErrors((current) => ({ ...current, [editingComment.id]: true })),
+              src: editingComment.preview.imageUrl
+            }),
+            createElement(
+              "span",
+              {
+                "aria-hidden": "true",
+                className: "sbfx-review__pin sbfx-comments-panel__edit-panel-pin",
+                "data-comment-edit-panel-pin": "true",
+                style: {
+                  left: `${editingComment.preview.pin.xRatio * 100}%`,
+                  top: `${editingComment.preview.pin.yRatio * 100}%`
+                }
+              },
+              editingComment.ordinal
+            )
+          ) : createElement(
+            "p",
+            {
+              className: "sbfx-review__pin-card-unavailable",
+              "data-comment-edit-panel-screenshot-unavailable": "true",
+              key: "preview-unavailable"
+            },
+            labels.screenshotUnavailable
+          ),
+          editingComment.movedAt ? createElement(
+            "p",
+            {
+              className: "sbfx-comments-panel__comment-note",
+              "data-comment-edit-panel-moved": "true",
+              key: "moved"
+            },
+            labels.movedSinceScreenshot
+          ) : null,
+          renderCommentKindControl(
+            editingCommentKind,
+            (kind) => {
+              setCommentKindDrafts((current) => ({ ...current, [editingComment.id]: kind }));
+              setCommentErrors((current) => ({ ...current, [editingComment.id]: "" }));
+            },
+            "data-comment-edit-kind",
+            false
+          ),
+          createElement("textarea", {
+            "aria-label": labels.commentBody,
+            className: "sbfx-comment-composer__body",
+            maxLength: VISUAL_COMMENT_LIMITS.maxBodyLength,
+            onChange: (event) => {
+              const value = event.currentTarget.value;
+              setCommentDrafts((current) => ({ ...current, [editingComment.id]: value }));
+              setCommentErrors((current) => ({ ...current, [editingComment.id]: "" }));
+            },
+            ref: commentEditTextareaRef,
+            rows: 3,
+            value: editingCommentDraft
+          }),
+          commentErrors[editingComment.id] ? createElement(
+            "p",
+            { "aria-live": "polite", className: "sbfx-review__error", key: "error" },
+            commentErrors[editingComment.id]
+          ) : null,
+          createElement(
+            "div",
+            { className: "sbfx-comment-composer__actions", key: "actions" },
+            createElement(
+              "button",
+              {
+                className: "sbfx-review__button sbfx-review__button--secondary",
+                "data-comment-edit-cancel": "true",
+                disabled: commentMutationId === editingComment.id,
+                onClick: () => cancelCommentEdit(editingComment.id),
+                type: "button"
+              },
+              labels.cancelCommentEdit
+            ),
+            createElement(
+              "button",
+              {
+                className: "sbfx-review__button",
+                "data-comment-edit-save": "true",
+                disabled: commentMutationId === editingComment.id || !editingCommentDraftIsValid,
+                onClick: () => void saveCommentEdit(editingComment.id),
+                type: "button"
+              },
+              labels.saveCommentChanges
+            )
+          )
+        ),
+        document.body
+      ) : null,
+      editingComment && commentEditSurface === "modal" ? createPortal(createElement(
         "div",
         {
           className: "sbfx-comments-panel__edit-backdrop",
@@ -7802,6 +9367,7 @@ function VisualCommentsSection({
             },
             createElement("img", {
               alt: `Screenshot evidence for comment ${editingComment.ordinal}`,
+              ref: commentEditImageRef,
               onError: () => {
                 setCommentPreviewErrors((current) => ({
                   ...current,
@@ -7835,6 +9401,38 @@ function VisualCommentsSection({
               },
               editingComment.ordinal
             )
+          ) : editingCommentScreenshot ? createElement(
+            "div",
+            {
+              className: "sbfx-review__snapshot-preview sbfx-comments-panel__edit-preview",
+              "data-comment-evidence-preview": "true",
+              "data-comment-edit-fixed-preview": "true",
+              style: {
+                aspectRatio: `${editingCommentScreenshot.width}/${editingCommentScreenshot.height}`
+              }
+            },
+            createElement("img", {
+              alt: `Screenshot evidence for comment ${editingComment.ordinal}`,
+              onError: () => setCommentPreviewErrors((current) => ({
+                ...current,
+                [editingComment.id]: true
+              })),
+              src: editingCommentScreenshot.imageUrl
+            }),
+            // Where the comment was made; the comment moves with its pin.
+            createElement(
+              "span",
+              {
+                "aria-hidden": "true",
+                className: "sbfx-review__pin",
+                "data-comment-edit-fixed-pin": "true",
+                style: {
+                  left: `${editingCommentScreenshot.pin.xRatio * 100}%`,
+                  top: `${editingCommentScreenshot.pin.yRatio * 100}%`
+                }
+              },
+              editingComment.ordinal
+            )
           ) : createElement(
             "p",
             {
@@ -7843,6 +9441,14 @@ function VisualCommentsSection({
             },
             labels.evidenceUnavailable
           ),
+          editingComment.movedAt ? createElement(
+            "p",
+            {
+              className: "sbfx-comments-panel__comment-note",
+              "data-comment-edit-moved": "true"
+            },
+            labels.movedSinceScreenshot
+          ) : null,
           editingCommentHasPreview ? createElement(
             "p",
             {
@@ -8128,6 +9734,8 @@ function VisualCommentsSection({
     ...savedPins.map((comment) => {
       const kind = resolveVisualCommentKind(comment.kind);
       const pin = comment.pin ?? comment.preview?.pin;
+      const anchoredPlacement = comment.anchor ? anchoredPlacements.get(comment.id) ?? null : void 0;
+      const movingCenter = movingPinCenter(comment.id);
       return createElement(
         "button",
         {
@@ -8141,23 +9749,39 @@ function VisualCommentsSection({
           "data-passive": isCapturing || isComposerOpen ? "true" : void 0,
           "data-selected": selectedCommentId === comment.id ? "true" : void 0,
           "data-saved-comment-pin": comment.id,
+          "data-anchored-pin": comment.anchor ? "true" : void 0,
+          "data-dragging": draggingPinId === comment.id ? "true" : void 0,
+          "data-saving": pendingLocations[comment.id] ? "true" : void 0,
           "data-sbfx-capture-ignore": "true",
           key: `saved-pin-${comment.id}`,
           // The pin sits over the prototype; none of its events may reach it.
           onClick: (event) => {
             event.preventDefault();
             event.stopPropagation();
-            setSelectedCommentId(comment.id);
-            revealComment(comment.id);
+            if (suppressPinClickRef.current === comment.id) {
+              suppressPinClickRef.current = null;
+              return;
+            }
+            activateSavedPin(comment, event.currentTarget);
           },
-          onPointerDown: (event) => event.stopPropagation(),
-          onPointerUp: (event) => event.stopPropagation(),
+          onKeyDown: (event) => handleSavedPinKeyDown(comment, event),
+          onPointerCancel: (event) => {
+            event.stopPropagation();
+            cancelSavedPinDrag();
+          },
+          onPointerDown: (event) => handleSavedPinPointerDown(comment, event),
+          onPointerMove: (event) => handleSavedPinPointerMove(comment, event),
+          onPointerUp: (event) => handleSavedPinPointerUp(comment, event),
           onMouseEnter: () => setHoveredPinId(comment.id),
           onMouseLeave: () => setHoveredPinId((current) => current === comment.id ? null : current),
           "aria-describedby": pinCardComment?.id === comment.id ? pinCardId : void 0,
-          style: {
+          style: movingCenter ? { left: `${movingCenter.left}px`, top: `${movingCenter.top}px` } : anchoredPlacement === void 0 ? {
             left: `${captureTargetRect.left + captureTargetRect.width * pin.xRatio}px`,
             top: `${captureTargetRect.top + captureTargetRect.height * pin.yRatio}px`
+          } : {
+            display: anchoredPlacement ? "" : "none",
+            left: `${anchoredPlacement?.left ?? 0}px`,
+            top: `${anchoredPlacement?.top ?? 0}px`
           },
           type: "button"
         },
@@ -8191,6 +9815,12 @@ function VisualCommentsSection({
         { className: "sbfx-review__pin-card-meta" },
         `${pinCardComment.authorName} \xB7 ${formatCommentTime(pinCardComment.createdAt)}`
       ),
+      // The screenshot still shows where the comment was made.
+      pinCardComment.movedAt ? createElement(
+        "p",
+        { className: "sbfx-review__pin-card-meta", "data-pin-card-moved": "true" },
+        labels.movedSinceScreenshot
+      ) : null,
       pinCardComment.preview && !pinCardImageErrors[pinCardComment.id] ? createElement("img", {
         alt: `Screenshot for comment ${pinCardComment.ordinal}`,
         className: "sbfx-review__pin-card-image",
@@ -8562,11 +10192,9 @@ function FigmaExportReview({
     ) : null
   );
 }
-function createFigmaExportReviewDecorator(figmaExportOptions, reviewOptions) {
-  const figmaExportDecorator = createFigmaExportDecorator(figmaExportOptions);
+function createReviewWorkspaceSync(figmaExportOptions, reviewOptions) {
   const resolvedOptions = resolveFigmaExportAddonOptions(figmaExportOptions);
-  return function figmaExportReviewDecorator(Story, context) {
-    const storyResult = figmaExportDecorator(Story, context);
+  return function syncReviewForContext(context) {
     const includedStory = isStoryIncludedForFigmaExport(
       context.title,
       resolvedOptions
@@ -8589,8 +10217,32 @@ function createFigmaExportReviewDecorator(figmaExportOptions, reviewOptions) {
       viewMode: context.viewMode,
       visualComments: reviewOptions?.visualComments ?? resolvedOptions.visualComments
     });
+  };
+}
+function registerReviewCaptureHook(figmaExportOptions, reviewOptions) {
+  const visualComments = reviewOptions?.visualComments ?? resolveFigmaExportAddonOptions(figmaExportOptions).visualComments;
+  registerVisualCommentCaptureHook(visualComments?.captureSelector);
+}
+function createFigmaExportReviewDecorator(figmaExportOptions, reviewOptions) {
+  const figmaExportDecorator = createFigmaExportDecorator(figmaExportOptions);
+  const syncReviewForContext = createReviewWorkspaceSync(figmaExportOptions, reviewOptions);
+  registerReviewCaptureHook(figmaExportOptions, reviewOptions);
+  return function figmaExportReviewDecorator(Story, context) {
+    if (isHostRenderActive()) return Story();
+    const storyResult = figmaExportDecorator(Story, context);
+    syncReviewForContext(context);
     return storyResult;
   };
+}
+function configureFigmaExportReview(figmaExportOptions, reviewOptions) {
+  const syncReviewForContext = createReviewWorkspaceSync(figmaExportOptions, reviewOptions);
+  registerReviewCaptureHook(figmaExportOptions, reviewOptions);
+  registerFigmaReviewSync({
+    sync(context) {
+      syncFigmaExportOverlay(context, figmaExportOptions);
+      syncReviewForContext(context);
+    }
+  });
 }
 var reviewDomRoot;
 var reviewDomHost;
@@ -8625,6 +10277,7 @@ if (hotModule) {
 }
 export {
   FigmaExportReview,
+  configureFigmaExportReview,
   createFigmaExportReviewDecorator,
   defaultFigmaReviewStatusApiPath,
   destroyFigmaReviewWorkspace,

@@ -4,3 +4,7 @@
 .export-overlay.bundle.css
 .story-fidelity-fixture.bundle.js
 .last-story-fidelity-payload.json
+.review-decorator-preview.bundle.js
+.review-decorator-preview.bundle.css
+.review-decorator-review.bundle.js
+.review-decorator-review.bundle.css

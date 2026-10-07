@@ -34,4 +34,4 @@ UI Flow route cards and Static Flow route cards use the same route UI size contr
 
 Static Flow reads saved positions from `prototype-inspector:flow-layout:example-prototype` before falling back to `flowPosition` metadata. When another Storybook tab updates that layout through UI Flow dragging, Static Flow refreshes from storage so the export surface matches the reviewed canvas positions.
 
-Static Flow is the static export counterpart of UI Flow. It uses the same dotted canvas, route card chrome, decision node shape, dashed orthogonal edge style, color variants, arrowheads, and label pill pattern so Figma review exports match the interactive review surface.
+Static Flow is the static export counterpart of UI Flow. It keeps the UI Flow geometry, meaning the same saved positions and the same frame box sizes, so Figma review exports place every route and node where reviewers left them on the canvas. Canvas background, frame chrome, edge routing and label styling are not required to match.

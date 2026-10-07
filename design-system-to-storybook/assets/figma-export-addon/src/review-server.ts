@@ -400,7 +400,7 @@ export async function handleVisualCommentsRequest({
         const requestBody = await readRequestBodyLimited(request);
         if (!isRecord(requestBody)) {
           throw new RequestBodyError(
-            "Body must contain resolved, or one or more of body, pin, and kind.",
+            "Body must contain resolved, or one or more of body, pin, kind, anchor, and movedAt.",
             400,
           );
         }
@@ -417,10 +417,8 @@ export async function handleVisualCommentsRequest({
           );
           return;
         }
-        if (
-          keys.length >= 1 &&
-          keys.every((key) => key === "body" || key === "pin" || key === "kind")
-        ) {
+        const detailKeys = ["body", "pin", "kind", "anchor", "movedAt"];
+        if (keys.length >= 1 && keys.every((key) => detailKeys.includes(key))) {
           sendJson(
             response,
             200,
@@ -429,7 +427,7 @@ export async function handleVisualCommentsRequest({
           return;
         }
         throw new RequestBodyError(
-          "Body must contain exclusive boolean resolved or one or more of body, pin, and kind.",
+          "Body must contain exclusive boolean resolved or one or more of body, pin, kind, anchor, and movedAt.",
           400,
         );
       }

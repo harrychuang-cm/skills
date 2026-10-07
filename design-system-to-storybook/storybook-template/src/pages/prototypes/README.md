@@ -64,7 +64,7 @@ Route metadata should include:
 - `navigationId`: Bottom navigation or shell context id.
 - `component`: Primary design-system component or composed surface. This is a display-only summary string; the structured composition lives in `meta.components`.
 - `description`: What the route proves.
-- `flowGroup`: Optional visual grouping label for UI Flow cards.
+- `flowGroup`: Optional grouping label. The Static Flow export prints it on route cards; the UI Flow canvas shows it next to the route id while a frame is hovered.
 - `flowPosition`: Optional `{ x, y }` coordinate for stable UI Flow layout.
 
 Transition metadata should include:
@@ -184,7 +184,7 @@ The story must:
 - In flow preview mode (the `isFlowPreview` prop or `prototypeFlowPreview=true` in the URL), hide the prototype's own chrome — its header/topbar and route navigation — so flow cards and iframe previews show only real page content.
 - Place `data-prototype-route-preview="true"` on the actual route UI boundary so UI Flow can auto-fit the iframe width and height to the rendered surface.
 - When adding a Static Flow export, read the same saved UI Flow layout positions and reserve the same route UI width and height as the marked UI Flow preview surface; headers, borders, and flow labels should be outer chrome.
-- Keep Static Flow visually equivalent to UI Flow: dotted canvas, route card chrome, flow-only node shapes, dashed edges, color variants, arrowheads, and label pills should match the interactive review canvas.
+- Keep Static Flow geometry-aligned with UI Flow: the same saved positions and the same frame box sizes (route UI size plus outer chrome), so a frame sits at the same offset from every other frame in both. Canvas background, frame chrome, edge routing and label styling may differ between the two.
 
 ### 7. Review And Verification
 
@@ -249,9 +249,9 @@ Before implementation starts, confirm:
 - Route iframe previews should auto-fit the measured width and height of the marked route UI, not a hardcoded project viewport.
 - Static Flow route previews should use the same UI width and height contract as UI Flow iframe previews.
 - Static Flow should apply saved UI Flow layout positions before falling back to route metadata positions.
-- Static Flow should use the same canvas, route card, edge, arrow, node shape, and label conventions as UI Flow.
+- Static Flow should keep the UI Flow geometry: the same saved positions and frame box sizes. Visual styling may differ.
 - Flow nodes should be draggable so reviewers can move route cards while inspecting the flow.
-- The UI Flow canvas should open in a fit-to-view scale and provide zoom controls for closer review.
+- The UI Flow canvas should open fitted to all frames, keep the fit while previews resize until the reviewer pans or zooms, and support zoom from 5% to 400% through pinch, Cmd/Ctrl + wheel, the zoom controls and menu, and keyboard shortcuts.
 - The UI must use existing components and design tokens before adding prototype-only styles.
 - Fixtures must be deterministic, local, and documented.
 - Every important user action must either navigate, update local state, or be called out as out of scope.
@@ -266,4 +266,4 @@ Use `example-prototype` as the first reference implementation. It demonstrates:
 - Local fixtures separated from render logic.
 - Route and transition metadata separated from UI code.
 - PRD and specs loaded into `parameters.prototype.docs`.
-- Static Flow export that mirrors the interactive UI Flow review surface.
+- Static Flow export that keeps the UI Flow geometry (saved positions and frame sizes).

@@ -1,6 +1,7 @@
 import {
   beginVisualCommentCapture,
   resolveVisualCommentTarget,
+  type VisualCommentAnchor,
   type VisualCommentCaptureController,
   type VisualCommentKind,
   type VisualCommentPin,
@@ -54,6 +55,11 @@ export type VisualCommentOverview = {
     } | null;
     resolvedAt?: string | null;
     state?: { routeId?: string; stateId?: string };
+    // Host-declared view; servers before views existed omit it (read as story).
+    view?: string;
+    anchor?: VisualCommentAnchor;
+    // Set when the comment was moved somewhere its screenshot no longer shows.
+    movedAt?: string;
   }>;
   // Present when the overview is requested for a Story: the panel's meeting rows.
   meetings?: Array<{
@@ -93,6 +99,7 @@ export type VisualCommentMeeting = {
         stateId?: string;
         title: string;
         url?: string;
+        view?: string;
       };
       viewport: { devicePixelRatio: number; height: number; width: number };
     }
@@ -104,6 +111,8 @@ export type VisualCommentMeeting = {
     id: string;
     kind?: VisualCommentKind;
     pin: VisualCommentPin;
+    anchor?: VisualCommentAnchor;
+    movedAt?: string;
     resolvedAt?: string | null;
   }>;
 };

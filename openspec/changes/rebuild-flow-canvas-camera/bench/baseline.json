@@ -1,0 +1,732 @@
+{
+  "schema": "prototype-flow-canvas-bench-set/1",
+  "createdAt": "2026-10-05T07:15:55.576Z",
+  "updatedAt": "2026-10-05T08:35:13.600Z",
+  "storybookMode": "dev",
+  "headless": true,
+  "chromeVersion": "Chrome/154.0.8037.95",
+  "machineModel": "Mac16,1",
+  "prototypeInspectorBuildTag": "runtime-drift-2026-10-05",
+  "runs": {
+    "growth-fund": {
+      "schema": "prototype-flow-canvas-bench/1",
+      "label": "growth-fund",
+      "measuredAt": "2026-10-05T08:34:31.147Z",
+      "url": "http://localhost:6120/iframe.html?id=pages-prototypes-bench-growth-fund--default&globals=prototypeMode:flow&viewMode=story",
+      "storyUrl": "http://localhost:6120/iframe.html?id=pages-prototypes-bench-growth-fund--default&globals=prototypeMode:story&viewMode=story",
+      "environment": {
+        "chromeVersion": "Chrome/154.0.8037.95",
+        "chromeUserAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/154.0.0.0 Safari/537.36",
+        "chromePath": "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+        "headless": true,
+        "storybookMode": "dev",
+        "storybookModeEvidence": "/@vite/client is loaded",
+        "machineModel": "Mac16,1",
+        "machine": {
+          "cpu": "Apple M4",
+          "logicalCpus": 10,
+          "memoryGb": 16,
+          "model": "Mac16,1",
+          "node": "v26.8.2",
+          "os": "darwin 25.5.0"
+        },
+        "viewport": {
+          "width": 1600,
+          "height": 1000,
+          "deviceScaleFactor": 1
+        },
+        "projectRoot": "/private/tmp/claude-501/-Users-a04-0214-0320-Public-works-cm-skills/85b42748-e122-4667-ab5e-7cf897caebfe/scratchpad/camera-1-1/fixture-b",
+        "prototypeInspectorBuildTag": "runtime-drift-2026-10-05",
+        "inspectorPreviewFile": "/private/tmp/claude-501/-Users-a04-0214-0320-Public-works-cm-skills/85b42748-e122-4667-ab5e-7cf897caebfe/scratchpad/camera-1-1/fixture-b/.storybook/prototype-inspector/preview.js",
+        "inspectorDeclares": {
+          "commitMark": false,
+          "labelPlacementMark": false,
+          "strokeZoomVariable": false
+        }
+      },
+      "prototype": {
+        "id": "bench-growth-fund",
+        "storyId": "pages-prototypes-bench-growth-fund--default",
+        "title": "Bench Growth Fund",
+        "routes": 30,
+        "flowNodes": 2,
+        "transitions": 56,
+        "keyEdges": 32,
+        "declaredViewport": null
+      },
+      "method": {
+        "input": "synthetic DOM events dispatched in the page (WheelEvent, PointerEvent pointerId 1)",
+        "warmup": "one unmeasured UI Flow visit before measuring",
+        "readiness": "Story: #storybook-root rendered; UI Flow: every iframe in the canvas shows [data-prototype-route-preview] or #storybook-root content",
+        "settleBeforeGestures": "no pi:flow:commit for 1000 ms when the build emits it, otherwise a fixed 1500 ms",
+        "cameraIdleMs": 120,
+        "wheelWindows": "duringGesture = [first event, last event + 120 ms); afterIdle100ms = the next 100 ms",
+        "dragWindows": "duringGesture = [first pointermove, pointerup); afterRelease100ms = [pointerup, pointerup + 100 ms]",
+        "pinch": {
+          "events": 30,
+          "ctrlKey": true,
+          "deltaY": -2.9559,
+          "cadence": "one event per animation frame",
+          "anchor": "centre of the on-screen route frames (canvas centre when none is on screen)"
+        },
+        "pan": {
+          "events": 30,
+          "deltaX": 6,
+          "deltaY": 8,
+          "cadence": "one event per animation frame",
+          "anchor": "centre of the on-screen route frames (canvas centre when none is on screen)"
+        },
+        "drag": {
+          "moves": 20,
+          "stepPx": {
+            "x": 5,
+            "y": 3
+          },
+          "target": "route frame whose preview shows the largest on-screen area (ties: nearest the canvas centre), pressed at the centre of the visible part of its preview",
+          "syncCost": "pointermove dispatch until both a setTimeout(0) and a MessageChannel round trip have run (includes the React render the move scheduled); next move after requestAnimationFrame",
+          "msPerMove": "(pointerup - first pointermove) / moves; 16.7 means one move per frame at 60 Hz",
+          "localStorageWindow": "[pointerdown, pointerup + 1000 ms]"
+        },
+        "memory": "after HeapProfiler.collectGarbage; rendererRssMb sums the RSS of the --type=renderer processes that appeared after the page's target was created (spare renderer disabled); instanceRenderer* covers every renderer of this Chrome",
+        "percentiles": "median interpolated; p95 nearest-rank"
+      },
+      "storyMode": {
+        "readyMs": 182.5,
+        "documents": 1,
+        "domNodes": 367,
+        "jsEventListeners": 172,
+        "jsHeapTotalMb": 11.5,
+        "jsHeapUsedMb": 10.6,
+        "rendererProcesses": 1,
+        "rendererRssMb": 207.8,
+        "instanceRendererProcesses": 3,
+        "instanceRendererRssMb": 416.8,
+        "pageErrors": []
+      },
+      "idleRenderer": {
+        "rendererProcesses": 2,
+        "rendererRssMb": 241.1,
+        "instanceRendererProcesses": 2,
+        "instanceRendererRssMb": 241.1
+      },
+      "uiFlow": {
+        "selectorSet": "scroll",
+        "selectors": {
+          "name": "scroll",
+          "description": "pre-camera canvas: native scroll container with a scaled canvas",
+          "root": ".prototype-inspector--flow",
+          "viewport": ".prototype-inspector__flow-wrap",
+          "world": ".prototype-inspector__flow-canvas",
+          "overlay": null,
+          "routeFrame": ".prototype-inspector__flow-card",
+          "flowNode": ".prototype-inspector__flow-node"
+        },
+        "readyMs": 2253.7,
+        "readyTimedOut": false,
+        "routeFrames": 30,
+        "flowNodes": 2,
+        "iframes": 30,
+        "iframeErrors": 0,
+        "documents": 31,
+        "domNodes": 12830,
+        "jsEventListeners": 5367,
+        "jsHeapTotalMb": 83.3,
+        "jsHeapUsedMb": 78.9,
+        "rendererProcesses": 1,
+        "rendererRssMb": 468.8,
+        "instanceRendererProcesses": 3,
+        "instanceRendererRssMb": 669.8,
+        "settle": {
+          "rule": "fixed 1500 ms settle (build has no pi:flow:commit mark)",
+          "timedOut": false,
+          "waitedMs": 1500
+        },
+        "openLayoutStorage": {
+          "key": "prototype-inspector:flow-layout:bench-growth-fund",
+          "seededPositions": [
+            "touch-checkout",
+            "__flow-bench-unknown-node__"
+          ],
+          "seeded": true,
+          "setItem": 0,
+          "removeItem": 0,
+          "untilGestureStart": {
+            "setItem": 0,
+            "removeItem": 0
+          },
+          "seedPreservedAtReady": true
+        },
+        "mainFrameNavigations": 1,
+        "pageErrors": [],
+        "instrumentationErrors": []
+      },
+      "marks": {
+        "commit": false,
+        "labelPlacement": false,
+        "strokeZoomVariable": false
+      },
+      "gestures": {
+        "pinch": {
+          "events": 30,
+          "commitMarks": {
+            "duringGesture": null,
+            "afterIdle100ms": null
+          },
+          "labelPlacementMarks": {
+            "duringGesture": null,
+            "afterIdle100ms": null
+          },
+          "durationMs": 491.8,
+          "longAnimationFrames": {
+            "count": 0,
+            "maxDurationMs": 0,
+            "totalBlockingMs": 0
+          },
+          "target": "div.prototype-inspector__flow-canvas",
+          "anchor": {
+            "source": "on-screen frames centre",
+            "x": 800,
+            "y": 468
+          },
+          "cameraBefore": {
+            "x": 0,
+            "y": 0,
+            "zoom": 0.1812
+          },
+          "cameraAfter": {
+            "x": 0,
+            "y": 0,
+            "zoom": 0.1812
+          },
+          "zoomLabelBefore": "18%",
+          "zoomLabelAfter": "18%",
+          "zoomSamples": [
+            0.1812,
+            0.1812,
+            0.1812,
+            0.1812,
+            0.1812,
+            0.1812,
+            0.1812,
+            0.1812,
+            0.1812,
+            0.1812,
+            0.1812,
+            0.1812,
+            0.1812,
+            0.1812,
+            0.1812,
+            0.1812,
+            0.1812,
+            0.1812,
+            0.1812,
+            0.1812,
+            0.1812,
+            0.1812,
+            0.1812,
+            0.1812,
+            0.1812,
+            0.1812,
+            0.1812,
+            0.1812,
+            0.1812,
+            0.1812,
+            0.1812
+          ],
+          "strokeZoom": {
+            "writes": null,
+            "bucketsCrossed": null,
+            "valueBefore": null,
+            "valueAfter": null
+          },
+          "settleAfter": {
+            "rule": "fixed 1500 ms settle (build has no pi:flow:commit mark)",
+            "timedOut": false,
+            "waitedMs": 1500
+          }
+        },
+        "pan": {
+          "events": 30,
+          "commitMarks": {
+            "duringGesture": null,
+            "afterIdle100ms": null
+          },
+          "labelPlacementMarks": {
+            "duringGesture": null,
+            "afterIdle100ms": null
+          },
+          "durationMs": 489.5,
+          "longAnimationFrames": {
+            "count": 0,
+            "maxDurationMs": 0,
+            "totalBlockingMs": 0
+          },
+          "target": "div.prototype-inspector__flow-canvas",
+          "anchor": {
+            "source": "on-screen frames centre",
+            "x": 800,
+            "y": 468
+          },
+          "cameraBefore": {
+            "x": 0,
+            "y": 0,
+            "zoom": 0.1812
+          },
+          "cameraAfter": {
+            "x": 0,
+            "y": 0,
+            "zoom": 0.1812
+          },
+          "zoomLabelBefore": "18%",
+          "zoomLabelAfter": "18%",
+          "settleAfter": {
+            "rule": "fixed 1500 ms settle (build has no pi:flow:commit mark)",
+            "timedOut": false,
+            "waitedMs": 1500
+          }
+        },
+        "drag": {
+          "pointerMoves": 20,
+          "stepPx": {
+            "x": 5,
+            "y": 3
+          },
+          "frame": "Plan setup",
+          "syncCostMs": {
+            "count": 20,
+            "median": 2,
+            "p95": 20.9,
+            "max": 26,
+            "mean": 5.3,
+            "samples": [
+              1.2,
+              2.3,
+              2,
+              1.9,
+              1.9,
+              2.3,
+              2.4,
+              2.2,
+              20.9,
+              26,
+              13.7,
+              13.5,
+              2.4,
+              1.8,
+              1.8,
+              2,
+              1.9,
+              1.9,
+              1.9,
+              2
+            ]
+          },
+          "msPerMove": 18.94,
+          "commitMarks": {
+            "duringGesture": null,
+            "afterRelease100ms": null
+          },
+          "labelPlacementMarks": {
+            "duringGesture": null,
+            "afterRelease100ms": null
+          },
+          "localStorageSetItem": 1,
+          "localStorageSetItemByKey": {
+            "prototype-inspector:flow-layout:bench-growth-fund": 1
+          },
+          "frameDeltaPx": {
+            "x": 100,
+            "y": 59.96
+          },
+          "longAnimationFrames": {
+            "count": 0,
+            "maxDurationMs": 0,
+            "totalBlockingMs": 0
+          },
+          "settleAfter": {
+            "rule": "fixed 1500 ms settle (build has no pi:flow:commit mark)",
+            "timedOut": false,
+            "waitedMs": 1500
+          }
+        }
+      },
+      "labelPlacement": null,
+      "traceFile": null,
+      "diagnostics": {
+        "cdpMessages": 1079,
+        "cdpMegabytes": 0.9,
+        "largestCdpMessageChars": 4554,
+        "largestCdpMessage": "Page.frameAttached"
+      },
+      "notes": [
+        "pre-camera canvas: ctrl+wheel and plain wheel events are synthetic, so they neither zoom (only Alt+wheel zooms) nor scroll the native container; the drag runs the real drag handlers",
+        "pi:flow:commit is not emitted by this build: commit counts are null",
+        "pi:flow:label-placement is not emitted by this build: placement counts and durations are null",
+        "--prototype-flow-stroke-zoom does not exist in this build: stroke-zoom writes and buckets are null"
+      ],
+      "attempts": 1
+    },
+    "100-route": {
+      "schema": "prototype-flow-canvas-bench/1",
+      "label": "100-route",
+      "measuredAt": "2026-10-05T08:35:13.444Z",
+      "url": "http://localhost:6120/iframe.html?id=pages-prototypes-bench-hundred-routes--default&globals=prototypeMode:flow&viewMode=story",
+      "storyUrl": "http://localhost:6120/iframe.html?id=pages-prototypes-bench-hundred-routes--default&globals=prototypeMode:story&viewMode=story",
+      "environment": {
+        "chromeVersion": "Chrome/154.0.8037.95",
+        "chromeUserAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/154.0.0.0 Safari/537.36",
+        "chromePath": "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+        "headless": true,
+        "storybookMode": "dev",
+        "storybookModeEvidence": "/@vite/client is loaded",
+        "machineModel": "Mac16,1",
+        "machine": {
+          "cpu": "Apple M4",
+          "logicalCpus": 10,
+          "memoryGb": 16,
+          "model": "Mac16,1",
+          "node": "v26.8.2",
+          "os": "darwin 25.5.0"
+        },
+        "viewport": {
+          "width": 1600,
+          "height": 1000,
+          "deviceScaleFactor": 1
+        },
+        "projectRoot": "/private/tmp/claude-501/-Users-a04-0214-0320-Public-works-cm-skills/85b42748-e122-4667-ab5e-7cf897caebfe/scratchpad/camera-1-1/fixture-b",
+        "prototypeInspectorBuildTag": "runtime-drift-2026-10-05",
+        "inspectorPreviewFile": "/private/tmp/claude-501/-Users-a04-0214-0320-Public-works-cm-skills/85b42748-e122-4667-ab5e-7cf897caebfe/scratchpad/camera-1-1/fixture-b/.storybook/prototype-inspector/preview.js",
+        "inspectorDeclares": {
+          "commitMark": false,
+          "labelPlacementMark": false,
+          "strokeZoomVariable": false
+        }
+      },
+      "prototype": {
+        "id": "bench-hundred-routes",
+        "storyId": "pages-prototypes-bench-hundred-routes--default",
+        "title": "Bench Hundred Routes",
+        "routes": 100,
+        "flowNodes": 0,
+        "transitions": 143,
+        "keyEdges": 110,
+        "declaredViewport": {
+          "formFactor": "phone",
+          "width": 375,
+          "height": 812
+        }
+      },
+      "method": {
+        "input": "synthetic DOM events dispatched in the page (WheelEvent, PointerEvent pointerId 1)",
+        "warmup": "one unmeasured UI Flow visit before measuring",
+        "readiness": "Story: #storybook-root rendered; UI Flow: every iframe in the canvas shows [data-prototype-route-preview] or #storybook-root content",
+        "settleBeforeGestures": "no pi:flow:commit for 1000 ms when the build emits it, otherwise a fixed 1500 ms",
+        "cameraIdleMs": 120,
+        "wheelWindows": "duringGesture = [first event, last event + 120 ms); afterIdle100ms = the next 100 ms",
+        "dragWindows": "duringGesture = [first pointermove, pointerup); afterRelease100ms = [pointerup, pointerup + 100 ms]",
+        "pinch": {
+          "events": 30,
+          "ctrlKey": true,
+          "deltaY": -2.9559,
+          "cadence": "one event per animation frame",
+          "anchor": "centre of the on-screen route frames (canvas centre when none is on screen)"
+        },
+        "pan": {
+          "events": 30,
+          "deltaX": 6,
+          "deltaY": 8,
+          "cadence": "one event per animation frame",
+          "anchor": "centre of the on-screen route frames (canvas centre when none is on screen)"
+        },
+        "drag": {
+          "moves": 20,
+          "stepPx": {
+            "x": 5,
+            "y": 3
+          },
+          "target": "route frame whose preview shows the largest on-screen area (ties: nearest the canvas centre), pressed at the centre of the visible part of its preview",
+          "syncCost": "pointermove dispatch until both a setTimeout(0) and a MessageChannel round trip have run (includes the React render the move scheduled); next move after requestAnimationFrame",
+          "msPerMove": "(pointerup - first pointermove) / moves; 16.7 means one move per frame at 60 Hz",
+          "localStorageWindow": "[pointerdown, pointerup + 1000 ms]"
+        },
+        "memory": "after HeapProfiler.collectGarbage; rendererRssMb sums the RSS of the --type=renderer processes that appeared after the page's target was created (spare renderer disabled); instanceRenderer* covers every renderer of this Chrome",
+        "percentiles": "median interpolated; p95 nearest-rank"
+      },
+      "storyMode": {
+        "readyMs": 162.8,
+        "documents": 1,
+        "domNodes": 411,
+        "jsEventListeners": 172,
+        "jsHeapTotalMb": 11.3,
+        "jsHeapUsedMb": 10.6,
+        "rendererProcesses": 1,
+        "rendererRssMb": 208.9,
+        "instanceRendererProcesses": 3,
+        "instanceRendererRssMb": 415.5,
+        "pageErrors": []
+      },
+      "idleRenderer": {
+        "rendererProcesses": 2,
+        "rendererRssMb": 250.8,
+        "instanceRendererProcesses": 2,
+        "instanceRendererRssMb": 250.8
+      },
+      "uiFlow": {
+        "selectorSet": "scroll",
+        "selectors": {
+          "name": "scroll",
+          "description": "pre-camera canvas: native scroll container with a scaled canvas",
+          "root": ".prototype-inspector--flow",
+          "viewport": ".prototype-inspector__flow-wrap",
+          "world": ".prototype-inspector__flow-canvas",
+          "overlay": null,
+          "routeFrame": ".prototype-inspector__flow-card",
+          "flowNode": ".prototype-inspector__flow-node"
+        },
+        "readyMs": 7533.6,
+        "readyTimedOut": false,
+        "routeFrames": 100,
+        "flowNodes": 0,
+        "iframes": 100,
+        "iframeErrors": 0,
+        "documents": 101,
+        "domNodes": 40873,
+        "jsEventListeners": 17329,
+        "jsHeapTotalMb": 242.3,
+        "jsHeapUsedMb": 234.5,
+        "rendererProcesses": 1,
+        "rendererRssMb": 938.8,
+        "instanceRendererProcesses": 3,
+        "instanceRendererRssMb": 1131.7,
+        "settle": {
+          "rule": "fixed 1500 ms settle (build has no pi:flow:commit mark)",
+          "timedOut": false,
+          "waitedMs": 1500
+        },
+        "openLayoutStorage": {
+          "key": "prototype-inspector:flow-layout:bench-hundred-routes",
+          "seededPositions": [
+            "screen-001",
+            "__flow-bench-unknown-node__"
+          ],
+          "seeded": true,
+          "setItem": 0,
+          "removeItem": 0,
+          "untilGestureStart": {
+            "setItem": 0,
+            "removeItem": 0
+          },
+          "seedPreservedAtReady": true
+        },
+        "mainFrameNavigations": 1,
+        "pageErrors": [],
+        "instrumentationErrors": []
+      },
+      "marks": {
+        "commit": false,
+        "labelPlacement": false,
+        "strokeZoomVariable": false
+      },
+      "gestures": {
+        "pinch": {
+          "events": 30,
+          "commitMarks": {
+            "duringGesture": null,
+            "afterIdle100ms": null
+          },
+          "labelPlacementMarks": {
+            "duringGesture": null,
+            "afterIdle100ms": null
+          },
+          "durationMs": 979.4,
+          "longAnimationFrames": {
+            "count": 0,
+            "maxDurationMs": 0,
+            "totalBlockingMs": 0
+          },
+          "target": "div.prototype-inspector__flow-canvas",
+          "anchor": {
+            "source": "on-screen frames centre",
+            "x": 800,
+            "y": 515
+          },
+          "cameraBefore": {
+            "x": 0,
+            "y": 0,
+            "zoom": 0.15
+          },
+          "cameraAfter": {
+            "x": 0,
+            "y": 0,
+            "zoom": 0.15
+          },
+          "zoomLabelBefore": "15%",
+          "zoomLabelAfter": "15%",
+          "zoomSamples": [
+            0.15,
+            0.15,
+            0.15,
+            0.15,
+            0.15,
+            0.15,
+            0.15,
+            0.15,
+            0.15,
+            0.15,
+            0.15,
+            0.15,
+            0.15,
+            0.15,
+            0.15,
+            0.15,
+            0.15,
+            0.15,
+            0.15,
+            0.15,
+            0.15,
+            0.15,
+            0.15,
+            0.15,
+            0.15,
+            0.15,
+            0.15,
+            0.15,
+            0.15,
+            0.15,
+            0.15
+          ],
+          "strokeZoom": {
+            "writes": null,
+            "bucketsCrossed": null,
+            "valueBefore": null,
+            "valueAfter": null
+          },
+          "settleAfter": {
+            "rule": "fixed 1500 ms settle (build has no pi:flow:commit mark)",
+            "timedOut": false,
+            "waitedMs": 1500
+          }
+        },
+        "pan": {
+          "events": 30,
+          "commitMarks": {
+            "duringGesture": null,
+            "afterIdle100ms": null
+          },
+          "labelPlacementMarks": {
+            "duringGesture": null,
+            "afterIdle100ms": null
+          },
+          "durationMs": 994.7,
+          "longAnimationFrames": {
+            "count": 0,
+            "maxDurationMs": 0,
+            "totalBlockingMs": 0
+          },
+          "target": "div.prototype-inspector__flow-canvas",
+          "anchor": {
+            "source": "on-screen frames centre",
+            "x": 800,
+            "y": 515
+          },
+          "cameraBefore": {
+            "x": 0,
+            "y": 0,
+            "zoom": 0.15
+          },
+          "cameraAfter": {
+            "x": 0,
+            "y": 0,
+            "zoom": 0.15
+          },
+          "zoomLabelBefore": "15%",
+          "zoomLabelAfter": "15%",
+          "settleAfter": {
+            "rule": "fixed 1500 ms settle (build has no pi:flow:commit mark)",
+            "timedOut": false,
+            "waitedMs": 1500
+          }
+        },
+        "drag": {
+          "pointerMoves": 20,
+          "stepPx": {
+            "x": 5,
+            "y": 3
+          },
+          "frame": "Screen 036",
+          "syncCostMs": {
+            "count": 20,
+            "median": 45,
+            "p95": 65.2,
+            "max": 217,
+            "mean": 53.22,
+            "samples": [
+              0.4,
+              59.1,
+              53.9,
+              217,
+              2.7,
+              45.4,
+              46.6,
+              43.5,
+              44.6,
+              42.5,
+              42.5,
+              42.7,
+              42.4,
+              42.8,
+              42.4,
+              57.6,
+              57.1,
+              65.2,
+              59.6,
+              56.4
+            ]
+          },
+          "msPerMove": 60.03,
+          "commitMarks": {
+            "duringGesture": null,
+            "afterRelease100ms": null
+          },
+          "labelPlacementMarks": {
+            "duringGesture": null,
+            "afterRelease100ms": null
+          },
+          "localStorageSetItem": 1,
+          "localStorageSetItemByKey": {
+            "prototype-inspector:flow-layout:bench-hundred-routes": 1
+          },
+          "frameDeltaPx": {
+            "x": 100.05,
+            "y": 60
+          },
+          "longAnimationFrames": {
+            "count": 9,
+            "maxDurationMs": 196.3,
+            "totalBlockingMs": 241.8
+          },
+          "settleAfter": {
+            "rule": "fixed 1500 ms settle (build has no pi:flow:commit mark)",
+            "timedOut": false,
+            "waitedMs": 1500
+          }
+        }
+      },
+      "labelPlacement": null,
+      "traceFile": null,
+      "diagnostics": {
+        "cdpMessages": 2794,
+        "cdpMegabytes": 2.1,
+        "largestCdpMessageChars": 4554,
+        "largestCdpMessage": "Page.frameAttached"
+      },
+      "notes": [
+        "pre-camera canvas: ctrl+wheel and plain wheel events are synthetic, so they neither zoom (only Alt+wheel zooms) nor scroll the native container; the drag runs the real drag handlers",
+        "pi:flow:commit is not emitted by this build: commit counts are null",
+        "pi:flow:label-placement is not emitted by this build: placement counts and durations are null",
+        "--prototype-flow-stroke-zoom does not exist in this build: stroke-zoom writes and buckets are null"
+      ],
+      "attempts": 1
+    }
+  }
+}

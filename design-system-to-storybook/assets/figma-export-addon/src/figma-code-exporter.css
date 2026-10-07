@@ -1,5 +1,12 @@
 @import "./review.css";
 
+/* Defined on html so the #storybook-root reservation rules (outside the
+   workspace subtree) resolve the same sizes the workspace uses. */
+html[data-sbfx-workspace-open="true"] {
+  --sbfx-workspace-reserved-inline-size: min(344px, 100vw);
+  --sbfx-workspace-reserved-block-size: min(38vh, 340px);
+}
+
 .sbfx-workspace {
   --sbfx-accent: #6f63ff;
   --sbfx-accent-hover: #8177ff;
@@ -15,9 +22,7 @@
   --sbfx-success: #32d583;
   --sbfx-error: #ff5f7a;
   --sbfx-workspace-inline-size: min(320px, calc(100vw - (var(--sbfx-offset, 24px) * 2)));
-  --sbfx-workspace-reserved-inline-size: min(344px, 100vw);
   --sbfx-workspace-block-size: calc(100vh - (var(--sbfx-offset, 24px) * 3) - 36px);
-  --sbfx-workspace-reserved-block-size: min(38vh, 340px);
 
   position: fixed;
   z-index: var(--sbfx-z-index, 20);
@@ -73,7 +78,9 @@ html[data-sbfx-comments-open="true"] .sbfx-workspace {
   display: none;
 }
 
-html[data-sbfx-workspace-open="true"][data-sbfx-workspace-orientation="side"] #storybook-root {
+/* A host-declared canvas pans, so it keeps its full size and the workspace
+   floats above it; only a Story root without one is narrowed. */
+html[data-sbfx-workspace-open="true"][data-sbfx-workspace-orientation="side"]:not([data-sbfx-workspace-collapsed="true"]) #storybook-root:not(:has([data-sbfx-canvas])) {
   box-sizing: border-box;
   max-inline-size: calc(100vw - var(--sbfx-workspace-reserved-inline-size));
 }
@@ -112,7 +119,7 @@ html[data-sbfx-workspace-open="true"][data-sbfx-workspace-orientation="side"] #s
     max-inline-size: calc(100vw - (var(--sbfx-mobile-offset, 16px) * 2));
   }
 
-  html[data-sbfx-workspace-open="true"][data-sbfx-workspace-orientation="bottom"] #storybook-root {
+  html[data-sbfx-workspace-open="true"][data-sbfx-workspace-orientation="bottom"]:not([data-sbfx-workspace-collapsed="true"]) #storybook-root:not(:has([data-sbfx-canvas])) {
     box-sizing: border-box;
     max-block-size: calc(100vh - var(--sbfx-workspace-reserved-block-size));
     overflow: auto;
@@ -273,6 +280,25 @@ html[data-sbfx-workspace-open="true"][data-sbfx-workspace-orientation="side"] #s
   line-height: 18px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Parts hidden while the host declares data-sbfx-export="unavailable". */
+.sbfx-exporter [hidden] {
+  display: none !important;
+}
+
+.sbfx-exporter__unavailable {
+  margin: 0;
+  color: var(--sbfx-muted);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 18px;
+}
+
+.sbfx-exporter__unavailable-link {
+  color: var(--sbfx-accent-hover);
+  font-weight: 700;
+  text-decoration: underline;
 }
 
 .sbfx-exporter__progress {

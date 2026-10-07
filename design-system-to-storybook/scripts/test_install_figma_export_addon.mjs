@@ -19,6 +19,7 @@ try {
   testPackageManagerFlagsAreAccepted();
   testVueWiringIsGeneratedIdempotently();
   testUnsupportedReviewFallsBackToCoreWiring();
+  await testAddonIsPlacedBeforeInspectorPreset();
   console.log("Figma export addon installer tests passed.");
 } finally {
   fs.rmSync(tempRoot, { recursive: true, force: true });
@@ -173,7 +174,8 @@ export default preview;
   assert.match(preview, /withFigmaExportPreview\(preview\)/);
   assert.match(mainWiring, /createFigmaReviewStatusPlugin/);
   assert.match(mainWiring, /commentsDir/);
-  assert.match(previewWiring, /createFigmaExportReviewDecorator/);
+  assert.match(previewWiring, /configureFigmaExportReview\(addon, review\)/);
+  assert.doesNotMatch(previewWiring, /createFigmaExportReviewDecorator/);
   assert.match(previewWiring, /createFigmaExportGlobalTypes/);
   assert.match(previewWiring, /createFigmaExportInitialGlobals/);
   assert.doesNotMatch(previewWiring, /from ["']react["']/);
@@ -212,6 +214,66 @@ function testUnsupportedReviewFallsBackToCoreWiring() {
   assert.doesNotMatch(mainWiring, /createFigmaReviewStatusPlugin/);
   assert.match(previewWiring, /createFigmaExportDecorator/);
   assert.doesNotMatch(previewWiring, /createFigmaExportReviewDecorator/);
+}
+
+// The addon's host decorator only wraps Prototype Inspector modes when the
+// addon precedes the inspector preset in addons (Storybook applies later
+// addon files as outer decorators).
+async function testAddonIsPlacedBeforeInspectorPreset() {
+  const fullProject = createProject("order-full", {
+    devDependencies: { "@storybook/vue3-vite": "^10.4.1", storybook: "^10.4.1" },
+  });
+  const coreProject = createProject("order-core", {
+    devDependencies: { "@storybook/react-webpack5": "^10.4.1", storybook: "^10.4.1" },
+  }, "@storybook/react-webpack5");
+  for (const project of [fullProject, coreProject]) {
+    const result = run(project, "--configure-only", "--json");
+    assert.equal(result.status, 0, result.stderr);
+  }
+  const addon = "@harrychuang/storybook-addon-figma-export";
+  const inspector = "/project/.storybook/prototype-inspector/preset.js";
+  const cases = [
+    {
+      name: "inspector already installed, addon missing",
+      addons: ["@storybook/addon-docs", inspector],
+      expected: ["@storybook/addon-docs", addon, inspector],
+    },
+    {
+      name: "addon listed after the inspector moves before it",
+      addons: [inspector, "@storybook/addon-docs", addon],
+      expected: [addon, inspector, "@storybook/addon-docs"],
+    },
+    {
+      name: "object entry keeps its options when moved",
+      addons: ["@storybook/addon-docs", inspector, { name: addon, options: { keep: true } }],
+      expected: ["@storybook/addon-docs", { name: addon, options: { keep: true } }, inspector],
+    },
+    {
+      name: "already in order stays unchanged",
+      addons: ["@storybook/addon-docs", addon, inspector],
+      expected: ["@storybook/addon-docs", addon, inspector],
+    },
+    {
+      name: "no inspector appends the addon",
+      addons: ["@storybook/addon-docs"],
+      expected: ["@storybook/addon-docs", addon],
+    },
+  ];
+  for (const project of [fullProject, coreProject]) {
+    const source = fs
+      .readFileSync(path.join(project, ".storybook", "figma-export.main.mjs"), "utf8")
+      .replace(/^import .*review-server";$/m, "const createFigmaReviewStatusPlugin = () => ({});");
+    const { withFigmaExportMain } = await import(
+      `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`
+    );
+    for (const testCase of cases) {
+      assert.deepEqual(
+        withFigmaExportMain({ addons: testCase.addons }).addons,
+        testCase.expected,
+        `${path.basename(project)}: ${testCase.name}`,
+      );
+    }
+  }
 }
 
 function createProject(name, packageJson, mainReference = "@storybook/vue3-vite") {

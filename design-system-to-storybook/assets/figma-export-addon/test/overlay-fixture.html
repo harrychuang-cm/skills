@@ -10,7 +10,10 @@
     --fx-sys-color-primary: var(--fx-ref-color-blue);
     --fx-comp-card-color-bg: var(--fx-sys-color-primary);
   }
-  body { font-family: Arial, sans-serif; margin: 16px; }
+  body { font-family: Arial, sans-serif; margin: 0; }
+  /* A fluid Story root that fills the viewport, so the workspace reservation
+     is what keeps it clear of the workspace (not a fixed width). */
+  #storybook-root { box-sizing: border-box; block-size: 100vh; padding: 16px; }
   .demo-card {
     width: 160px; height: 48px;
     background-color: var(--fx-comp-card-color-bg);
@@ -117,6 +120,59 @@
         isNarrowViewport
           ? workspaceRect?.width === window.innerWidth - 32
           : workspaceRect?.width === 320,
+      );
+      const storyRoot = document.getElementById("storybook-root");
+      const storyRootRect = storyRoot?.getBoundingClientRect();
+      const reservation = JSON.stringify({
+        orientation: document.documentElement.dataset.sbfxWorkspaceOrientation,
+        storyRootRect,
+        viewport: { height: window.innerHeight, width: window.innerWidth },
+        workspaceRect,
+      });
+      if (document.documentElement.dataset.sbfxWorkspaceOrientation === "side") {
+        check(
+          "side workspace narrows the fluid Story root to the viewport minus 344 pixels",
+          Boolean(storyRootRect) &&
+            storyRootRect.width <= window.innerWidth - 344 + 0.5 &&
+            (window.innerWidth !== 1140 || storyRootRect.width <= 796),
+          reservation,
+        );
+        check(
+          "side workspace does not overlap the fluid Story root",
+          Boolean(storyRootRect && workspaceRect) && storyRootRect.right <= workspaceRect.left + 0.5,
+          reservation,
+        );
+      } else {
+        const reservedBlock = Math.min(window.innerHeight * 0.38, 340);
+        check(
+          "bottom workspace shortens the fluid Story root by its reserved height",
+          Boolean(storyRootRect) &&
+            storyRootRect.height <= window.innerHeight - reservedBlock + 0.5,
+          reservation,
+        );
+        check(
+          "bottom workspace does not overlap the fluid Story root",
+          Boolean(storyRootRect && workspaceRect) && storyRootRect.bottom <= workspaceRect.top + 0.5,
+          reservation,
+        );
+      }
+      // A Story root that hosts a declared canvas keeps its full size: the
+      // workspace floats above the pannable canvas.
+      const declaredCanvas = document.createElement("div");
+      declaredCanvas.setAttribute("data-sbfx-canvas", "");
+      storyRoot?.append(declaredCanvas);
+      const canvasHostRect = storyRoot?.getBoundingClientRect();
+      declaredCanvas.remove();
+      const cappedAgainRect = storyRoot?.getBoundingClientRect();
+      check(
+        "a Story root hosting a declared canvas keeps its full size beside the expanded workspace",
+        Boolean(canvasHostRect && cappedAgainRect) &&
+          Math.abs(canvasHostRect.width - window.innerWidth) <= 0.5 &&
+          Math.abs(canvasHostRect.height - window.innerHeight) <= 0.5 &&
+          (document.documentElement.dataset.sbfxWorkspaceOrientation === "side"
+            ? cappedAgainRect.width <= window.innerWidth - 344 + 0.5
+            : cappedAgainRect.height <= window.innerHeight - Math.min(window.innerHeight * 0.38, 340) + 0.5),
+        JSON.stringify({ cappedAgainRect, canvasHostRect, viewport: { height: window.innerHeight, width: window.innerWidth } }),
       );
       check(
         "wide workspace reserves its width plus the 24 pixel offset",
@@ -369,6 +425,16 @@
       );
       toggleButton?.click();
       check("overlay collapses on toggle", overlayElement()?.dataset.collapsed === "true");
+      // A collapsed workspace is only a small button, so the fluid Story root
+      // gets its full size back.
+      const collapsedRootRect = document.getElementById("storybook-root")?.getBoundingClientRect();
+      check(
+        "collapsed workspace leaves the fluid Story root its full size",
+        Boolean(collapsedRootRect) &&
+          Math.abs(collapsedRootRect.width - window.innerWidth) <= 0.5 &&
+          Math.abs(collapsedRootRect.height - window.innerHeight) <= 0.5,
+        JSON.stringify({ collapsedRootRect, viewport: { height: window.innerHeight, width: window.innerWidth } }),
+      );
       const collapsedWorkspaceRect = workspace?.getBoundingClientRect();
       const collapsedExporterRect = overlayElement()?.getBoundingClientRect();
       const collapsedTitleLabel = overlayElement()?.querySelector(".sbfx-exporter__title-label");
@@ -433,6 +499,15 @@
       );
       toggleButton?.click();
       check("overlay expands on second toggle", overlayElement()?.dataset.collapsed === "false");
+      const expandedRootRect = document.getElementById("storybook-root")?.getBoundingClientRect();
+      check(
+        "expanding the workspace reserves its space from the Story root again",
+        Boolean(expandedRootRect) &&
+          (document.documentElement.dataset.sbfxWorkspaceOrientation === "side"
+            ? expandedRootRect.width <= window.innerWidth - 344 + 0.5
+            : expandedRootRect.height <= window.innerHeight - Math.min(window.innerHeight * 0.38, 340) + 0.5),
+        JSON.stringify({ expandedRootRect }),
+      );
       const restoredWorkspaceRect = workspace?.getBoundingClientRect();
       check(
         "expanded export disclosure restores the complete responsive workspace",

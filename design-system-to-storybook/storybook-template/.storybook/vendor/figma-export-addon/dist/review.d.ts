@@ -1,5 +1,5 @@
-import { R as ResolvedFigmaExportAddonOptions, b as FigmaExportAddonOptions } from './options-wRmAlan-.js';
-import { e as VisualCommentOptions } from './visualComment-CG4UoVVu.js';
+import { R as ResolvedFigmaExportAddonOptions, b as FigmaExportAddonOptions } from './options-pWb_XEzN.js';
+import { f as VisualCommentOptions } from './visualComment-DFPXUtKq.js';
 export { FigmaReviewEntry, FigmaReviewStatus } from './review-controller.js';
 
 declare const Fragment: unique symbol;
@@ -22,6 +22,7 @@ type FigmaReviewLabels = Partial<{
     approved: string;
     activeMeeting: string;
     addVisualComment: string;
+    commentsUnavailable: string;
     adjustCommentPoint: string;
     adjustCommentPointHint: string;
     adjustPendingPinHint: string;
@@ -29,6 +30,16 @@ type FigmaReviewLabels = Partial<{
     authorName: string;
     cancelCapture: string;
     capturedInAnotherState: string;
+    commentViews: string;
+    layoutChanged: string;
+    locationUnavailable: string;
+    otherViewPinsNote: string;
+    showLocation: string;
+    pinDropUnavailable: string;
+    pinMoveFailed: string;
+    commentMoved: string;
+    undoMove: string;
+    movedSinceScreenshot: string;
     capturePrompt: string;
     changeAuthorName: string;
     cancelCommentEdit: string;
@@ -131,6 +142,15 @@ declare function FigmaExportReview({ apiPath, autoMarkExported, componentTitle, 
     };
 };
 declare function createFigmaExportReviewDecorator(figmaExportOptions?: FigmaExportAddonOptions, reviewOptions?: FigmaExportReviewOptions): <StoryResult>(Story: () => StoryResult, context: StorybookContext) => StoryResult;
+/**
+ * Registers Figma export review for the addon's host decorator, which
+ * Storybook applies from the addons list. Takes the same options as
+ * createFigmaExportReviewDecorator; call it once from the project's preview
+ * file instead of adding that decorator. With the addon listed before the
+ * Prototype Inspector preset, review and visual comments then follow every
+ * Inspector mode, including UI Flow.
+ */
+declare function configureFigmaExportReview(figmaExportOptions?: FigmaExportAddonOptions, reviewOptions?: FigmaExportReviewOptions): void;
 declare function destroyFigmaReviewWorkspace(): void;
 
-export { FigmaExportReview, type FigmaExportReviewOptions, type FigmaExportReviewProps, type FigmaReviewLabels, type StorybookContext, createFigmaExportReviewDecorator, defaultFigmaReviewStatusApiPath, destroyFigmaReviewWorkspace, getDefaultFigmaExportComponentTitle, getDefaultFigmaSourceUrl };
+export { FigmaExportReview, type FigmaExportReviewOptions, type FigmaExportReviewProps, type FigmaReviewLabels, type StorybookContext, configureFigmaExportReview, createFigmaExportReviewDecorator, defaultFigmaReviewStatusApiPath, destroyFigmaReviewWorkspace, getDefaultFigmaExportComponentTitle, getDefaultFigmaSourceUrl };

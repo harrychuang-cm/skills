@@ -39,7 +39,68 @@ export type VisualCommentStoryMetadata = {
   prototypeId?: string;
   routeId?: string;
   stateId?: string;
+  // The host-declared comment view (data-sbfx-view). Omitted for `story`,
+  // which is also how comments stored before views existed read.
+  view?: string;
 };
+
+export const defaultVisualCommentView = "story";
+export const visualCommentViewPattern = /^[a-z0-9][a-z0-9-]{0,39}$/;
+
+export function isVisualCommentView(value: unknown): value is string {
+  return typeof value === "string" && visualCommentViewPattern.test(value);
+}
+
+export function resolveVisualCommentView(value: unknown): string {
+  return isVisualCommentView(value) ? value : defaultVisualCommentView;
+}
+
+export type VisualCommentNearbyAnchor = {
+  id: string;
+  label?: string;
+  // World-space offset from the nearby anchor element's top-left corner to
+  // the comment point.
+  dx: number;
+  dy: number;
+};
+
+// Where a comment is pinned in a host-declared canvas. The screenshot pin
+// (VisualCommentPin) is kept next to it for reports and AI context.
+export type VisualCommentAnchor =
+  | {
+      type: "element";
+      id: string;
+      label?: string;
+      route?: string;
+      // Press position and element size in the element's layout pixels.
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+    }
+  | { type: "path"; id: string; label?: string; t: number }
+  | { type: "canvas"; x: number; y: number; nearby?: VisualCommentNearbyAnchor[] };
+
+/**
+ * Plain-text location of an anchored comment, shared by the panel, the meeting
+ * report and the AI prompt: a frame by its label, a line by its label, a canvas
+ * point by the labels of the anchors recorded near it (ids when unlabelled).
+ */
+export function describeVisualCommentAnchor(anchor: VisualCommentAnchor): string {
+  if (anchor.type === "element") return `On ${anchor.label ?? anchor.id}`;
+  if (anchor.type === "path") return `On line ${anchor.label ?? anchor.id}`;
+  const names = (anchor.nearby ?? []).map((entry) => entry.label ?? entry.id);
+  return names.length
+    ? `Canvas near ${names.join(", ")}`
+    : `Canvas point (${Math.round(anchor.x)}, ${Math.round(anchor.y)})`;
+}
+
+export const VISUAL_COMMENT_ANCHOR_LIMITS = {
+  maxIdLength: 200,
+  maxLabelLength: 120,
+  maxRouteLength: 240,
+  maxNearby: 2,
+} as const;
 
 export type VisualCommentPin = { xRatio: number; yRatio: number };
 
@@ -67,20 +128,52 @@ export type CreateVisualCommentRequest = {
   kind?: VisualCommentKind;
   story: VisualCommentStoryMetadata;
   pin: VisualCommentPin;
+  anchor?: VisualCommentAnchor;
   viewport: VisualCommentViewport;
   capture: VisualCommentCapture;
 };
+
+export type VisualCommentRect = { left: number; top: number; width: number; height: number };
 
 export type VisualCommentCaptureResult = {
   capture: VisualCommentCapture;
   pin: VisualCommentPin;
+  anchor?: VisualCommentAnchor;
+  // Client rect the pin ratios refer to when it is not the capture target (an
+  // anchored capture of a frame or canvas), frozen at capture time.
+  pinFrame?: VisualCommentRect;
+  // The pin frame relative to the anchor, taken when the capture started.
+  pinFrameReference?: VisualCommentFrameReference;
   viewport: VisualCommentViewport;
+};
+
+/** An anchored capture: the image and the client rect it shows. */
+// Where an anchored capture's area is relative to its anchor, so the area can
+// be found again after the host moved it: a share of the anchor element's box,
+// or a rect in the canvas world.
+export type VisualCommentFrameReference =
+  | { kind: "element"; id: string; left: number; top: number; width: number; height: number }
+  | { kind: "world"; x: number; y: number; width: number; height: number };
+
+export type VisualCommentAnchoredCapture = {
+  capture: VisualCommentCapture;
+  rect: VisualCommentRect;
+  reference?: VisualCommentFrameReference;
 };
 
 export type VisualCommentPointSelection = {
   pin: VisualCommentPin;
+  anchor?: VisualCommentAnchor;
   viewport: VisualCommentViewport;
 };
+
+/** Resolves the host-declared anchor at a press inside the capture target. */
+export type VisualCommentAnchorResolver = (
+  target: HTMLElement,
+  clientX: number,
+  clientY: number,
+  pressed: Element | null,
+) => VisualCommentAnchor | undefined;
 
 export type VisualCommentCaptureController = {
   cancel(): void;
@@ -189,14 +282,107 @@ export function hasVisibleCanvasPixels(canvas: HTMLCanvasElement): boolean {
 }
 
 /** Browser capture seam backed by html-to-image; API and storage stay backend-agnostic. */
-export async function captureVisualCommentTarget(target: HTMLElement): Promise<VisualCommentCapture> {
-  const rect = target.getBoundingClientRect();
-  if (!rect.width || !rect.height) throw new Error("Capture target has zero bounds.");
+const svgPaintProperties = [
+  "fill",
+  "fill-opacity",
+  "stroke",
+  "stroke-width",
+  "stroke-dasharray",
+  "stroke-dashoffset",
+  "stroke-linecap",
+  "stroke-linejoin",
+  "stroke-opacity",
+  "opacity",
+  "visibility",
+  "display",
+] as const;
+
+// html-to-image deep-clones an <svg> and only inlines styles on the svg root,
+// so stylesheet rules on its children (class-styled lines and icons) are lost
+// and render black. Inline their computed paint for the duration of a capture;
+// the returned function puts every original style attribute back.
+function inlineSvgChildPaint(target: HTMLElement): () => void {
+  const elements = Array.from(target.querySelectorAll("svg *")).filter(
+    (element): element is SVGElement => element instanceof SVGElement,
+  );
+  // Read everything before writing so the writes do not force style recalcs.
+  const paints = elements.map((element) => {
+    const computed = getComputedStyle(element);
+    return svgPaintProperties.map((property) => computed.getPropertyValue(property));
+  });
+  const originals = elements.map((element) => element.getAttribute("style"));
+  elements.forEach((element, index) => {
+    svgPaintProperties.forEach((property, propertyIndex) => {
+      const value = paints[index][propertyIndex];
+      if (value) element.style.setProperty(property, value);
+    });
+  });
+  // What this capture left on each element, to tell its writes from the host's.
+  const written = elements.map((element) => element.getAttribute("style"));
+  const writtenValues = elements.map((element) =>
+    svgPaintProperties.map((property) => element.style.getPropertyValue(property)),
+  );
+  return () => {
+    elements.forEach((element, index) => {
+      const original = originals[index];
+      if (element.getAttribute("style") === written[index]) {
+        if (original === null) element.removeAttribute("style");
+        else element.setAttribute("style", original);
+        return;
+      }
+      // The host changed this style during the capture (a hover, say): keep
+      // its changes and undo only the paint still holding what was written.
+      const originalStyle = document.createElement("div").style;
+      if (original !== null) originalStyle.cssText = original;
+      svgPaintProperties.forEach((property, propertyIndex) => {
+        if (!paints[index][propertyIndex]) return;
+        if (element.style.getPropertyValue(property) !== writtenValues[index][propertyIndex]) return;
+        const originalValue = originalStyle.getPropertyValue(property);
+        if (originalValue) {
+          element.style.setProperty(property, originalValue, originalStyle.getPropertyPriority(property));
+        } else {
+          element.style.removeProperty(property);
+        }
+      });
+    });
+  };
+}
+
+export async function captureVisualCommentTarget(
+  target: HTMLElement,
+  options: {
+    // Draws more content onto the rendered bitmap before it is encoded, with
+    // the bitmap's pixels per CSS pixel and the target's client origin.
+    drawOver?: (
+      context: CanvasRenderingContext2D,
+      frame: { left: number; scale: number; top: number },
+    ) => Promise<void>;
+    // Captures the element at its layout size, without its own position
+    // offsets or transform: an element placed inside a translated and scaled
+    // canvas would otherwise render outside the image.
+    layout?: boolean;
+    // Caps the pixels per CSS pixel, for a capture shown smaller elsewhere.
+    maxScale?: number;
+    omitIframes?: boolean;
+    // Test seam: how long the render may take before the capture fails.
+    renderTimeoutMs?: number;
+  } = {},
+): Promise<VisualCommentCapture> {
+  const clientRect = target.getBoundingClientRect();
+  if (!clientRect.width || !clientRect.height) throw new Error("Capture target has zero bounds.");
+  // The size the capture renders at: the on-screen box, or the layout box.
+  const rect = {
+    height: options.layout && target.offsetHeight > 0 ? target.offsetHeight : clientRect.height,
+    left: clientRect.left,
+    top: clientRect.top,
+    width: options.layout && target.offsetWidth > 0 ? target.offsetWidth : clientRect.width,
+  };
 
   await nextAnimationFrame();
   await nextAnimationFrame();
   const scale = Math.min(
     2,
+    options.maxScale ?? 2,
     VISUAL_COMMENT_LIMITS.maxImageLongestSide / Math.max(rect.width, rect.height),
     Math.sqrt(VISUAL_COMMENT_LIMITS.maxImagePixels / (rect.width * rect.height)),
   );
@@ -204,25 +390,54 @@ export async function captureVisualCommentTarget(target: HTMLElement): Promise<V
   // sub-pixel box legitimately lands up to one pixel short of the scaled intent.
   const intendedWidth = Math.max(1, Math.trunc(rect.width * scale));
   const intendedHeight = Math.max(1, Math.trunc(rect.height * scale));
-  let canvas = await Promise.race([
-    toCanvas(target, {
-      backgroundColor: resolveCaptureBackground(target),
-      canvasHeight: rect.height,
-      canvasWidth: rect.width,
-      filter: (node) =>
-        !(node instanceof Element && node.hasAttribute("data-sbfx-capture-ignore")),
-      fontEmbedCSS: "",
-      height: rect.height,
-      includeStyleProperties: getCaptureStyleProperties(target),
-      pixelRatio: scale,
-      skipFonts: true,
-      skipAutoScale: true,
-      width: rect.width,
-    }),
-    new Promise<never>((_, reject) =>
-      window.setTimeout(() => reject(new Error("Timed out rendering captured UI.")), 8_000),
-    ),
-  ]);
+  const restoreSvgPaint = inlineSvgChildPaint(target);
+  let canvas: HTMLCanvasElement;
+  try {
+    canvas = await Promise.race([
+      toCanvas(target, {
+        backgroundColor: resolveCaptureBackground(target),
+        canvasHeight: rect.height,
+        canvasWidth: rect.width,
+        filter: (node) =>
+          !(node instanceof Element && node.hasAttribute("data-sbfx-capture-ignore")) &&
+          // A canvas capture leaves frame previews empty instead of cloning
+          // every embedded page.
+          !(options.omitIframes && node instanceof HTMLIFrameElement),
+        fontEmbedCSS: "",
+        height: rect.height,
+        includeStyleProperties: getCaptureStyleProperties(target),
+        pixelRatio: scale,
+        skipFonts: true,
+        skipAutoScale: true,
+        ...(options.layout
+          ? {
+              style: {
+                inset: "0px auto auto 0px",
+                margin: "0px",
+                position: "relative",
+                rotate: "none",
+                scale: "none",
+                transform: "none",
+                translate: "none",
+              },
+            }
+          : {}),
+        width: rect.width,
+      }),
+      new Promise<never>((_, reject) =>
+        window.setTimeout(
+          () => reject(new Error("Timed out rendering captured UI.")),
+          options.renderTimeoutMs ?? 8_000,
+        ),
+      ),
+    ]);
+  } finally {
+    restoreSvgPaint();
+  }
+  if (options.drawOver) {
+    const context = canvas.getContext("2d");
+    if (context) await options.drawOver(context, { left: rect.left, scale, top: rect.top });
+  }
   let width = canvas.width;
   let height = canvas.height;
   if (
@@ -346,6 +561,42 @@ export function getSavedPinCardPlacement(
   return { left, top, width };
 }
 
+/** How long after the placing press its click sequence (double-click included) is swallowed. */
+export const captureSequenceWindowMs = 500;
+
+let activeSequenceGuard: (() => void) | null = null;
+
+// After a pin is placed, the rest of that click sequence on the capture target
+// (a quick second press, its click, dblclick, contextmenu) never reaches the
+// page, so a host does not read it as "enter the frame" or "select". The guard
+// is independent of the capture: it leaves the capture-mode marker alone and a
+// newly armed capture removes it.
+function guardClickSequence(documentRef: Document, selector: string | undefined, until: number) {
+  activeSequenceGuard?.();
+  const types = ["pointerdown", "pointerup", "click", "dblclick", "contextmenu"] as const;
+  const swallow = (event: Event) => {
+    if (performance.now() > until) {
+      dispose();
+      return;
+    }
+    const eventTarget = event.target instanceof Element ? event.target : null;
+    if (eventTarget?.closest("[data-sbfx-capture-ignore]")) return;
+    const target = resolveVisualCommentTarget(selector, documentRef);
+    if (!target || !eventTarget || !target.contains(eventTarget)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation();
+  };
+  const timer = window.setTimeout(() => dispose(), Math.max(0, until - performance.now()));
+  function dispose() {
+    window.clearTimeout(timer);
+    for (const type of types) documentRef.removeEventListener(type, swallow, true);
+    if (activeSequenceGuard === dispose) activeSequenceGuard = null;
+  }
+  for (const type of types) documentRef.addEventListener(type, swallow, true);
+  activeSequenceGuard = dispose;
+}
+
 /**
  * Arms the next pointer sequence before prototype handlers run. The returned
  * controller is also used by the panel Cancel action and unmount cleanup.
@@ -357,20 +608,32 @@ export function beginVisualCommentCapture({
   onCaptured,
   onError,
   onPointSelected,
+  resolveAnchor,
+  captureAnchor,
   selector,
 }: {
   capture?: (target: HTMLElement) => Promise<VisualCommentCapture>;
+  // Captures an anchored comment's own element (a frame's page, a canvas);
+  // resolves null to fall back to capturing the target.
+  captureAnchor?: (
+    target: HTMLElement,
+    anchor: VisualCommentAnchor,
+  ) => Promise<VisualCommentAnchoredCapture | null>;
   documentRef?: Document;
   onCancel?: () => void;
   onCaptured(result: VisualCommentCaptureResult): void;
   onError(error: Error): void;
   onPointSelected?: (selection: VisualCommentPointSelection) => void;
+  resolveAnchor?: VisualCommentAnchorResolver;
   selector?: string;
 }): VisualCommentCaptureController {
   let active = true;
   let cancelled = false;
   let pointerStarted = false;
+  let pressedAt = 0;
   let cleanupTimer: number | undefined;
+  // A new capture never inherits the previous one's click-sequence guard.
+  activeSequenceGuard?.();
 
   const cleanup = () => {
     if (!active) return;
@@ -398,21 +661,29 @@ export function beginVisualCommentCapture({
     if (!pointerStarted) return;
     swallowPointer(event);
     cleanup();
+    guardClickSequence(documentRef, selector, pressedAt + captureSequenceWindowMs);
   };
   const onKeyDown = (event: KeyboardEvent) => {
     if (event.key !== "Escape") return;
     event.preventDefault();
+    event.stopPropagation();
     cancel();
   };
   const onPointerDown = (event: PointerEvent) => {
+    // Only the primary button places a pin; middle-button panning and the
+    // context menu keep working while a capture is armed.
+    if (event.button !== 0) return;
     const eventTarget = event.target instanceof Element ? event.target : null;
     if (eventTarget?.closest("[data-sbfx-capture-ignore]")) return;
     const target = resolveVisualCommentTarget(selector, documentRef);
     if (!target || !eventTarget || !target.contains(eventTarget)) return;
     pointerStarted = true;
+    pressedAt = performance.now();
     swallowPointer(event);
     const rect = target.getBoundingClientRect();
     const pin = getVisualCommentPin(rect, event.clientX, event.clientY);
+    // Resolved before the capture starts, from the layout the participant saw.
+    const anchor = resolveAnchor?.(target, event.clientX, event.clientY, eventTarget);
     const view = documentRef.defaultView ?? window;
     const viewport: VisualCommentViewport = {
       width: view.innerWidth,
@@ -421,10 +692,31 @@ export function beginVisualCommentCapture({
       scrollX: view.scrollX,
       scrollY: view.scrollY,
     };
-    onPointSelected?.({ pin, viewport });
-    void capture(target)
-      .then((captured) => {
-        if (!cancelled) onCaptured({ capture: captured, pin, viewport });
+    onPointSelected?.({ pin, ...(anchor ? { anchor } : {}), viewport });
+    const { clientX, clientY } = event;
+    const captureWork: Promise<VisualCommentCaptureResult> =
+      anchor && captureAnchor
+        ? captureAnchor(target, anchor).then(async (anchored) => {
+            if (!anchored) return { capture: await capture(target), pin, anchor, viewport };
+            // The screenshot pin is relative to the captured element.
+            return {
+              anchor,
+              capture: anchored.capture,
+              pin: getVisualCommentPin(anchored.rect, clientX, clientY),
+              pinFrame: anchored.rect,
+              ...(anchored.reference ? { pinFrameReference: anchored.reference } : {}),
+              viewport,
+            };
+          })
+        : capture(target).then((captured) => ({
+            capture: captured,
+            pin,
+            ...(anchor ? { anchor } : {}),
+            viewport,
+          }));
+    void captureWork
+      .then((result) => {
+        if (!cancelled) onCaptured(result);
       })
       .catch((error: unknown) => {
         if (!cancelled) {

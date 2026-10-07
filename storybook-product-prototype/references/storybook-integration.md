@@ -143,7 +143,7 @@ The bundled addon reads `parameters.prototype` and provides a Storybook toolbar 
 
 - `Story`: the original story.
 - `Docs`: PRD, UI Spec, Flow Spec, Data Spec, Frontend Handoff, Implementation Guide, and Acceptance markdown.
-- `UI Flow`: route cards, flow-only nodes, key transition lines, zoom, drag, pan, layout import, and layout export. Layout changes reach localStorage once per committed action (releasing a card or node that moved, confirming Reset Layout, or a successful import); opening the canvas and mid-drag movement write nothing, so the `StaticFlow` story picks up a moved card or node after the drag is released, not during it.
+- `UI Flow`: route frames, flow-only nodes, key transition lines, layout import, and layout export on a camera canvas; see UI Flow Canvas below for navigation, shortcuts, and when layout changes are saved.
 - `Components`: an interactive three-pane workspace over `meta.components`.
   - A route rail on the left lists the flow routes in flow order (route title plus id badge); the first route with composition data is selected by default.
   - The middle pane shows one card per component of the selected route — name, origin badge (`shared` / `new` / `promoted`), story title, import path, and notes. When a `storyId` is present, the card's `Story` button opens `?path=/story/<storyId>` in a new tab (the same URL mechanism as `Open Static Flow`), with a secondary `Docs` link to the derived `--docs` path; without a `storyId`, the card shows the source path with no link.
@@ -154,6 +154,48 @@ The bundled addon reads `parameters.prototype` and provides a Storybook toolbar 
 - `Data`: Fake fixture values, schema scope/confirmation, contract source and owner from the raw Data Authority registry, API replacement requirements, route data map, state rules, and raw metadata. Confirmed UI models are explicitly distinct from confirmed real transport contracts; legacy or invalid registries remain unverified.
 - `Open Static Flow`: when `parameters.prototype.figmaExport.flowStoryId` is present, open the Figma-ready static flow story that uses the same saved layout.
 
-UI Flow route cards also carry a compact component strip/badge sourced from the same `meta.components` data. The `Components` mode and route-card strip ship with the bundled addon: an existing install picks them up by re-running `install_prototype_inspector.mjs --force` (with the same `--token-prefix <prefix>` when the project uses one). That rerun also installs `scripts/prototype-review/fingerprint.mjs`, which the current `preview.js` imports and earlier installer versions did not write.
+UI Flow route frames also carry a compact components button in their frame label, sourced from the same `meta.components` data. The `Components` mode and route-card strip ship with the bundled addon: an existing install picks them up by re-running `install_prototype_inspector.mjs --force` (with the same `--token-prefix <prefix>` when the project uses one). That rerun also installs `scripts/prototype-review/fingerprint.mjs`, which the current `preview.js` imports and earlier installer versions did not write.
 
 Preview-size resolution for inspector installs: each card resolves `route.viewport` → `flow.viewport` → the form-factor tier CSS tokens → the built-in 375x812 constants. The tier tokens are read on the `.prototype-inspector` element first and `:root` second, so both the documented `--sbt-sys-size-viewport-*` bridge and legacy `:root`-level overrides work. Compatibility notes: the compact pair (`--prototype-inspector-viewport-compact-width/height`) keeps its phone semantics and remains the project-global default; the medium (`768px/1024px`) and wide (`1280px/800px`) pairs serve tablet and desktop form factors; the inspector sets `--prototype-inspector-active-viewport-width/height` inline per prototype so stylesheet layout caps follow the active prototype without redefining `compact`. Cards of prototypes that declare a viewport show a formFactor badge (for example `desktop · 1280x800`); legacy prototypes show none and keep their exact pre-viewport behavior.
+
+### UI Flow Canvas
+
+The UI Flow tab is a camera canvas, not a scrolling page: route frames, flow-only nodes and edges sit in one world layer moved by a single CSS transform, and the zoom group, layout group and dialogs stay fixed on screen. World coordinates are layout coordinates, so negative positions render in place and moving a frame past the content edge never shifts the other frames.
+
+Gestures:
+
+- Trackpad pinch, or Ctrl/Cmd/Alt + wheel, zooms around the pointer between 5% and 400%. In Safari the native pinch gesture does the same. Pinching over the zoom or layout controls still zooms the canvas, never the Storybook page.
+- Two-finger scroll or a plain mouse wheel pans the canvas; on Windows and Linux, Shift + wheel pans horizontally. Wheel input over a scrollable side panel or menu keeps its normal scrolling.
+- Space + drag, or a middle-button drag, pans from anywhere on the canvas. Cmd no longer pans: Cmd + drag on empty canvas leaves the camera where it is.
+- Dragging a route frame or flow-only node moves it once the pointer travels 3 CSS pixels; a shorter press is a click and leaves the layout untouched. Press Escape before releasing to put the frame back.
+- Hovering a frame emphasizes its connected edges and reveals the route id and `flowGroup` (or `navigationId`) next to its title.
+
+Keyboard shortcuts (Cmd on macOS, Ctrl elsewhere):
+
+| Keys | Action |
+| --- | --- |
+| Shift+1 | Fit all frames |
+| Shift+0 or Cmd/Ctrl+0 | Zoom to 100% |
+| `=` / `+` / keypad plus, or Cmd/Ctrl+`=` | Zoom in one step (5%, 10%, 25%, 50%, 100%, 200%, 400%) |
+| `-` / keypad minus, or Cmd/Ctrl+`-` | Zoom out one step |
+| Space (hold) | Pan mode while held |
+| Escape | Close the zoom menu or Reset dialog; otherwise cancel an active drag |
+
+The canvas consumes only the keys it handles, so Storybook never sees them. Unmodified 1, 2, 3, M and C, and every combination with Alt, stay reserved for Storybook and the browser: pressing 1 still focuses the Storybook sidebar. Typing in an input, textarea, select or contenteditable element is never intercepted. When a canvas control has keyboard focus (reached with Tab), Space, Enter and the arrow keys keep their native behaviour, so Space on a Tab-focused Zoom in zooms one step instead of starting pan mode; shortcuts that do not conflict with a control, such as Shift+1, keep working. While the zoom menu or the Reset dialog is open, the canvas handles only Escape. Clicking a control with the mouse does not move focus to it, so Space pans right after a click. The percentage button opens a zoom menu with Zoom to fit, 50%, 100% and 200%.
+
+Camera memory: the UI Flow opens fitted to all frames, and Fit canvas stays pressed while the fit keeps tracking resizes and measured preview sizes; the first pan, zoom or frame move ends tracking. The camera of the complete flow is stored per prototype in sessionStorage under `prototype-inspector:flow-camera:<prototypeId>` whenever it comes to rest, and is restored when the UI Flow remounts in the same browser tab (for example after visiting Components). A missing or malformed value falls back to the fit. The camera is never written into the flow layout payload.
+
+Saving happens on release: a frame drag updates only the moved frame and its connected edges until the pointer is released, then commits the rounded position as one layout action. Layout changes reach localStorage once per committed action (releasing a frame or node that moved, confirming Reset Layout, or a successful import); opening the canvas, panning, zooming and mid-drag movement write nothing, so the `StaticFlow` story picks up a moved frame or node after the drag is released, not during it.
+
+Labels: frame titles, formFactor badges and edge labels are drawn in a screen-space layer, so they keep a readable size at every zoom level. A frame narrower than 48 screen pixels hides its label until hovered, and an edge label stays hidden until hovered when both of its frames are narrower than 150 screen pixels.
+
+figma-export addon: when the addon's export workspace is open (`globals=figmaExport:on`, as in the tab Open Static Flow opens), the UI Flow canvas keeps its full size and the dock floats above it (the canvas pans, so anything under the dock can be moved into view); the zoom and layout groups move to the left edge of the canvas so the addon's comments toggle and dock never cover them, and while the dock is expanded the layout group wraps within the width the dock leaves (side dock) or sits above it (bottom dock, below 720 pixels).
+
+Comments on the UI Flow canvas: with figma-export addon 0.14.0 or later, the addon listed before the inspector preset in `.storybook/main.*` `addons` (`install_prototype_inspector.mjs` places it that way and reorders an inverted list), and the project calling `configureFigmaExportReview` in `.storybook/preview.*`, reviewers can comment on the canvas while Figma export is on:
+
+- Where: on a route frame's page (the area below its name), on a flow-only node, on a key transition line, or on blank canvas between frames. The comment sticks to that frame, node, position along the line, or canvas point.
+- Pins follow: panning, zooming and dragging frames move the pins in the same animation frame, and a pin on blank canvas keeps its canvas position.
+- Separate from Story comments: UI Flow comments are recorded in the `ui-flow` view; the comments panel lists the current view's comments (the **Comment views** switch shows the others), and reports filter by view. **Show location** on a comment whose pin is off screen moves the camera to its frame, line or point.
+- Figma export: UI Flow does not export a Figma payload. The export panel says **Open Static Flow to export this flow.** and links the Static Flow story when the prototype declares `figmaExport.flowStoryId`. Docs, Components and Data modes offer neither comments nor export.
+
+The canvas talks to the addon only through DOM attributes (`data-sbfx-view`, `data-sbfx-anchor`, `data-sbfx-canvas`, `data-sbfx-export`, `data-sbfx-comments`) and DOM events (`sbfx:anchors-moved`, `sbfx:reveal-anchor`); the Inspector imports nothing from the addon, so without it the canvas behaves exactly as before.

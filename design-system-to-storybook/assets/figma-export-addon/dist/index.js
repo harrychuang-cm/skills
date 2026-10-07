@@ -16,9 +16,6 @@ function writeCollapsePreference(storageKey, collapsed) {
   }
 }
 
-// src/domExport.ts
-import { toPng } from "html-to-image";
-
 // src/captureStyleProperties.ts
 var sharedListKey = /* @__PURE__ */ Symbol.for("sbfx.captureStyleProperties");
 function sharedList() {
@@ -45,6 +42,31 @@ function getCaptureStyleProperties(target) {
   }
   return list;
 }
+
+// src/commentAnchors.ts
+function closestOrInside(target, selector) {
+  if (!target) return null;
+  return target.matches(selector) ? target : target.querySelector(selector);
+}
+var defaultExportUnavailableLabel = "Figma export is not available in this view.";
+function readExportAvailability(scope) {
+  const element = closestOrInside(scope, '[data-sbfx-export="unavailable"]');
+  if (!element) return { available: true };
+  const label = element.getAttribute("data-sbfx-export-label")?.trim() || defaultExportUnavailableLabel;
+  const hrefValue = element.getAttribute("data-sbfx-export-href");
+  let href;
+  if (hrefValue) {
+    try {
+      const url = new URL(hrefValue, window.location.href);
+      if (url.origin === window.location.origin) href = url.href;
+    } catch {
+    }
+  }
+  return { available: false, label, ...href ? { href } : {} };
+}
+
+// src/domExport.ts
+import { toPng } from "html-to-image";
 
 // src/color.ts
 var colorContext;
@@ -4329,7 +4351,7 @@ void (async function importStorybookStory(payload) {
 
 // src/version.ts
 function getAddonVersion() {
-  return true ? "0.13.0" : "dev";
+  return true ? "0.15.0" : "dev";
 }
 
 // src/workspace.ts
@@ -4731,8 +4753,20 @@ function buildOverlay() {
     "Copy design to Figma"
   );
   actions.append(json.button, file.button, script.button, design.button);
-  aside.append(header, info, actions);
+  const unavailable = document.createElement("p");
+  unavailable.className = "sbfx-exporter__unavailable";
+  unavailable.dataset.exportUnavailable = "true";
+  unavailable.hidden = true;
+  const unavailableLabel = document.createTextNode("");
+  const unavailableLink = document.createElement("a");
+  unavailableLink.className = "sbfx-exporter__unavailable-link";
+  unavailableLink.target = "_blank";
+  unavailableLink.rel = "noopener noreferrer";
+  unavailableLink.textContent = "Open";
+  unavailable.append(unavailableLabel, " ", unavailableLink);
+  aside.append(header, info, actions, unavailable);
   return {
+    actions,
     aside,
     buttons: {
       design: { button: design.button, icon: design.iconSpan, label: design.label },
@@ -4745,8 +4779,39 @@ function buildOverlay() {
     subtitle,
     summary,
     toggle,
-    toggleIcon
+    toggleIcon,
+    unavailable,
+    unavailableLabel,
+    unavailableLink
   };
+}
+function renderExportAvailability() {
+  if (!overlayRefs) return true;
+  const availability = readExportAvailability(resolveExportScope().scope);
+  const { actions, aside, info, unavailable, unavailableLabel, unavailableLink } = overlayRefs;
+  aside.dataset.exportAvailable = availability.available ? "true" : "false";
+  actions.hidden = !availability.available;
+  info.hidden = !availability.available;
+  unavailable.hidden = availability.available;
+  if (!availability.available) {
+    if (unavailableLabel.textContent !== availability.label) {
+      unavailableLabel.textContent = availability.label;
+    }
+    unavailableLink.hidden = !availability.href;
+    if (availability.href && unavailableLink.href !== availability.href) {
+      unavailableLink.href = availability.href;
+    }
+  }
+  return availability.available;
+}
+var availabilityTimer = 0;
+function startAvailabilityWatch() {
+  if (availabilityTimer) return;
+  availabilityTimer = window.setInterval(renderExportAvailability, 500);
+}
+function stopAvailabilityWatch() {
+  window.clearInterval(availabilityTimer);
+  availabilityTimer = 0;
 }
 function renderOverlay() {
   if (!overlayRefs || !overlayState) return;
@@ -4759,6 +4824,8 @@ function renderOverlay() {
   if (overlayWorkspace?.root.isConnected) {
     overlayWorkspace.root.dataset.exportCollapsed = collapsed ? "true" : "false";
   }
+  if (collapsed) document.documentElement.dataset.sbfxWorkspaceCollapsed = "true";
+  else delete document.documentElement.dataset.sbfxWorkspaceCollapsed;
   const toggleLabel = collapsed ? "Expand Figma export panel" : "Collapse Figma export panel";
   toggle.setAttribute("aria-expanded", String(!collapsed));
   toggle.setAttribute("aria-label", toggleLabel);
@@ -4780,6 +4847,7 @@ function renderOverlay() {
   } else if (status !== "copying" && progress) {
     progress.remove();
   }
+  renderExportAvailability();
   Object.keys(buttons).forEach((format) => {
     const entry = buttons[format];
     if (!entry) return;
@@ -4799,6 +4867,7 @@ function setOverlayStatus(status, summary) {
 }
 async function handleCopy(format) {
   if (!overlayState) return;
+  if (!renderExportAvailability()) return;
   const { context, options } = overlayState;
   const componentTitle = getExportComponentTitle(context.title, options);
   const { scope, warning } = resolveExportScope();
@@ -4890,6 +4959,7 @@ async function handleCopy(format) {
   }
 }
 function unmountOverlay() {
+  stopAvailabilityWatch();
   if (overlayRefs) {
     overlayRefs.aside.remove();
     overlayRefs = null;
@@ -4897,6 +4967,7 @@ function unmountOverlay() {
   if (overlayWorkspace?.root.isConnected) {
     delete overlayWorkspace.root.dataset.exportCollapsed;
   }
+  delete document.documentElement.dataset.sbfxWorkspaceCollapsed;
   overlayWorkspace?.release();
   overlayWorkspace = null;
   overlayState = null;
@@ -4999,6 +5070,8 @@ function syncFigmaExportOverlay(context, options) {
     overlayWorkspace.slot.append(overlayRefs.aside);
   }
   renderOverlay();
+  startAvailabilityWatch();
+  window.setTimeout(renderExportAvailability, 0);
 }
 
 // src/preview.ts

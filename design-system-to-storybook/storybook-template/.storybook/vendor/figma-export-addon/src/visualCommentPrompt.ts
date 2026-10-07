@@ -4,6 +4,11 @@
 //
 // createCommentPromptFormatter must stay self-contained: it may not reference
 // anything declared outside its own body.
+import {
+  describeVisualCommentAnchor,
+  resolveVisualCommentView,
+  type VisualCommentAnchor,
+} from "./visualComment";
 
 export type CommentPromptContext = {
   version: 1;
@@ -29,6 +34,10 @@ export type CommentPromptContext = {
     mimeType: string;
   };
   pin: { xRatio: number; yRatio: number };
+  // Present for anchored comments: where the comment sits (frame, line, canvas).
+  location?: string;
+  // Present when the comment was placed in a view other than `story`.
+  view?: string;
   viewport: { width: number; height: number; devicePixelRatio: number };
   capturedAt: string;
 };
@@ -80,6 +89,7 @@ type CommentPromptCapture = {
     stateId?: string;
     title: string;
     url?: string;
+    view?: string;
   };
   viewport: { devicePixelRatio: number; height: number; width: number };
 };
@@ -94,6 +104,8 @@ export function buildCommentPromptContext({
 }: {
   capture: CommentPromptCapture;
   comment: {
+    anchor?: VisualCommentAnchor;
+    movedAt?: string;
     body: string;
     createdAt: string;
     id: string;
@@ -130,6 +142,16 @@ export function buildCommentPromptContext({
       mimeType: capture.image.mimeType,
     },
     pin: comment.pin,
+    ...(comment.anchor
+      ? {
+          location:
+            describeVisualCommentAnchor(comment.anchor) +
+            (comment.movedAt ? " (moved since the screenshot)" : ""),
+        }
+      : {}),
+    ...(resolveVisualCommentView(capture.story.view) !== "story"
+      ? { view: resolveVisualCommentView(capture.story.view) }
+      : {}),
     viewport: {
       width: capture.viewport.width,
       height: capture.viewport.height,
@@ -183,6 +205,8 @@ export function createCommentPromptFormatter() {
       "- Viewport: " + context.viewport.width + " × " + context.viewport.height + " @ " + context.viewport.devicePixelRatio + "x",
       "- Comment position: x " + (context.pin.xRatio * 100).toFixed(2) + "%, y " + (context.pin.yRatio * 100).toFixed(2) + "%",
     ];
+    if (typeof context.location === "string") lines.push("- Comment location: " + context.location);
+    if (typeof context.view === "string") lines.push("- Comment view: " + context.view);
     if (typeof context.story.prototypeId === "string") lines.push("- Prototype ID: " + context.story.prototypeId);
     if (typeof context.story.routeId === "string") lines.push("- Route ID: " + context.story.routeId);
     if (typeof context.story.stateId === "string") lines.push("- State ID: " + context.story.stateId);

@@ -1,0 +1,1121 @@
+// Pure UI Flow geometry for the Prototype Inspector: flow normalization,
+// edge routing, label placement and viewport resolution. This module imports
+// nothing and never reads window or document, so node --test can load it
+// directly; preview.js and the UI Flow canvas import from it.
+
+export const defaultPrototypeModeGlobalName = "prototypeMode";
+
+const previewHeightCssVariable =
+  "--prototype-inspector-viewport-compact-height";
+
+const previewWidthCssVariable =
+  "--prototype-inspector-viewport-compact-width";
+
+// Form-factor tier tokens: compact = phone, medium = tablet, wide = desktop.
+const formFactorCssVariables = {
+  desktop: {
+    height: "--prototype-inspector-viewport-wide-height",
+    width: "--prototype-inspector-viewport-wide-width",
+  },
+  phone: {
+    height: previewHeightCssVariable,
+    width: previewWidthCssVariable,
+  },
+  tablet: {
+    height: "--prototype-inspector-viewport-medium-height",
+    width: "--prototype-inspector-viewport-medium-width",
+  },
+};
+
+const formFactorFallbackSizes = {
+  desktop: { height: 800, width: 1280 },
+  phone: { height: 812, width: 375 },
+  tablet: { height: 1024, width: 768 },
+};
+
+const nodeWidth = 423;
+
+export const nodeHeaderHeight = 64;
+
+export const nodeFrameSize = 2;
+
+const decisionNodeSize = 220;
+
+const stateNodeWidth = 308;
+
+const stateNodeHeight = 124;
+
+const defaultNodePreviewHeight = 812;
+
+export const defaultNodeHeight =
+  defaultNodePreviewHeight + nodeHeaderHeight + nodeFrameSize;
+
+const edgeLabelVisualMinWidth = 64;
+
+const edgeLabelVisualMaxWidth = 176;
+
+const edgeLabelVisualHeight = 22;
+
+const edgeLabelPlacementMargin = 18;
+
+const edgeLabelObstacleMargin = 14;
+
+const flowArrowLength = 14;
+
+const flowArrowHalfWidth = 5;
+
+export function isRecord(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+// Card size the legacy 360x260 auto-grid pitch was tuned for (phone frame).
+const fallbackGridBaseSize = { height: 878, width: 377 };
+
+const fallbackGridBasePitch = { x: 360, y: 260 };
+
+export function getFallbackGridPitch(cardSize) {
+  return {
+    x: Math.round(
+      (fallbackGridBasePitch.x * cardSize.width) / fallbackGridBaseSize.width,
+    ),
+    y: Math.round(
+      (fallbackGridBasePitch.y * cardSize.height) / fallbackGridBaseSize.height,
+    ),
+  };
+}
+
+export function getRoutePosition(route, index, gridPitch = fallbackGridBasePitch) {
+  const explicitPosition =
+    route.flowPosition ?? route.position ?? route.layout?.position;
+
+  if (
+    isRecord(explicitPosition) &&
+    typeof explicitPosition.x === "number" &&
+    typeof explicitPosition.y === "number"
+  ) {
+    return explicitPosition;
+  }
+
+  return {
+    x: (index % 3) * gridPitch.x,
+    y: Math.floor(index / 3) * gridPitch.y,
+  };
+}
+
+export function normalizeRoutes(flow) {
+  return Array.isArray(flow?.routes) ? flow.routes.filter(isRecord) : [];
+}
+
+export function normalizeFlowNodes(flow) {
+  return Array.isArray(flow?.nodes)
+    ? flow.nodes.filter((node) => isRecord(node) && typeof node.id === "string")
+    : [];
+}
+
+export function normalizeComponentRoutes(components) {
+  return isRecord(components) && Array.isArray(components.routes)
+    ? components.routes.filter(isRecord)
+    : [];
+}
+
+export function normalizeRouteComponents(componentRoute) {
+  return Array.isArray(componentRoute?.components)
+    ? componentRoute.components.filter(isRecord)
+    : [];
+}
+
+export function normalizeTransitions(flow) {
+  return Array.isArray(flow?.transitions)
+    ? flow.transitions.filter(
+        (transition) =>
+          isRecord(transition) &&
+          typeof transition.from === "string" &&
+          typeof transition.to === "string",
+      )
+    : [];
+}
+
+function getTransitionText(transition) {
+  return transition.label ?? transition.trigger ?? `${transition.from} -> ${transition.to}`;
+}
+
+const flowEdgeColorVariants = [
+  "primary",
+  "secondary",
+  "tertiary",
+  "quaternary",
+];
+
+export function aggregateTransitions(transitions, nodeIds) {
+  const edgeMap = new Map();
+
+  for (const transition of transitions) {
+    if (!nodeIds.has(transition.from) || !nodeIds.has(transition.to)) {
+      continue;
+    }
+
+    const key = `${transition.from}->${transition.to}`;
+    const edge =
+      edgeMap.get(key) ??
+      {
+        flowLines: [],
+        from: transition.from,
+        key,
+        kinds: [],
+        labels: [],
+        to: transition.to,
+        triggers: [],
+      };
+    const label = getTransitionText(transition);
+
+    if (!edge.labels.includes(label)) {
+      edge.labels.push(label);
+    }
+    if (transition.trigger && !edge.triggers.includes(transition.trigger)) {
+      edge.triggers.push(transition.trigger);
+    }
+    if (transition.kind && !edge.kinds.includes(transition.kind)) {
+      edge.kinds.push(transition.kind);
+    }
+    if (transition.flowLine && !edge.flowLines.includes(transition.flowLine)) {
+      edge.flowLines.push(transition.flowLine);
+    }
+
+    edgeMap.set(key, edge);
+  }
+
+  return [...edgeMap.values()];
+}
+
+export function isVisibleFlowEdge(edge) {
+  return edge.flowLines.includes("key");
+}
+
+function getFlowEdgeColorAnchor(edge, nodeEdgeCounts) {
+  if ((nodeEdgeCounts.get(edge.from) ?? 0) > 1) return edge.from;
+  if ((nodeEdgeCounts.get(edge.to) ?? 0) > 1) return edge.to;
+  return undefined;
+}
+
+export function addFlowEdgeColorVariants(edges) {
+  const nodeEdgeCounts = new Map();
+
+  edges.forEach((edge) => {
+    [edge.from, edge.to].forEach((nodeId) => {
+      nodeEdgeCounts.set(nodeId, (nodeEdgeCounts.get(nodeId) ?? 0) + 1);
+    });
+  });
+
+  const nodeEdgeIndexes = new Map();
+
+  return edges.map((edge) => {
+    const anchor = getFlowEdgeColorAnchor(edge, nodeEdgeCounts);
+
+    if (!anchor) return edge;
+
+    const index = nodeEdgeIndexes.get(anchor) ?? 0;
+    nodeEdgeIndexes.set(anchor, index + 1);
+
+    return {
+      ...edge,
+      colorVariant: flowEdgeColorVariants[index % flowEdgeColorVariants.length],
+    };
+  });
+}
+
+function createPolylineResult(points, labelPosition) {
+  const compactPoints = points.filter((point, index) => {
+    const previousPoint = points[index - 1];
+
+    return !previousPoint || point.x !== previousPoint.x || point.y !== previousPoint.y;
+  });
+  const labelStart = compactPoints[1] ?? compactPoints[0];
+  const labelEnd =
+    compactPoints[compactPoints.length - 2] ??
+    compactPoints[compactPoints.length - 1];
+
+  return {
+    labelPosition:
+      labelPosition ??
+      {
+        x: (labelStart.x + labelEnd.x) / 2,
+        y: (labelStart.y + labelEnd.y) / 2,
+      },
+    pointList: compactPoints,
+    points: compactPoints.map((point) => `${point.x},${point.y}`).join(" "),
+  };
+}
+
+// arrowScale sizes the arrowhead in canvas units (1 / the representative zoom
+// keeps it 14 screen pixels long at that zoom).
+export function getFlowArrowPoints(points, arrowScale = 1) {
+  const compactPoints = points.filter((point, index) => {
+    const previousPoint = points[index - 1];
+
+    return !previousPoint || point.x !== previousPoint.x || point.y !== previousPoint.y;
+  });
+  const tip = compactPoints[compactPoints.length - 1];
+  const previous = [...compactPoints]
+    .reverse()
+    .find((point) => point.x !== tip?.x || point.y !== tip?.y);
+
+  if (!tip || !previous) {
+    return "";
+  }
+
+  const dx = tip.x - previous.x;
+  const dy = tip.y - previous.y;
+  const length = Math.hypot(dx, dy);
+
+  if (length <= 0) {
+    return "";
+  }
+
+  const ux = dx / length;
+  const uy = dy / length;
+  const baseCenter = {
+    x: tip.x - ux * flowArrowLength * arrowScale,
+    y: tip.y - uy * flowArrowLength * arrowScale,
+  };
+  const normal = {
+    x: -uy,
+    y: ux,
+  };
+  const halfWidth = flowArrowHalfWidth * arrowScale;
+  const left = {
+    x: baseCenter.x + normal.x * halfWidth,
+    y: baseCenter.y + normal.y * halfWidth,
+  };
+  const right = {
+    x: baseCenter.x - normal.x * halfWidth,
+    y: baseCenter.y - normal.y * halfWidth,
+  };
+
+  return [tip, left, right]
+    .map((point) => `${Math.round(point.x)},${Math.round(point.y)}`)
+    .join(" ");
+}
+
+export function getFlowMetadataNodeSize(node) {
+  if (node.shape === "decision") {
+    return {
+      height: decisionNodeSize,
+      width: decisionNodeSize,
+    };
+  }
+
+  return {
+    height: stateNodeHeight,
+    width: stateNodeWidth,
+  };
+}
+
+export function getNodeWidth(node) {
+  return node.width ?? nodeWidth;
+}
+
+function getNodeHeight(node) {
+  return node.height ?? defaultNodeHeight;
+}
+
+function normalizeDeclaredViewportSize(value) {
+  return isRecord(value) &&
+    Number.isFinite(value.width) &&
+    value.width > 0 &&
+    Number.isFinite(value.height) &&
+    value.height > 0
+    ? { height: value.height, width: value.width }
+    : null;
+}
+
+// Resolution chain: route.viewport → flow.viewport → form-factor tier CSS
+// tokens → the built-in phone constants. `declared` marks whether the
+// prototype names a viewport (drives the badge; legacy prototypes show none).
+// readDimension(cssVariableName, fallbackValue) reads one tier token.
+export function resolvePrototypeViewport(prototype, route, readDimension) {
+  const flowViewportValue = prototype?.flow?.viewport;
+  const formFactor =
+    isRecord(flowViewportValue) &&
+    typeof flowViewportValue.formFactor === "string" &&
+    formFactorCssVariables[flowViewportValue.formFactor]
+      ? flowViewportValue.formFactor
+      : "phone";
+  const declaredSize =
+    normalizeDeclaredViewportSize(route?.viewport) ??
+    normalizeDeclaredViewportSize(flowViewportValue);
+
+  if (declaredSize) {
+    return { declared: true, formFactor, ...declaredSize };
+  }
+
+  const cssVariables = formFactorCssVariables[formFactor];
+  const fallbackSize = formFactorFallbackSizes[formFactor];
+
+  return {
+    declared: isRecord(flowViewportValue),
+    formFactor,
+    height: readDimension(cssVariables.height, fallbackSize.height),
+    width: readDimension(cssVariables.width, fallbackSize.width),
+  };
+}
+
+export function getRouteBottom(route) {
+  return route.y + getNodeHeight(route);
+}
+
+function getRouteCenter(route) {
+  return {
+    x: route.x + getNodeWidth(route) / 2,
+    y: route.y + getNodeHeight(route) / 2,
+  };
+}
+
+function createGlobalPolyline(source, target) {
+  const sourceBottom = {
+    x: source.x + getNodeWidth(source) / 2,
+    y: getRouteBottom(source),
+  };
+  const targetBottom = {
+    x: target.x + getNodeWidth(target) / 2,
+    y: getRouteBottom(target),
+  };
+  const laneY = Math.max(sourceBottom.y, targetBottom.y) + 44;
+  const points = [
+    sourceBottom,
+    { x: sourceBottom.x, y: laneY },
+    { x: targetBottom.x, y: laneY },
+    targetBottom,
+  ];
+
+  return createPolylineResult(points, {
+    x: (sourceBottom.x + targetBottom.x) / 2,
+    y: laneY,
+  });
+}
+
+function createSameColumnBypassPolyline(source, target) {
+  const sourceCenter = getRouteCenter(source);
+  const targetCenter = getRouteCenter(target);
+  const columnOverlap =
+    Math.abs(sourceCenter.x - targetCenter.x) <
+    Math.min(getNodeWidth(source), getNodeWidth(target)) / 2;
+  const upperRoute = source.y < target.y ? source : target;
+  const lowerRoute = source.y < target.y ? target : source;
+  const verticalGap = lowerRoute.y - getRouteBottom(upperRoute);
+  const bypassThreshold = Math.min(getNodeHeight(source), getNodeHeight(target));
+
+  if (!columnOverlap || verticalGap <= bypassThreshold) {
+    return null;
+  }
+
+  const laneX =
+    Math.max(source.x + getNodeWidth(source), target.x + getNodeWidth(target)) + 40;
+  const start = { x: source.x + getNodeWidth(source), y: sourceCenter.y };
+  const end = { x: target.x + getNodeWidth(target), y: targetCenter.y };
+  const points = [
+    start,
+    { x: laneX, y: start.y },
+    { x: laneX, y: end.y },
+    end,
+  ];
+
+  return createPolylineResult(points, {
+    x: laneX,
+    y: (start.y + end.y) / 2,
+  });
+}
+
+function createInterRowPolyline(source, target) {
+  const sourceCenter = getRouteCenter(source);
+  const targetCenter = getRouteCenter(target);
+  const sourceIsUpper = source.y < target.y;
+  const upperRoute = sourceIsUpper ? source : target;
+  const lowerRoute = sourceIsUpper ? target : source;
+  const gapStart = getRouteBottom(upperRoute);
+  const gapEnd = lowerRoute.y;
+  const laneY = gapStart + (gapEnd - gapStart) / 2;
+
+  if (gapEnd - gapStart < 42) {
+    return null;
+  }
+
+  const start = sourceIsUpper
+    ? { x: sourceCenter.x, y: getRouteBottom(source) }
+    : { x: sourceCenter.x, y: source.y };
+  const end = sourceIsUpper
+    ? { x: targetCenter.x, y: target.y }
+    : { x: targetCenter.x, y: getRouteBottom(target) };
+  const points = [
+    start,
+    { x: start.x, y: laneY },
+    { x: end.x, y: laneY },
+    end,
+  ];
+
+  return createPolylineResult(points, {
+    x: (start.x + end.x) / 2,
+    y: laneY,
+  });
+}
+
+function getAnchorPair(source, target, hasReverse) {
+  const sourceCenter = getRouteCenter(source);
+  const targetCenter = getRouteCenter(target);
+  const dx = targetCenter.x - sourceCenter.x;
+  const dy = targetCenter.y - sourceCenter.y;
+  const isHorizontalFlow = Math.abs(dx) >= Math.abs(dy);
+  const offset = hasReverse
+    ? isHorizontalFlow
+      ? dx >= 0
+        ? 18
+        : -18
+      : dy >= 0
+        ? 18
+        : -18
+    : 0;
+
+  if (isHorizontalFlow) {
+    if (dx >= 0) {
+      return {
+        end: { x: target.x, y: targetCenter.y + offset },
+        start: { x: source.x + getNodeWidth(source), y: sourceCenter.y + offset },
+      };
+    }
+
+    return {
+      end: { x: target.x + getNodeWidth(target), y: targetCenter.y + offset },
+      start: { x: source.x, y: sourceCenter.y + offset },
+    };
+  }
+
+  if (dy >= 0) {
+    return {
+      end: { x: targetCenter.x + offset, y: target.y },
+      start: { x: sourceCenter.x + offset, y: getRouteBottom(source) },
+    };
+  }
+
+  return {
+    end: { x: targetCenter.x + offset, y: getRouteBottom(target) },
+    start: { x: sourceCenter.x + offset, y: source.y },
+  };
+}
+
+export function createPolyline(edge, routePositionMap, reverseEdgeKeys) {
+  const source = routePositionMap.get(edge.from);
+  const target = routePositionMap.get(edge.to);
+
+  if (!source || !target) {
+    return null;
+  }
+
+  const hasReverse = reverseEdgeKeys.has(edge.key);
+  const isGlobalTransition = edge.kinds.includes("global");
+
+  if (isGlobalTransition) {
+    return createGlobalPolyline(source, target);
+  }
+
+  if (!hasReverse) {
+    const bypassPolyline = createSameColumnBypassPolyline(source, target);
+
+    if (bypassPolyline) {
+      return bypassPolyline;
+    }
+
+    const interRowPolyline = createInterRowPolyline(source, target);
+
+    if (interRowPolyline) {
+      return interRowPolyline;
+    }
+  }
+
+  const { start, end } = getAnchorPair(source, target, hasReverse);
+  const horizontal = Math.abs(end.x - start.x) >= Math.abs(end.y - start.y);
+  const points = horizontal
+    ? [
+        start,
+        { x: start.x + (end.x - start.x) / 2, y: start.y },
+        { x: start.x + (end.x - start.x) / 2, y: end.y },
+        end,
+      ]
+    : [
+        start,
+        { x: start.x, y: start.y + (end.y - start.y) / 2 },
+        { x: end.x, y: start.y + (end.y - start.y) / 2 },
+        end,
+      ];
+
+  return createPolylineResult(points);
+}
+
+function getLabelRect(position, size) {
+  return {
+    bottom: position.y + size.height / 2,
+    left: position.x - size.width / 2,
+    right: position.x + size.width / 2,
+    top: position.y - size.height / 2,
+  };
+}
+
+function getIntersectionArea(firstRect, secondRect) {
+  const width =
+    Math.min(firstRect.right, secondRect.right) -
+    Math.max(firstRect.left, secondRect.left);
+  const height =
+    Math.min(firstRect.bottom, secondRect.bottom) -
+    Math.max(firstRect.top, secondRect.top);
+
+  return width > 0 && height > 0 ? width * height : 0;
+}
+
+function expandRect(rect, margin) {
+  return {
+    bottom: rect.bottom + margin,
+    left: rect.left - margin,
+    right: rect.right + margin,
+    top: rect.top - margin,
+  };
+}
+
+function clampLabelPosition(position, size, canvasMetrics) {
+  return {
+    x: Math.min(
+      canvasMetrics.width - size.width / 2 - edgeLabelPlacementMargin,
+      Math.max(size.width / 2 + edgeLabelPlacementMargin, position.x),
+    ),
+    y: Math.min(
+      canvasMetrics.height - size.height / 2 - edgeLabelPlacementMargin,
+      Math.max(size.height / 2 + edgeLabelPlacementMargin, position.y),
+    ),
+  };
+}
+
+function getRouteObstacleRects(routePositionMap) {
+  return [...routePositionMap.values()].map((route) => ({
+    bottom: getRouteBottom(route) + edgeLabelObstacleMargin,
+    left: route.x - edgeLabelObstacleMargin,
+    right: route.x + getNodeWidth(route) + edgeLabelObstacleMargin,
+    top: route.y - edgeLabelObstacleMargin,
+  }));
+}
+
+export function getEdgeLabelPrefix(edge) {
+  return edge.kinds.includes("condition") ? "條件" : "點擊";
+}
+
+function getLabelCanvasSize(edge, labelScale) {
+  const labelText = `${getEdgeLabelPrefix(edge)} ${edge.labels.join(" / ")}`;
+  const textUnits = [...labelText].reduce((units, character) => {
+    if (/\s/.test(character)) {
+      return units + 0.35;
+    }
+
+    return units + (/^[\u4e00-\u9fff]$/.test(character) ? 1 : 0.62);
+  }, 0);
+  const visualWidth = Math.min(
+    edgeLabelVisualMaxWidth,
+    Math.max(edgeLabelVisualMinWidth, textUnits * 7 + 32),
+  );
+
+  return {
+    height: edgeLabelVisualHeight * labelScale,
+    width: visualWidth * labelScale,
+  };
+}
+
+function getLabelPositionScore(
+  position,
+  size,
+  origin,
+  routeObstacles,
+  placedLabelRects,
+  canvasMetrics,
+) {
+  const rect = getLabelRect(position, size);
+  const routeOverlap = getTotalIntersectionArea(rect, routeObstacles);
+  const labelOverlap = getTotalIntersectionArea(rect, placedLabelRects);
+  const overflow =
+    Math.max(0, -rect.left) +
+    Math.max(0, -rect.top) +
+    Math.max(0, rect.right - canvasMetrics.width) +
+    Math.max(0, rect.bottom - canvasMetrics.height);
+  const distance = Math.hypot(position.x - origin.x, position.y - origin.y);
+
+  return routeOverlap * 1000 + labelOverlap * 600 + overflow * 200 + distance;
+}
+
+// Plain loops: label placement runs these for every candidate of every edge,
+// so they avoid per-obstacle allocations. Summation order matches the array.
+function getTotalIntersectionArea(rect, obstacles) {
+  let total = 0;
+
+  for (let index = 0; index < obstacles.length; index += 1) {
+    total += getIntersectionArea(rect, obstacles[index]);
+  }
+
+  return total;
+}
+
+// The obstacle with the largest intersection; the first one wins a tie.
+function getLargestOverlappingObstacle(rect, obstacles) {
+  let largest = null;
+  let largestArea = 0;
+
+  for (let index = 0; index < obstacles.length; index += 1) {
+    const area = getIntersectionArea(rect, obstacles[index]);
+
+    if (area > largestArea) {
+      largest = obstacles[index];
+      largestArea = area;
+    }
+  }
+
+  return largest;
+}
+
+function resolveLabelCandidate(position, size, obstacles, canvasMetrics) {
+  let nextPosition = clampLabelPosition(position, size, canvasMetrics);
+
+  for (let index = 0; index < 8; index += 1) {
+    const rect = getLabelRect(nextPosition, size);
+    const obstacle = getLargestOverlappingObstacle(rect, obstacles);
+
+    if (!obstacle) {
+      return nextPosition;
+    }
+
+    const pushOptions = [
+      {
+        x: obstacle.left - rect.right - edgeLabelPlacementMargin,
+        y: 0,
+      },
+      {
+        x: obstacle.right - rect.left + edgeLabelPlacementMargin,
+        y: 0,
+      },
+      {
+        x: 0,
+        y: obstacle.top - rect.bottom - edgeLabelPlacementMargin,
+      },
+      {
+        x: 0,
+        y: obstacle.bottom - rect.top + edgeLabelPlacementMargin,
+      },
+    ]
+      .map((push) => {
+        const positionAfterPush = clampLabelPosition(
+          {
+            x: nextPosition.x + push.x,
+            y: nextPosition.y + push.y,
+          },
+          size,
+          canvasMetrics,
+        );
+        const rectAfterPush = getLabelRect(positionAfterPush, size);
+
+        return {
+          distance: Math.hypot(positionAfterPush.x - position.x, positionAfterPush.y - position.y),
+          overlap: getTotalIntersectionArea(rectAfterPush, obstacles),
+          position: positionAfterPush,
+        };
+      })
+      .sort(
+        (first, second) =>
+          first.overlap - second.overlap || first.distance - second.distance,
+      );
+
+    nextPosition = pushOptions[0]?.position ?? nextPosition;
+  }
+
+  return nextPosition;
+}
+
+function getLabelCandidatePositions(polyline, size) {
+  const candidates = [polyline.labelPosition];
+  const points = polyline.pointList ?? [];
+  const segmentRatios = [0.5, 0.35, 0.65];
+
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const start = points[index];
+    const end = points[index + 1];
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    const segmentLength = Math.hypot(dx, dy);
+
+    if (segmentLength < edgeLabelPlacementMargin * 2) {
+      continue;
+    }
+
+    const isHorizontal = Math.abs(dx) >= Math.abs(dy);
+    const primaryOffset =
+      (isHorizontal ? size.height : size.width) / 2 + edgeLabelPlacementMargin;
+    const offsets = [
+      0,
+      -primaryOffset,
+      primaryOffset,
+      -primaryOffset * 2,
+      primaryOffset * 2,
+    ];
+
+    for (const ratio of segmentRatios) {
+      const base = {
+        x: start.x + dx * ratio,
+        y: start.y + dy * ratio,
+      };
+
+      for (const offset of offsets) {
+        candidates.push(
+          isHorizontal
+            ? { x: base.x, y: base.y + offset }
+            : { x: base.x + offset, y: base.y },
+        );
+      }
+    }
+  }
+
+  const uniqueCandidates = new Map();
+  candidates.forEach((candidate) => {
+    uniqueCandidates.set(`${Math.round(candidate.x)}:${Math.round(candidate.y)}`, candidate);
+  });
+
+  return [...uniqueCandidates.values()];
+}
+
+// getMeasuredLabelSize(edge), when given, returns the label's rendered size in
+// screen pixels (or null); labelScale converts it to canvas units. Without it
+// the size is estimated from the label text.
+export function placeEdgeLabels(
+  edges,
+  routePositionMap,
+  canvasMetrics,
+  labelScale,
+  getMeasuredLabelSize,
+) {
+  const routeObstacles = getRouteObstacleRects(routePositionMap);
+  const placedLabelRects = [];
+
+  return edges.map((edge) => {
+    const measuredSize = getMeasuredLabelSize?.(edge);
+    const labelSize = measuredSize
+      ? { height: measuredSize.height * labelScale, width: measuredSize.width * labelScale }
+      : getLabelCanvasSize(edge, labelScale);
+    const origin = edge.polyline.labelPosition;
+    const obstacles = [...routeObstacles, ...placedLabelRects];
+    const candidates = getLabelCandidatePositions(edge.polyline, labelSize)
+      .map((candidate) =>
+        resolveLabelCandidate(candidate, labelSize, obstacles, canvasMetrics),
+      )
+      .map((candidate) => ({
+        position: candidate,
+        score: getLabelPositionScore(
+          candidate,
+          labelSize,
+          origin,
+          routeObstacles,
+          placedLabelRects,
+          canvasMetrics,
+        ),
+      }))
+      .sort((first, second) => first.score - second.score);
+    const bestPosition = candidates[0]?.position ?? origin;
+
+    placedLabelRects.push(
+      expandRect(getLabelRect(bestPosition, labelSize), edgeLabelPlacementMargin / 2),
+    );
+
+    return {
+      ...edge,
+      polyline: {
+        ...edge.polyline,
+        labelPosition: bestPosition,
+      },
+    };
+  });
+}
+
+export function normalizeStorybookGlobals(value) {
+  const globals = new Map();
+
+  String(value ?? "")
+    .split(";")
+    .forEach((entry) => {
+      const [key, ...valueParts] = entry.split(":");
+      const trimmedKey = key?.trim();
+      const trimmedValue = valueParts.join(":").trim();
+
+      if (trimmedKey && trimmedValue) {
+        globals.set(trimmedKey, trimmedValue);
+      }
+    });
+
+  return globals;
+}
+
+export function getPrototypeFlowExportStoryId(prototype) {
+  const figmaExport = isRecord(prototype.figmaExport)
+    ? prototype.figmaExport
+    : {};
+  const flowExport = isRecord(prototype.flow?.figmaExport)
+    ? prototype.flow.figmaExport
+    : {};
+  const storyId =
+    figmaExport.flowStoryId ??
+    figmaExport.storyId ??
+    flowExport.storyId ??
+    prototype.flow?.figmaExportStoryId;
+
+  return typeof storyId === "string" && storyId.trim() ? storyId.trim() : "";
+}
+
+// Camera, input and shortcut math for the UI Flow canvas. The camera is
+// { x, y, z }: a world point (wx, wy) is drawn at (wx * z + x, wy * z + y)
+// on the canvas.
+export const MIN_ZOOM = 0.05;
+export const MAX_ZOOM = 4;
+export const ZOOM_STEPS = [0.05, 0.1, 0.25, 0.5, 1, 2, 4];
+export const DRAG_THRESHOLD_PX = 3;
+const wheelDeltaClampPx = 30;
+const wheelLinePx = 16;
+const zoomStepTolerance = 1.05;
+const fitInsetMaxPx = 96;
+const fitInsetRatio = 0.1;
+const routeVisibleTop = nodeHeaderHeight + 1;
+
+export function clampZoom(zoom) {
+  return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom));
+}
+
+export function screenToWorld(point, camera) {
+  return {
+    x: (point.x - camera.x) / camera.z,
+    y: (point.y - camera.y) / camera.z,
+  };
+}
+
+export function worldToScreen(point, camera) {
+  return {
+    x: point.x * camera.z + camera.x,
+    y: point.y * camera.z + camera.y,
+  };
+}
+
+// Changes the zoom while the world point under `anchor` (a canvas position)
+// stays where it is on screen: t' = p - (p - t) * z' / z.
+export function zoomAtPoint(camera, nextZoom, anchor) {
+  const z = clampZoom(nextZoom);
+  const ratio = z / camera.z;
+
+  return {
+    x: anchor.x - (anchor.x - camera.x) * ratio,
+    y: anchor.y - (anchor.y - camera.y) * ratio,
+    z,
+  };
+}
+
+// Wheel deltas in CSS pixels: deltaMode 1 counts lines (16 px), deltaMode 2
+// counts pages (the canvas height).
+export function normalizeWheelDelta(eventLike, canvasHeight) {
+  const unit =
+    eventLike.deltaMode === 1 ? wheelLinePx : eventLike.deltaMode === 2 ? canvasHeight : 1;
+
+  return {
+    dx: (eventLike.deltaX ?? 0) * unit,
+    dy: (eventLike.deltaY ?? 0) * unit,
+  };
+}
+
+// What a wheel event inside the UI Flow root does. Modifier wheels (and
+// trackpad pinch, which arrives as a ctrlKey wheel) zoom from anywhere in the
+// root unless a Safari gesture already drives the zoom; plain wheels pan over
+// the viewport, keep native scrolling over scrollable panels and are
+// swallowed elsewhere. Pan deltas are in CSS pixels; the camera moves by
+// (-dx, -dy).
+export function classifyWheel(eventLike, context) {
+  const cancelable = eventLike.cancelable !== false;
+
+  if (eventLike.ctrlKey || eventLike.metaKey || eventLike.altKey) {
+    return {
+      action: context.gestureActive ? "ignore" : "zoom",
+      preventDefault: cancelable,
+    };
+  }
+
+  if (context.overViewport) {
+    const { dx, dy } = normalizeWheelDelta(eventLike, context.canvasHeight);
+
+    return eventLike.shiftKey && !context.isMac
+      ? { action: "pan", dx: dx + dy, dy: 0, preventDefault: cancelable }
+      : { action: "pan", dx, dy, preventDefault: cancelable };
+  }
+
+  if (context.overScrollable) {
+    return { action: "native", preventDefault: false };
+  }
+
+  return { action: "ignore", preventDefault: cancelable };
+}
+
+// Continuous zoom from one wheel event: z' = z * exp(-Δ / 100) with Δ the
+// pixel deltaY clamped to ±30, anchored at the pointer.
+export function applyWheelZoom(camera, eventLike, anchor, canvasHeight) {
+  const { dy } = normalizeWheelDelta(eventLike, canvasHeight);
+  const delta = Math.min(wheelDeltaClampPx, Math.max(-wheelDeltaClampPx, dy));
+
+  return zoomAtPoint(camera, camera.z * Math.exp(-delta / 100), anchor);
+}
+
+// What a pointerdown on the canvas starts: the middle button and a primary
+// press while Space is held pan; Cmd/Meta does not. Other primary presses go
+// to the frame under the pointer or to empty canvas.
+export function classifyPointerDown(eventLike, context) {
+  if (eventLike.button === 1) {
+    return { action: "pan", preventDefault: true };
+  }
+
+  if (eventLike.button !== 0) {
+    return { action: "none", preventDefault: false };
+  }
+
+  if (context.spaceHeld) {
+    return { action: "pan", preventDefault: true };
+  }
+
+  return { action: context.onFrame ? "frame" : "canvas", preventDefault: false };
+}
+
+// Discrete zoom: the next step table entry beyond 1.05x (in) or below 1/1.05x
+// (out) of the current zoom, or the current zoom when none qualifies.
+export function stepZoom(zoom, direction) {
+  if (direction === "in") {
+    return ZOOM_STEPS.find((step) => step > zoom * zoomStepTolerance) ?? zoom;
+  }
+
+  const smaller = ZOOM_STEPS.filter((step) => step < zoom / zoomStepTolerance);
+
+  return smaller.length > 0 ? smaller[smaller.length - 1] : zoom;
+}
+
+// Centers `bounds` in a canvas of `canvasSize` at
+// min(1, (W - 2i) / bw, (H - 2i) / bh) clamped to the zoom range, with
+// i = min(96, 10% of min(W, H)).
+export function fitCamera(bounds, canvasSize) {
+  const { height, width } = canvasSize;
+
+  if (!bounds) {
+    return { x: width / 2, y: height / 2, z: 1 };
+  }
+
+  const inset = Math.min(fitInsetMaxPx, fitInsetRatio * Math.min(width, height));
+  const z = clampZoom(
+    Math.min(
+      1,
+      bounds.width > 0 ? (width - 2 * inset) / bounds.width : 1,
+      bounds.height > 0 ? (height - 2 * inset) / bounds.height : 1,
+    ),
+  );
+
+  return {
+    x: width / 2 - (bounds.x + bounds.width / 2) * z,
+    y: height / 2 - (bounds.y + bounds.height / 2) * z,
+    z,
+  };
+}
+
+// Zoom bucket round(2 * log2(z)): one bucket per ~1.41x of zoom.
+export function getZoomBucket(zoom) {
+  return Math.round(2 * Math.log2(zoom));
+}
+
+// World bounding box of frame boxes ({ x, y, width, height }), or null.
+export function getFlowBounds(frames) {
+  let left = Infinity;
+  let top = Infinity;
+  let right = -Infinity;
+  let bottom = -Infinity;
+
+  for (const frame of frames) {
+    left = Math.min(left, frame.x);
+    top = Math.min(top, frame.y);
+    right = Math.max(right, frame.x + frame.width);
+    bottom = Math.max(bottom, frame.y + frame.height);
+  }
+
+  return Number.isFinite(left)
+    ? { height: bottom - top, width: right - left, x: left, y: top }
+    : null;
+}
+
+// The part of a frame the reviewer sees: a route frame's preview rect (65 px
+// below the box top, 1 px in from the other sides) or a flow-only node's box.
+export function getFrameVisibleRect(box, frameType) {
+  if (frameType === "route") {
+    return {
+      height: box.height - routeVisibleTop - nodeFrameSize / 2,
+      width: box.width - nodeFrameSize,
+      x: box.x + nodeFrameSize / 2,
+      y: box.y + routeVisibleTop,
+    };
+  }
+
+  return { height: box.height, width: box.width, x: box.x, y: box.y };
+}
+
+const controlKeyCodes = new Set(["Space", "Enter", "NumpadEnter", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"]);
+
+// Canvas command for a keydown/keyup, or null when the key must reach
+// Storybook (or a focused control) unchanged. Matches KeyboardEvent.code;
+// Mod is Cmd on macOS and Ctrl elsewhere.
+export function resolveCanvasShortcut(eventLike, context) {
+  if (context.isTextEntry || eventLike.altKey) {
+    return null;
+  }
+
+  const { code } = eventLike;
+  const keydown = eventLike.type === "keydown";
+
+  if (context.overlayOpen) {
+    return keydown && code === "Escape" ? "close-overlay" : null;
+  }
+
+  if (context.targetIsControl && controlKeyCodes.has(code)) {
+    return null;
+  }
+
+  if (code === "Space") {
+    return keydown ? "pan-start" : "pan-end";
+  }
+
+  if (!keydown) {
+    return null;
+  }
+
+  const mod = context.isMac ? eventLike.metaKey : eventLike.ctrlKey;
+  const otherMod = context.isMac ? eventLike.ctrlKey : eventLike.metaKey;
+
+  if (otherMod) {
+    return null;
+  }
+
+  if (code === "Escape") {
+    return !mod && !eventLike.shiftKey && context.dragActive ? "cancel-drag" : null;
+  }
+
+  if (code === "Digit1") {
+    return eventLike.shiftKey && !mod ? "fit" : null;
+  }
+
+  if (code === "Digit0") {
+    return eventLike.shiftKey !== mod ? "zoom-100" : null;
+  }
+
+  if (code === "Equal" || code === "NumpadAdd") {
+    return "zoom-in";
+  }
+
+  if (code === "Minus" || code === "NumpadSubtract") {
+    return "zoom-out";
+  }
+
+  return null;
+}

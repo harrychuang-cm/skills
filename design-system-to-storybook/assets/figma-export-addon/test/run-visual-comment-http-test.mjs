@@ -574,6 +574,86 @@ try {
     await new Promise((resolve) => crossServer.close(resolve));
     await rm(crossRoot, { recursive: true, force: true });
   }
+  // anchor and story.view travel through the HTTP API unchanged.
+  const anchorRoot = await mkdtemp(join(tmpdir(), "sbfx-comments-http-anchor-"));
+  const anchorStore = createVisualCommentStore({ cwd: anchorRoot });
+  const anchorHandler = createVisualCommentsHandler({ basePath: apiPath, store: anchorStore });
+  const anchorServer = http.createServer((request, response) => {
+    if (request.url?.startsWith(apiPath)) {
+      request.url = request.url.slice(apiPath.length) || "/";
+    }
+    anchorHandler(request, response);
+  });
+  await new Promise((resolve) => anchorServer.listen(0, "127.0.0.1", resolve));
+  const anchorBase = `http://127.0.0.1:${anchorServer.address().port}${apiPath}`;
+  try {
+    const started = await (
+      await fetch(`${anchorBase}/sessions`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ title: "Anchors" }),
+      })
+    ).json();
+    const anchorMeeting = started.meeting.session.id;
+    const anchor = {
+      type: "canvas",
+      x: 600,
+      y: 300,
+      nearby: [
+        { id: "route:intake", label: "Intake", dx: 600, dy: 300 },
+        { id: "route:review", label: "Review", dx: -360, dy: 300 },
+      ],
+    };
+    const anchored = {
+      ...commentRequest("http-anchor-1"),
+      story: { id: "demo--story", title: "Demo", name: "Story", view: "ui-flow" },
+      anchor,
+    };
+    const createdAnchor = await fetch(`${anchorBase}/sessions/${anchorMeeting}/comments`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(anchored),
+    });
+    assert.equal(createdAnchor.status, 201);
+    assert.deepEqual((await createdAnchor.json()).comment.anchor, anchor, "the create response carries the anchor");
+    const anchorOverview = await (await fetch(`${anchorBase}?storyId=demo--story`)).json();
+    assert.deepEqual(
+      anchorOverview.comments.map((entry) => [entry.view, entry.anchor]),
+      [["ui-flow", anchor]],
+      "the overview returns the comment's view and anchor",
+    );
+    const badAnchor = await fetch(`${anchorBase}/sessions/${anchorMeeting}/comments`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ...commentRequest("http-anchor-2"), anchor: { type: "path", id: "edge:a->b", t: 2 } }),
+    });
+    assert.equal(badAnchor.status, 400, "an invalid anchor is a validation error");
+
+    // Moves and restores travel through PATCH; the overview carries movedAt.
+    const createdComment = (await (await fetch(`${anchorBase}?storyId=demo--story`)).json()).comments[0];
+    const patchComment = (body) =>
+      fetch(`${anchorBase}/sessions/${anchorMeeting}/comments/${createdComment.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    const moved = await patchComment({ anchor: { type: "path", id: "edge:intake->review", t: 0.5 } });
+    assert.equal(moved.status, 200, "a move PATCH succeeds");
+    const movedBody = await moved.json();
+    assert.deepEqual(movedBody.comment.anchor, { type: "path", id: "edge:intake->review", t: 0.5 }, "the move response carries the new anchor");
+    assert.equal(typeof movedBody.comment.movedAt, "string", "the move response carries movedAt");
+    const movedOverview = await (await fetch(`${anchorBase}?storyId=demo--story`)).json();
+    assert.equal(movedOverview.comments[0].movedAt, movedBody.comment.movedAt, "the overview carries movedAt");
+    const restoredResponse = await patchComment({ anchor, pin: createdComment.pin, movedAt: null });
+    assert.equal(restoredResponse.status, 200, "a restore PATCH succeeds");
+    const restoredOverview = await (await fetch(`${anchorBase}?storyId=demo--story`)).json();
+    assert.deepEqual(restoredOverview.comments[0].anchor, anchor, "the restore puts back the anchor");
+    assert.equal(restoredOverview.comments[0].movedAt, undefined, "the restore removes movedAt");
+    assert.equal((await patchComment({ anchor: null })).status, 400, "anchor null outside a restore is a validation error");
+  } finally {
+    await new Promise((resolve) => anchorServer.close(resolve));
+    await rm(anchorRoot, { recursive: true, force: true });
+  }
   console.log("visual comment HTTP checks passed");
 } finally {
   await new Promise((resolve) => server.close(resolve));

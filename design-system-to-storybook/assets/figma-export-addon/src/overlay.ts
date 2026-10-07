@@ -3,6 +3,7 @@ import {
   readCollapsePreference,
   writeCollapsePreference,
 } from "./collapsePreference";
+import { readExportAvailability } from "./commentAnchors";
 import { createFigmaExportPayload } from "./domExport";
 import {
   collapseDisclosureSvg,
@@ -324,6 +325,7 @@ function resolveExportScope(): { scope: HTMLElement; warning?: string } {
 }
 
 type OverlayRefs = {
+  actions: HTMLElement;
   aside: HTMLElement;
   buttons: Partial<Record<CopyFormat, { icon: HTMLElement; label: Text | null; button: HTMLButtonElement }>>;
   info: HTMLElement;
@@ -332,6 +334,9 @@ type OverlayRefs = {
   summary: HTMLElement;
   toggle: HTMLButtonElement;
   toggleIcon: HTMLElement;
+  unavailable: HTMLElement;
+  unavailableLabel: Text;
+  unavailableLink: HTMLAnchorElement;
 };
 
 type OverlayState = {
@@ -469,9 +474,24 @@ function buildOverlay(): OverlayRefs {
   );
   actions.append(json.button, file.button, script.button, design.button);
 
-  aside.append(header, info, actions);
+  // Shown instead of the actions while the export scope declares
+  // data-sbfx-export="unavailable" (for example a canvas view of a flow).
+  const unavailable = document.createElement("p");
+  unavailable.className = "sbfx-exporter__unavailable";
+  unavailable.dataset.exportUnavailable = "true";
+  unavailable.hidden = true;
+  const unavailableLabel = document.createTextNode("");
+  const unavailableLink = document.createElement("a");
+  unavailableLink.className = "sbfx-exporter__unavailable-link";
+  unavailableLink.target = "_blank";
+  unavailableLink.rel = "noopener noreferrer";
+  unavailableLink.textContent = "Open";
+  unavailable.append(unavailableLabel, " ", unavailableLink);
+
+  aside.append(header, info, actions, unavailable);
 
   return {
+    actions,
     aside,
     buttons: {
       design: { button: design.button, icon: design.iconSpan, label: design.label },
@@ -485,7 +505,45 @@ function buildOverlay(): OverlayRefs {
     summary,
     toggle,
     toggleIcon,
+    unavailable,
+    unavailableLabel,
+    unavailableLink,
   };
+}
+
+function renderExportAvailability(): boolean {
+  if (!overlayRefs) return true;
+  const availability = readExportAvailability(resolveExportScope().scope);
+  const { actions, aside, info, unavailable, unavailableLabel, unavailableLink } = overlayRefs;
+  aside.dataset.exportAvailable = availability.available ? "true" : "false";
+  actions.hidden = !availability.available;
+  info.hidden = !availability.available;
+  unavailable.hidden = availability.available;
+  if (!availability.available) {
+    if (unavailableLabel.textContent !== availability.label) {
+      unavailableLabel.textContent = availability.label;
+    }
+    unavailableLink.hidden = !availability.href;
+    if (availability.href && unavailableLink.href !== availability.href) {
+      unavailableLink.href = availability.href;
+    }
+  }
+  return availability.available;
+}
+
+// The host's declaration is rendered after the decorator runs and can change
+// without a story render (for example switching Inspector modes), so it is
+// re-read while the overlay is mounted.
+let availabilityTimer = 0;
+
+function startAvailabilityWatch(): void {
+  if (availabilityTimer) return;
+  availabilityTimer = window.setInterval(renderExportAvailability, 500);
+}
+
+function stopAvailabilityWatch(): void {
+  window.clearInterval(availabilityTimer);
+  availabilityTimer = 0;
 }
 
 function renderOverlay(): void {
@@ -502,6 +560,10 @@ function renderOverlay(): void {
   if (overlayWorkspace?.root.isConnected) {
     overlayWorkspace.root.dataset.exportCollapsed = collapsed ? "true" : "false";
   }
+  // A collapsed workspace is a small button: the Story root keeps its full
+  // size (the reservation rules read this marker).
+  if (collapsed) document.documentElement.dataset.sbfxWorkspaceCollapsed = "true";
+  else delete document.documentElement.dataset.sbfxWorkspaceCollapsed;
   const toggleLabel = collapsed
     ? "Expand Figma export panel"
     : "Collapse Figma export panel";
@@ -527,6 +589,8 @@ function renderOverlay(): void {
   } else if (status !== "copying" && progress) {
     progress.remove();
   }
+
+  renderExportAvailability();
 
   (Object.keys(buttons) as CopyFormat[]).forEach((format) => {
     const entry = buttons[format];
@@ -563,6 +627,8 @@ function setOverlayStatus(status: ExportStatus, summary?: string): void {
 
 async function handleCopy(format: CopyFormat): Promise<void> {
   if (!overlayState) return;
+  // Re-checked on every action: the view may have changed since the last render.
+  if (!renderExportAvailability()) return;
 
   const { context, options } = overlayState;
   const componentTitle = getExportComponentTitle(context.title, options);
@@ -689,6 +755,7 @@ async function handleCopy(format: CopyFormat): Promise<void> {
 }
 
 function unmountOverlay(): void {
+  stopAvailabilityWatch();
   if (overlayRefs) {
     overlayRefs.aside.remove();
     overlayRefs = null;
@@ -696,6 +763,7 @@ function unmountOverlay(): void {
   if (overlayWorkspace?.root.isConnected) {
     delete overlayWorkspace.root.dataset.exportCollapsed;
   }
+  delete document.documentElement.dataset.sbfxWorkspaceCollapsed;
   overlayWorkspace?.release();
   overlayWorkspace = null;
   overlayState = null;
@@ -843,4 +911,8 @@ export function syncFigmaExportOverlay(
   }
 
   renderOverlay();
+  startAvailabilityWatch();
+  // The story (or the host's replacement for it) renders right after this
+  // decorator call; read its declaration once it is in the document.
+  window.setTimeout(renderExportAvailability, 0);
 }

@@ -560,6 +560,20 @@
   pointer-events: none;
 }
 
+/* Saved pins are dragged to move them. */
+.sbfx-review__saved-pin {
+  touch-action: none;
+}
+
+.sbfx-review__saved-pin[data-dragging="true"] {
+  z-index: calc(var(--sbfx-z-index, 20) + 3);
+  cursor: grabbing;
+}
+
+.sbfx-review__saved-pin[data-saving="true"] {
+  cursor: progress;
+}
+
 .sbfx-review__saved-pin[data-selected="true"] {
   box-shadow:
     0 0 0 2px var(--sbfx-accent),
@@ -726,6 +740,85 @@
   justify-content: space-between;
   inline-size: 100%;
   flex: 0 0 auto;
+}
+
+/* Where an anchored comment sits, and the request to show it. */
+.sbfx-comments-panel__comment-anchor {
+  margin: 0;
+  color: var(--sbfx-muted);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.sbfx-comments-panel__show-location {
+  justify-self: start;
+  min-block-size: 28px;
+  padding-block: 4px;
+  font-size: 12px;
+}
+
+/* One control per other comment view, plus a note while another view is listed. */
+.sbfx-comments-panel__views {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+/* The edit panel's screenshot, its point marked by the comment ordinal. */
+.sbfx-comments-panel__edit-panel-preview {
+  position: relative;
+  justify-self: center;
+  overflow: hidden;
+  background: var(--sbfx-surface-raised);
+  border-radius: 6px;
+  box-shadow: 0 0 0 1px var(--sbfx-border);
+}
+
+.sbfx-comments-panel__edit-panel-preview img {
+  display: block;
+  inline-size: 100%;
+  block-size: 100%;
+}
+
+.sbfx-comments-panel__edit-panel-pin {
+  inline-size: 20px;
+  block-size: 20px;
+  font-size: 11px;
+  pointer-events: none;
+}
+
+.sbfx-comments-panel__pin-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--sbfx-muted);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.sbfx-comments-panel__pin-notice[data-pin-notice="error"] {
+  color: var(--sbfx-error);
+}
+
+.sbfx-comments-panel__view-note {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--sbfx-muted);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+/* Replaces Add comment while the host declares data-sbfx-comments="unavailable". */
+.sbfx-comments-panel__unavailable {
+  flex: 0 0 auto;
+  margin: 0;
+  color: var(--sbfx-muted);
+  font-size: 13px;
+  line-height: 20px;
 }
 
 .sbfx-review__button[data-shortcut]::after {

@@ -1,0 +1,2434 @@
+{
+  "about": [
+    "Golden expectations for storybook-product-prototype/scripts/test_flow_canvas_geometry.test.mjs.",
+    "Produced once, before the pure UI Flow helpers moved out of preview.js, by evaluating the preview.js named in `source` in node:vm (as test_authority_inspector.mjs does) on the inputs stored here.",
+    "Do not regenerate these expectations from flow-canvas-geometry.js: they prove the move kept every output identical.",
+    "Encoding: {\"$map\": [[k, v]]}, {\"$set\": [...]}, {\"$undefined\": true} and {\"$number\": \"NaN\"|\"Infinity\"|\"-Infinity\"|\"-0\"} stand for values JSON cannot hold.",
+    "flows[].fromPreview holds values computed by preview.js code that does not move (getCanvasMetrics, createDisplayRoutePositionMap, getEdgeLabelScale); the test feeds them back as inputs."
+  ],
+  "source": {
+    "file": "storybook-product-prototype/assets/prototype-inspector/preview.js",
+    "commit": "6fda1dcbc06c6179fb1597148820b5e9c6be19f7",
+    "sha256": "1772264bf041354e66d4221cca472e3f6b4638a71ce051ffefa0ef94f9429a37"
+  },
+  "constants": {
+    "defaultPrototypeModeGlobalName": "prototypeMode",
+    "nodeHeaderHeight": 64,
+    "nodeFrameSize": 2,
+    "defaultNodeHeight": 878
+  },
+  "flows": [
+    {
+      "name": "mixed-phone-flow",
+      "note": "Legacy phone prototype (no flow.viewport) with explicit, position, layout.position, invalid and missing positions, a route-level viewport, measured preview sizes, stored (dragged) positions, decision/state flow nodes, key/reference/hidden/missing flowLine values, aggregated transitions, global/return/condition kinds, a self loop, reverse pairs, same-column bypasses in both directions and labels that collide.",
+      "input": {
+        "prototype": {
+          "id": "golden-flow",
+          "flow": {
+            "routes": [
+              {"id":"r-home","title":"Home","flowGroup":"Entry","flowPosition":{"x":0,"y":0}},
+              {"id":"r-list","title":"List","flowGroup":"Browse","flowPosition":{"x":480,"y":0}},
+              {"id":"r-detail","title":"Detail","navigationId":"detail","flowPosition":{"x":960,"y":0}},
+              {"id":"r-edit","title":"Edit","position":{"x":960,"y":980}},
+              {"id":"r-confirm","title":"Confirm","layout":{"position":{"x":1440,"y":980}}},
+              {"id":"r-done","title":"Done","flowPosition":{"x":1440,"y":2380}},
+              {"id":"r-settings","title":"Settings","flowPosition":{"x":0,"y":2000}},
+              {
+                "id": "r-profile",
+                "title": "Profile",
+                "flowPosition": {"x":-1400,"y":300},
+                "viewport": {"formFactor":"desktop","width":1280,"height":800}
+              },
+              null,
+              {"id":"r-search","title":"Search"},
+              "r-junk",
+              {"id":"r-onboarding","title":"Onboarding","flowPosition":{"x":"10","y":5}},
+              [],
+              {"id":"r-modal","title":"Modal","flowPosition":{"x":480.5,"y":1960.25}},
+              {"id":"r-measured","title":"Measured","flowPosition":{"x":480,"y":980}},
+              {"id":"r-tall","title":"Tall","flowPosition":{"x":1920,"y":0}},
+              {"id":"r-archive","title":"Archive","flowPosition":{"x":1920,"y":2400}},
+              {"id":"r-legal","title":"Legal","flowPosition":{"x":-1400,"y":1400}}
+            ],
+            "nodes": [
+              {
+                "id": "n-decision",
+                "shape": "decision",
+                "title": "需要驗證？",
+                "flowGroup": "Checks",
+                "flowPosition": {"x":600,"y":1560}
+              },
+              {
+                "id": "n-async",
+                "shape": "state",
+                "tone": "warning",
+                "title": "Webhook wait",
+                "description": "Waits for the payment webhook",
+                "flowPosition": {"x":1500,"y":1960}
+              },
+              {"title":"no id"},
+              {"id":7,"title":"numeric id"},
+              {"id":"n-idle"},
+              {"id":"n-terms","shape":"async","title":"Terms","flowPosition":{"x":-900,"y":1500}}
+            ],
+            "transitions": [
+              {"from":"r-home","to":"r-list","label":"Open list","trigger":"tap","flowLine":"key"},
+              {"from":"r-home","to":"r-list","label":"Open list","trigger":"swipe","flowLine":"key"},
+              {"from":"r-home","to":"r-list","label":"Browse","flowLine":"reference"},
+              {"from":"r-list","to":"r-detail","trigger":"select","flowLine":"key"},
+              {"from":"r-detail","to":"r-list","label":"Back","kind":"return","flowLine":"key"},
+              {"from":"r-detail","to":"r-edit","label":"Edit","flowLine":"key"},
+              {"from":"r-edit","to":"r-detail","label":"Cancel","kind":"return","flowLine":"key"},
+              {"from":"r-edit","to":"r-confirm","label":"Save","flowLine":"key"},
+              {"from":"r-confirm","to":"r-done","label":"Confirm","flowLine":"key"},
+              {"from":"r-done","to":"r-home","label":"Home","kind":"global","flowLine":"key"},
+              {"from":"r-home","to":"r-settings","label":"Settings","flowLine":"key"},
+              {"from":"r-list","to":"n-decision","label":"需要驗證？","kind":"condition","flowLine":"key"},
+              {"from":"n-decision","to":"r-modal","label":"是","kind":"condition","flowLine":"key"},
+              {
+                "from": "n-decision",
+                "to": "r-search",
+                "label": "否，稍後再試 retry later with a long explanation",
+                "kind": "condition",
+                "flowLine": "key"
+              },
+              {"from":"r-profile","to":"r-home","label":"Profile back","flowLine":"key"},
+              {"from":"r-home","to":"r-profile","label":"Account","flowLine":"hidden"},
+              {"from":"r-search","to":"r-onboarding","label":"Start"},
+              {"from":"r-measured","to":"r-tall","trigger":"auto","kind":"async","flowLine":"key"},
+              {"from":"n-async","to":"r-done","label":"Webhook","flowLine":"key"},
+              {"from":"ghost","to":"r-home","label":"Ghost","flowLine":"key"},
+              {"from":3,"to":"r-home","label":"Numeric source"},
+              null,
+              {"from":"r-list","to":"r-modal","label":"Quick view","flowLine":"key"},
+              {"from":"r-list","to":"r-measured","label":"Peek","flowLine":"key"},
+              {"from":"r-list","to":"r-home","label":"Up","kind":"return","flowLine":"key"},
+              {"from":"r-detail","to":"r-done","label":"Finish","kind":"global","flowLine":"key"},
+              {"from":"r-onboarding","to":"r-home","label":"Skip","flowLine":"key"},
+              {"from":"r-search","to":"r-home","label":"Close","flowLine":"key"},
+              {"from":"r-home","to":"n-idle","label":"Idle","flowLine":"key"},
+              {"from":"r-list","to":"r-list","label":"Refresh","flowLine":"key"},
+              {"from":"r-confirm","to":"r-done","label":"Confirm","kind":"condition","flowLine":"key"},
+              {"from":"r-settings","to":"r-onboarding","label":"Restart","flowLine":"key"},
+              {"from":"r-search","to":"r-list","label":"Results","flowLine":"key"},
+              {"from":"r-tall","to":"r-detail","label":"Expand","flowLine":"key"},
+              {"from":"r-onboarding","to":"n-idle","label":"Later","flowLine":"key"},
+              {"from":"r-archive","to":"r-tall","label":"Restore","flowLine":"key"},
+              {"from":"r-legal","to":"n-terms","label":"Terms","flowLine":"key"},
+              {"from":"r-settings","to":"r-settings","label":"Theme","flowLine":"reference"},
+              {"from":"r-search","to":"n-idle","label":"Recent","flowLine":"key"}
+            ]
+          }
+        },
+        "previewSizes": {"r-measured":{"height":364,"width":375},"r-tall":{"height":1040,"width":375}},
+        "draggedPositions": {"r-list":{"x":500,"y":20},"n-async":{"x":1700,"y":2100}}
+      },
+      "fromPreview": {
+        "canvasMetrics": {"height":3470,"offsetX":1496,"offsetY":96,"width":3889},
+        "displayPositions": [
+          [
+            "r-home",
+            {"x":1496,"y":96,"height":878,"nodeType":"route","previewHeight":812,"previewWidth":375,"width":377}
+          ],
+          [
+            "r-list",
+            {"x":1996,"y":116,"height":878,"nodeType":"route","previewHeight":812,"previewWidth":375,"width":377}
+          ],
+          [
+            "r-detail",
+            {"x":2456,"y":96,"height":878,"nodeType":"route","previewHeight":812,"previewWidth":375,"width":377}
+          ],
+          [
+            "r-edit",
+            {"x":2456,"y":1076,"height":878,"nodeType":"route","previewHeight":812,"previewWidth":375,"width":377}
+          ],
+          [
+            "r-confirm",
+            {"x":2936,"y":1076,"height":878,"nodeType":"route","previewHeight":812,"previewWidth":375,"width":377}
+          ],
+          [
+            "r-done",
+            {"x":2936,"y":2476,"height":878,"nodeType":"route","previewHeight":812,"previewWidth":375,"width":377}
+          ],
+          [
+            "r-settings",
+            {"x":1496,"y":2096,"height":878,"nodeType":"route","previewHeight":812,"previewWidth":375,"width":377}
+          ],
+          [
+            "r-profile",
+            {"x":96,"y":396,"height":866,"nodeType":"route","previewHeight":800,"previewWidth":1280,"width":1282}
+          ],
+          [
+            "r-search",
+            {"x":2216,"y":616,"height":878,"nodeType":"route","previewHeight":812,"previewWidth":375,"width":377}
+          ],
+          [
+            "r-onboarding",
+            {"x":1496,"y":876,"height":878,"nodeType":"route","previewHeight":812,"previewWidth":375,"width":377}
+          ],
+          [
+            "r-modal",
+            {"x":1976.5,"y":2056.25,"height":878,"nodeType":"route","previewHeight":812,"previewWidth":375,"width":377}
+          ],
+          [
+            "r-measured",
+            {"x":1976,"y":1076,"height":430,"nodeType":"route","previewHeight":364,"previewWidth":375,"width":377}
+          ],
+          [
+            "r-tall",
+            {"x":3416,"y":96,"height":1106,"nodeType":"route","previewHeight":1040,"previewWidth":375,"width":377}
+          ],
+          [
+            "r-archive",
+            {"x":3416,"y":2496,"height":878,"nodeType":"route","previewHeight":812,"previewWidth":375,"width":377}
+          ],
+          [
+            "r-legal",
+            {"x":96,"y":1496,"height":878,"nodeType":"route","previewHeight":812,"previewWidth":375,"width":377}
+          ],
+          [
+            "n-decision",
+            {
+              "x": 2096,
+              "y": 1656,
+              "height": 220,
+              "width": 220,
+              "description": {"$undefined":true},
+              "flowGroup": "Checks",
+              "nodeType": "flow",
+              "shape": "decision",
+              "title": "需要驗證？",
+              "tone": {"$undefined":true}
+            }
+          ],
+          [
+            "n-async",
+            {
+              "x": 3196,
+              "y": 2196,
+              "height": 124,
+              "width": 308,
+              "description": "Waits for the payment webhook",
+              "flowGroup": {"$undefined":true},
+              "nodeType": "flow",
+              "shape": "state",
+              "title": "Webhook wait",
+              "tone": "warning"
+            }
+          ],
+          [
+            "n-idle",
+            {
+              "x": 2216,
+              "y": 1396,
+              "height": 124,
+              "width": 308,
+              "description": {"$undefined":true},
+              "flowGroup": {"$undefined":true},
+              "nodeType": "flow",
+              "shape": {"$undefined":true},
+              "title": {"$undefined":true},
+              "tone": {"$undefined":true}
+            }
+          ],
+          [
+            "n-terms",
+            {
+              "x": 596,
+              "y": 1596,
+              "height": 124,
+              "width": 308,
+              "description": {"$undefined":true},
+              "flowGroup": {"$undefined":true},
+              "nodeType": "flow",
+              "shape": "async",
+              "title": "Terms",
+              "tone": {"$undefined":true}
+            }
+          ]
+        ],
+        "labelScales": [
+          {"canvasScale":1.4,"labelScale":0.7142857142857143},
+          {"canvasScale":1,"labelScale":1},
+          {"canvasScale":0.5,"labelScale":2},
+          {"canvasScale":0.45,"labelScale":2.2222222222222223},
+          {"canvasScale":0.36,"labelScale":2.4}
+        ]
+      },
+      "expected": {
+        "prototypeViewport": {"declared":false,"formFactor":"phone","height":812,"width":375},
+        "fallbackGridPitch": {"x":360,"y":260},
+        "routePositions": [
+          ["r-home",{"x":0,"y":0,"height":878,"nodeType":"route","previewHeight":812,"previewWidth":375,"width":377}],
+          ["r-list",{"x":500,"y":20,"height":878,"nodeType":"route","previewHeight":812,"previewWidth":375,"width":377}],
+          [
+            "r-detail",
+            {"x":960,"y":0,"height":878,"nodeType":"route","previewHeight":812,"previewWidth":375,"width":377}
+          ],
+          [
+            "r-edit",
+            {"x":960,"y":980,"height":878,"nodeType":"route","previewHeight":812,"previewWidth":375,"width":377}
+          ],
+          [
+            "r-confirm",
+            {"x":1440,"y":980,"height":878,"nodeType":"route","previewHeight":812,"previewWidth":375,"width":377}
+          ],
+          [
+            "r-done",
+            {"x":1440,"y":2380,"height":878,"nodeType":"route","previewHeight":812,"previewWidth":375,"width":377}
+          ],
+          [
+            "r-settings",
+            {"x":0,"y":2000,"height":878,"nodeType":"route","previewHeight":812,"previewWidth":375,"width":377}
+          ],
+          [
+            "r-profile",
+            {"x":-1400,"y":300,"height":866,"nodeType":"route","previewHeight":800,"previewWidth":1280,"width":1282}
+          ],
+          [
+            "r-search",
+            {"x":720,"y":520,"height":878,"nodeType":"route","previewHeight":812,"previewWidth":375,"width":377}
+          ],
+          [
+            "r-onboarding",
+            {"x":0,"y":780,"height":878,"nodeType":"route","previewHeight":812,"previewWidth":375,"width":377}
+          ],
+          [
+            "r-modal",
+            {"x":480.5,"y":1960.25,"height":878,"nodeType":"route","previewHeight":812,"previewWidth":375,"width":377}
+          ],
+          [
+            "r-measured",
+            {"x":480,"y":980,"height":430,"nodeType":"route","previewHeight":364,"previewWidth":375,"width":377}
+          ],
+          [
+            "r-tall",
+            {"x":1920,"y":0,"height":1106,"nodeType":"route","previewHeight":1040,"previewWidth":375,"width":377}
+          ],
+          [
+            "r-archive",
+            {"x":1920,"y":2400,"height":878,"nodeType":"route","previewHeight":812,"previewWidth":375,"width":377}
+          ],
+          [
+            "r-legal",
+            {"x":-1400,"y":1400,"height":878,"nodeType":"route","previewHeight":812,"previewWidth":375,"width":377}
+          ],
+          [
+            "n-decision",
+            {
+              "x": 600,
+              "y": 1560,
+              "height": 220,
+              "width": 220,
+              "description": {"$undefined":true},
+              "flowGroup": "Checks",
+              "nodeType": "flow",
+              "shape": "decision",
+              "title": "需要驗證？",
+              "tone": {"$undefined":true}
+            }
+          ],
+          [
+            "n-async",
+            {
+              "x": 1700,
+              "y": 2100,
+              "height": 124,
+              "width": 308,
+              "description": "Waits for the payment webhook",
+              "flowGroup": {"$undefined":true},
+              "nodeType": "flow",
+              "shape": "state",
+              "title": "Webhook wait",
+              "tone": "warning"
+            }
+          ],
+          [
+            "n-idle",
+            {
+              "x": 720,
+              "y": 1300,
+              "height": 124,
+              "width": 308,
+              "description": {"$undefined":true},
+              "flowGroup": {"$undefined":true},
+              "nodeType": "flow",
+              "shape": {"$undefined":true},
+              "title": {"$undefined":true},
+              "tone": {"$undefined":true}
+            }
+          ],
+          [
+            "n-terms",
+            {
+              "x": -900,
+              "y": 1500,
+              "height": 124,
+              "width": 308,
+              "description": {"$undefined":true},
+              "flowGroup": {"$undefined":true},
+              "nodeType": "flow",
+              "shape": "async",
+              "title": "Terms",
+              "tone": {"$undefined":true}
+            }
+          ]
+        ],
+        "allEdges": [
+          {
+            "flowLines": ["key","reference"],
+            "from": "r-home",
+            "key": "r-home->r-list",
+            "kinds": [],
+            "labels": ["Open list","Browse"],
+            "to": "r-list",
+            "triggers": ["tap","swipe"]
+          },
+          {
+            "flowLines": ["key"],
+            "from": "r-list",
+            "key": "r-list->r-detail",
+            "kinds": [],
+            "labels": ["select"],
+            "to": "r-detail",
+            "triggers": ["select"]
+          },
+          {
+            "flowLines": ["key"],
+            "from": "r-detail",
+            "key": "r-detail->r-list",
+            "kinds": ["return"],
+            "labels": ["Back"],
+            "to": "r-list",
+            "triggers": []
+          },
+          {
+            "flowLines": ["key"],
+            "from": "r-detail",
+            "key": "r-detail->r-edit",
+            "kinds": [],
+            "labels": ["Edit"],
+            "to": "r-edit",
+            "triggers": []
+          },
+          {
+            "flowLines": ["key"],
+            "from": "r-edit",
+            "key": "r-edit->r-detail",
+            "kinds": ["return"],
+            "labels": ["Cancel"],
+            "to": "r-detail",
+            "triggers": []
+          },
+          {
+            "flowLines": ["key"],
+            "from": "r-edit",
+            "key": "r-edit->r-confirm",
+            "kinds": [],
+            "labels": ["Save"],
+            "to": "r-confirm",
+            "triggers": []
+          },
+          {
+            "flowLines": ["key"],
+            "from": "r-confirm",
+            "key": "r-confirm->r-done",
+            "kinds": ["condition"],
+            "labels": ["Confirm"],
+            "to": "r-done",
+            "triggers": []
+          },
+          {
+            "flowLines": ["key"],
+            "from": "r-done",
+            "key": "r-done->r-home",
+            "kinds": ["global"],
+            "labels": ["Home"],
+            "to": "r-home",
+            "triggers": []
+          },
+          {
+            "flowLines": ["key"],
+            "from": "r-home",
+            "key": "r-home->r-settings",
+            "kinds": [],
+            "labels": ["Settings"],
+            "to": "r-settings",
+            "triggers": []
+          },
+          {
+            "flowLines": ["key"],
+            "from": "r-list",
+            "key": "r-list->n-decision",
+            "kinds": ["condition"],
+            "labels": ["需要驗證？"],
+            "to": "n-decision",
+            "triggers": []
+          },
+          {
+            "flowLines": ["key"],
+            "from": "n-decision",
+            "key": "n-decision->r-modal",
+            "kinds": ["condition"],
+            "labels": ["是"],
+            "to": "r-modal",
+            "triggers": []
+          },
+          {
+            "flowLines": ["key"],
+            "from": "n-decision",
+            "key": "n-decision->r-search",
+            "kinds": ["condition"],
+            "labels": ["否，稍後再試 retry later with a long explanation"],
+            "to": "r-search",
+            "triggers": []
+          },
+          {
+            "flowLines": ["key"],
+            "from": "r-profile",
+            "key": "r-profile->r-home",
+            "kinds": [],
+            "labels": ["Profile back"],
+            "to": "r-home",
+            "triggers": []
+          },
+          {
+            "flowLines": ["hidden"],
+            "from": "r-home",
+            "key": "r-home->r-profile",
+            "kinds": [],
+            "labels": ["Account"],
+            "to": "r-profile",
+            "triggers": []
+          },
+          {
+            "flowLines": [],
+            "from": "r-search",
+            "key": "r-search->r-onboarding",
+            "kinds": [],
+            "labels": ["Start"],
+            "to": "r-onboarding",
+            "triggers": []
+          },
+          {
+            "flowLines": ["key"],
+            "from": "r-measured",
+            "key": "r-measured->r-tall",
+            "kinds": ["async"],
+            "labels": ["auto"],
+            "to": "r-tall",
+            "triggers": ["auto"]
+          },
+          {
+            "flowLines": ["key"],
+            "from": "n-async",
+            "key": "n-async->r-done",
+            "kinds": [],
+            "labels": ["Webhook"],
+            "to": "r-done",
+            "triggers": []
+          },
+          {
+            "flowLines": ["key"],
+            "from": "r-list",
+            "key": "r-list->r-modal",
+            "kinds": [],
+            "labels": ["Quick view"],
+            "to": "r-modal",
+            "triggers": []
+          },
+          {
+            "flowLines": ["key"],
+            "from": "r-list",
+            "key": "r-list->r-measured",
+            "kinds": [],
+            "labels": ["Peek"],
+            "to": "r-measured",
+            "triggers": []
+          },
+          {
+            "flowLines": ["key"],
+            "from": "r-list",
+            "key": "r-list->r-home",
+            "kinds": ["return"],
+            "labels": ["Up"],
+            "to": "r-home",
+            "triggers": []
+          },
+          {
+            "flowLines": ["key"],
+            "from": "r-detail",
+            "key": "r-detail->r-done",
+            "kinds": ["global"],
+            "labels": ["Finish"],
+            "to": "r-done",
+            "triggers": []
+          },
+          {
+            "flowLines": ["key"],
+            "from": "r-onboarding",
+            "key": "r-onboarding->r-home",
+            "kinds": [],
+            "labels": ["Skip"],
+            "to": "r-home",
+            "triggers": []
+          },
+          {
+            "flowLines": ["key"],
+            "from": "r-search",
+            "key": "r-search->r-home",
+            "kinds": [],
+            "labels": ["Close"],
+            "to": "r-home",
+            "triggers": []
+          },
+          {
+            "flowLines": ["key"],
+            "from": "r-home",
+            "key": "r-home->n-idle",
+            "kinds": [],
+            "labels": ["Idle"],
+            "to": "n-idle",
+            "triggers": []
+          },
+          {
+            "flowLines": ["key"],
+            "from": "r-list",
+            "key": "r-list->r-list",
+            "kinds": [],
+            "labels": ["Refresh"],
+            "to": "r-list",
+            "triggers": []
+          },
+          {
+            "flowLines": ["key"],
+            "from": "r-settings",
+            "key": "r-settings->r-onboarding",
+            "kinds": [],
+            "labels": ["Restart"],
+            "to": "r-onboarding",
+            "triggers": []
+          },
+          {
+            "flowLines": ["key"],
+            "from": "r-search",
+            "key": "r-search->r-list",
+            "kinds": [],
+            "labels": ["Results"],
+            "to": "r-list",
+            "triggers": []
+          },
+          {
+            "flowLines": ["key"],
+            "from": "r-tall",
+            "key": "r-tall->r-detail",
+            "kinds": [],
+            "labels": ["Expand"],
+            "to": "r-detail",
+            "triggers": []
+          },
+          {
+            "flowLines": ["key"],
+            "from": "r-onboarding",
+            "key": "r-onboarding->n-idle",
+            "kinds": [],
+            "labels": ["Later"],
+            "to": "n-idle",
+            "triggers": []
+          },
+          {
+            "flowLines": ["key"],
+            "from": "r-archive",
+            "key": "r-archive->r-tall",
+            "kinds": [],
+            "labels": ["Restore"],
+            "to": "r-tall",
+            "triggers": []
+          },
+          {
+            "flowLines": ["key"],
+            "from": "r-legal",
+            "key": "r-legal->n-terms",
+            "kinds": [],
+            "labels": ["Terms"],
+            "to": "n-terms",
+            "triggers": []
+          },
+          {
+            "flowLines": ["reference"],
+            "from": "r-settings",
+            "key": "r-settings->r-settings",
+            "kinds": [],
+            "labels": ["Theme"],
+            "to": "r-settings",
+            "triggers": []
+          },
+          {
+            "flowLines": ["key"],
+            "from": "r-search",
+            "key": "r-search->n-idle",
+            "kinds": [],
+            "labels": ["Recent"],
+            "to": "n-idle",
+            "triggers": []
+          }
+        ],
+        "edges": [
+          {
+            "flowLines": ["key","reference"],
+            "from": "r-home",
+            "key": "r-home->r-list",
+            "kinds": [],
+            "labels": ["Open list","Browse"],
+            "to": "r-list",
+            "triggers": ["tap","swipe"],
+            "colorVariant": "primary"
+          },
+          {
+            "flowLines": ["key"],
+            "from": "r-list",
+            "key": "r-list->r-detail",
+            "kinds": [],
+            "labels": ["select"],
+            "to": "r-detail",
+            "triggers": ["select"],
+            "colorVariant": "primary"
+          },
+          {
+            "flowLines": ["key"],
+            "from": "r-detail",
+            "key": "r-detail->r-list",
+            "kinds": ["return"],
+            "labels": ["Back"],
+            "to": "r-list",
+            "triggers": [],
+            "colorVariant": "primary"
+          },
+          {
+            "flowLines": ["key"],
+            "from": "r-detail",
+            "key": "r-detail->r-edit",
+            "kinds": [],
+            "labels": ["Edit"],
+            "to": "r-edit",
+            "triggers": [],
+            "colorVariant": "secondary"
+          },
+          {
+            "flowLines": ["key"],
+            "from": "r-edit",
+            "key": "r-edit->r-detail",
+            "kinds": ["return"],
+            "labels": ["Cancel"],
+            "to": "r-detail",
+            "triggers": [],
+            "colorVariant": "primary"
+          },
+          {
+            "flowLines": ["key"],
+            "from": "r-edit",
+            "key": "r-edit->r-confirm",
+            "kinds": [],
+            "labels": ["Save"],
+            "to": "r-confirm",
+            "triggers": [],
+            "colorVariant": "secondary"
+          },
+          {
+            "flowLines": ["key"],
+            "from": "r-confirm",
+            "key": "r-confirm->r-done",
+            "kinds": ["condition"],
+            "labels": ["Confirm"],
+            "to": "r-done",
+            "triggers": [],
+            "colorVariant": "primary"
+          },
+          {
+            "flowLines": ["key"],
+            "from": "r-done",
+            "key": "r-done->r-home",
+            "kinds": ["global"],
+            "labels": ["Home"],
+            "to": "r-home",
+            "triggers": [],
+            "colorVariant": "primary"
+          },
+          {
+            "flowLines": ["key"],
+            "from": "r-home",
+            "key": "r-home->r-settings",
+            "kinds": [],
+            "labels": ["Settings"],
+            "to": "r-settings",
+            "triggers": [],
+            "colorVariant": "secondary"
+          },
+          {
+            "flowLines": ["key"],
+            "from": "r-list",
+            "key": "r-list->n-decision",
+            "kinds": ["condition"],
+            "labels": ["需要驗證？"],
+            "to": "n-decision",
+            "triggers": [],
+            "colorVariant": "secondary"
+          },
+          {
+            "flowLines": ["key"],
+            "from": "n-decision",
+            "key": "n-decision->r-modal",
+            "kinds": ["condition"],
+            "labels": ["是"],
+            "to": "r-modal",
+            "triggers": [],
+            "colorVariant": "primary"
+          },
+          {
+            "flowLines": ["key"],
+            "from": "n-decision",
+            "key": "n-decision->r-search",
+            "kinds": ["condition"],
+            "labels": ["否，稍後再試 retry later with a long explanation"],
+            "to": "r-search",
+            "triggers": [],
+            "colorVariant": "secondary"
+          },
+          {
+            "flowLines": ["key"],
+            "from": "r-profile",
+            "key": "r-profile->r-home",
+            "kinds": [],
+            "labels": ["Profile back"],
+            "to": "r-home",
+            "triggers": [],
+            "colorVariant": "tertiary"
+          },
+          {
+            "flowLines": ["key"],
+            "from": "r-measured",
+            "key": "r-measured->r-tall",
+            "kinds": ["async"],
+            "labels": ["auto"],
+            "to": "r-tall",
+            "triggers": ["auto"],
+            "colorVariant": "primary"
+          },
+          {
+            "flowLines": ["key"],
+            "from": "n-async",
+            "key": "n-async->r-done",
+            "kinds": [],
+            "labels": ["Webhook"],
+            "to": "r-done",
+            "triggers": [],
+            "colorVariant": "secondary"
+          },
+          {
+            "flowLines": ["key"],
+            "from": "r-list",
+            "key": "r-list->r-modal",
+            "kinds": [],
+            "labels": ["Quick view"],
+            "to": "r-modal",
+            "triggers": [],
+            "colorVariant": "tertiary"
+          },
+          {
+            "flowLines": ["key"],
+            "from": "r-list",
+            "key": "r-list->r-measured",
+            "kinds": [],
+            "labels": ["Peek"],
+            "to": "r-measured",
+            "triggers": [],
+            "colorVariant": "quaternary"
+          },
+          {
+            "flowLines": ["key"],
+            "from": "r-list",
+            "key": "r-list->r-home",
+            "kinds": ["return"],
+            "labels": ["Up"],
+            "to": "r-home",
+            "triggers": [],
+            "colorVariant": "primary"
+          },
+          {
+            "flowLines": ["key"],
+            "from": "r-detail",
+            "key": "r-detail->r-done",
+            "kinds": ["global"],
+            "labels": ["Finish"],
+            "to": "r-done",
+            "triggers": [],
+            "colorVariant": "tertiary"
+          },
+          {
+            "flowLines": ["key"],
+            "from": "r-onboarding",
+            "key": "r-onboarding->r-home",
+            "kinds": [],
+            "labels": ["Skip"],
+            "to": "r-home",
+            "triggers": [],
+            "colorVariant": "primary"
+          },
+          {
+            "flowLines": ["key"],
+            "from": "r-search",
+            "key": "r-search->r-home",
+            "kinds": [],
+            "labels": ["Close"],
+            "to": "r-home",
+            "triggers": [],
+            "colorVariant": "primary"
+          },
+          {
+            "flowLines": ["key"],
+            "from": "r-home",
+            "key": "r-home->n-idle",
+            "kinds": [],
+            "labels": ["Idle"],
+            "to": "n-idle",
+            "triggers": [],
+            "colorVariant": "quaternary"
+          },
+          {
+            "flowLines": ["key"],
+            "from": "r-list",
+            "key": "r-list->r-list",
+            "kinds": [],
+            "labels": ["Refresh"],
+            "to": "r-list",
+            "triggers": [],
+            "colorVariant": "secondary"
+          },
+          {
+            "flowLines": ["key"],
+            "from": "r-settings",
+            "key": "r-settings->r-onboarding",
+            "kinds": [],
+            "labels": ["Restart"],
+            "to": "r-onboarding",
+            "triggers": [],
+            "colorVariant": "primary"
+          },
+          {
+            "flowLines": ["key"],
+            "from": "r-search",
+            "key": "r-search->r-list",
+            "kinds": [],
+            "labels": ["Results"],
+            "to": "r-list",
+            "triggers": [],
+            "colorVariant": "secondary"
+          },
+          {
+            "flowLines": ["key"],
+            "from": "r-tall",
+            "key": "r-tall->r-detail",
+            "kinds": [],
+            "labels": ["Expand"],
+            "to": "r-detail",
+            "triggers": [],
+            "colorVariant": "primary"
+          },
+          {
+            "flowLines": ["key"],
+            "from": "r-onboarding",
+            "key": "r-onboarding->n-idle",
+            "kinds": [],
+            "labels": ["Later"],
+            "to": "n-idle",
+            "triggers": [],
+            "colorVariant": "secondary"
+          },
+          {
+            "flowLines": ["key"],
+            "from": "r-archive",
+            "key": "r-archive->r-tall",
+            "kinds": [],
+            "labels": ["Restore"],
+            "to": "r-tall",
+            "triggers": [],
+            "colorVariant": "secondary"
+          },
+          {
+            "flowLines": ["key"],
+            "from": "r-legal",
+            "key": "r-legal->n-terms",
+            "kinds": [],
+            "labels": ["Terms"],
+            "to": "n-terms",
+            "triggers": []
+          },
+          {
+            "flowLines": ["key"],
+            "from": "r-search",
+            "key": "r-search->n-idle",
+            "kinds": [],
+            "labels": ["Recent"],
+            "to": "n-idle",
+            "triggers": [],
+            "colorVariant": "tertiary"
+          }
+        ],
+        "reverseEdgeKeys": [
+          "r-home->r-list",
+          "r-list->r-detail",
+          "r-detail->r-list",
+          "r-detail->r-edit",
+          "r-edit->r-detail",
+          "r-list->r-home",
+          "r-list->r-list"
+        ],
+        "polylines": [
+          [
+            "r-home->r-list",
+            {
+              "labelPosition": {"x":1934.5,"y":563},
+              "pointList": [{"x":1873,"y":553},{"x":1934.5,"y":553},{"x":1934.5,"y":573},{"x":1996,"y":573}],
+              "points": "1873,553 1934.5,553 1934.5,573 1996,573"
+            }
+          ],
+          [
+            "r-list->r-detail",
+            {
+              "labelPosition": {"x":2414.5,"y":563},
+              "pointList": [{"x":2373,"y":573},{"x":2414.5,"y":573},{"x":2414.5,"y":553},{"x":2456,"y":553}],
+              "points": "2373,573 2414.5,573 2414.5,553 2456,553"
+            }
+          ],
+          [
+            "r-detail->r-list",
+            {
+              "labelPosition": {"x":2414.5,"y":527},
+              "pointList": [{"x":2456,"y":517},{"x":2414.5,"y":517},{"x":2414.5,"y":537},{"x":2373,"y":537}],
+              "points": "2456,517 2414.5,517 2414.5,537 2373,537"
+            }
+          ],
+          [
+            "r-detail->r-edit",
+            {
+              "labelPosition": {"x":2662.5,"y":1025},
+              "pointList": [{"x":2662.5,"y":974},{"x":2662.5,"y":1025},{"x":2662.5,"y":1076}],
+              "points": "2662.5,974 2662.5,1025 2662.5,1076"
+            }
+          ],
+          [
+            "r-edit->r-detail",
+            {
+              "labelPosition": {"x":2626.5,"y":1025},
+              "pointList": [{"x":2626.5,"y":1076},{"x":2626.5,"y":1025},{"x":2626.5,"y":974}],
+              "points": "2626.5,1076 2626.5,1025 2626.5,974"
+            }
+          ],
+          [
+            "r-edit->r-confirm",
+            {
+              "labelPosition": {"x":2884.5,"y":1515},
+              "pointList": [{"x":2833,"y":1515},{"x":2884.5,"y":1515},{"x":2936,"y":1515}],
+              "points": "2833,1515 2884.5,1515 2936,1515"
+            }
+          ],
+          [
+            "r-confirm->r-done",
+            {
+              "labelPosition": {"x":3124.5,"y":2215},
+              "pointList": [{"x":3124.5,"y":1954},{"x":3124.5,"y":2215},{"x":3124.5,"y":2476}],
+              "points": "3124.5,1954 3124.5,2215 3124.5,2476"
+            }
+          ],
+          [
+            "r-done->r-home",
+            {
+              "labelPosition": {"x":2404.5,"y":3398},
+              "pointList": [{"x":3124.5,"y":3354},{"x":3124.5,"y":3398},{"x":1684.5,"y":3398},{"x":1684.5,"y":974}],
+              "points": "3124.5,3354 3124.5,3398 1684.5,3398 1684.5,974"
+            }
+          ],
+          [
+            "r-home->r-settings",
+            {
+              "labelPosition": {"x":1913,"y":1535},
+              "pointList": [{"x":1873,"y":535},{"x":1913,"y":535},{"x":1913,"y":2535},{"x":1873,"y":2535}],
+              "points": "1873,535 1913,535 1913,2535 1873,2535"
+            }
+          ],
+          [
+            "r-list->n-decision",
+            {
+              "labelPosition": {"x":2413,"y":1160.5},
+              "pointList": [{"x":2373,"y":555},{"x":2413,"y":555},{"x":2413,"y":1766},{"x":2316,"y":1766}],
+              "points": "2373,555 2413,555 2413,1766 2316,1766"
+            }
+          ],
+          [
+            "n-decision->r-modal",
+            {
+              "labelPosition": {"x":2185.5,"y":1966.125},
+              "pointList": [{"x":2206,"y":1876},{"x":2206,"y":1966.125},{"x":2165,"y":1966.125},{"x":2165,"y":2056.25}],
+              "points": "2206,1876 2206,1966.125 2165,1966.125 2165,2056.25"
+            }
+          ],
+          [
+            "n-decision->r-search",
+            {
+              "labelPosition": {"x":2305.25,"y":1575},
+              "pointList": [{"x":2206,"y":1656},{"x":2206,"y":1575},{"x":2404.5,"y":1575},{"x":2404.5,"y":1494}],
+              "points": "2206,1656 2206,1575 2404.5,1575 2404.5,1494"
+            }
+          ],
+          [
+            "r-profile->r-home",
+            {
+              "labelPosition": {"x":1437,"y":682},
+              "pointList": [{"x":1378,"y":829},{"x":1378,"y":682},{"x":1496,"y":682},{"x":1496,"y":535}],
+              "points": "1378,829 1378,682 1496,682 1496,535"
+            }
+          ],
+          [
+            "r-measured->r-tall",
+            {
+              "labelPosition": {"x":2884.5,"y":970},
+              "pointList": [{"x":2353,"y":1291},{"x":2884.5,"y":1291},{"x":2884.5,"y":649},{"x":3416,"y":649}],
+              "points": "2353,1291 2884.5,1291 2884.5,649 3416,649"
+            }
+          ],
+          [
+            "n-async->r-done",
+            {
+              "labelPosition": {"x":3237.25,"y":2398},
+              "pointList": [{"x":3350,"y":2320},{"x":3350,"y":2398},{"x":3124.5,"y":2398},{"x":3124.5,"y":2476}],
+              "points": "3350,2320 3350,2398 3124.5,2398 3124.5,2476"
+            }
+          ],
+          [
+            "r-list->r-modal",
+            {
+              "labelPosition": {"x":2413,"y":1525.125},
+              "pointList": [{"x":2373,"y":555},{"x":2413,"y":555},{"x":2413,"y":2495.25},{"x":2353.5,"y":2495.25}],
+              "points": "2373,555 2413,555 2413,2495.25 2353.5,2495.25"
+            }
+          ],
+          [
+            "r-list->r-measured",
+            {
+              "labelPosition": {"x":2174.5,"y":1035},
+              "pointList": [{"x":2184.5,"y":994},{"x":2184.5,"y":1035},{"x":2164.5,"y":1035},{"x":2164.5,"y":1076}],
+              "points": "2184.5,994 2184.5,1035 2164.5,1035 2164.5,1076"
+            }
+          ],
+          [
+            "r-list->r-home",
+            {
+              "labelPosition": {"x":1934.5,"y":527},
+              "pointList": [{"x":1996,"y":537},{"x":1934.5,"y":537},{"x":1934.5,"y":517},{"x":1873,"y":517}],
+              "points": "1996,537 1934.5,537 1934.5,517 1873,517"
+            }
+          ],
+          [
+            "r-detail->r-done",
+            {
+              "labelPosition": {"x":2884.5,"y":3398},
+              "pointList": [{"x":2644.5,"y":974},{"x":2644.5,"y":3398},{"x":3124.5,"y":3398},{"x":3124.5,"y":3354}],
+              "points": "2644.5,974 2644.5,3398 3124.5,3398 3124.5,3354"
+            }
+          ],
+          [
+            "r-onboarding->r-home",
+            {
+              "labelPosition": {"x":1684.5,"y":925},
+              "pointList": [{"x":1684.5,"y":876},{"x":1684.5,"y":925},{"x":1684.5,"y":974}],
+              "points": "1684.5,876 1684.5,925 1684.5,974"
+            }
+          ],
+          [
+            "r-search->r-home",
+            {
+              "labelPosition": {"x":2044.5,"y":795},
+              "pointList": [{"x":2216,"y":1055},{"x":2216,"y":795},{"x":1873,"y":795},{"x":1873,"y":535}],
+              "points": "2216,1055 2216,795 1873,795 1873,535"
+            }
+          ],
+          [
+            "r-home->n-idle",
+            {
+              "labelPosition": {"x":2027.25,"y":1185},
+              "pointList": [{"x":1684.5,"y":974},{"x":1684.5,"y":1185},{"x":2370,"y":1185},{"x":2370,"y":1396}],
+              "points": "1684.5,974 1684.5,1185 2370,1185 2370,1396"
+            }
+          ],
+          [
+            "r-list->r-list",
+            {
+              "labelPosition": {"x":2184.5,"y":573},
+              "pointList": [{"x":2373,"y":573},{"x":2184.5,"y":573},{"x":1996,"y":573}],
+              "points": "2373,573 2184.5,573 1996,573"
+            }
+          ],
+          [
+            "r-settings->r-onboarding",
+            {
+              "labelPosition": {"x":1684.5,"y":1925},
+              "pointList": [{"x":1684.5,"y":2096},{"x":1684.5,"y":1925},{"x":1684.5,"y":1754}],
+              "points": "1684.5,2096 1684.5,1925 1684.5,1754"
+            }
+          ],
+          [
+            "r-search->r-list",
+            {
+              "labelPosition": {"x":2294.5,"y":805},
+              "pointList": [{"x":2404.5,"y":616},{"x":2404.5,"y":805},{"x":2184.5,"y":805},{"x":2184.5,"y":994}],
+              "points": "2404.5,616 2404.5,805 2184.5,805 2184.5,994"
+            }
+          ],
+          [
+            "r-tall->r-detail",
+            {
+              "labelPosition": {"x":3124.5,"y":592},
+              "pointList": [{"x":3416,"y":649},{"x":3124.5,"y":649},{"x":3124.5,"y":535},{"x":2833,"y":535}],
+              "points": "3416,649 3124.5,649 3124.5,535 2833,535"
+            }
+          ],
+          [
+            "r-onboarding->n-idle",
+            {
+              "labelPosition": {"x":2044.5,"y":1386.5},
+              "pointList": [{"x":1873,"y":1315},{"x":2044.5,"y":1315},{"x":2044.5,"y":1458},{"x":2216,"y":1458}],
+              "points": "1873,1315 2044.5,1315 2044.5,1458 2216,1458"
+            }
+          ],
+          [
+            "r-archive->r-tall",
+            {
+              "labelPosition": {"x":3833,"y":1792},
+              "pointList": [{"x":3793,"y":2935},{"x":3833,"y":2935},{"x":3833,"y":649},{"x":3793,"y":649}],
+              "points": "3793,2935 3833,2935 3833,649 3793,649"
+            }
+          ],
+          [
+            "r-legal->n-terms",
+            {
+              "labelPosition": {"x":534.5,"y":1796.5},
+              "pointList": [{"x":473,"y":1935},{"x":473,"y":1796.5},{"x":596,"y":1796.5},{"x":596,"y":1658}],
+              "points": "473,1935 473,1796.5 596,1796.5 596,1658"
+            }
+          ],
+          [
+            "r-search->n-idle",
+            {
+              "labelPosition": {"x":2387.25,"y":1445},
+              "pointList": [{"x":2404.5,"y":1494},{"x":2404.5,"y":1445},{"x":2370,"y":1445},{"x":2370,"y":1396}],
+              "points": "2404.5,1494 2404.5,1445 2370,1445 2370,1396"
+            }
+          ]
+        ],
+        "arrows": [
+          ["r-home->r-list","1996,573 1982,578 1982,568"],
+          ["r-list->r-detail","2456,553 2442,558 2442,548"],
+          ["r-detail->r-list","2373,537 2387,532 2387,542"],
+          ["r-detail->r-edit","2663,1076 2658,1062 2668,1062"],
+          ["r-edit->r-detail","2627,974 2632,988 2622,988"],
+          ["r-edit->r-confirm","2936,1515 2922,1520 2922,1510"],
+          ["r-confirm->r-done","3125,2476 3120,2462 3130,2462"],
+          ["r-done->r-home","1685,974 1690,988 1680,988"],
+          ["r-home->r-settings","1873,2535 1887,2530 1887,2540"],
+          ["r-list->n-decision","2316,1766 2330,1761 2330,1771"],
+          ["n-decision->r-modal","2165,2056 2160,2042 2170,2042"],
+          ["n-decision->r-search","2405,1494 2410,1508 2400,1508"],
+          ["r-profile->r-home","1496,535 1501,549 1491,549"],
+          ["r-measured->r-tall","3416,649 3402,654 3402,644"],
+          ["n-async->r-done","3125,2476 3120,2462 3130,2462"],
+          ["r-list->r-modal","2354,2495 2368,2490 2368,2500"],
+          ["r-list->r-measured","2165,1076 2160,1062 2170,1062"],
+          ["r-list->r-home","1873,517 1887,512 1887,522"],
+          ["r-detail->r-done","3125,3354 3130,3368 3120,3368"],
+          ["r-onboarding->r-home","1685,974 1680,960 1690,960"],
+          ["r-search->r-home","1873,535 1878,549 1868,549"],
+          ["r-home->n-idle","2370,1396 2365,1382 2375,1382"],
+          ["r-list->r-list","1996,573 2010,568 2010,578"],
+          ["r-settings->r-onboarding","1685,1754 1690,1768 1680,1768"],
+          ["r-search->r-list","2185,994 2180,980 2190,980"],
+          ["r-tall->r-detail","2833,535 2847,530 2847,540"],
+          ["r-onboarding->n-idle","2216,1458 2202,1463 2202,1453"],
+          ["r-archive->r-tall","3793,649 3807,644 3807,654"],
+          ["r-legal->n-terms","596,1658 601,1672 591,1672"],
+          ["r-search->n-idle","2370,1396 2375,1410 2365,1410"]
+        ],
+        "labelPositions": [
+          [
+            ["r-home->r-list",{"x":1934.5,"y":563}],
+            ["r-list->r-detail",{"x":2414.5,"y":563}],
+            ["r-detail->r-list",{"x":2414.5,"y":527}],
+            ["r-detail->r-edit",{"x":2662.5,"y":1025}],
+            ["r-edit->r-detail",{"x":2651.6035714285713,"y":1050.5}],
+            ["r-edit->r-confirm",{"x":2884.5,"y":1515}],
+            ["r-confirm->r-done",{"x":3124.5,"y":2215}],
+            ["r-done->r-home",{"x":2404.5,"y":3398}],
+            ["r-home->r-settings",{"x":1934.7035714285714,"y":1535}],
+            ["r-list->n-decision",{"x":2413,"y":1559.857142857143}],
+            ["n-decision->r-modal",{"x":2185.5,"y":1966.125}],
+            ["n-decision->r-search",{"x":2305.25,"y":1575}],
+            ["r-profile->r-home",{"x":1437,"y":682}],
+            ["r-measured->r-tall",{"x":2884.5,"y":970}],
+            ["n-async->r-done",{"x":3237.25,"y":2398}],
+            ["r-list->r-modal",{"x":2151.8714285714286,"y":1533.857142857143}],
+            ["r-list->r-measured",{"x":2174.5,"y":1035}],
+            ["r-list->r-home",{"x":1934.5,"y":527}],
+            ["r-detail->r-done",{"x":2884.5,"y":3398}],
+            ["r-onboarding->r-home",{"x":1440.4964285714286,"y":925}],
+            ["r-search->r-home",{"x":1938.9464285714287,"y":795}],
+            ["r-home->n-idle",{"x":1924.425,"y":1185}],
+            ["r-list->r-list",{"x":1935.8464285714285,"y":598.8571428571429}],
+            ["r-settings->r-onboarding",{"x":1684.5,"y":1925}],
+            ["r-search->r-list",{"x":2092.192857142857,"y":1033.857142857143}],
+            ["r-tall->r-detail",{"x":3124.5,"y":592}],
+            ["r-onboarding->n-idle",{"x":1933.025,"y":1366.7142857142858}],
+            ["r-archive->r-tall",{"x":3833,"y":1792}],
+            ["r-legal->n-terms",{"x":534.5,"y":1796.5}],
+            ["r-search->n-idle",{"x":2387.25,"y":1602.5714285714287}]
+          ],
+          [
+            ["r-home->r-list",{"x":1956.025,"y":1037}],
+            ["r-list->r-detail",{"x":1926.755,"y":563}],
+            ["r-detail->r-list",{"x":2399.975,"y":73}],
+            ["r-detail->r-edit",{"x":2662.5,"y":1025}],
+            ["r-edit->r-detail",{"x":2759.65,"y":1025}],
+            ["r-edit->r-confirm",{"x":2884.5,"y":1515}],
+            ["r-confirm->r-done",{"x":3124.5,"y":2215}],
+            ["r-done->r-home",{"x":2404.5,"y":3398}],
+            ["r-home->r-settings",{"x":1946.585,"y":1535}],
+            ["r-list->n-decision",{"x":2393,"y":1563}],
+            ["n-decision->r-modal",{"x":2185.5,"y":1966.125}],
+            ["n-decision->r-search",{"x":2305.25,"y":1604}],
+            ["r-profile->r-home",{"x":1428.68,"y":353}],
+            ["r-measured->r-tall",{"x":2884.5,"y":970}],
+            ["n-async->r-done",{"x":3237.25,"y":2398}],
+            ["r-list->r-modal",{"x":2287.04,"y":1563}],
+            ["r-list->r-measured",{"x":2164.5,"y":1033}],
+            ["r-list->r-home",{"x":1934.5,"y":527}],
+            ["r-detail->r-done",{"x":2884.5,"y":3398}],
+            ["r-onboarding->r-home",{"x":1431.095,"y":925}],
+            ["r-search->r-home",{"x":1928.9250000000002,"y":795}],
+            ["r-home->n-idle",{"x":1924.425,"y":1185}],
+            ["r-list->r-list",{"x":2184.5,"y":73}],
+            ["r-settings->r-onboarding",{"x":1684.5,"y":1925}],
+            ["r-search->r-list",{"x":2069.67,"y":1037}],
+            ["r-tall->r-detail",{"x":3124.5,"y":592}],
+            ["r-onboarding->n-idle",{"x":2044.5,"y":1549}],
+            ["r-archive->r-tall",{"x":3831.585,"y":1792}],
+            ["r-legal->n-terms",{"x":534.5,"y":1796.5}],
+            ["r-search->n-idle",{"x":2146.755,"y":1537}]
+          ],
+          [
+            ["r-home->r-list",{"x":2025.8999999999999,"y":62}],
+            ["r-list->r-detail",{"x":2349.51,"y":62}],
+            ["r-detail->r-list",{"x":2930.81,"y":517}],
+            ["r-detail->r-edit",{"x":2690.81,"y":1025}],
+            ["r-edit->r-detail",{"x":2858.1099999999997,"y":1025}],
+            ["r-edit->r-confirm",{"x":2884.5,"y":2008}],
+            ["r-confirm->r-done",{"x":3085.17,"y":2215}],
+            ["r-done->r-home",{"x":2404.5,"y":3398}],
+            ["r-home->r-settings",{"x":2014.17,"y":1560}],
+            ["r-list->n-decision",{"x":2343.21,"y":1574}],
+            ["n-decision->r-modal",{"x":2185.5,"y":1966.125}],
+            ["n-decision->r-search",{"x":2452.5,"y":2008}],
+            ["r-profile->r-home",{"x":1379.3600000000001,"y":342}],
+            ["r-measured->r-tall",{"x":2930.81,"y":970}],
+            ["n-async->r-done",{"x":3237.25,"y":2398}],
+            ["r-list->r-modal",{"x":1974.04,"y":1808}],
+            ["r-list->r-measured",{"x":2118.19,"y":1035}],
+            ["r-list->r-home",{"x":1814,"y":42}],
+            ["r-detail->r-done",{"x":2884.5,"y":3398}],
+            ["r-onboarding->r-home",{"x":1657.19,"y":42}],
+            ["r-search->r-home",{"x":2521.15,"y":42}],
+            ["r-home->n-idle",{"x":1791.27,"y":1808}],
+            ["r-list->r-list",{"x":2184.5,"y":40}],
+            ["r-settings->r-onboarding",{"x":1684.5,"y":1925}],
+            ["r-search->r-list",{"x":2943.83,"y":738.85}],
+            ["r-tall->r-detail",{"x":3124.5,"y":592}],
+            ["r-onboarding->n-idle",{"x":1993.85,"y":1631}],
+            ["r-archive->r-tall",{"x":3792.17,"y":1792}],
+            ["r-legal->n-terms",{"x":575.15,"y":1796.5}],
+            ["r-search->n-idle",{"x":2939.49,"y":588}]
+          ],
+          [
+            ["r-home->r-list",{"x":2039.3333333333333,"y":59.55555555555554}],
+            ["r-list->r-detail",{"x":2341.233333333333,"y":59.55555555555554}],
+            ["r-detail->r-list",{"x":2938.1222222222223,"y":517}],
+            ["r-detail->r-edit",{"x":2698.1222222222223,"y":1025}],
+            ["r-edit->r-detail",{"x":2881.0111111111114,"y":1025}],
+            ["r-edit->r-confirm",{"x":2884.5,"y":2010.4444444444443}],
+            ["r-confirm->r-done",{"x":3076.411111111111,"y":2215}],
+            ["r-done->r-home",{"x":2404.5,"y":3398}],
+            ["r-home->r-settings",{"x":2023.411111111111,"y":1562.4444444444443}],
+            ["r-list->n-decision",{"x":2305.233333333333,"y":1576.4444444444443}],
+            ["n-decision->r-modal",{"x":2185.5,"y":1966.125}],
+            ["n-decision->r-search",{"x":2479.166666666667,"y":2010.4444444444443}],
+            ["r-profile->r-home",{"x":1368.4,"y":339.55555555555554}],
+            ["r-measured->r-tall",{"x":2938.1222222222223,"y":949.1111111111112}],
+            ["n-async->r-done",{"x":3237.25,"y":2398}],
+            ["r-list->r-modal",{"x":1964.0444444444443,"y":1810.4444444444443}],
+            ["r-list->r-measured",{"x":2110.8777777777777,"y":1035}],
+            ["r-list->r-home",{"x":1806.888888888889,"y":42.44444444444444}],
+            ["r-detail->r-done",{"x":2884.5,"y":3398}],
+            ["r-onboarding->r-home",{"x":1635.6555555555556,"y":42.44444444444444}],
+            ["r-search->r-home",{"x":1986.0555555555557,"y":1652.333333333333}],
+            ["r-home->n-idle",{"x":1390.8777777777777,"y":1318.4444444444443}],
+            ["r-list->r-list",{"x":1999.7999999999997,"y":1932.4444444444443}],
+            ["r-settings->r-onboarding",{"x":1684.5,"y":1925}],
+            ["r-search->r-list",{"x":2952.588888888889,"y":738.85}],
+            ["r-tall->r-detail",{"x":3124.5,"y":592}],
+            ["r-onboarding->n-idle",{"x":1386.0555555555557,"y":1386.5}],
+            ["r-archive->r-tall",{"x":3783.411111111111,"y":1792}],
+            ["r-legal->n-terms",{"x":582.9444444444445,"y":1796.5}],
+            ["r-search->n-idle",{"x":1754.322222222222,"y":1810.4444444444443}]
+          ],
+          [
+            ["r-home->r-list",{"x":2050.08,"y":57.60000000000002}],
+            ["r-list->r-detail",{"x":2334.612,"y":57.60000000000002}],
+            ["r-detail->r-list",{"x":2943.972,"y":517}],
+            ["r-detail->r-edit",{"x":2703.972,"y":1025}],
+            ["r-edit->r-detail",{"x":2899.3320000000003,"y":1025}],
+            ["r-edit->r-confirm",{"x":2884.5,"y":2012.4}],
+            ["r-confirm->r-done",{"x":3069.404,"y":2215}],
+            ["r-done->r-home",{"x":2404.5,"y":3398}],
+            ["r-home->r-settings",{"x":2030.804,"y":1564.4}],
+            ["r-list->n-decision",{"x":2298.052,"y":1578.4}],
+            ["n-decision->r-modal",{"x":2185.5,"y":1966.125}],
+            ["n-decision->r-search",{"x":2500.5,"y":2012.4}],
+            ["r-profile->r-home",{"x":1359.632,"y":337.6}],
+            ["r-measured->r-tall",{"x":2943.972,"y":945.1999999999999}],
+            ["n-async->r-done",{"x":3237.25,"y":2398}],
+            ["r-list->r-modal",{"x":1956.0480000000002,"y":1812.4}],
+            ["r-list->r-measured",{"x":2105.028,"y":1035}],
+            ["r-list->r-home",{"x":1981.8,"y":1032.4}],
+            ["r-detail->r-done",{"x":2884.5,"y":3398}],
+            ["r-onboarding->r-home",{"x":1684.5,"y":44.4}],
+            ["r-search->r-home",{"x":1979.8200000000002,"y":1658.2000000000003}],
+            ["r-home->n-idle",{"x":1385.028,"y":1320.4}],
+            ["r-list->r-list",{"x":1987.1039999999998,"y":1934.4}],
+            ["r-settings->r-onboarding",{"x":1684.5,"y":1925}],
+            ["r-search->r-list",{"x":2959.596,"y":738.85}],
+            ["r-tall->r-detail",{"x":3124.5,"y":592}],
+            ["r-onboarding->n-idle",{"x":1736.9160000000002,"y":1812.4}],
+            ["r-archive->r-tall",{"x":3776.404,"y":1792}],
+            ["r-legal->n-terms",{"x":589.1800000000001,"y":1796.5}],
+            ["r-search->n-idle",{"x":1374.612,"y":1427.85}]
+          ]
+        ]
+      }
+    },
+    {
+      "name": "desktop-fallback-grid",
+      "note": "flow.viewport names only the desktop formFactor, so every frame is the 1280x800 fallback and no route has a position: the fallback grid pitch is derived from the desktop card and frames overlap vertically.",
+      "input": {
+        "prototype": {
+          "id": "desktop-grid",
+          "flow": {
+            "viewport": {"formFactor":"desktop"},
+            "routes": [
+              {"id":"a","title":"A"},
+              {"id":"b","title":"B"},
+              {"id":"c","title":"C"},
+              {"id":"d","title":"D"},
+              {"id":"e","title":"E"}
+            ],
+            "nodes": [{"id":"gate","shape":"decision","title":"Valid?"}],
+            "transitions": [
+              {"from":"a","to":"b","label":"Next","flowLine":"key"},
+              {"from":"b","to":"c","label":"Next","flowLine":"key"},
+              {"from":"c","to":"a","label":"Restart","kind":"global","flowLine":"key"},
+              {"from":"a","to":"d","label":"Down","flowLine":"key"},
+              {"from":"d","to":"a","label":"Up","kind":"return","flowLine":"key"},
+              {"from":"e","to":"b","label":"Jump","flowLine":"key"},
+              {"from":"b","to":"gate","label":"Valid?","kind":"condition","flowLine":"key"},
+              {"from":"gate","to":"e","label":"Yes","kind":"condition","flowLine":"key"}
+            ]
+          }
+        },
+        "previewSizes": {},
+        "draggedPositions": {}
+      },
+      "fromPreview": {
+        "canvasMetrics": {"height":1314,"offsetX":96,"offsetY":96,"width":3922},
+        "displayPositions": [
+          ["a",{"x":96,"y":96,"height":866,"nodeType":"route","previewHeight":800,"previewWidth":1280,"width":1282}],
+          ["b",{"x":1320,"y":96,"height":866,"nodeType":"route","previewHeight":800,"previewWidth":1280,"width":1282}],
+          ["c",{"x":2544,"y":96,"height":866,"nodeType":"route","previewHeight":800,"previewWidth":1280,"width":1282}],
+          ["d",{"x":96,"y":352,"height":866,"nodeType":"route","previewHeight":800,"previewWidth":1280,"width":1282}],
+          ["e",{"x":1320,"y":352,"height":866,"nodeType":"route","previewHeight":800,"previewWidth":1280,"width":1282}],
+          [
+            "gate",
+            {
+              "x": 2544,
+              "y": 352,
+              "height": 220,
+              "width": 220,
+              "description": {"$undefined":true},
+              "flowGroup": {"$undefined":true},
+              "nodeType": "flow",
+              "shape": "decision",
+              "title": "Valid?",
+              "tone": {"$undefined":true}
+            }
+          ]
+        ],
+        "labelScales": [{"canvasScale":1,"labelScale":1},{"canvasScale":0.25,"labelScale":2.4}]
+      },
+      "expected": {
+        "prototypeViewport": {"declared":true,"formFactor":"desktop","height":800,"width":1280},
+        "fallbackGridPitch": {"x":1224,"y":256},
+        "routePositions": [
+          ["a",{"x":0,"y":0,"height":866,"nodeType":"route","previewHeight":800,"previewWidth":1280,"width":1282}],
+          ["b",{"x":1224,"y":0,"height":866,"nodeType":"route","previewHeight":800,"previewWidth":1280,"width":1282}],
+          ["c",{"x":2448,"y":0,"height":866,"nodeType":"route","previewHeight":800,"previewWidth":1280,"width":1282}],
+          ["d",{"x":0,"y":256,"height":866,"nodeType":"route","previewHeight":800,"previewWidth":1280,"width":1282}],
+          ["e",{"x":1224,"y":256,"height":866,"nodeType":"route","previewHeight":800,"previewWidth":1280,"width":1282}],
+          [
+            "gate",
+            {
+              "x": 2448,
+              "y": 256,
+              "height": 220,
+              "width": 220,
+              "description": {"$undefined":true},
+              "flowGroup": {"$undefined":true},
+              "nodeType": "flow",
+              "shape": "decision",
+              "title": "Valid?",
+              "tone": {"$undefined":true}
+            }
+          ]
+        ],
+        "allEdges": [
+          {"flowLines":["key"],"from":"a","key":"a->b","kinds":[],"labels":["Next"],"to":"b","triggers":[]},
+          {"flowLines":["key"],"from":"b","key":"b->c","kinds":[],"labels":["Next"],"to":"c","triggers":[]},
+          {"flowLines":["key"],"from":"c","key":"c->a","kinds":["global"],"labels":["Restart"],"to":"a","triggers":[]},
+          {"flowLines":["key"],"from":"a","key":"a->d","kinds":[],"labels":["Down"],"to":"d","triggers":[]},
+          {"flowLines":["key"],"from":"d","key":"d->a","kinds":["return"],"labels":["Up"],"to":"a","triggers":[]},
+          {"flowLines":["key"],"from":"e","key":"e->b","kinds":[],"labels":["Jump"],"to":"b","triggers":[]},
+          {
+            "flowLines": ["key"],
+            "from": "b",
+            "key": "b->gate",
+            "kinds": ["condition"],
+            "labels": ["Valid?"],
+            "to": "gate",
+            "triggers": []
+          },
+          {
+            "flowLines": ["key"],
+            "from": "gate",
+            "key": "gate->e",
+            "kinds": ["condition"],
+            "labels": ["Yes"],
+            "to": "e",
+            "triggers": []
+          }
+        ],
+        "edges": [
+          {
+            "flowLines": ["key"],
+            "from": "a",
+            "key": "a->b",
+            "kinds": [],
+            "labels": ["Next"],
+            "to": "b",
+            "triggers": [],
+            "colorVariant": "primary"
+          },
+          {
+            "flowLines": ["key"],
+            "from": "b",
+            "key": "b->c",
+            "kinds": [],
+            "labels": ["Next"],
+            "to": "c",
+            "triggers": [],
+            "colorVariant": "primary"
+          },
+          {
+            "flowLines": ["key"],
+            "from": "c",
+            "key": "c->a",
+            "kinds": ["global"],
+            "labels": ["Restart"],
+            "to": "a",
+            "triggers": [],
+            "colorVariant": "primary"
+          },
+          {
+            "flowLines": ["key"],
+            "from": "a",
+            "key": "a->d",
+            "kinds": [],
+            "labels": ["Down"],
+            "to": "d",
+            "triggers": [],
+            "colorVariant": "secondary"
+          },
+          {
+            "flowLines": ["key"],
+            "from": "d",
+            "key": "d->a",
+            "kinds": ["return"],
+            "labels": ["Up"],
+            "to": "a",
+            "triggers": [],
+            "colorVariant": "primary"
+          },
+          {
+            "flowLines": ["key"],
+            "from": "e",
+            "key": "e->b",
+            "kinds": [],
+            "labels": ["Jump"],
+            "to": "b",
+            "triggers": [],
+            "colorVariant": "primary"
+          },
+          {
+            "flowLines": ["key"],
+            "from": "b",
+            "key": "b->gate",
+            "kinds": ["condition"],
+            "labels": ["Valid?"],
+            "to": "gate",
+            "triggers": [],
+            "colorVariant": "secondary"
+          },
+          {
+            "flowLines": ["key"],
+            "from": "gate",
+            "key": "gate->e",
+            "kinds": ["condition"],
+            "labels": ["Yes"],
+            "to": "e",
+            "triggers": [],
+            "colorVariant": "primary"
+          }
+        ],
+        "reverseEdgeKeys": ["a->d","d->a"],
+        "polylines": [
+          [
+            "a->b",
+            {
+              "labelPosition": {"x":1349,"y":529},
+              "pointList": [{"x":1378,"y":529},{"x":1349,"y":529},{"x":1320,"y":529}],
+              "points": "1378,529 1349,529 1320,529"
+            }
+          ],
+          [
+            "b->c",
+            {
+              "labelPosition": {"x":2573,"y":529},
+              "pointList": [{"x":2602,"y":529},{"x":2573,"y":529},{"x":2544,"y":529}],
+              "points": "2602,529 2573,529 2544,529"
+            }
+          ],
+          [
+            "c->a",
+            {
+              "labelPosition": {"x":1961,"y":1006},
+              "pointList": [{"x":3185,"y":962},{"x":3185,"y":1006},{"x":737,"y":1006},{"x":737,"y":962}],
+              "points": "3185,962 3185,1006 737,1006 737,962"
+            }
+          ],
+          [
+            "a->d",
+            {
+              "labelPosition": {"x":755,"y":657},
+              "pointList": [{"x":755,"y":962},{"x":755,"y":657},{"x":755,"y":352}],
+              "points": "755,962 755,657 755,352"
+            }
+          ],
+          [
+            "d->a",
+            {
+              "labelPosition": {"x":719,"y":657},
+              "pointList": [{"x":719,"y":352},{"x":719,"y":657},{"x":719,"y":962}],
+              "points": "719,352 719,657 719,962"
+            }
+          ],
+          [
+            "e->b",
+            {
+              "labelPosition": {"x":1961,"y":657},
+              "pointList": [{"x":1961,"y":352},{"x":1961,"y":657},{"x":1961,"y":962}],
+              "points": "1961,352 1961,657 1961,962"
+            }
+          ],
+          [
+            "b->gate",
+            {
+              "labelPosition": {"x":2573,"y":495.5},
+              "pointList": [{"x":2602,"y":529},{"x":2602,"y":495.5},{"x":2544,"y":495.5},{"x":2544,"y":462}],
+              "points": "2602,529 2602,495.5 2544,495.5 2544,462"
+            }
+          ],
+          [
+            "gate->e",
+            {
+              "labelPosition": {"x":2573,"y":623.5},
+              "pointList": [{"x":2544,"y":462},{"x":2544,"y":623.5},{"x":2602,"y":623.5},{"x":2602,"y":785}],
+              "points": "2544,462 2544,623.5 2602,623.5 2602,785"
+            }
+          ]
+        ],
+        "arrows": [
+          ["a->b","1320,529 1334,524 1334,534"],
+          ["b->c","2544,529 2558,524 2558,534"],
+          ["c->a","737,962 742,976 732,976"],
+          ["a->d","755,352 760,366 750,366"],
+          ["d->a","719,962 714,948 724,948"],
+          ["e->b","1961,962 1956,948 1966,948"],
+          ["b->gate","2544,462 2549,476 2539,476"],
+          ["gate->e","2602,785 2597,771 2607,771"]
+        ],
+        "labelPositions": [
+          [
+            ["a->b",{"x":1349,"y":53}],
+            ["b->c",{"x":2573,"y":53}],
+            ["c->a",{"x":1961,"y":1261}],
+            ["a->d",{"x":755,"y":53}],
+            ["d->a",{"x":669,"y":53}],
+            ["e->b",{"x":1961,"y":53}],
+            ["b->gate",{"x":2475.85,"y":53}],
+            ["gate->e",{"x":2652,"y":1005}]
+          ],
+          [
+            ["a->b",{"x":1349,"y":44.4}],
+            ["b->c",{"x":2573,"y":44.4}],
+            ["c->a",{"x":1961,"y":1269.6}],
+            ["a->d",{"x":755,"y":44.4}],
+            ["d->a",{"x":572.2280000000001,"y":44.4}],
+            ["e->b",{"x":1961,"y":44.4}],
+            ["b->gate",{"x":2723.388,"y":1020.4}],
+            ["gate->e",{"x":2390.2279999999996,"y":44.4}]
+          ]
+        ]
+      }
+    },
+    {
+      "name": "tablet-declared-size",
+      "note": "flow.viewport declares a tablet size and one route overrides it with its own viewport, so frames have two sizes.",
+      "input": {
+        "prototype": {
+          "id": "tablet-declared",
+          "flow": {
+            "viewport": {"formFactor":"tablet","width":820,"height":1180},
+            "routes": [
+              {"id":"t-home","title":"Home","flowPosition":{"x":0,"y":0}},
+              {"id":"t-list","title":"List","flowPosition":{"x":1000,"y":0}},
+              {
+                "id": "t-detail",
+                "title": "Detail",
+                "flowPosition": {"x":1000,"y":1400},
+                "viewport": {"width":1366,"height":1024}
+              }
+            ],
+            "transitions": [
+              {"from":"t-home","to":"t-list","label":"Open","flowLine":"key"},
+              {"from":"t-list","to":"t-detail","label":"Inspect","flowLine":"key"},
+              {"from":"t-detail","to":"t-home","label":"Home","kind":"global","flowLine":"key"},
+              {"from":"t-list","to":"t-home","label":"Back","kind":"return","flowLine":"key"}
+            ]
+          }
+        },
+        "previewSizes": {},
+        "draggedPositions": {}
+      },
+      "fromPreview": {
+        "canvasMetrics": {"height":2682,"offsetX":96,"offsetY":96,"width":2560},
+        "displayPositions": [
+          [
+            "t-home",
+            {"x":96,"y":96,"height":1246,"nodeType":"route","previewHeight":1180,"previewWidth":820,"width":822}
+          ],
+          [
+            "t-list",
+            {"x":1096,"y":96,"height":1246,"nodeType":"route","previewHeight":1180,"previewWidth":820,"width":822}
+          ],
+          [
+            "t-detail",
+            {"x":1096,"y":1496,"height":1090,"nodeType":"route","previewHeight":1024,"previewWidth":1366,"width":1368}
+          ]
+        ],
+        "labelScales": [{"canvasScale":0.6,"labelScale":1.6666666666666667}]
+      },
+      "expected": {
+        "prototypeViewport": {"declared":true,"formFactor":"tablet","height":1180,"width":820},
+        "fallbackGridPitch": {"x":785,"y":369},
+        "routePositions": [
+          ["t-home",{"x":0,"y":0,"height":1246,"nodeType":"route","previewHeight":1180,"previewWidth":820,"width":822}],
+          [
+            "t-list",
+            {"x":1000,"y":0,"height":1246,"nodeType":"route","previewHeight":1180,"previewWidth":820,"width":822}
+          ],
+          [
+            "t-detail",
+            {"x":1000,"y":1400,"height":1090,"nodeType":"route","previewHeight":1024,"previewWidth":1366,"width":1368}
+          ]
+        ],
+        "allEdges": [
+          {
+            "flowLines": ["key"],
+            "from": "t-home",
+            "key": "t-home->t-list",
+            "kinds": [],
+            "labels": ["Open"],
+            "to": "t-list",
+            "triggers": []
+          },
+          {
+            "flowLines": ["key"],
+            "from": "t-list",
+            "key": "t-list->t-detail",
+            "kinds": [],
+            "labels": ["Inspect"],
+            "to": "t-detail",
+            "triggers": []
+          },
+          {
+            "flowLines": ["key"],
+            "from": "t-detail",
+            "key": "t-detail->t-home",
+            "kinds": ["global"],
+            "labels": ["Home"],
+            "to": "t-home",
+            "triggers": []
+          },
+          {
+            "flowLines": ["key"],
+            "from": "t-list",
+            "key": "t-list->t-home",
+            "kinds": ["return"],
+            "labels": ["Back"],
+            "to": "t-home",
+            "triggers": []
+          }
+        ],
+        "edges": [
+          {
+            "flowLines": ["key"],
+            "from": "t-home",
+            "key": "t-home->t-list",
+            "kinds": [],
+            "labels": ["Open"],
+            "to": "t-list",
+            "triggers": [],
+            "colorVariant": "primary"
+          },
+          {
+            "flowLines": ["key"],
+            "from": "t-list",
+            "key": "t-list->t-detail",
+            "kinds": [],
+            "labels": ["Inspect"],
+            "to": "t-detail",
+            "triggers": [],
+            "colorVariant": "primary"
+          },
+          {
+            "flowLines": ["key"],
+            "from": "t-detail",
+            "key": "t-detail->t-home",
+            "kinds": ["global"],
+            "labels": ["Home"],
+            "to": "t-home",
+            "triggers": [],
+            "colorVariant": "primary"
+          },
+          {
+            "flowLines": ["key"],
+            "from": "t-list",
+            "key": "t-list->t-home",
+            "kinds": ["return"],
+            "labels": ["Back"],
+            "to": "t-home",
+            "triggers": [],
+            "colorVariant": "secondary"
+          }
+        ],
+        "reverseEdgeKeys": ["t-home->t-list","t-list->t-home"],
+        "polylines": [
+          [
+            "t-home->t-list",
+            {
+              "labelPosition": {"x":1007,"y":737},
+              "pointList": [{"x":918,"y":737},{"x":1007,"y":737},{"x":1096,"y":737}],
+              "points": "918,737 1007,737 1096,737"
+            }
+          ],
+          [
+            "t-list->t-detail",
+            {
+              "labelPosition": {"x":1643.5,"y":1419},
+              "pointList": [{"x":1507,"y":1342},{"x":1507,"y":1419},{"x":1780,"y":1419},{"x":1780,"y":1496}],
+              "points": "1507,1342 1507,1419 1780,1419 1780,1496"
+            }
+          ],
+          [
+            "t-detail->t-home",
+            {
+              "labelPosition": {"x":1143.5,"y":2630},
+              "pointList": [{"x":1780,"y":2586},{"x":1780,"y":2630},{"x":507,"y":2630},{"x":507,"y":1342}],
+              "points": "1780,2586 1780,2630 507,2630 507,1342"
+            }
+          ],
+          [
+            "t-list->t-home",
+            {
+              "labelPosition": {"x":1007,"y":701},
+              "pointList": [{"x":1096,"y":701},{"x":1007,"y":701},{"x":918,"y":701}],
+              "points": "1096,701 1007,701 918,701"
+            }
+          ]
+        ],
+        "arrows": [
+          ["t-home->t-list","1096,737 1082,742 1082,732"],
+          ["t-list->t-detail","1780,1496 1775,1482 1785,1482"],
+          ["t-detail->t-home","507,1342 512,1356 502,1356"],
+          ["t-list->t-home","918,701 932,696 932,706"]
+        ],
+        "labelPositions": [
+          [
+            ["t-home->t-list",{"x":1007,"y":737}],
+            ["t-list->t-detail",{"x":1643.5,"y":1419}],
+            ["t-detail->t-home",{"x":1143.5,"y":2630}],
+            ["t-list->t-home",{"x":1007,"y":673.3333333333333}]
+          ]
+        ]
+      }
+    }
+  ],
+  "calls": [
+    {"fn":"isRecord","args":[{}],"expected":true},
+    {"fn":"isRecord","args":[{"a":1}],"expected":true},
+    {"fn":"isRecord","args":[[]],"expected":false},
+    {"fn":"isRecord","args":[null],"expected":false},
+    {"fn":"isRecord","args":[{"$undefined":true}],"expected":false},
+    {"fn":"isRecord","args":["x"],"expected":false},
+    {"fn":"isRecord","args":[1],"expected":false},
+    {"fn":"isRecord","args":[{"$map":[]}],"expected":true},
+    {"fn":"normalizeRoutes","args":[{"$undefined":true}],"expected":[]},
+    {"fn":"normalizeRoutes","args":[null],"expected":[]},
+    {"fn":"normalizeRoutes","args":[{}],"expected":[]},
+    {"fn":"normalizeRoutes","args":[{"routes":"x"}],"expected":[]},
+    {
+      "fn": "normalizeRoutes",
+      "args": [{"routes":[{"id":"a"},null,"b",[],{"id":"c","title":"C"},3]}],
+      "expected": [{"id":"a"},{"id":"c","title":"C"}]
+    },
+    {"fn":"normalizeFlowNodes","args":[{"$undefined":true}],"expected":[]},
+    {"fn":"normalizeFlowNodes","args":[{"nodes":{}}],"expected":[]},
+    {
+      "fn": "normalizeFlowNodes",
+      "args": [{"nodes":[{"id":"n1"},{"id":2},{"title":"x"},null,[],{"id":"n2","shape":"decision"}]}],
+      "expected": [{"id":"n1"},{"id":"n2","shape":"decision"}]
+    },
+    {"fn":"normalizeComponentRoutes","args":[{"$undefined":true}],"expected":[]},
+    {"fn":"normalizeComponentRoutes","args":[[]],"expected":[]},
+    {"fn":"normalizeComponentRoutes","args":[{"routes":"x"}],"expected":[]},
+    {
+      "fn": "normalizeComponentRoutes",
+      "args": [{"routes":[{"route":"a"},null,"x",[],{"route":"b","components":[]}]}],
+      "expected": [{"route":"a"},{"route":"b","components":[]}]
+    },
+    {"fn":"normalizeRouteComponents","args":[{"$undefined":true}],"expected":[]},
+    {"fn":"normalizeRouteComponents","args":[{}],"expected":[]},
+    {"fn":"normalizeRouteComponents","args":[{"components":"x"}],"expected":[]},
+    {
+      "fn": "normalizeRouteComponents",
+      "args": [{"components":[{"name":"A"},null,"B",[],{"name":"C"}]}],
+      "expected": [{"name":"A"},{"name":"C"}]
+    },
+    {"fn":"normalizeTransitions","args":[{"$undefined":true}],"expected":[]},
+    {"fn":"normalizeTransitions","args":[{"transitions":"x"}],"expected":[]},
+    {
+      "fn": "normalizeTransitions",
+      "args": [
+        {
+          "transitions": [
+            {"from":"a","to":"b"},
+            {"from":"a"},
+            {"from":1,"to":"b"},
+            null,
+            [],
+            {"from":"b","to":"c","label":"x"}
+          ]
+        }
+      ],
+      "expected": [{"from":"a","to":"b"},{"from":"b","to":"c","label":"x"}]
+    },
+    {
+      "fn": "aggregateTransitions",
+      "args": [
+        [
+          {"from":"a","to":"b","label":"Go","trigger":"tap","kind":"primary","flowLine":"key"},
+          {"from":"a","to":"b","label":"Go","trigger":"tap","kind":"primary","flowLine":"key"},
+          {"from":"a","to":"b","trigger":"swipe","flowLine":"reference"},
+          {"from":"a","to":"b","kind":"global"},
+          {"from":"b","to":"a"},
+          {"from":"a","to":"missing","label":"Lost","flowLine":"key"},
+          {"from":"c","to":"c","label":"","trigger":"","kind":"","flowLine":""},
+          {"from":"c","to":"a","label":null,"trigger":"hold"}
+        ],
+        {"$set":["a","b","c"]}
+      ],
+      "expected": [
+        {
+          "flowLines": ["key","reference"],
+          "from": "a",
+          "key": "a->b",
+          "kinds": ["primary","global"],
+          "labels": ["Go","swipe","a -> b"],
+          "to": "b",
+          "triggers": ["tap","swipe"]
+        },
+        {"flowLines":[],"from":"b","key":"b->a","kinds":[],"labels":["b -> a"],"to":"a","triggers":[]},
+        {"flowLines":[],"from":"c","key":"c->c","kinds":[],"labels":[""],"to":"c","triggers":[]},
+        {"flowLines":[],"from":"c","key":"c->a","kinds":[],"labels":["hold"],"to":"a","triggers":["hold"]}
+      ]
+    },
+    {"fn":"aggregateTransitions","args":[[],{"$set":[]}],"expected":[]},
+    {"fn":"isVisibleFlowEdge","args":[{"flowLines":["key"]}],"expected":true},
+    {"fn":"isVisibleFlowEdge","args":[{"flowLines":["reference","key"]}],"expected":true},
+    {"fn":"isVisibleFlowEdge","args":[{"flowLines":["reference"]}],"expected":false},
+    {"fn":"isVisibleFlowEdge","args":[{"flowLines":["hidden"]}],"expected":false},
+    {"fn":"isVisibleFlowEdge","args":[{"flowLines":[]}],"expected":false},
+    {
+      "fn": "addFlowEdgeColorVariants",
+      "args": [
+        [
+          {"from":"hub","to":"a","key":"hub->a","flowLines":["key"],"kinds":[],"labels":["A"],"triggers":[]},
+          {"from":"hub","to":"b","key":"hub->b","flowLines":["key"],"kinds":[],"labels":["B"],"triggers":[]},
+          {"from":"c","to":"hub","key":"c->hub","flowLines":["key"],"kinds":[],"labels":["C"],"triggers":[]},
+          {"from":"hub","to":"d","key":"hub->d","flowLines":["key"],"kinds":[],"labels":["D"],"triggers":[]},
+          {"from":"hub","to":"e","key":"hub->e","flowLines":["key"],"kinds":[],"labels":["E"],"triggers":[]},
+          {"from":"x","to":"y","key":"x->y","flowLines":["key"],"kinds":[],"labels":["X"],"triggers":[]},
+          {"from":"y2","to":"z","key":"y2->z","flowLines":["key"],"kinds":[],"labels":["Y"],"triggers":[]},
+          {"from":"z2","to":"z","key":"z2->z","flowLines":["key"],"kinds":[],"labels":["Z"],"triggers":[]}
+        ]
+      ],
+      "expected": [
+        {
+          "from": "hub",
+          "to": "a",
+          "key": "hub->a",
+          "flowLines": ["key"],
+          "kinds": [],
+          "labels": ["A"],
+          "triggers": [],
+          "colorVariant": "primary"
+        },
+        {
+          "from": "hub",
+          "to": "b",
+          "key": "hub->b",
+          "flowLines": ["key"],
+          "kinds": [],
+          "labels": ["B"],
+          "triggers": [],
+          "colorVariant": "secondary"
+        },
+        {
+          "from": "c",
+          "to": "hub",
+          "key": "c->hub",
+          "flowLines": ["key"],
+          "kinds": [],
+          "labels": ["C"],
+          "triggers": [],
+          "colorVariant": "tertiary"
+        },
+        {
+          "from": "hub",
+          "to": "d",
+          "key": "hub->d",
+          "flowLines": ["key"],
+          "kinds": [],
+          "labels": ["D"],
+          "triggers": [],
+          "colorVariant": "quaternary"
+        },
+        {
+          "from": "hub",
+          "to": "e",
+          "key": "hub->e",
+          "flowLines": ["key"],
+          "kinds": [],
+          "labels": ["E"],
+          "triggers": [],
+          "colorVariant": "primary"
+        },
+        {"from":"x","to":"y","key":"x->y","flowLines":["key"],"kinds":[],"labels":["X"],"triggers":[]},
+        {
+          "from": "y2",
+          "to": "z",
+          "key": "y2->z",
+          "flowLines": ["key"],
+          "kinds": [],
+          "labels": ["Y"],
+          "triggers": [],
+          "colorVariant": "primary"
+        },
+        {
+          "from": "z2",
+          "to": "z",
+          "key": "z2->z",
+          "flowLines": ["key"],
+          "kinds": [],
+          "labels": ["Z"],
+          "triggers": [],
+          "colorVariant": "secondary"
+        }
+      ]
+    },
+    {"fn":"addFlowEdgeColorVariants","args":[[]],"expected":[]},
+    {"fn":"getFlowMetadataNodeSize","args":[{"shape":"decision"}],"expected":{"height":220,"width":220}},
+    {"fn":"getFlowMetadataNodeSize","args":[{"shape":"state"}],"expected":{"height":124,"width":308}},
+    {"fn":"getFlowMetadataNodeSize","args":[{"shape":"async"}],"expected":{"height":124,"width":308}},
+    {"fn":"getFlowMetadataNodeSize","args":[{}],"expected":{"height":124,"width":308}},
+    {"fn":"getRoutePosition","args":[{"flowPosition":{"x":1,"y":2}},0],"expected":{"x":1,"y":2}},
+    {"fn":"getRoutePosition","args":[{"position":{"x":3,"y":4}},5],"expected":{"x":3,"y":4}},
+    {"fn":"getRoutePosition","args":[{"layout":{"position":{"x":5,"y":6}}},1],"expected":{"x":5,"y":6}},
+    {
+      "fn": "getRoutePosition",
+      "args": [{"flowPosition":{"x":1,"y":1},"position":{"x":2,"y":2}},0],
+      "expected": {"x":1,"y":1}
+    },
+    {"fn":"getRoutePosition","args":[{"flowPosition":null,"position":{"x":7,"y":8}},0],"expected":{"x":7,"y":8}},
+    {
+      "fn": "getRoutePosition",
+      "args": [{"flowPosition":{"x":"1","y":2},"position":{"x":9,"y":9}},4],
+      "expected": {"x":360,"y":260}
+    },
+    {
+      "fn": "getRoutePosition",
+      "args": [{"flowPosition":{"x":0,"y":0,"extra":true}},3],
+      "expected": {"x":0,"y":0,"extra":true}
+    },
+    {
+      "fn": "getRoutePosition",
+      "args": [{"flowPosition":{"x":{"$number":"NaN"},"y":1}},0],
+      "expected": {"x":{"$number":"NaN"},"y":1}
+    },
+    {"fn":"getRoutePosition","args":[{},0],"expected":{"x":0,"y":0}},
+    {"fn":"getRoutePosition","args":[{},2],"expected":{"x":720,"y":0}},
+    {"fn":"getRoutePosition","args":[{},3],"expected":{"x":0,"y":260}},
+    {"fn":"getRoutePosition","args":[{},7],"expected":{"x":360,"y":520}},
+    {"fn":"getRoutePosition","args":[{},7,{"x":100,"y":50}],"expected":{"x":100,"y":100}},
+    {"fn":"getRoutePosition","args":[{"layout":{}},4,{"x":1224,"y":256}],"expected":{"x":1224,"y":256}},
+    {"fn":"getFallbackGridPitch","args":[{"width":377,"height":878}],"expected":{"x":360,"y":260}},
+    {"fn":"getFallbackGridPitch","args":[{"width":1282,"height":866}],"expected":{"x":1224,"y":256}},
+    {"fn":"getFallbackGridPitch","args":[{"width":770,"height":1090}],"expected":{"x":735,"y":323}},
+    {"fn":"getFallbackGridPitch","args":[{"width":100,"height":100}],"expected":{"x":95,"y":30}},
+    {
+      "fn": "createPolyline",
+      "args": [
+        {"from":"a","to":"missing","key":"a->missing","kinds":[]},
+        {"$map":[["a",{"x":0,"y":0,"width":10,"height":10}]]},
+        {"$set":[]}
+      ],
+      "expected": null
+    },
+    {
+      "fn": "createPolyline",
+      "args": [
+        {"from":"missing","to":"a","key":"missing->a","kinds":[]},
+        {"$map":[["a",{"x":0,"y":0,"width":10,"height":10}]]},
+        {"$set":[]}
+      ],
+      "expected": null
+    },
+    {
+      "fn": "createPolyline",
+      "args": [
+        {"from":"a","to":"b","key":"a->b","kinds":[]},
+        {"$map":[["a",{"x":-900,"y":-400}],["b",{"x":-200,"y":-380}]]},
+        {"$set":[]}
+      ],
+      "expected": {
+        "labelPosition": {"x":-338.5,"y":49},
+        "pointList": [{"x":-477,"y":39},{"x":-338.5,"y":39},{"x":-338.5,"y":59},{"x":-200,"y":59}],
+        "points": "-477,39 -338.5,39 -338.5,59 -200,59"
+      }
+    },
+    {
+      "fn": "createPolyline",
+      "args": [
+        {"from":"a","to":"b","key":"a->b","kinds":["global"]},
+        {"$map":[["a",{"x":-900,"y":-400,"width":300,"height":200}],["b",{"x":-200,"y":-380,"width":100,"height":600}]]},
+        {"$set":["a->b"]}
+      ],
+      "expected": {
+        "labelPosition": {"x":-450,"y":264},
+        "pointList": [{"x":-750,"y":-200},{"x":-750,"y":264},{"x":-150,"y":264},{"x":-150,"y":220}],
+        "points": "-750,-200 -750,264 -150,264 -150,220"
+      }
+    },
+    {
+      "fn": "createPolyline",
+      "args": [
+        {"from":"a","to":"a","key":"a->a","kinds":[]},
+        {"$map":[["a",{"x":10,"y":20,"width":100,"height":50}]]},
+        {"$set":[]}
+      ],
+      "expected": {
+        "labelPosition": {"x":60,"y":45},
+        "pointList": [{"x":110,"y":45},{"x":60,"y":45},{"x":10,"y":45}],
+        "points": "110,45 60,45 10,45"
+      }
+    },
+    {"fn":"getFlowArrowPoints","args":[[]],"expected":""},
+    {"fn":"getFlowArrowPoints","args":[[{"x":0,"y":0}]],"expected":""},
+    {"fn":"getFlowArrowPoints","args":[[{"x":0,"y":0},{"x":0,"y":0}]],"expected":""},
+    {"fn":"getFlowArrowPoints","args":[[{"x":0,"y":0},{"x":10,"y":10}]],"expected":"10,10 -3,4 4,-3"},
+    {"fn":"getFlowArrowPoints","args":[[{"x":0,"y":0},{"x":100,"y":0},{"x":100,"y":0}]],"expected":"100,0 86,5 86,-5"},
+    {"fn":"getFlowArrowPoints","args":[[{"x":5.5,"y":3.25},{"x":-20.75,"y":3.25}]],"expected":"-21,3 -7,-2 -7,8"},
+    {
+      "fn": "getFlowArrowPoints",
+      "args": [[{"x":0,"y":40},{"x":0,"y":0},{"x":30,"y":0},{"x":30,"y":-12.5}]],
+      "expected": "30,-12 35,2 25,2"
+    },
+    {"fn":"placeEdgeLabels","args":[[],{"$map":[]},{"width":192,"height":192},1],"expected":[]},
+    {
+      "fn": "placeEdgeLabels",
+      "args": [
+        [
+          {
+            "from": "p",
+            "to": "q",
+            "key": "p->q",
+            "flowLines": ["key"],
+            "kinds": ["condition"],
+            "labels": ["A very long label that cannot fit into the tiny canvas at all"],
+            "triggers": [],
+            "polyline": {
+              "labelPosition": {"x":40,"y":30},
+              "pointList": [{"x":0,"y":30},{"x":80,"y":30}],
+              "points": "0,30 80,30"
+            }
+          }
+        ],
+        {"$map":[["p",{"x":0,"y":0,"width":20,"height":20}],["q",{"x":60,"y":0,"width":20,"height":20}]]},
+        {"width":100,"height":60},
+        2
+      ],
+      "expected": [
+        {
+          "from": "p",
+          "to": "q",
+          "key": "p->q",
+          "flowLines": ["key"],
+          "kinds": ["condition"],
+          "labels": ["A very long label that cannot fit into the tiny canvas at all"],
+          "triggers": [],
+          "polyline": {
+            "labelPosition": {"x":-94,"y":20},
+            "pointList": [{"x":0,"y":30},{"x":80,"y":30}],
+            "points": "0,30 80,30"
+          }
+        }
+      ]
+    },
+    {
+      "fn": "normalizeStorybookGlobals",
+      "args": ["prototypeMode:flow;figmaExport:on"],
+      "expected": {"$map":[["prototypeMode","flow"],["figmaExport","on"]]}
+    },
+    {"fn":"normalizeStorybookGlobals","args":[""],"expected":{"$map":[]}},
+    {"fn":"normalizeStorybookGlobals","args":[{"$undefined":true}],"expected":{"$map":[]}},
+    {"fn":"normalizeStorybookGlobals","args":[null],"expected":{"$map":[]}},
+    {"fn":"normalizeStorybookGlobals","args":["a:b:c; d : e ;;f:;:g;h"],"expected":{"$map":[["a","b:c"],["d","e"]]}},
+    {"fn":"normalizeStorybookGlobals","args":["x:1;x:2"],"expected":{"$map":[["x","2"]]}},
+    {"fn":"normalizeStorybookGlobals","args":["  spaced key  :  value  "],"expected":{"$map":[["spaced key","value"]]}},
+    {"fn":"getPrototypeFlowExportStoryId","args":[{}],"expected":""},
+    {"fn":"getPrototypeFlowExportStoryId","args":[{"figmaExport":{"flowStoryId":" story-a "}}],"expected":"story-a"},
+    {
+      "fn": "getPrototypeFlowExportStoryId",
+      "args": [{"figmaExport":{"storyId":"s-b"},"flow":{"figmaExport":{"storyId":"s-c"}}}],
+      "expected": "s-b"
+    },
+    {"fn":"getPrototypeFlowExportStoryId","args":[{"flow":{"figmaExport":{"storyId":"s-c"}}}],"expected":"s-c"},
+    {"fn":"getPrototypeFlowExportStoryId","args":[{"flow":{"figmaExportStoryId":"s-d"}}],"expected":"s-d"},
+    {"fn":"getPrototypeFlowExportStoryId","args":[{"figmaExport":{"flowStoryId":"   "}}],"expected":""},
+    {
+      "fn": "getPrototypeFlowExportStoryId",
+      "args": [{"figmaExport":{"flowStoryId":5,"storyId":"s-ignored"}}],
+      "expected": ""
+    },
+    {
+      "fn": "getPrototypeFlowExportStoryId",
+      "args": [{"figmaExport":"x","flow":{"figmaExport":["y"],"figmaExportStoryId":"s-e"}}],
+      "expected": "s-e"
+    },
+    {
+      "fn": "getPrototypeFlowExportStoryId",
+      "args": [{"figmaExport":{"flowStoryId":null,"storyId":"s-f"}}],
+      "expected": "s-f"
+    }
+  ],
+  "viewports": [
+    {
+      "prototype": {"flow":{"routes":[]}},
+      "route": null,
+      "tokens": {},
+      "expected": {
+        "result": {"declared":false,"formFactor":"phone","height":812,"width":375},
+        "reads": ["--prototype-inspector-viewport-compact-height","--prototype-inspector-viewport-compact-width"]
+      }
+    },
+    {
+      "prototype": {"flow":{"routes":[]}},
+      "route": null,
+      "tokens": {
+        "--prototype-inspector-viewport-compact-height": "700px",
+        "--prototype-inspector-viewport-compact-width": " 360 "
+      },
+      "expected": {
+        "result": {"declared":false,"formFactor":"phone","height":700,"width":360},
+        "reads": ["--prototype-inspector-viewport-compact-height","--prototype-inspector-viewport-compact-width"]
+      }
+    },
+    {
+      "prototype": {"flow":{}},
+      "route": {"viewport":{"width":1280,"height":800}},
+      "tokens": {},
+      "expected": {"result":{"declared":true,"formFactor":"phone","height":800,"width":1280},"reads":[]}
+    },
+    {
+      "prototype": {"flow":{"viewport":{"formFactor":"tablet","width":800,"height":1100}}},
+      "route": null,
+      "tokens": {},
+      "expected": {"result":{"declared":true,"formFactor":"tablet","height":1100,"width":800},"reads":[]}
+    },
+    {
+      "prototype": {"flow":{"viewport":{"formFactor":"desktop"}}},
+      "route": null,
+      "tokens": {},
+      "expected": {
+        "result": {"declared":true,"formFactor":"desktop","height":800,"width":1280},
+        "reads": ["--prototype-inspector-viewport-wide-height","--prototype-inspector-viewport-wide-width"]
+      }
+    },
+    {
+      "prototype": {"flow":{"viewport":{"formFactor":"desktop"}}},
+      "route": {"id":"plain"},
+      "tokens": {
+        "--prototype-inspector-viewport-wide-height": "900",
+        "--prototype-inspector-viewport-wide-width": "1440px"
+      },
+      "expected": {
+        "result": {"declared":true,"formFactor":"desktop","height":900,"width":1440},
+        "reads": ["--prototype-inspector-viewport-wide-height","--prototype-inspector-viewport-wide-width"]
+      }
+    },
+    {
+      "prototype": {"flow":{"viewport":{"formFactor":"tablet"}}},
+      "route": null,
+      "tokens": {
+        "--prototype-inspector-viewport-medium-height": "1000px",
+        "--prototype-inspector-viewport-medium-width": "abc"
+      },
+      "expected": {
+        "result": {"declared":true,"formFactor":"tablet","height":1000,"width":768},
+        "reads": ["--prototype-inspector-viewport-medium-height","--prototype-inspector-viewport-medium-width"]
+      }
+    },
+    {
+      "prototype": {"flow":{"viewport":{"formFactor":"watch"}}},
+      "route": null,
+      "tokens": {},
+      "expected": {
+        "result": {"declared":true,"formFactor":"phone","height":812,"width":375},
+        "reads": ["--prototype-inspector-viewport-compact-height","--prototype-inspector-viewport-compact-width"]
+      }
+    },
+    {
+      "prototype": {"flow":{"viewport":{"formFactor":5,"width":0,"height":800}}},
+      "route": null,
+      "tokens": {},
+      "expected": {
+        "result": {"declared":true,"formFactor":"phone","height":812,"width":375},
+        "reads": ["--prototype-inspector-viewport-compact-height","--prototype-inspector-viewport-compact-width"]
+      }
+    },
+    {
+      "prototype": {"flow":{"viewport":{"formFactor":"desktop","width":0,"height":800}}},
+      "route": {"viewport":{"width":-5,"height":10}},
+      "tokens": {},
+      "expected": {
+        "result": {"declared":true,"formFactor":"desktop","height":800,"width":1280},
+        "reads": ["--prototype-inspector-viewport-wide-height","--prototype-inspector-viewport-wide-width"]
+      }
+    },
+    {
+      "prototype": {"flow":{}},
+      "route": {"viewport":{"width":"100","height":100}},
+      "tokens": {},
+      "expected": {
+        "result": {"declared":false,"formFactor":"phone","height":812,"width":375},
+        "reads": ["--prototype-inspector-viewport-compact-height","--prototype-inspector-viewport-compact-width"]
+      }
+    },
+    {
+      "prototype": {"flow":{"viewport":{"formFactor":"desktop"}}},
+      "route": {"viewport":{"width":390,"height":844}},
+      "tokens": {},
+      "expected": {"result":{"declared":true,"formFactor":"desktop","height":844,"width":390},"reads":[]}
+    },
+    {
+      "prototype": {"$undefined":true},
+      "route": {"$undefined":true},
+      "tokens": {},
+      "expected": {
+        "result": {"declared":false,"formFactor":"phone","height":812,"width":375},
+        "reads": ["--prototype-inspector-viewport-compact-height","--prototype-inspector-viewport-compact-width"]
+      }
+    },
+    {
+      "prototype": {"flow":{"viewport":"phone"}},
+      "route": null,
+      "tokens": {
+        "--prototype-inspector-viewport-compact-height": "0",
+        "--prototype-inspector-viewport-compact-width": "-10px"
+      },
+      "expected": {
+        "result": {"declared":false,"formFactor":"phone","height":812,"width":375},
+        "reads": ["--prototype-inspector-viewport-compact-height","--prototype-inspector-viewport-compact-width"]
+      }
+    },
+    {
+      "prototype": {"flow":{}},
+      "route": {"viewport":{"width":{"$number":"NaN"},"height":100}},
+      "tokens": {},
+      "expected": {
+        "result": {"declared":false,"formFactor":"phone","height":812,"width":375},
+        "reads": ["--prototype-inspector-viewport-compact-height","--prototype-inspector-viewport-compact-width"]
+      }
+    },
+    {
+      "prototype": {"flow":{}},
+      "route": {"viewport":{"width":100,"height":{"$number":"Infinity"}}},
+      "tokens": {},
+      "expected": {
+        "result": {"declared":false,"formFactor":"phone","height":812,"width":375},
+        "reads": ["--prototype-inspector-viewport-compact-height","--prototype-inspector-viewport-compact-width"]
+      }
+    },
+    {
+      "prototype": {"flow":{"viewport":[]}},
+      "route": null,
+      "tokens": {},
+      "expected": {
+        "result": {"declared":false,"formFactor":"phone","height":812,"width":375},
+        "reads": ["--prototype-inspector-viewport-compact-height","--prototype-inspector-viewport-compact-width"]
+      }
+    }
+  ]
+}

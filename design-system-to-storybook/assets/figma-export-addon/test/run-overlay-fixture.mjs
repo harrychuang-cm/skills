@@ -163,6 +163,7 @@ async function main() {
       chromeBinary,
       `${base}/overlay-fixture.html?sync=/sync-payload`,
       "overlay-fixture-wide",
+      { height: 900, width: 1140 },
     );
     assert.deepStrictEqual(
       overlayResult.disclosurePaths,
