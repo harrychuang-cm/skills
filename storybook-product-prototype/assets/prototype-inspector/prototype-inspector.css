@@ -795,6 +795,26 @@ html[data-sbfx-workspace-open="true"][data-sbfx-workspace-orientation="bottom"]:
   display: none;
 }
 
+/* The Undo notice is the layout group's first row, so it keeps the group's
+   room beside or above the figma-export dock; the two-row group drops the
+   pill shape. */
+.prototype-inspector__flow-controls--layout:has(.prototype-inspector__flow-auto-layout-notice) {
+  border-radius: var(--pi-sys-shape-corner-md);
+}
+
+.prototype-inspector__flow-auto-layout-notice {
+  display: flex;
+  flex: 1 0 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--pi-sys-spacing-xs);
+  padding-inline-start: var(--pi-sys-spacing-xs);
+  color: var(--pi-sys-color-on-surface-strong);
+  font-size: var(--pi-sys-typescale-caption-sm-size);
+  font-weight: var(--pi-sys-weight-semibold);
+  line-height: var(--pi-sys-typescale-caption-sm-line-height);
+}
+
 .prototype-inspector__flow-controls button[aria-pressed="true"] {
   color: var(--pi-sys-color-on-primary-container);
   background: var(--pi-sys-color-primary-container);
@@ -1281,6 +1301,43 @@ html[data-sbfx-workspace-open="true"][data-sbfx-workspace-orientation="bottom"]:
 
 .prototype-inspector__flow-frame-label[data-hidden="true"] {
   visibility: hidden;
+}
+
+/* Auto layout feature names: screen-space and constant size, the right edge
+   one screen gutter left of the anchor frame's visible rect and the top on
+   that rect's top (the world variables hold the rect's top-left corner).
+   A long name wraps onto a second line, then ends with an ellipsis (names
+   take no pointer input, so there is no hover tooltip). */
+.prototype-inspector__flow-lane-label {
+  position: absolute;
+  inset-block-start: var(--pi-sys-spacing-none);
+  inset-inline-start: var(--pi-sys-spacing-none);
+  z-index: 4;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  box-sizing: border-box;
+  max-inline-size: calc(var(--pi-ref-size-80) * 3 - var(--pi-sys-spacing-screen-gutter));
+  overflow: hidden;
+  color: var(--pi-sys-color-on-surface-strong);
+  font-size: var(--pi-sys-typescale-caption-sm-size);
+  font-weight: var(--pi-sys-weight-semibold);
+  line-height: var(--pi-sys-typescale-caption-sm-line-height);
+  overflow-wrap: anywhere;
+  text-align: end;
+  pointer-events: none;
+  transform: translate(
+      calc(
+        var(--prototype-flow-label-wx) * var(--prototype-flow-camera-zoom) +
+          var(--prototype-flow-camera-x) - var(--pi-sys-spacing-screen-gutter)
+      ),
+      calc(
+        var(--prototype-flow-label-wy) * var(--prototype-flow-camera-zoom) +
+          var(--prototype-flow-camera-y)
+      )
+    )
+    translateX(-100%);
 }
 
 .prototype-inspector__flow-frame-title {

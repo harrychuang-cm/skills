@@ -1759,7 +1759,7 @@ const prototypeReviewApiBasePath = "/prototype-review-api";
 const prototypeReviewStaticBasePath = "/prototype-reviews";
 const prototypeReviewDecisionVerbs = ["keep", "swap", "flag"];
 // 批次間五副本分歧窗口的定位標記：每輪 inspector 變更遞增。
-const prototypeInspectorBuildTag = "flow-journeys-2026-10-08";
+const prototypeInspectorBuildTag = "flow-auto-layout-2026-10-08";
 const prototypeTokenWhitelistPath = "/derived-token-whitelist.json";
 const previewTokenOverridesAttribute = "data-pi-token-overrides";
 

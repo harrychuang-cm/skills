@@ -31,6 +31,7 @@ import {
   applyWheelZoom,
   classifyPointerDown,
   classifyWheel,
+  computeAutoLayout,
   computeJourneyLayout,
   createPolyline,
   deriveBranchJourneys,
@@ -38,6 +39,7 @@ import {
   defaultPrototypeModeGlobalName,
   DRAG_THRESHOLD_PX,
   fitCamera,
+  getAutoLayoutFrameSize,
   getEdgeLabelPrefix,
   getFallbackGridPitch,
   getJourneyBounds,
@@ -68,6 +70,7 @@ import {
   normalizeStorybookGlobals,
   normalizeTransitions,
   placeEdgeLabels,
+  resolveAutoLayoutLanes,
   resolveCanvasShortcut,
   resolvePrototypeViewport,
   selectFrameTiers,
@@ -1488,6 +1491,74 @@ function writeStoredFlowJourney(storageKey, entryKey) {
   }
 }
 
+// Auto layout feature names (flow-auto-layout), stored beside the layout
+// under the same normalized prototype id: { version: 1, viewport, labels }.
+const flowLanesStoragePrefix = "prototype-inspector:flow-lanes:";
+// Names fit in 216 px plus their 24 px gap; a fit keeps this much room free
+// at the canvas's left edge while names are shown.
+const laneLabelReservePx = 240;
+
+function getFlowLanesStorageKey(layoutStorageKey) {
+  const marker = "flow-layout:";
+
+  return `${flowLanesStoragePrefix}${layoutStorageKey.slice(layoutStorageKey.indexOf(marker) + marker.length)}`;
+}
+
+function normalizeLaneLabels(labels, nodeIds = null) {
+  return Array.isArray(labels)
+    ? labels.filter(
+        (label) =>
+          isRecord(label) &&
+          typeof label.key === "string" &&
+          typeof label.title === "string" &&
+          typeof label.anchor === "string" &&
+          (!nodeIds || nodeIds.has(label.anchor)),
+      )
+    : [];
+}
+
+// The stored names, or null when missing, malformed, unreadable or saved for
+// another viewport (an unsigned record counts as the phone frame; a flow
+// without a signature accepts any record). Reading never writes.
+function readStoredFlowLanes(storageKey, expectedViewport) {
+  try {
+    if (typeof window === "undefined") {
+      return null;
+    }
+
+    const value = JSON.parse(window.localStorage.getItem(storageKey) ?? "null");
+
+    if (!isRecord(value) || value.version !== 1) {
+      return null;
+    }
+
+    const signature = typeof value.viewport === "string" ? value.viewport : "phone:375x812";
+
+    if (expectedViewport != null && signature !== expectedViewport) {
+      return null;
+    }
+
+    const labels = normalizeLaneLabels(value.labels);
+
+    return labels.length ? labels : null;
+  } catch (error) {
+    return null;
+  }
+}
+
+function writeStoredFlowLanes(storageKey, labels, viewportSignature) {
+  try {
+    if (!labels?.length) {
+      window.localStorage.removeItem(storageKey);
+      return;
+    }
+
+    window.localStorage.setItem(storageKey, JSON.stringify({ labels, version: 1, viewport: viewportSignature ?? null }));
+  } catch (error) {
+    // Without localStorage the names live for this page only.
+  }
+}
+
 const nonTextInputTypes = new Set([
   "button",
   "checkbox",
@@ -2031,6 +2102,18 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
   const [draggedPositions, setDraggedPositions] = useState(() =>
     readStoredFlowLayoutPositions(layoutStorageKey, canvasNodeIds, viewportSignature),
   );
+  // Auto layout (flow-auto-layout): the stored feature names, the dialog
+  // asked when a saved layout exists, and the snapshot Undo restores while
+  // its notice is shown.
+  const lanesStorageKey = getFlowLanesStorageKey(layoutStorageKey);
+  const [laneLabels, setLaneLabels] = useState(() => readStoredFlowLanes(lanesStorageKey, viewportSignature));
+  const [isAutoLayoutDialogOpen, setIsAutoLayoutDialogOpen] = useState(false);
+  const [autoLayoutUndo, setAutoLayoutUndo] = useState(null);
+  const autoLayoutConfirmButtonRef = useRef(null);
+  // The frame sizes the last auto layout of this mount used, while no later
+  // layout action changed its result: a frame measured larger afterwards
+  // (a route measured after applying) arranges the flow again.
+  const autoLayoutBasisRef = useRef(null);
   const [focusedRouteId, setFocusedRouteId] = useState(null);
   const [isPanModifierActive, setIsPanModifierActive] = useState(false);
   const [panState, setPanState] = useState(null);
@@ -2181,7 +2264,10 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
     setDraggedPositions(
       readStoredFlowLayoutPositions(layoutStorageKey, canvasNodeIds, viewportSignature),
     );
-  }, [canvasNodeIds, layoutStorageKey, storedLayoutSource, viewportSignature]);
+    setLaneLabels(readStoredFlowLanes(lanesStorageKey, viewportSignature));
+    setAutoLayoutUndo(null);
+    autoLayoutBasisRef.current = null;
+  }, [canvasNodeIds, lanesStorageKey, layoutStorageKey, storedLayoutSource, viewportSignature]);
   useEffect(() => {
     if (!hasCustomLayout) {
       setIsResetDialogOpen(false);
@@ -2200,6 +2286,19 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
       window.clearTimeout(focusTimer);
     };
   }, [isResetDialogOpen]);
+  useEffect(() => {
+    if (!isAutoLayoutDialogOpen) {
+      return undefined;
+    }
+
+    const focusTimer = window.setTimeout(() => {
+      autoLayoutConfirmButtonRef.current?.focus();
+    });
+
+    return () => {
+      window.clearTimeout(focusTimer);
+    };
+  }, [isAutoLayoutDialogOpen]);
   const routePositionMap = useMemo(() => {
     const map = new Map();
 
@@ -2326,6 +2425,12 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
   }, [activeJourney, defaultPreviewWidth, frameTitles, routePositionMap, transitions]);
   // What fitting frames: the journey in a journey view, else the whole flow.
   const displayedBounds = journeyLayout?.bounds ?? flowBounds;
+  // Feature names whose anchor frame is in the flow, on the complete flow only.
+  const shownLaneLabels = useMemo(
+    () => (activeJourney || !laneLabels ? [] : laneLabels.filter((label) => routePositionMap.has(label.anchor))),
+    [activeJourney, laneLabels, routePositionMap],
+  );
+  const laneLabelReserve = shownLaneLabels.length ? laneLabelReservePx : 0;
   // Level of detail. Tiers come from the camera snapshot React holds (it
   // changes only when the camera settles), so a gesture keeps the tiers it
   // started with and the settle commit applies the new ones. No frame is live
@@ -3020,14 +3125,15 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
       return;
     }
 
-    setCamera(
-      fitCamera(displayedBounds, {
-        height: viewport.clientHeight,
-        width: viewport.clientWidth,
-      }),
-      { fit: true, immediate: true },
-    );
-  }, [displayedBounds, setCamera]);
+    // Shown feature names sit left of the frames: the fit leaves them room.
+    const reserve = Math.min(laneLabelReserve, viewport.clientWidth / 2);
+    const fitted = fitCamera(displayedBounds, {
+      height: viewport.clientHeight,
+      width: viewport.clientWidth - reserve,
+    });
+
+    setCamera({ ...fitted, x: fitted.x + reserve }, { fit: true, immediate: true });
+  }, [displayedBounds, laneLabelReserve, setCamera]);
   const fitToViewRef = useRef(fitToView);
   fitToViewRef.current = fitToView;
   // figma-export review asks the canvas to show a comment's location (its pin
@@ -3555,7 +3661,11 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
   };
   // The only storage writer: each committed layout action (drag release,
   // Reset, Import) writes once; opening or re-rendering the UI Flow never does.
+  // Every committed layout action also ends an auto layout's Undo (applying
+  // one sets its own right after).
   const commitLayoutPositions = (positions) => {
+    setAutoLayoutUndo(null);
+    autoLayoutBasisRef.current = null;
     setDraggedPositions(positions);
     writeStoredFlowLayout(
       layoutStorageKey,
@@ -3596,7 +3706,7 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
     const { reverseEdgeKeys: reverseKeys, routingPositionMap: routingMap } = latestRef.current;
     const shiftedMap = new Map(routingMap);
 
-    drag.frames.forEach(({ element, id, label, labelOrigin }) => {
+    drag.frames.forEach(({ element, id, label, labelOrigin, lanes = [] }) => {
       const position = routingMap.get(id);
 
       element.style.transform = `translate(${drag.delta.x}px, ${drag.delta.y}px)`;
@@ -3604,6 +3714,10 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
         label.style.setProperty("--prototype-flow-label-wx", `${labelOrigin.x + drag.delta.x}px`);
         label.style.setProperty("--prototype-flow-label-wy", `${labelOrigin.y + drag.delta.y}px`);
       }
+      lanes.forEach((lane) => {
+        lane.element.style.setProperty("--prototype-flow-label-wx", `${lane.origin.x + drag.delta.x}px`);
+        lane.element.style.setProperty("--prototype-flow-label-wy", `${lane.origin.y + drag.delta.y}px`);
+      });
       if (position) {
         shiftedMap.set(id, {
           ...position,
@@ -3633,13 +3747,17 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
     window.cancelAnimationFrame(dragFrameRef.current);
     dragFrameRef.current = 0;
     worldRef.current?.removeAttribute("data-dragging");
-    drag.frames.forEach(({ element, label, labelOrigin }) => {
+    drag.frames.forEach(({ element, label, labelOrigin, lanes = [] }) => {
       element.style.removeProperty("transform");
       element.removeAttribute("data-dragging");
       if (label && labelOrigin) {
         label.style.setProperty("--prototype-flow-label-wx", `${labelOrigin.x}px`);
         label.style.setProperty("--prototype-flow-label-wy", `${labelOrigin.y}px`);
       }
+      lanes.forEach((lane) => {
+        lane.element.style.setProperty("--prototype-flow-label-wx", `${lane.origin.x}px`);
+        lane.element.style.setProperty("--prototype-flow-label-wy", `${lane.origin.y}px`);
+      });
     });
     drag.edges.forEach(({ arrow, arrowPoints, label, line, linePoints }) => {
       if (line && linePoints !== null) {
@@ -3704,6 +3822,14 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
           y: Number.parseFloat(label.style.getPropertyValue("--prototype-flow-label-wy")),
         }
       : null;
+    // Feature names anchored on this frame move with it.
+    const lanes = [...(overlayRef.current?.querySelectorAll(`[data-lane-anchor="${CSS.escape(id)}"]`) ?? [])].map((element) => ({
+      element,
+      origin: {
+        x: Number.parseFloat(element.style.getPropertyValue("--prototype-flow-label-wx")),
+        y: Number.parseFloat(element.style.getPropertyValue("--prototype-flow-label-wy")),
+      },
+    }));
 
     // Pressing the frame label also grabs the frame; the pointer is captured
     // by whichever element was pressed.
@@ -3714,7 +3840,7 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
     dragRef.current = {
       delta: { x: 0, y: 0 },
       edges: [],
-      frames: [{ element, id, label, labelOrigin, origin: { x: position.x, y: position.y } }],
+      frames: [{ element, id, label, labelOrigin, lanes, origin: { x: position.x, y: position.y } }],
       pointerId: event.pointerId,
       scale: getScreenScale(),
       started: false,
@@ -3804,6 +3930,52 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
     flushPendingFrameState();
     rendererRef.current?.resume();
   };
+  // A route measured after the auto layout grew beyond the size it used:
+  // arrange again and save, keeping the Undo snapshot (sizes reach React only
+  // when no gesture is under way).
+  useEffect(() => {
+    const basis = autoLayoutBasisRef.current;
+
+    if (!basis) {
+      return;
+    }
+
+    const grew = [...basis.sizes].some(([id, used]) => {
+      const size = getAutoLayoutSize(id);
+
+      return size.width > used.width + 1 || size.height > used.height + 1;
+    });
+
+    if (!grew) {
+      return;
+    }
+
+    const { positions, sizes } = computeCurrentAutoLayout();
+
+    autoLayoutBasisRef.current = { sizes };
+    setDraggedPositions(positions);
+    writeStoredFlowLayout(layoutStorageKey, prototype, positions, canvasNodeIds, viewportSignature);
+  }, [routePositionMap]);
+  // The Undo notice lasts 8000 ms; ending during a gesture would commit, so
+  // it waits for the gesture to end.
+  useEffect(() => {
+    if (!autoLayoutUndo) {
+      return undefined;
+    }
+
+    let timer = 0;
+    const expire = () => {
+      if (cameraIdleTimerRef.current || dragRef.current?.started) {
+        timer = window.setTimeout(expire, 250);
+        return;
+      }
+
+      setAutoLayoutUndo(null);
+    };
+
+    timer = window.setTimeout(expire, 8000);
+    return () => window.clearTimeout(timer);
+  }, [autoLayoutUndo]);
   // Run in order before every journey switch. Later canvas capabilities add
   // their own steps (clearing a selection, ending interact mode).
   const beforeJourneySwitchRef = useRef([]);
@@ -3821,6 +3993,11 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
       setPromotedFrameIds(new Set());
     },
     () => setIsResetDialogOpen(false),
+    () => {
+      setIsAutoLayoutDialogOpen(false);
+      setAutoLayoutUndo(null);
+      autoLayoutBasisRef.current = null;
+    },
   ];
   // Selects a journey list entry. Leaving the complete flow keeps its camera
   // (in memory and in sessionStorage, also mid-gesture); the camera itself
@@ -3931,7 +4108,7 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
       isMac: isMacPlatform(),
       isTextEntry: isTextEntryTarget(target),
       journeyEntryCount: hasJourneyList ? journeyEntries.length : 0,
-      overlayOpen: isResetDialogOpen || isZoomMenuOpen,
+      overlayOpen: isResetDialogOpen || isZoomMenuOpen || isAutoLayoutDialogOpen,
       targetIsControl: isControlTarget(target),
     });
 
@@ -3957,6 +4134,8 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
     } else if (command === "close-overlay") {
       if (isZoomMenuOpen) {
         setIsZoomMenuOpen(false);
+      } else if (isAutoLayoutDialogOpen) {
+        setIsAutoLayoutDialogOpen(false);
       } else {
         setIsResetDialogOpen(false);
       }
@@ -3990,15 +4169,85 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
   };
   const confirmResetLayout = () => {
     commitLayoutPositions({});
+    writeStoredFlowLanes(lanesStorageKey, [], viewportSignature);
+    setLaneLabels(null);
     setFocusedRouteId(null);
     setIsResetDialogOpen(false);
   };
-  const exportLayout = () => {
-    const payload = createPrototypeFlowLayoutPayload(
-      prototype.id,
-      getFlowLayoutPositions(routePositionMap),
-      viewportSignature,
+  // Auto layout: frame sizes are the larger of the measured preview and the
+  // resolved viewport (the Static Flow sizes frames from the viewport).
+  const getAutoLayoutSize = (id) =>
+    getAutoLayoutFrameSize(
+      routePositionMap.get(id) ?? { height: defaultNodeHeight, nodeType: "flow", width: defaultPreviewWidth + nodeFrameSize },
+      resolvedViewportsRef.current.get(id) ?? prototypeViewport,
     );
+  // One batch: fit tracking (the fit effect fits the new bounds after the
+  // commit), the positions, the names, no hover, the dialog closed and the
+  // Undo snapshot of what was saved before.
+  // The auto layout of the flow with the current frame sizes, recording the
+  // sizes it used.
+  const computeCurrentAutoLayout = () => {
+    const { lanes, showTitles } = resolveAutoLayoutLanes(flow, { declared: declaredJourneys, derived: derivedJourneys });
+    const sizes = new Map();
+    const { labels, positions } = computeAutoLayout(lanes, transitions, (id) => {
+      const size = getAutoLayoutSize(id);
+
+      sizes.set(id, size);
+      return size;
+    });
+
+    return { labels: showTitles ? labels.filter((label) => label.title) : [], positions, sizes };
+  };
+  const applyAutoLayout = () => {
+    const { labels, positions, sizes } = computeCurrentAutoLayout();
+    const undo = { labels: laneLabels, positions: draggedPositions };
+
+    setFitTracking(true);
+    setIsFitTracking(true);
+    commitLayoutPositions(positions);
+    autoLayoutBasisRef.current = { sizes };
+    writeStoredFlowLanes(lanesStorageKey, labels, viewportSignature);
+    setLaneLabels(labels.length ? labels : null);
+    setFocusedRouteId(null);
+    setIsAutoLayoutDialogOpen(false);
+    setAutoLayoutUndo(undo);
+  };
+  const requestAutoLayout = () => {
+    if (isReadOnlyView) {
+      return;
+    }
+    if (hasCustomLayout) {
+      setIsAutoLayoutDialogOpen(true);
+    } else {
+      applyAutoLayout();
+    }
+  };
+  const closeAutoLayoutDialog = () => {
+    setIsAutoLayoutDialogOpen(false);
+  };
+  // Restores the layout and names saved before the auto layout (an empty
+  // layout removes the stored one).
+  const undoAutoLayout = () => {
+    if (!autoLayoutUndo) {
+      return;
+    }
+
+    commitLayoutPositions(autoLayoutUndo.positions);
+    writeStoredFlowLanes(lanesStorageKey, autoLayoutUndo.labels ?? [], viewportSignature);
+    setLaneLabels(autoLayoutUndo.labels);
+  };
+  const exportLayout = () => {
+    const exportedLaneLabels = (laneLabels ?? []).filter((label) => routePositionMap.has(label.anchor));
+    const payload = {
+      ...createPrototypeFlowLayoutPayload(
+        prototype.id,
+        getFlowLayoutPositions(routePositionMap),
+        viewportSignature,
+      ),
+      // The stored feature names whose frame is in the flow (flow-auto-layout),
+      // also from a journey view, which hides them.
+      ...(exportedLaneLabels.length ? { lanes: exportedLaneLabels } : {}),
+    };
     const blob = new Blob([`${JSON.stringify(payload, null, 2)}\n`], {
       type: "application/json",
     });
@@ -4043,6 +4292,12 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
         }
 
         commitLayoutPositions(importedPositions);
+        // Feature names come with the file, signed for this flow; names on
+        // frames the flow lacks are dropped.
+        const importedLanes = normalizeLaneLabels(importedLayout.lanes, canvasNodeIds);
+
+        writeStoredFlowLanes(lanesStorageKey, importedLanes, viewportSignature);
+        setLaneLabels(importedLanes.length ? importedLanes : null);
         setFocusedRouteId(null);
       } catch (error) {
         console.warn("Unable to import prototype flow layout.", error);
@@ -4500,6 +4755,27 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
             y: visible.y,
           });
         }),
+        // Auto layout feature names: right edge left of the anchor frame's
+        // visible rect, top on its top; no pointer input, no comment anchor.
+        shownLaneLabels.map((label) => {
+          const position = routePositionMap.get(label.anchor);
+          const visible = getFrameVisibleRect(position, position.nodeType === "route" ? "route" : "flow");
+
+          return createElement(
+            "div",
+            {
+              className: "prototype-inspector__flow-lane-label",
+              "data-lane-anchor": label.anchor,
+              "data-lane-key": label.key,
+              key: `lane:${label.key}`,
+              style: {
+                "--prototype-flow-label-wx": `${visible.x}px`,
+                "--prototype-flow-label-wy": `${visible.y}px`,
+              },
+            },
+            label.title,
+          );
+        }),
       ),
     ),
     createElement(
@@ -4635,6 +4911,14 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
           role: "group",
           "aria-label": "UI Flow layout controls",
         },
+        autoLayoutUndo
+          ? createElement(
+              "div",
+              { className: "prototype-inspector__flow-auto-layout-notice", role: "status" },
+              createElement("span", null, "Auto layout applied."),
+              createElement("button", { onClick: undoAutoLayout, type: "button" }, "Undo"),
+            )
+          : null,
         createElement("input", {
           accept: "application/json,.json",
           className: "prototype-inspector__flow-import-input",
@@ -4642,6 +4926,18 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
           ref: importInputRef,
           type: "file",
         }),
+        createElement(
+          "button",
+          {
+            "aria-label": "Auto layout UI Flow",
+            className: "prototype-inspector__flow-auto-layout-button",
+            disabled: isReadOnlyView,
+            onClick: requestAutoLayout,
+            title: "Arrange frames by feature, left to right",
+            type: "button",
+          },
+          "Auto Layout",
+        ),
         createElement(
           "button",
           {
@@ -4749,6 +5045,59 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
                     onClick: closeResetDialog,
                     type: "button",
                   },
+                  "Cancel",
+                ),
+              ),
+            ),
+          )
+        : null,
+      isAutoLayoutDialogOpen
+        ? createElement(
+            "div",
+            {
+              className: "prototype-inspector__flow-reset-dialog-backdrop",
+              onPointerDown: (event) => {
+                if (event.target === event.currentTarget) {
+                  closeAutoLayoutDialog();
+                }
+              },
+            },
+            createElement(
+              "section",
+              {
+                "aria-describedby": "prototype-flow-auto-layout-description",
+                "aria-labelledby": "prototype-flow-auto-layout-title",
+                "aria-modal": "true",
+                className: "prototype-inspector__flow-reset-dialog",
+                onPointerDown: (event) => event.stopPropagation(),
+                role: "dialog",
+              },
+              createElement(
+                "div",
+                { className: "prototype-inspector__flow-reset-dialog-copy" },
+                createElement("h2", { id: "prototype-flow-auto-layout-title" }, "Auto layout this UI Flow?"),
+                createElement(
+                  "p",
+                  { id: "prototype-flow-auto-layout-description" },
+                  "Frames are rearranged by feature, left to right. You can undo right after.",
+                ),
+              ),
+              createElement(
+                "div",
+                { className: "prototype-inspector__flow-reset-dialog-actions" },
+                createElement(
+                  "button",
+                  {
+                    className: "prototype-inspector__flow-reset-dialog-confirm",
+                    onClick: applyAutoLayout,
+                    ref: autoLayoutConfirmButtonRef,
+                    type: "button",
+                  },
+                  "Auto Layout",
+                ),
+                createElement(
+                  "button",
+                  { className: "prototype-inspector__flow-reset-dialog-cancel", onClick: closeAutoLayoutDialog, type: "button" },
                   "Cancel",
                 ),
               ),

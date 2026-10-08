@@ -281,13 +281,24 @@ assert.match(empty, /data-sbfx-comments="unavailable"/, "an empty UI Flow offers
 const example = await import(
   new URL("../../design-system-to-storybook/storybook-template/src/pages/prototypes/example-prototype/examplePrototypeFlow.ts", import.meta.url)
 );
-const journeyRender = (prototypeValue, stored = {}) => {
-  const storage = new Map(Object.entries(stored));
+const storageStub = (entries) => {
+  const storage = new Map(Object.entries(entries));
+
+  return {
+    getItem: (key) => storage.get(key) ?? null,
+    removeItem: (key) => storage.delete(key),
+    setItem: (key, value) => storage.set(key, String(value)),
+  };
+};
+// sessionStorage entries select a journey; localStorage entries carry auto
+// layout names (the layout helper is imported natively and reads neither).
+const journeyRender = (prototypeValue, stored = {}, local = {}) => {
   const journeyContext = vm.createContext({
     ...React, ...geometry, ...helper, ...snapshotModules, console, URL, URLSearchParams, Date, JSON, Set, Map, UPDATE_GLOBALS: "UPDATE_GLOBALS", addons,
     window: {
       location: new URL("http://localhost:6006/iframe.html?id=pages-prototypes-journeys--default&viewMode=story"),
-      sessionStorage: { getItem: (key) => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, String(value)) },
+      localStorage: storageStub(local),
+      sessionStorage: storageStub(stored),
     },
   });
   vm.runInContext(`${code}\nglobalThis.testApi = { PrototypeFlow };`, journeyContext);
@@ -440,4 +451,64 @@ const undeclaredExample = { id: "example-prototype", flow: exampleFlowWithoutJou
   assert.match(journeyList(looped), /<span class="prototype-inspector__flow-journey-step-loop">↩ Review Request<\/span><\/li><\/ol>/, "the list detail ends with the loop marker text");
 }
 
-console.log("PASS UI Flow server render: frames, flow node, control names, camera layers, fit tracking, frame labels, zoom menu, contrast, comment declarations, comment anchors, empty state, frame size cache, level of detail, journey list, journey focus view, read-only journey view");
+// Auto layout (flow-auto-layout): the button leads the layout group, asks
+// nothing on open, and is disabled in a journey view.
+{
+  const layoutGroup = html.slice(html.indexOf('aria-label="UI Flow layout controls"'));
+
+  assert.match(
+    layoutGroup,
+    /<button aria-label="Auto layout UI Flow" class="prototype-inspector__flow-auto-layout-button" title="[^"]+" type="button">Auto Layout<\/button>/,
+    "the Auto Layout button is named Auto layout UI Flow",
+  );
+  assert.ok(
+    layoutGroup.indexOf('aria-label="Auto layout UI Flow"') < layoutGroup.indexOf('aria-label="Reset UI Flow layout"'),
+    "Auto Layout comes before Reset in the layout group",
+  );
+  assert.doesNotMatch(html, /Auto layout this UI Flow\?|prototype-inspector__flow-auto-layout-notice/, "no dialog or notice on open");
+  const journeyView = journeyRender(examplePrototype, { "prototype-inspector:flow-journey:example-prototype": "declared:request-changes" });
+
+  assert.match(journeyView, /aria-label="Auto layout UI Flow" class="prototype-inspector__flow-auto-layout-button" disabled=""/, "Auto Layout is disabled in a journey view");
+
+  // Stored feature names: shown beside their anchor frames when the record
+  // matches the flow's viewport, skipped when the anchor is gone.
+  const lanesKey = "prototype-inspector:flow-lanes:example-prototype";
+  const record = (viewport) =>
+    JSON.stringify({
+      labels: [
+        { anchor: "intake", key: "declared:approve-request", title: "Approve a request" },
+        { anchor: "handoff", key: "other", title: "Other screens" },
+        { anchor: "missing-route", key: "declared:gone", title: "Gone" },
+      ],
+      version: 1,
+      viewport,
+    });
+  const named = journeyRender(examplePrototype, {}, { [lanesKey]: record(null) });
+  const names = [...named.matchAll(/<div class="prototype-inspector__flow-lane-label" data-lane-anchor="([^"]+)" data-lane-key="([^"]+)" style="([^"]+)">([^<]+)<\/div>/g)].map(
+    (match) => ({ anchor: match[1], key: match[2], style: match[3], text: match[4] }),
+  );
+
+  assert.deepEqual(
+    names.map(({ anchor, key, text }) => [anchor, key, text]),
+    [
+      ["intake", "declared:approve-request", "Approve a request"],
+      ["handoff", "other", "Other screens"],
+    ],
+    "two names, the one on a missing frame skipped",
+  );
+  assert.equal(names[0].style, "--prototype-flow-label-wx:1px;--prototype-flow-label-wy:65px", "a name sits at its frame's visible rect");
+  const overlayEnd = named.indexOf('class="prototype-inspector__flow-control-layer"');
+
+  assert.ok(named.indexOf("prototype-inspector__flow-lane-label") < overlayEnd, "names are drawn in the screen-space overlay");
+  const desktopPrototype = { ...examplePrototype, flow: { ...examplePrototype.flow, viewport: { formFactor: "desktop", height: 800, width: 1280 } } };
+
+  assert.doesNotMatch(journeyRender(desktopPrototype, {}, { [lanesKey]: record(null) }), /flow-lane-label/, "an unsigned (phone) record is not shown for a desktop flow");
+  assert.match(journeyRender(desktopPrototype, {}, { [lanesKey]: record("desktop:1280x800") }), /flow-lane-label/, "a record signed for the flow's viewport is shown");
+  assert.doesNotMatch(
+    journeyRender(examplePrototype, { "prototype-inspector:flow-journey:example-prototype": "declared:request-changes" }, { [lanesKey]: record(null) }),
+    /flow-lane-label/,
+    "a journey view shows no feature names",
+  );
+}
+
+console.log("PASS UI Flow server render: frames, flow node, control names, camera layers, fit tracking, frame labels, zoom menu, contrast, comment declarations, comment anchors, empty state, frame size cache, level of detail, journey list, journey focus view, read-only journey view, auto layout button and feature names");

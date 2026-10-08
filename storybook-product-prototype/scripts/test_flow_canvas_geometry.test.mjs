@@ -1054,3 +1054,285 @@ test("repeated journey steps are separate instances for the level of detail (spe
   assert.equal(tiers.get("3:review"), "live");
   assert.equal(tiers.get("1:review"), "snapshot");
 });
+
+// ---------------------------------------------------------------------------
+// Auto layout (flow-auto-layout)
+
+const lanesOf = (flow) => {
+  const declared = geometry.normalizeJourneys(flow, quiet);
+
+  return geometry.resolveAutoLayoutLanes(flow, { declared, derived: geometry.deriveBranchJourneys(flow, { ...quiet, declared }) });
+};
+const laneRows = (result) => result.lanes.map(({ key, members, order, title }) => [key, title, order, members]);
+
+test("auto layout lane sources (spec example)", () => {
+  const journeys = lanesOf({
+    journeys: [
+      { id: "a", steps: ["a1", "a2"], title: "A" },
+      { id: "b", steps: ["a2", "b1"], title: "B" },
+    ],
+    routes: ["a1", "a2", "b1", "x"].map((id) => route(id)),
+    transitions: [link("a1", "a2"), link("a2", "b1")],
+  });
+
+  assert.equal(journeys.source, "journeys");
+  assert.equal(journeys.showTitles, true);
+  assert.deepEqual(laneRows(journeys), [
+    ["declared:a", "A", "sequence", ["a1", "a2"]],
+    ["declared:b", "B", "sequence", ["b1"]],
+    ["other", "Other screens", "graph", ["x"]],
+  ]);
+
+  const groups = lanesOf({
+    routes: [
+      { flowGroup: "entry", id: "intake" },
+      { flowGroup: "review", id: "review" },
+      { flowGroup: "handoff", id: "handoff" },
+    ],
+    transitions: [link("intake", "review"), link("review", "handoff")],
+  });
+
+  assert.equal(groups.source, "flowGroup");
+  assert.deepEqual(laneRows(groups), [
+    ["group:entry", "entry", "graph", ["intake"]],
+    ["group:review", "review", "graph", ["review"]],
+    ["group:handoff", "handoff", "graph", ["handoff"]],
+  ]);
+
+  const derived = lanesOf({
+    nodes: [node("d")],
+    routes: [route("start"), route("yes"), route("no")],
+    transitions: [link("start", "d"), link("d", "yes", { label: "Yes" }), link("d", "no", { label: "No" })],
+  });
+
+  assert.equal(derived.source, "derived");
+  assert.deepEqual(
+    derived.lanes.map(({ key, members, order }) => [key, order, members]),
+    [
+      ["derived:d:yes", "sequence", ["start", "d", "yes"]],
+      ["derived:d:no", "sequence", ["no"]],
+    ],
+  );
+
+  const single = lanesOf({
+    routes: [route("home"), route("detail"), route("done")],
+    transitions: [link("home", "detail"), link("detail", "done")],
+  });
+
+  assert.equal(single.source, "single");
+  assert.equal(single.showTitles, false);
+  assert.deepEqual(laneRows(single), [["single", null, "graph", ["home", "detail", "done"]]]);
+});
+
+test("declared journeys win over flowGroup (spec scenario)", () => {
+  const result = lanesOf({
+    journeys: [
+      { id: "submit", steps: ["intake", "review"], title: "Submit" },
+      { id: "close", steps: ["review", "handoff", "archive"], title: "Close" },
+    ],
+    routes: ["intake", "review", "handoff", "archive"].map((id) => ({ flowGroup: `group-${id}`, id })),
+    transitions: [link("intake", "review"), link("review", "handoff"), link("handoff", "archive")],
+  });
+
+  assert.equal(result.source, "journeys");
+  assert.deepEqual(laneRows(result), [
+    ["declared:submit", "Submit", "sequence", ["intake", "review"]],
+    ["declared:close", "Close", "sequence", ["handoff", "archive"]],
+  ]);
+});
+
+test("a declared journey that owns no screen is dropped (spec scenario)", () => {
+  const result = lanesOf({
+    ...exampleFlow,
+    journeys: [
+      { id: "approve-request", steps: ["intake", "review", "approval-decision", "handoff"], title: "Approve a request" },
+      { id: "request-changes", steps: ["intake", "review", "approval-decision", "review"], title: "Request changes" },
+    ],
+  });
+
+  assert.equal(result.source, "journeys");
+  assert.equal(result.showTitles, false);
+  assert.deepEqual(laneRows(result), [
+    ["declared:approve-request", "Approve a request", "sequence", ["intake", "review", "approval-decision", "handoff"]],
+  ]);
+});
+
+const layoutBoxes = (sizes = {}) => (id) => sizes[id] ?? phone;
+const overlaps = (positions, sizeOf) => {
+  const boxes = Object.entries(positions).map(([id, { x, y }]) => ({ id, x, y, ...sizeOf(id) }));
+  const hits = [];
+
+  for (let i = 0; i < boxes.length; i += 1) {
+    for (let j = i + 1; j < boxes.length; j += 1) {
+      const a = boxes[i];
+      const b = boxes[j];
+
+      if (a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height) hits.push(`${a.id}/${b.id}`);
+    }
+  }
+  return hits;
+};
+const graphLane = (members) => [{ key: "group:g", members, order: "graph", title: "g" }];
+
+test("a journey lane reads left to right (spec example)", () => {
+  const sizeOf = layoutBoxes({ "approval-decision": decisionBox });
+  const { labels, positions } = geometry.computeAutoLayout(
+    [{ key: "declared:approve-request", members: ["intake", "review", "approval-decision", "handoff"], order: "sequence", title: "Approve a request" }],
+    exampleFlow.transitions,
+    sizeOf,
+  );
+
+  assert.deepEqual(positions, {
+    "approval-decision": { x: 1074, y: 361 },
+    handoff: { x: 1454, y: 0 },
+    intake: { x: 0, y: 0 },
+    review: { x: 537, y: 0 },
+  });
+  assert.deepEqual(labels, [{ anchor: "intake", key: "declared:approve-request", title: "Approve a request" }]);
+});
+
+test("a branch opens a sub-row; a return line does not reorder screens (spec scenarios)", () => {
+  const { positions } = geometry.computeAutoLayout(
+    graphLane(["intake", "review", "approved", "rejected", "handoff"]),
+    [
+      link("intake", "review"),
+      link("review", "approved"),
+      link("review", "rejected"),
+      link("approved", "handoff"),
+      link("handoff", "intake", { kind: "return" }),
+    ],
+    layoutBoxes(),
+  );
+
+  assert.deepEqual(positions.intake, { x: 0, y: 0 });
+  assert.deepEqual(positions.review, { x: 537, y: 0 });
+  assert.deepEqual(positions.approved, { x: 1074, y: 0 });
+  assert.deepEqual(positions.rejected, { x: 1074, y: 878 + 120 });
+  assert.deepEqual(positions.handoff, { x: 1611, y: 0 });
+});
+
+test("a cycle without an entry takes columns 0, 1 and 2 (spec scenario)", () => {
+  const { positions } = geometry.computeAutoLayout(graphLane(["a", "b", "c"]), [link("a", "b"), link("b", "c"), link("c", "a")], layoutBoxes());
+
+  assert.deepEqual([positions.a.x, positions.b.x, positions.c.x], [0, 537, 1074]);
+  assert.deepEqual([positions.a.y, positions.b.y, positions.c.y], [0, 0, 0]);
+});
+
+test("unconnected screens sit side by side (spec example)", () => {
+  const { positions } = geometry.computeAutoLayout(graphLane(["x", "y", "z"]), [], layoutBoxes());
+
+  assert.deepEqual(positions, { x: { x: 0, y: 0 }, y: { x: 537, y: 0 }, z: { x: 1074, y: 0 } });
+});
+
+test("narrower frames are centred in their column, lanes stack 240 apart", () => {
+  const { labels, positions } = geometry.computeAutoLayout(
+    [
+      { key: "group:a", members: ["start", "big", "small"], order: "graph", title: "a" },
+      { key: "group:b", members: ["next"], order: "graph", title: "b" },
+    ],
+    [link("start", "big"), link("start", "small")],
+    layoutBoxes({ small: decisionBox }),
+  );
+
+  assert.deepEqual(positions.big, { x: 537, y: 0 });
+  // The decision node shares big's column (377 wide): centred, on its own sub-row.
+  assert.deepEqual(positions.small, { x: 537 + Math.round((377 - 220) / 2), y: 878 + 120 });
+  assert.deepEqual(positions.next, { x: 0, y: 878 + 120 + 220 + 240 });
+  assert.deepEqual(labels.map((label) => label.anchor), ["start", "next"]);
+});
+
+test("shared screens stay in their first lane (spec scenario)", () => {
+  const flow = {
+    journeys: [
+      { id: "subscribe", steps: ["fund-detail", "subscribe-form"], title: "Subscribe" },
+      { id: "recurring", steps: ["fund-detail", "recurring-form"], title: "Recurring" },
+    ],
+    routes: ["fund-detail", "subscribe-form", "recurring-form"].map((id) => route(id)),
+    transitions: [link("fund-detail", "subscribe-form"), link("fund-detail", "recurring-form")],
+  };
+  const { lanes } = lanesOf(flow);
+  const { labels, positions } = geometry.computeAutoLayout(lanes, flow.transitions, layoutBoxes());
+
+  assert.deepEqual(Object.keys(positions).sort(), ["fund-detail", "recurring-form", "subscribe-form"]);
+  assert.deepEqual(positions["recurring-form"], { x: 0, y: 878 + 240 });
+  assert.deepEqual(labels.map((label) => label.anchor), ["fund-detail", "recurring-form"]);
+});
+
+// 100 routes in 10 lanes of 10, chained, with branches every 7 routes and
+// return lines every 3 (the shape of the bench fixture's 100-route flow).
+function hundredRouteFlow() {
+  const ids = Array.from({ length: 100 }, (_, index) => `screen-${String(index + 1).padStart(3, "0")}`);
+  const transitions = [];
+
+  ids.forEach((id, index) => {
+    if (index + 1 < ids.length) transitions.push(link(id, ids[index + 1]));
+  });
+  for (let index = 3; index + 20 < 100; index += 7) transitions.push(link(ids[index], ids[index + 20]));
+  for (let index = 1; index < 100; index += 3) transitions.push(link(ids[index], ids[index - 1], { flowLine: "reference", kind: "return" }));
+  return { routes: ids.map((id, index) => ({ flowGroup: `lane-${Math.floor(index / 10)}`, id })), transitions };
+}
+
+test("auto layout never overlaps frames, whatever the lane source", () => {
+  const growth = growthShapedFlow();
+  const hundred = hundredRouteFlow();
+  const sizeOf = (id) => (/^b\d$/.test(id) ? decisionBox : phone);
+  const cases = [
+    ["growth-fund shape, derived", growth],
+    ["growth-fund shape, single", { ...growth, transitions: [] }],
+    ["100 routes, flowGroup", hundred],
+    ["100 routes, single", { ...hundred, routes: hundred.routes.map(({ id }) => ({ id })) }],
+    ["100 routes, journeys", { ...hundred, journeys: [{ id: "j", steps: hundred.routes.slice(0, 30).map(({ id }) => id), title: "J" }] }],
+  ];
+
+  for (const [name, flow] of cases) {
+    const { lanes } = lanesOf(flow);
+    const { positions } = geometry.computeAutoLayout(lanes, flow.transitions, sizeOf);
+
+    assert.equal(Object.keys(positions).length, flow.routes.length + (flow.nodes?.length ?? 0), `${name}: every screen placed`);
+    assert.deepEqual(overlaps(positions, sizeOf), [], `${name}: no overlap`);
+    assert.ok(Object.values(positions).every(({ x, y }) => Number.isInteger(x) && Number.isInteger(y)), `${name}: whole pixels`);
+  }
+});
+
+test("100 routes lay out in under 50 ms", () => {
+  const flow = hundredRouteFlow();
+  // One graph lane of every route: the depth-first walk and the columns.
+  const lanes = [{ key: "single", members: flow.routes.map(({ id }) => id), order: "graph", title: null }];
+  const started = performance.now();
+
+  geometry.computeAutoLayout(lanes, flow.transitions, () => phone);
+  const elapsed = performance.now() - started;
+
+  console.log(`computeAutoLayout, 100 routes: ${elapsed.toFixed(2)} ms`);
+  assert.ok(elapsed < 50, `${elapsed.toFixed(2)} ms`);
+});
+
+test("lane names sit 24 px left of the anchor frame's visible rect (spec example)", () => {
+  const box = { height: 878, width: 377, x: 0, y: 0 };
+
+  assert.deepEqual(geometry.getAutoLayoutLabelPlacement(box, { x: 100, y: 50, z: 0.5 }), { right: 76.5, top: 82.5 });
+  assert.deepEqual(geometry.getAutoLayoutLabelPlacement(box, { x: -200, y: 0, z: 2 }), { right: -222, top: 130 });
+});
+
+test("auto layout frame sizes take the larger of the measured preview and the viewport", () => {
+  const viewport = { height: 812, width: 375 };
+
+  assert.deepEqual(geometry.getAutoLayoutFrameSize({ nodeType: "route", previewHeight: 600, previewWidth: 375 }, viewport), {
+    height: 878,
+    visibleHeight: 812,
+    visibleTop: 65,
+    width: 377,
+  });
+  assert.deepEqual(geometry.getAutoLayoutFrameSize({ nodeType: "route", previewHeight: 1040, previewWidth: 390 }, viewport), {
+    height: 1106,
+    visibleHeight: 1040,
+    visibleTop: 65,
+    width: 392,
+  });
+  assert.deepEqual(geometry.getAutoLayoutFrameSize({ height: 220, nodeType: "flow", width: 220 }, viewport), {
+    height: 220,
+    visibleHeight: 220,
+    visibleTop: 0,
+    width: 220,
+  });
+});

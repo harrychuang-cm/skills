@@ -1,6 +1,6 @@
 # UI Flow 功能流程清單與簡化檢視檢查（task 4.2）
 
-檢查對象：`create_flow_bench_fixture.mjs` 產生的 fixture（暫存資料夾，含 storybook-template 的 example prototype），Storybook dev（`storybook dev -p 6170`），Inspector build tag `flow-journeys-2026-10-08`，figma-export addon 0.15.0，機器 Mac16,1（Apple M4，16 GB），macOS 26（Darwin 25.5.0）。
+檢查對象：`create_flow_bench_fixture.mjs` 產生的 fixture（暫存資料夾，含 storybook-template 的 example prototype），Storybook dev（`storybook dev -p 6170`），Inspector build tag `flow-journeys-2026-10-08`，figma-export addon 0.15.0，機器 Mac16,1（Apple M4，16 GB），macOS 27.0.1（Darwin 27.0.0）。
 
 清單來源：tasks.md 3.1–3.3 的手動項目與 4.2 的通過條件（推導條數等於分支出邊數、超過 24 條時才出現截斷提示且數量正確、同一分支點下名稱不重複、每條推導都含其分支點、簡化檢視中連線不交錯且標籤不蓋到畫面），加上 design.md Acceptance criteria 的手動項目。
 

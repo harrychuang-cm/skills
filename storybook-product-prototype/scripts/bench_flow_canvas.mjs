@@ -7,7 +7,7 @@
 //   node storybook-product-prototype/scripts/bench_flow_canvas.mjs \
 //     --url "http://localhost:6006/iframe.html?id=<story>&globals=prototypeMode:flow&viewMode=story" \
 //     [--project-root <storybook project>] [--out <json>] [--label <run name>]
-//     [--journey <journey list entry key>]
+//     [--journey <journey list entry key>] [--layout <UI Flow layout export>]
 //
 // Metrics whose performance mark or CSS variable does not exist in the
 // measured build are reported as null (pi:flow:commit, pi:flow:label-placement,
@@ -106,6 +106,8 @@ function usage() {
     "  --journey <key>        Open the UI Flow on this journey list entry (all, declared:<id> or",
     "                         derived:<branch id>:<target id>): it is written to sessionStorage",
     "                         (prototype-inspector:flow-journey:<prototypeId>) before the canvas reads it.",
+    "  --layout <file>        Open the UI Flow with the positions of this layout export (for example one",
+    "                         saved after Auto Layout) and its lanes, instead of the first route's position.",
     "  --chrome-port <port>   Chrome --remote-debugging-port (default 0: pick a free port).",
     "  --headed               Run Chrome with a window instead of --headless=new.",
     "  --trace <file>         Record a Chrome trace of the gestures (devtools timeline categories).",
@@ -121,6 +123,7 @@ function parseArgs(argv) {
     help: false,
     journey: null,
     label: null,
+    layout: null,
     out: null,
     projectRoot: null,
     trace: null,
@@ -159,6 +162,9 @@ function parseArgs(argv) {
         break;
       case "--journey":
         args.journey = readValue();
+        break;
+      case "--layout":
+        args.layout = path.resolve(readValue());
         break;
       case "--chrome-port": {
         const port = Number(readValue());
@@ -275,6 +281,9 @@ function installFlowBenchInstrumentation(config) {
       if (config.seed) {
         try {
           window.localStorage.setItem(config.seed.key, config.seed.value);
+          for (const [key, value] of config.seed.extra ?? []) {
+            window.localStorage.setItem(key, value);
+          }
           hub.seed = { key: config.seed.key, written: true };
         } catch (error) {
           hub.seed = { key: config.seed.key, written: false, error: String(error) };
@@ -1427,6 +1436,9 @@ async function runBench(args) {
     const version = await cdp.send("Browser.getVersion");
     progress(`${version.product} ${args.headed ? "headed" : "headless"}; profile ${profileDir}`);
     const idleMemory = rendererMemory(profileDir, null);
+    // --layout: a UI Flow layout export whose positions (and lanes) are saved
+    // before the measured open.
+    const layoutExport = args.layout ? JSON.parse(await readFile(args.layout, "utf8")) : null;
     const baseConfig = {
       journey: args.journey,
       selectorSets: SELECTOR_SETS,
@@ -1553,10 +1565,20 @@ async function runBench(args) {
       }
     }
 
-    // UI Flow: seed a saved layout with an unknown node id before the app runs.
+    // UI Flow: seed a saved layout with an unknown node id before the app runs
+    // (the positions of --layout when given, with its lanes).
     const seedKey = `${FLOW_LAYOUT_PREFIX}${prototype.id}`;
     const seedPositions = {};
-    if (prototype.firstPositionedRoute) {
+    const seedExtra = [];
+    if (layoutExport) {
+      Object.assign(seedPositions, layoutExport.positions ?? {});
+      if (Array.isArray(layoutExport.lanes) && layoutExport.lanes.length) {
+        seedExtra.push([
+          `prototype-inspector:flow-lanes:${prototype.id}`,
+          JSON.stringify({ labels: layoutExport.lanes, version: 1, viewport: viewportSignature(prototype.viewport) }),
+        ]);
+      }
+    } else if (prototype.firstPositionedRoute) {
       seedPositions[prototype.firstPositionedRoute.id] = {
         x: prototype.firstPositionedRoute.x,
         y: prototype.firstPositionedRoute.y,
@@ -1573,7 +1595,7 @@ async function runBench(args) {
     });
     const flowPage = await openPage(
       cdp,
-      { ...baseConfig, mode: "flow", seed: { key: seedKey, value: seedValue } },
+      { ...baseConfig, mode: "flow", seed: { extra: seedExtra, key: seedKey, value: seedValue } },
       profileDir,
     );
     await navigate(flowPage, flowUrl);
@@ -1810,6 +1832,7 @@ async function runBench(args) {
       schema: "prototype-flow-canvas-bench/1",
       label: args.label,
       journey: args.journey,
+      layout: args.layout ? path.basename(args.layout) : null,
       measuredAt: new Date().toISOString(),
       url: flowUrl,
       storyUrl,

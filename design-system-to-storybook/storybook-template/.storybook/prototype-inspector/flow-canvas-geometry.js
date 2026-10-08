@@ -1491,22 +1491,37 @@ export function computeJourneyLayout(steps, sizeOf) {
   let rowTop = 0;
 
   for (let start = 0; start < items.length; start += journeyRowSize) {
-    const row = items.slice(start, start + journeyRowSize);
-    const centre = Math.max(...row.map((item) => item.visibleTop + item.visibleHeight / 2));
     let x = 0;
-    let bottom = rowTop;
+    const row = items.slice(start, start + journeyRowSize).map((item) => {
+      const positioned = { ...item, row: start / journeyRowSize, x };
 
-    for (const item of row) {
-      const y = rowTop + centre - (item.visibleTop + item.visibleHeight / 2);
-
-      layout.push({ ...item, row: start / journeyRowSize, x, y });
       x += item.width + journeyColumnGap;
-      bottom = Math.max(bottom, y + item.height);
-    }
+      return positioned;
+    });
+    const { bottom, placed } = placeCenteredRow(row, rowTop);
+
+    layout.push(...placed);
     rowTop = bottom + journeyRowGap;
   }
 
   return layout;
+}
+
+// Places one row of frames whose x is already set: every visible rect is
+// vertically centred on one line, the largest frame-top-to-visible-centre
+// distance below `top`. Items carry height, visibleTop and visibleHeight.
+// Returns { placed: items with y, bottom: the row's lowest frame bottom }.
+export function placeCenteredRow(items, top) {
+  const centre = Math.max(...items.map((item) => item.visibleTop + item.visibleHeight / 2));
+  let bottom = top;
+  const placed = items.map((item) => {
+    const y = top + centre - (item.visibleTop + item.visibleHeight / 2);
+
+    bottom = Math.max(bottom, y + item.height);
+    return { ...item, y };
+  });
+
+  return { bottom, placed };
 }
 
 function getJourneyCentreY(step) {
@@ -1651,6 +1666,355 @@ export function getJourneyBounds(layout, { loopMarker = null } = {}) {
 // A journey edge label hides only while its room on screen is under 24 px.
 export function isJourneyLabelHidden(availableWorldWidth, zoom) {
   return availableWorldWidth * zoom < journeyLabelMinWidth;
+}
+
+// ---------------------------------------------------------------------------
+// Auto layout (flow-auto-layout): one lane per feature, each read left to
+// right. 160, 120 and 240 are design values, not measurements.
+
+const autoLayoutColumnGap = 160;
+const autoLayoutSubRowGap = 120;
+const autoLayoutLaneGap = 240;
+
+// The feature lanes of an auto layout, from the first source the flow has:
+// its declared journeys, its flowGroup values, the journeys derived from its
+// branch points, else one lane of every screen. A screen stays in the first
+// lane that lists it, screens in no lane form "Other screens", and lanes left
+// without screens are dropped before deciding whether names are shown.
+// `declared` and `derived` are normalizeJourneys and deriveBranchJourneys
+// results. Returns { source, lanes: [{ key, title, order, members }],
+// showTitles }.
+export function resolveAutoLayoutLanes(flow, { declared = [], derived = null } = {}) {
+  const screens = getFlowFrameIds(flow);
+  const screenSet = new Set(screens);
+  let source;
+  let candidates;
+
+  if (declared.length) {
+    source = "journeys";
+    candidates = declared.map((journey) => ({
+      key: `declared:${journey.id}`,
+      members: journey.steps,
+      order: "sequence",
+      title: journey.title,
+    }));
+  } else {
+    const groups = new Map();
+    const grouped = new Set();
+
+    for (const frame of [...normalizeRoutes(flow), ...normalizeFlowNodes(flow)]) {
+      if (typeof frame.id !== "string" || grouped.has(frame.id) || typeof frame.flowGroup !== "string" || !frame.flowGroup) {
+        continue;
+      }
+
+      grouped.add(frame.id);
+      groups.set(frame.flowGroup, [...(groups.get(frame.flowGroup) ?? []), frame.id]);
+    }
+
+    if (groups.size) {
+      source = "flowGroup";
+      candidates = [...groups].map(([group, members]) => ({ key: `group:${group}`, members, order: "graph", title: group }));
+    } else if (derived?.journeys?.length) {
+      source = "derived";
+      candidates = derived.journeys.map((journey) => ({
+        key: journey.key,
+        members: journey.steps,
+        order: "sequence",
+        title: journey.title,
+      }));
+    } else {
+      source = "single";
+      candidates = [{ key: "single", members: screens, order: "graph", title: null }];
+    }
+  }
+
+  const owned = new Set();
+  const lanes = [];
+
+  for (const candidate of candidates) {
+    const members = [];
+
+    for (const id of candidate.members) {
+      if (screenSet.has(id) && !owned.has(id)) {
+        owned.add(id);
+        members.push(id);
+      }
+    }
+    if (members.length) {
+      lanes.push({ ...candidate, members });
+    }
+  }
+
+  const others = screens.filter((id) => !owned.has(id));
+
+  if (others.length) {
+    lanes.push({ key: "other", members: others, order: "graph", title: "Other screens" });
+  }
+
+  return { lanes, showTitles: lanes.length > 1, source };
+}
+
+// A frame's size for the auto layout: a route frame takes the larger of its
+// measured preview and its resolved viewport (the Static Flow sizes frames
+// from the viewport, so a smaller measured size would overlap there); a
+// flow-only node keeps its box. `box` is a canvas position entry with
+// nodeType, previewWidth and previewHeight (routes) or width and height.
+export function getAutoLayoutFrameSize(box, viewport) {
+  if (box.nodeType !== "route") {
+    return { height: box.height, visibleHeight: box.height, visibleTop: 0, width: box.width };
+  }
+
+  const frame = {
+    height: Math.max(box.previewHeight, viewport.height) + nodeHeaderHeight + nodeFrameSize,
+    width: Math.max(box.previewWidth, viewport.width) + nodeFrameSize,
+    x: 0,
+    y: 0,
+  };
+  const visible = getFrameVisibleRect(frame, "route");
+
+  return { height: frame.height, visibleHeight: visible.height, visibleTop: visible.y, width: frame.width };
+}
+
+function toLayoutBox(size) {
+  return {
+    height: size.height,
+    visibleHeight: size.visibleHeight ?? size.height,
+    visibleTop: size.visibleTop ?? 0,
+    width: size.width,
+  };
+}
+
+// A graph lane's rows: its screens split into the groups its qualifying
+// transitions connect (ignoring direction), groups left to right; inside a
+// group, a depth-first walk in declaration order (screens without incoming
+// transitions first, then any screen not reached) drops the transitions back
+// to the walk's path, and each screen's column is the longest remaining path
+// to it. Screens sharing a column become sub-rows. Returns rows of { id, x }.
+function getGraphLaneRows(members, transitions, boxes) {
+  const memberSet = new Set(members);
+  const declared = new Map(members.map((id, index) => [id, index]));
+  const edges = [];
+  const seen = new Set();
+
+  for (const transition of transitions) {
+    const { from, to } = transition ?? {};
+
+    if (
+      typeof from !== "string" ||
+      typeof to !== "string" ||
+      from === to ||
+      !memberSet.has(from) ||
+      !memberSet.has(to) ||
+      !isJourneyEdgeTransition(transition) ||
+      seen.has(`${from}->${to}`)
+    ) {
+      continue;
+    }
+
+    seen.add(`${from}->${to}`);
+    edges.push([from, to]);
+  }
+
+  // Connected groups (union-find), each listed in declaration order.
+  const parent = new Map(members.map((id) => [id, id]));
+  const rootOf = (id) => {
+    let root = id;
+
+    while (parent.get(root) !== root) {
+      root = parent.get(root);
+    }
+    parent.set(id, root);
+    return root;
+  };
+
+  for (const [from, to] of edges) {
+    parent.set(rootOf(from), rootOf(to));
+  }
+
+  const groups = new Map();
+
+  for (const id of members) {
+    const root = rootOf(id);
+
+    groups.set(root, [...(groups.get(root) ?? []), id]);
+  }
+
+  const rows = [];
+  let groupLeft = 0;
+
+  for (const group of groups.values()) {
+    const inGroup = new Set(group);
+    const outgoing = new Map(group.map((id) => [id, []]));
+    const incoming = new Map(group.map((id) => [id, 0]));
+
+    for (const [from, to] of edges) {
+      if (inGroup.has(from)) {
+        outgoing.get(from).push(to);
+        incoming.set(to, incoming.get(to) + 1);
+      }
+    }
+
+    // Depth-first walk, dropping edges back to the current path.
+    const kept = new Map(group.map((id) => [id, []]));
+    const visited = new Set();
+    const onPath = new Set();
+    const walk = (start) => {
+      const stack = [{ id: start, next: 0 }];
+
+      visited.add(start);
+      onPath.add(start);
+      while (stack.length) {
+        const top = stack[stack.length - 1];
+        const targets = outgoing.get(top.id);
+
+        if (top.next >= targets.length) {
+          onPath.delete(top.id);
+          stack.pop();
+          continue;
+        }
+
+        const target = targets[top.next];
+
+        top.next += 1;
+        if (onPath.has(target)) {
+          continue;
+        }
+
+        kept.get(top.id).push(target);
+        if (!visited.has(target)) {
+          visited.add(target);
+          onPath.add(target);
+          stack.push({ id: target, next: 0 });
+        }
+      }
+    };
+
+    for (const id of group.filter((member) => incoming.get(member) === 0)) {
+      if (!visited.has(id)) {
+        walk(id);
+      }
+    }
+    for (const id of group) {
+      if (!visited.has(id)) {
+        walk(id);
+      }
+    }
+
+    // Longest path over the kept edges (Kahn's order).
+    const remaining = new Map(group.map((id) => [id, 0]));
+
+    for (const targets of kept.values()) {
+      for (const target of targets) {
+        remaining.set(target, remaining.get(target) + 1);
+      }
+    }
+
+    const column = new Map(group.map((id) => [id, 0]));
+    const queue = group.filter((id) => remaining.get(id) === 0);
+
+    while (queue.length) {
+      const id = queue.shift();
+
+      for (const target of kept.get(id)) {
+        column.set(target, Math.max(column.get(target), column.get(id) + 1));
+        remaining.set(target, remaining.get(target) - 1);
+        if (remaining.get(target) === 0) {
+          queue.push(target);
+        }
+      }
+    }
+
+    // Columns: as wide as their widest frame, 160 apart; narrower frames are
+    // centred. Sub-row k holds the k-th screen of every column.
+    const columns = [];
+
+    for (const id of [...group].sort((a, b) => declared.get(a) - declared.get(b))) {
+      const index = column.get(id);
+
+      columns[index] = [...(columns[index] ?? []), id];
+    }
+
+    let columnLeft = groupLeft;
+
+    columns.forEach((ids = []) => {
+      const width = Math.max(...ids.map((id) => boxes.get(id).width));
+
+      ids.forEach((id, subRow) => {
+        rows[subRow] = [...(rows[subRow] ?? []), { id, x: columnLeft + (width - boxes.get(id).width) / 2 }];
+      });
+      columnLeft += width + autoLayoutColumnGap;
+    });
+    groupLeft = columnLeft;
+  }
+
+  return rows;
+}
+
+// Positions of an auto layout: lanes stacked from y 0, 240 apart, each from
+// x 0. A journey ("sequence") lane is one row with 160 between frames; a
+// "graph" lane follows getGraphLaneRows with 120 between sub-rows. Every row
+// centres its visible rects on one line (placeCenteredRow). `sizeOf(id)`
+// returns { width, height, visibleTop, visibleHeight }. Returns { positions:
+// { [id]: { x, y } } (whole pixels, frame top-left), labels: [{ key, title,
+// anchor }] } with the first screen of each lane's first row as anchor.
+export function computeAutoLayout(lanes, transitions, sizeOf) {
+  const positions = {};
+  const labels = [];
+  let laneTop = 0;
+
+  for (const lane of lanes) {
+    const boxes = new Map(lane.members.map((id) => [id, toLayoutBox(sizeOf(id))]));
+    let rows;
+
+    if (lane.order === "sequence") {
+      let x = 0;
+
+      rows = [
+        lane.members.map((id) => {
+          const entry = { id, x };
+
+          x += boxes.get(id).width + autoLayoutColumnGap;
+          return entry;
+        }),
+      ];
+    } else {
+      rows = getGraphLaneRows(lane.members, transitions, boxes);
+    }
+
+    let rowTop = laneTop;
+    let laneBottom = laneTop;
+
+    for (const row of rows) {
+      const { bottom, placed } = placeCenteredRow(
+        row.map(({ id, x }) => ({ ...boxes.get(id), id, x })),
+        rowTop,
+      );
+
+      for (const item of placed) {
+        positions[item.id] = { x: Math.round(item.x), y: Math.round(item.y) };
+      }
+      laneBottom = Math.max(laneBottom, bottom);
+      rowTop = bottom + autoLayoutSubRowGap;
+    }
+
+    labels.push({ anchor: rows[0][0].id, key: lane.key, title: lane.title });
+    laneTop = laneBottom + autoLayoutLaneGap;
+  }
+
+  return { labels, positions };
+}
+
+// Where a lane name sits on screen (a reference for tests and browser
+// checks; the canvas positions names in CSS): its right edge one screen
+// gutter (24 px unless the project's tokens change it) left of the anchor
+// frame's visible rect, its top on that rect's top.
+export function getAutoLayoutLabelPlacement(anchorBox, camera, frameType = "route", gutter = 24) {
+  const visible = getFrameVisibleRect(anchorBox, frameType);
+
+  return {
+    right: camera.x + visible.x * camera.z - gutter,
+    top: camera.y + visible.y * camera.z,
+  };
 }
 
 const controlKeyCodes = new Set(["Space", "Enter", "NumpadEnter", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"]);
