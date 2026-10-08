@@ -10,7 +10,10 @@
 //
 // Metrics whose performance mark or CSS variable does not exist in the
 // measured build are reported as null (pi:flow:commit, pi:flow:label-placement,
-// --prototype-flow-stroke-zoom).
+// --prototype-flow-stroke-zoom). Builds with level-of-detail snapshots also get
+// snapshot timings: a cold open with an empty snapshot store, a second
+// navigation that shows the cached snapshots, and a drag while the first open
+// is still capturing.
 import { execFileSync, spawn } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
@@ -34,6 +37,30 @@ const PINCH = { events: 30, scalePerEvent: 1.03 };
 const PAN = { events: 30, deltaX: 6, deltaY: 8 };
 const DRAG = { moves: 20, stepX: 5, stepY: 3 };
 const DRAG_STORAGE_WINDOW_MS = 1_000;
+// Live frames load one at a time after zooming to 100% (dev cold loads can
+// take seconds each), so that wait is bounded.
+const ZOOM_100_LOAD_TIMEOUT_MS = 30_000;
+// Renderer resets that are planned rather than fallbacks.
+const PLANNED_RENDERER_RESETS = new Set(["initial", "scheduled"]);
+const MARK_RENDERER_RESET = "pi:flow:renderer-reset";
+const MARK_SNAPSHOT = "pi:flow:snapshot";
+// The snapshot queue counts as idle after this long without work; a build
+// that shows no queue within the grace period has no snapshots.
+const SNAPSHOT_IDLE_STABLE_MS = 500;
+const SNAPSHOT_QUEUE_GRACE_MS = 3_000;
+const SNAPSHOT_QUEUE_TIMEOUT_MS = 180_000;
+const VISIBLE_SNAPSHOTS_TIMEOUT_MS = 30_000;
+// Estimated targets of add-flow-canvas-level-of-detail; the output records the
+// measured value and whether each was met.
+const LOD_TARGETS = {
+  cachedVisibleSnapshotsMs: 1_000,
+  coldAllSnapshotsMs: 10_000,
+  dragDuringCaptureP95Ms: 8,
+  fitRendererMemoryOverStoryMb: 100,
+  fitRendererIframes: 1,
+  fitRouteIframes: 0,
+  zoom100Iframes: 8,
+};
 const FLOW_LAYOUT_PREFIX = "prototype-inspector:flow-layout:";
 const UNKNOWN_NODE_ID = "__flow-bench-unknown-node__";
 const MARK_COMMIT = "pi:flow:commit";
@@ -231,6 +258,8 @@ function installFlowBenchInstrumentation(config) {
         storage: [],
         strokeZoomWrites: [],
         timeOrigin: performance.timeOrigin,
+        visibleSnapshotsAt: null,
+        visibleSnapshotsInfo: null,
       };
       Object.defineProperty(window, "__piFlowBench", { configurable: true, value: hub });
 
@@ -252,6 +281,7 @@ function installFlowBenchInstrumentation(config) {
             hub.marks.push({
               durationMs: detail && typeof detail.durationMs === "number" ? detail.durationMs : null,
               name: entry.name,
+              reason: detail && typeof detail.reason === "string" ? detail.reason : null,
               t: entry.startTime,
             });
           }
@@ -374,20 +404,39 @@ function installFlowBenchInstrumentation(config) {
       if (!set) return { ready: false, selectorSet: null };
       const root = document.querySelector(set.root) ?? document.body;
       const frames = routeFrames(set);
-      const iframes = [...root.querySelectorAll("iframe")];
+      const iframes = [...root.querySelectorAll("iframe")].filter(
+        (iframe) => !iframe.matches("[data-prototype-inspector-renderer]"),
+      );
       const counts = { error: 0, loading: 0, ready: 0 };
       for (const iframe of iframes) {
         const state = iframeState(iframe);
         counts[state === "ready" ? "ready" : state === "error" ? "error" : "loading"] += 1;
       }
+      // Level-of-detail builds tier every route frame: ready once every frame
+      // has a tier and no live frame is still loading (most frames hold no
+      // iframe at all). Older builds wait for every route iframe.
+      // A canvas still waiting for its cached snapshots is hidden.
+      const tiered = frames.some((frame) => frame.hasAttribute("data-tier"));
+      const liveLoading = frames.filter((frame) => frame.getAttribute("data-live-loading") === "true").length;
+      const snapshotPreload = root.getAttribute("data-snapshot-preload");
       return {
         flowNodes: root.querySelectorAll(set.flowNode).length,
         iframeErrors: counts.error,
         iframes: iframes.length,
         iframesReady: counts.ready,
-        ready: frames.length > 0 && iframes.length > 0 && counts.loading === 0,
+        liveLoading,
+        ready: tiered
+          ? frames.length > 0 &&
+            frames.every((frame) => frame.hasAttribute("data-tier")) &&
+            liveLoading === 0 &&
+            snapshotPreload === null
+          : frames.length > 0 && iframes.length > 0 && counts.loading === 0,
+        snapshotPreload,
+        snapshotQueue: root.getAttribute("data-snapshot-queue"),
+        rendererIframes: root.querySelectorAll("iframe[data-prototype-inspector-renderer]").length,
         routeFrames: frames.length,
         selectorSet: set.name,
+        tiered,
       };
     };
     const storyState = () => {
@@ -524,7 +573,39 @@ function installFlowBenchInstrumentation(config) {
         target: describe(target),
       };
     };
+    // A snapshot frame "shows" once its image has loaded.
+    const snapshotShown = (frame) => {
+      const image = frame.querySelector(".prototype-inspector__flow-frame-snapshot");
+      return Boolean(image && image.complete && image.naturalWidth > 0);
+    };
     const lib = {
+      snapshotState() {
+        const set = detectSet();
+        if (!set) return null;
+        const root = document.querySelector(set.root) ?? document.body;
+        const vp = viewportRect();
+        const onScreen = (frame) => {
+          const rect = frame.getBoundingClientRect();
+          return rect.right > vp.left && rect.left < vp.left + vp.width && rect.bottom > vp.top && rect.top < vp.top + vp.height;
+        };
+        const snapshotFrames = routeFrames(set).filter((frame) => frame.getAttribute("data-tier") === "snapshot");
+        const visible = snapshotFrames.filter(onScreen);
+        return {
+          preload: root.getAttribute("data-snapshot-preload"),
+          queue: root.getAttribute("data-snapshot-queue"),
+          snapshotTier: snapshotFrames.length,
+          snapshotTierShown: snapshotFrames.filter(snapshotShown).length,
+          visibleSnapshotTier: visible.length,
+          visibleSnapshotTierShown: visible.filter(snapshotShown).length,
+        };
+      },
+      iframeCounts() {
+        const set = detectSet();
+        const root = set ? document.querySelector(set.root) ?? document.body : document.body;
+        const all = [...root.querySelectorAll("iframe")];
+        const renderer = all.filter((iframe) => iframe.matches("[data-prototype-inspector-renderer]")).length;
+        return { renderer, route: all.length - renderer };
+      },
       flowState,
       storyState,
       readCamera,
@@ -681,6 +762,26 @@ function installFlowBenchInstrumentation(config) {
       dragFrame: null,
     };
     Object.defineProperty(window, "__piFlowBenchLib", { configurable: true, value: lib });
+
+    // Snapshot timing pages: the first animation frame in which the canvas is
+    // shown and every on-screen snapshot-tier frame shows its image.
+    if (config.watchSnapshots) {
+      const watch = () => {
+        try {
+          const state = lib.snapshotState();
+          if (state && state.preload === null && state.visibleSnapshotTier > 0 && state.visibleSnapshotTierShown === state.visibleSnapshotTier) {
+            hub.visibleSnapshotsAt = performance.now();
+            hub.visibleSnapshotsInfo = state;
+            return;
+          }
+        } catch (error) {
+          hub.errors.push(`snapshot watch: ${error}`);
+          return;
+        }
+        if (performance.now() < 120_000) requestAnimationFrame(watch);
+      };
+      requestAnimationFrame(watch);
+    }
 
     const poll = () => {
       if (hub.readyAt !== null) return;
@@ -912,8 +1013,8 @@ async function waitForReady(page, timeoutMs) {
       if (error.cdpClosed) throw error;
       return null;
     });
-    if (flow && flow.iframes > 0) {
-      const key = `${flow.iframes}/${flow.iframesReady}/${flow.iframeErrors}`;
+    if (flow && (flow.iframes > 0 || flow.tiered)) {
+      const key = `${flow.iframes}/${flow.iframesReady}/${flow.iframeErrors}/${flow.liveLoading ?? 0}`;
       if (key !== progressKey) {
         progressKey = key;
         progressAt = Date.now();
@@ -951,6 +1052,35 @@ async function waitForQuiet(page, marksExist) {
     await sleep(100);
   }
   return { rule: `no ${MARK_COMMIT} for ${QUIET_MS} ms`, timedOut: true, waitedMs: Date.now() - started };
+}
+
+// Snapshot queue idle for SNAPSHOT_IDLE_STABLE_MS (the queue can empty for a
+// moment between captures). unsupported: the build shows no snapshot queue.
+async function waitForSnapshotQueueIdle(page, timeoutMs) {
+  const started = Date.now();
+  let idleSince = null;
+  let state = null;
+  while (Date.now() - started < timeoutMs) {
+    state = await page.evaluate(
+      "window.__piFlowBenchLib && window.__piFlowBenchLib.snapshotState ? window.__piFlowBenchLib.snapshotState() : null",
+    ).catch((error) => {
+      if (error.cdpClosed) throw error;
+      return null;
+    });
+    if (state?.queue === "idle") {
+      idleSince ??= Date.now();
+      if (Date.now() - idleSince >= SNAPSHOT_IDLE_STABLE_MS) {
+        return { state, timedOut: false, unsupported: false, waitedMs: Date.now() - started };
+      }
+    } else {
+      idleSince = null;
+      if (state && state.queue === null && Date.now() - started >= SNAPSHOT_QUEUE_GRACE_MS) {
+        return { state, timedOut: false, unsupported: true, waitedMs: Date.now() - started };
+      }
+    }
+    await sleep(100);
+  }
+  return { state, timedOut: true, unsupported: false, waitedMs: Date.now() - started };
 }
 
 // Every process of this Chrome instance carries its unique --user-data-dir.
@@ -1142,12 +1272,21 @@ function longFrameSummary(hub, from, to) {
   };
 }
 
+// When the first commit at or after the camera idle landed, in ms after the
+// gesture's last event (null when none did, or the build has no commit mark).
+function firstCommitAfter(hub, from, lastEvent, exists) {
+  if (!exists.commit) return null;
+  const commit = hub.marks.find((mark) => mark.name === MARK_COMMIT && mark.t >= from);
+  return commit ? round(commit.t - lastEvent, 1) : null;
+}
+
 function wheelGestureSummary(hub, gesture, exists) {
   const idleAt = gesture.tLast + CAMERA_IDLE_MS;
   return {
     commitMarks: {
       duringGesture: countMarks(hub.marks, MARK_COMMIT, gesture.t0, idleAt, exists.commit),
       afterIdle100ms: countMarks(hub.marks, MARK_COMMIT, idleAt, idleAt + AFTER_IDLE_WINDOW_MS + 0.001, exists.commit),
+      firstAfterLastEventMs: firstCommitAfter(hub, idleAt, gesture.tLast, exists),
     },
     labelPlacementMarks: {
       duringGesture: countMarks(hub.marks, MARK_LABEL_PLACEMENT, gesture.t0, idleAt, exists.labelPlacement),
@@ -1295,6 +1434,97 @@ async function runBench(args) {
     await closePage(cdp, storyPage);
     await sleep(1_500);
 
+    // Snapshot timings. The warm-up visit filled the snapshot store, so the
+    // cold opens clear IndexedDB for the Storybook origin first (through the
+    // page's session: the browser session answers with an internal error).
+    const clearSnapshotStore = (page) =>
+      page.send("Storage.clearDataForOrigin", { origin: new URL(flowUrl).origin, storageTypes: "indexeddb" });
+    const snapshotMarksOf = (marks) => (marks ?? []).filter((mark) => mark.name === MARK_SNAPSHOT);
+    let snapshotTimings = null;
+    {
+      const coldPage = await openPage(cdp, { ...baseConfig, mode: "flow", seed: null, watchSnapshots: true }, profileDir);
+      await clearSnapshotStore(coldPage);
+      await navigate(coldPage, flowUrl);
+      const coldReady = await waitForReady(coldPage, READY_TIMEOUT_MS);
+      const coldQueue = await waitForSnapshotQueueIdle(coldPage, SNAPSHOT_QUEUE_TIMEOUT_MS);
+      const coldHub = await readHub(coldPage, "(hub) => ({ marks: hub.marks, visibleSnapshotsAt: hub.visibleSnapshotsAt })");
+      await clearLocalStorage(coldPage);
+      await closePage(cdp, coldPage);
+      await sleep(1_000);
+
+      if (coldQueue.unsupported) {
+        notes.push("this build shows no snapshot queue: snapshot timings are null");
+      } else {
+        const coldMarks = snapshotMarksOf(coldHub?.marks);
+        // Second navigation: the snapshots the cold open stored.
+        const cachedPage = await openPage(cdp, { ...baseConfig, mode: "flow", seed: null, watchSnapshots: true }, profileDir);
+        await navigate(cachedPage, flowUrl);
+        const cachedReady = await waitForReady(cachedPage, READY_TIMEOUT_MS);
+        const visibleStarted = Date.now();
+        let cachedHub = null;
+        while (Date.now() - visibleStarted < VISIBLE_SNAPSHOTS_TIMEOUT_MS) {
+          cachedHub = await readHub(cachedPage, "(hub) => ({ marks: hub.marks, visibleSnapshotsAt: hub.visibleSnapshotsAt, visibleSnapshotsInfo: hub.visibleSnapshotsInfo })");
+          if (cachedHub?.visibleSnapshotsAt !== null && cachedHub?.visibleSnapshotsAt !== undefined) break;
+          await sleep(100);
+        }
+        const cachedQueue = await waitForSnapshotQueueIdle(cachedPage, SNAPSHOT_QUEUE_TIMEOUT_MS);
+        const cachedAfter = await readHub(cachedPage, "(hub) => ({ marks: hub.marks })");
+        await clearLocalStorage(cachedPage);
+        await closePage(cdp, cachedPage);
+        await sleep(1_000);
+
+        // Cold again, dragging a frame while snapshots are being captured.
+        const dragPage = await openPage(cdp, { ...baseConfig, mode: "flow", seed: null }, profileDir);
+        await clearSnapshotStore(dragPage);
+        await navigate(dragPage, flowUrl);
+        await waitForReady(dragPage, READY_TIMEOUT_MS);
+        const capturingStarted = Date.now();
+        let capturing = null;
+        while (Date.now() - capturingStarted < 60_000) {
+          capturing = await dragPage.evaluate(
+            `(() => { const state = window.__piFlowBenchLib.snapshotState(); return { queue: state && state.queue, snapshots: performance.getEntriesByName(${JSON.stringify(MARK_SNAPSHOT)}).length }; })()`,
+          );
+          if (capturing.queue === "busy" && capturing.snapshots >= 1) break;
+          await sleep(50);
+        }
+        const dragWhileCapturing = await dragPage.evaluate(`window.__piFlowBenchLib.drag(${JSON.stringify(DRAG)})`);
+        await waitForSnapshotQueueIdle(dragPage, SNAPSHOT_QUEUE_TIMEOUT_MS);
+        await clearLocalStorage(dragPage);
+        await closePage(cdp, dragPage);
+        await sleep(1_000);
+
+        snapshotTimings = {
+          cold: {
+            readyMs: coldReady.readyAt === null ? null : round(coldReady.readyAt, 1),
+            snapshots: coldMarks.length,
+            allSnapshotsMs: coldMarks.length ? round(coldMarks.at(-1).t, 1) : null,
+            visibleSnapshotsMs: coldHub?.visibleSnapshotsAt == null ? null : round(coldHub.visibleSnapshotsAt, 1),
+            queueTimedOut: coldQueue.timedOut,
+            snapshotTier: coldQueue.state?.snapshotTier ?? null,
+            snapshotTierShown: coldQueue.state?.snapshotTierShown ?? null,
+          },
+          cached: {
+            readyMs: cachedReady.readyAt === null ? null : round(cachedReady.readyAt, 1),
+            visibleSnapshotsMs: cachedHub?.visibleSnapshotsAt == null ? null : round(cachedHub.visibleSnapshotsAt, 1),
+            visibleSnapshotFrames: cachedHub?.visibleSnapshotsInfo?.visibleSnapshotTier ?? null,
+            // Snapshots replaced by the once-per-session revalidation.
+            revalidationTiles: snapshotMarksOf(cachedAfter?.marks).length,
+            revalidationMs: cachedQueue.timedOut ? null : cachedQueue.waitedMs,
+          },
+          dragWhileCapturing: dragWhileCapturing.error
+            ? { error: dragWhileCapturing.error }
+            : {
+                queueAtStart: capturing?.queue ?? null,
+                snapshotsBeforeDrag: capturing?.snapshots ?? null,
+                syncCostMs: { ...summarize(dragWhileCapturing.costs), samples: dragWhileCapturing.costs.map((cost) => round(cost)) },
+              },
+        };
+        progress(
+          `snapshots: cold ${snapshotTimings.cold.snapshots} in ${snapshotTimings.cold.allSnapshotsMs} ms, cached visible in ${snapshotTimings.cached.visibleSnapshotsMs} ms, drag while capturing p95 ${snapshotTimings.dragWhileCapturing.syncCostMs?.p95 ?? "n/a"} ms`,
+        );
+      }
+    }
+
     // UI Flow: seed a saved layout with an unknown node id before the app runs.
     const seedKey = `${FLOW_LAYOUT_PREFIX}${prototype.id}`;
     const seedPositions = {};
@@ -1340,8 +1570,43 @@ async function runBench(args) {
       strokeZoom: inspector.declares?.strokeZoomVariable === true,
     };
     const settle = await waitForQuiet(flowPage, exists.commit);
+    // Memory and gestures are measured once the snapshot queue is idle (the
+    // open's revalidation captures run first).
+    const openQueue = snapshotTimings ? await waitForSnapshotQueueIdle(flowPage, SNAPSHOT_QUEUE_TIMEOUT_MS) : null;
+    if (openQueue?.timedOut) notes.push("the snapshot queue was still busy before the fit memory sample");
     const flowMemory = await sampleMemory(flowPage, profileDir);
     await sleep(500);
+
+    // Route iframes at fit and at 100%: Shift+0 and Shift+1 go through the
+    // canvas key dispatcher, which listens on document in the bubble phase.
+    const pressCanvasKey = (code, key) =>
+      flowPage.evaluate(
+        `document.body.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, code: ${JSON.stringify(code)}, key: ${JSON.stringify(key)}, shiftKey: true }))`,
+      );
+    const waitForLiveFrames = async (timeoutMs) => {
+      const started = Date.now();
+      while (Date.now() - started < timeoutMs) {
+        const state = await flowPage.evaluate("window.__piFlowBenchLib.flowState()");
+        if (!state?.liveLoading) return true;
+        await sleep(200);
+      }
+      return false;
+    };
+    const fitIframes = await flowPage.evaluate("window.__piFlowBenchLib.iframeCounts()");
+    await pressCanvasKey("Digit0", ")");
+    await sleep(CAMERA_IDLE_MS + 300);
+    await waitForQuiet(flowPage, exists.commit);
+    if (!(await waitForLiveFrames(ZOOM_100_LOAD_TIMEOUT_MS))) {
+      notes.push(`live frames were still loading ${ZOOM_100_LOAD_TIMEOUT_MS} ms after zooming to 100%`);
+    }
+    const zoom100Iframes = await flowPage.evaluate("window.__piFlowBenchLib.iframeCounts()");
+    if (snapshotTimings) await waitForSnapshotQueueIdle(flowPage, SNAPSHOT_QUEUE_TIMEOUT_MS);
+    const zoom100Memory = await sampleMemory(flowPage, profileDir);
+    await pressCanvasKey("Digit1", "!");
+    await sleep(CAMERA_IDLE_MS + 300);
+    await waitForQuiet(flowPage, exists.commit);
+    if (snapshotTimings) await waitForSnapshotQueueIdle(flowPage, SNAPSHOT_QUEUE_TIMEOUT_MS);
+    progress(`route iframes: fit ${fitIframes.route}, 100% ${zoom100Iframes.route} (renderer ${fitIframes.renderer}/${zoom100Iframes.renderer})`);
     const selectorSet = await flowPage.evaluate("window.__piFlowBenchLib.flowState().selectorSet");
     const gestureStart = await flowPage.evaluate("performance.now()");
 
@@ -1443,6 +1708,7 @@ async function runBench(args) {
         commitMarks: {
           duringGesture: countMarks(hub.marks, MARK_COMMIT, drag.tFirstMove, drag.tUp, exists.commit),
           afterRelease100ms: countMarks(hub.marks, MARK_COMMIT, drag.tUp, releaseWindowEnd, exists.commit),
+          firstAfterReleaseMs: firstCommitAfter(hub, drag.tUp, drag.tUp, exists),
         },
         labelPlacementMarks: {
           duringGesture: countMarks(hub.marks, MARK_LABEL_PLACEMENT, drag.tFirstMove, drag.tUp, exists.labelPlacement),
@@ -1481,6 +1747,36 @@ async function runBench(args) {
       notes.push(`the ${PINCH.events} pinch events took ${pinchSummary.durationMs} ms (one per animation frame), longer than 1 s`);
     }
     const machine = machineInfo();
+    const overStory = (memory) =>
+      Number.isFinite(memory?.rendererRssMb) && Number.isFinite(storyMemory?.rendererRssMb)
+        ? round(memory.rendererRssMb - storyMemory.rendererRssMb, 1)
+        : null;
+    const target = (value, limit) => ({ limit, met: value === null || value === undefined ? null : value <= limit, value: value ?? null });
+    const pinchSummaryForTargets = wheelGestureSummary(hub, pinch, exists);
+    const panSummaryForTargets = wheelGestureSummary(hub, pan, exists);
+    const targets = {
+      fitRouteIframes: target(fitIframes.route, LOD_TARGETS.fitRouteIframes),
+      fitRendererIframes: target(fitIframes.renderer, LOD_TARGETS.fitRendererIframes),
+      zoom100Iframes: target(zoom100Iframes.route + zoom100Iframes.renderer, LOD_TARGETS.zoom100Iframes),
+      openLayoutWrites: target(
+        openPhaseEnd === null ? null : countOps("setItem", openPhaseEnd) + countOps("removeItem", openPhaseEnd),
+        0,
+      ),
+      oneCommitAfterIdle: {
+        drag: dragResult.commitMarks?.afterRelease100ms ?? null,
+        met: exists.commit
+          ? pinchSummaryForTargets.commitMarks.afterIdle100ms === 1 &&
+            panSummaryForTargets.commitMarks.afterIdle100ms === 1 &&
+            dragResult.commitMarks?.afterRelease100ms === 1
+          : null,
+        pan: panSummaryForTargets.commitMarks.afterIdle100ms,
+        pinch: pinchSummaryForTargets.commitMarks.afterIdle100ms,
+      },
+      fitRendererMemoryOverStoryMb: target(overStory(flowMemory), LOD_TARGETS.fitRendererMemoryOverStoryMb),
+      cachedVisibleSnapshotsMs: target(snapshotTimings?.cached.visibleSnapshotsMs, LOD_TARGETS.cachedVisibleSnapshotsMs),
+      coldAllSnapshotsMs: target(snapshotTimings?.cold.allSnapshotsMs, LOD_TARGETS.coldAllSnapshotsMs),
+      dragDuringCaptureP95Ms: target(snapshotTimings?.dragWhileCapturing.syncCostMs?.p95, LOD_TARGETS.dragDuringCaptureP95Ms),
+    };
 
     return {
       schema: "prototype-flow-canvas-bench/1",
@@ -1517,7 +1813,9 @@ async function runBench(args) {
         input: "synthetic DOM events dispatched in the page (WheelEvent, PointerEvent pointerId 1)",
         warmup: "one unmeasured UI Flow visit before measuring",
         readiness:
-          "Story: #storybook-root rendered; UI Flow: every iframe in the canvas shows [data-prototype-route-preview] or #storybook-root content",
+          "Story: #storybook-root rendered; UI Flow: when route frames carry data-tier, every route frame has data-tier and none is data-live-loading (the snapshot renderer does not count); otherwise every iframe in the canvas shows [data-prototype-route-preview] or #storybook-root content",
+        zoom100:
+          "after settling: Shift+0 (keydown on document.body), camera idle, no commit for the quiet period and no loading live frame (bounded), count iframes, then Shift+1 back to fit before the gestures",
         settleBeforeGestures: `no ${MARK_COMMIT} for ${QUIET_MS} ms when the build emits it, otherwise a fixed ${FIXED_SETTLE_MS} ms`,
         cameraIdleMs: CAMERA_IDLE_MS,
         wheelWindows: `duringGesture = [first event, last event + ${CAMERA_IDLE_MS} ms); afterIdle100ms = the next ${AFTER_IDLE_WINDOW_MS} ms`,
@@ -1550,7 +1848,14 @@ async function runBench(args) {
         },
         memory:
           "after HeapProfiler.collectGarbage; rendererRssMb sums the RSS of the --type=renderer processes that appeared " +
-          "after the page's target was created (spare renderer disabled); instanceRenderer* covers every renderer of this Chrome",
+          "after the page's target was created (spare renderer disabled); instanceRenderer* covers every renderer of this Chrome; " +
+          "UI Flow samples at fit (after the snapshot queue is idle) and at 100% (live frames loaded)",
+        snapshots:
+          "cold: IndexedDB of the Storybook origin cleared (Storage.clearDataForOrigin), allSnapshotsMs = the last " +
+          `${MARK_SNAPSHOT} mark after navigation start once the queue stays idle for ${SNAPSHOT_IDLE_STABLE_MS} ms; ` +
+          "cached: the next navigation, visibleSnapshotsMs = first animation frame with the canvas shown and every on-screen " +
+          "snapshot-tier frame's image loaded; dragWhileCapturing: IndexedDB cleared again, the drag starts once the queue is busy " +
+          "and one snapshot exists",
         percentiles: "median interpolated; p95 nearest-rank",
       },
       storyMode: {
@@ -1568,7 +1873,18 @@ async function runBench(args) {
         flowNodes: flowReady.readyInfo?.flowNodes ?? null,
         iframes: flowReady.readyInfo?.iframes ?? null,
         iframeErrors: flowReady.readyInfo?.iframeErrors ?? null,
+        tiered: flowReady.readyInfo?.tiered ?? null,
+        routeIframes: { fit: fitIframes.route, zoom100: zoom100Iframes.route },
+        rendererIframes: { fit: fitIframes.renderer, zoom100: zoom100Iframes.renderer },
+        // Resets other than the first load and the scheduled reloads; null
+        // while the build has no snapshot renderer.
+        rendererSrcResetFallbacks:
+          fitIframes.renderer + zoom100Iframes.renderer === 0 && !hub.marks.some((mark) => mark.name === MARK_RENDERER_RESET)
+            ? null
+            : hub.marks.filter((mark) => mark.name === MARK_RENDERER_RESET && !PLANNED_RENDERER_RESETS.has(mark.reason)).length,
         ...flowMemory,
+        memoryZoom100: zoom100Memory,
+        rendererMemoryOverStoryMb: { fit: overStory(flowMemory), zoom100: overStory(zoom100Memory) },
         settle,
         openLayoutStorage: {
           key: seedKey,
@@ -1626,6 +1942,8 @@ async function runBench(args) {
         },
         drag: dragResult,
       },
+      snapshots: snapshotTimings,
+      targets,
       labelPlacement: exists.labelPlacement
         ? {
             count: placements.length,

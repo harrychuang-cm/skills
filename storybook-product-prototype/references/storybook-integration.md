@@ -189,12 +189,36 @@ Saving happens on release: a frame drag updates only the moved frame and its con
 
 Labels: frame titles, formFactor badges and edge labels are drawn in a screen-space layer, so they keep a readable size at every zoom level. A frame narrower than 48 screen pixels hides its label until hovered, and an edge label stays hidden until hovered when both of its frames are narrower than 150 screen pixels.
 
+Level of detail: a frame loads its route only when it is large enough to read. Each time the camera comes to rest, every route frame takes one of four tiers:
+
+- Culled: outside the canvas plus half a canvas on each side; only its box is positioned.
+- Placeholder: narrower than 40 screen pixels; a flat surface.
+- Snapshot: a cached image of the route UI, or a skeleton with the route title and id until the first snapshot exists.
+- Live: the route's real iframe. A frame becomes live at 80% zoom or more with at least 40% of it on screen, or after the pointer rests on it for 200 ms at 40% zoom or more, and stays live down to 64% zoom while any of it is visible.
+
+At most 6 frames are live at once, plus one frame another canvas feature pins live and the snapshot renderer, so the page never holds more than 8 route iframes. When more frames qualify, the frames showing the largest area on screen win, then frames that are already live, then those nearest the center. Only one iframe loads at a time, and a loading frame keeps its snapshot or skeleton on top until its story has rendered, so a frame never flashes blank when it becomes live. Route iframes are inert (`inert`, `tabindex="-1"`, `aria-hidden="true"`), so Tab never moves focus into a route document. Each route's measured preview size is cached with its snapshot, so frames keep their size in every tier.
+
+Snapshots: one hidden renderer iframe, outside the comment canvas, loads the route preview URL and switches routes in place (Storybook's `FORCE_REMOUNT`); the Inspector draws its DOM into a WebP image. Captures run one at a time while the browser is idle, visible frames first, and pause while the canvas is panned, zoomed or dragged.
+
+Snapshot cache: snapshots are kept per browser in the IndexedDB database `prototype-inspector-snapshots` (object store `tiles`, at most 300 records and 60 MB, least recently used first). Reopening the UI Flow shows the cached snapshots at their cached sizes at once, then recaptures each route once per page session and replaces only the snapshots whose markup changed. To clear the cache, delete the `prototype-inspector-snapshots` database in the browser's developer tools (Application > IndexedDB in Chrome) or clear the site data of the Storybook origin. When IndexedDB is unavailable, snapshots are kept in memory for the page session.
+
+Code updates: in Storybook dev mode, every Vite hot update marks the open prototype's snapshots as out of date (their frame labels show a ↻ badge) and recaptures them, visible frames first, once the renderer has applied the same update; live frames refresh their own route's snapshot.
+
+Known limitations:
+
+- Storybooks served from the same origin (for example two projects that both run on `localhost:6006`) share the snapshot database: a frame can briefly show the other project's snapshot for the same story, prototype and route ids until its recapture replaces it.
+- Snapshots are for finding your way around the flow, not for pixel review; zoom in until a frame is live to review the real route.
+- Opening the UI Flow from the Static Flow story (`figmaExport.flowStoryId`) makes no snapshots: frames that are not live show skeletons.
+- A story's `play` function runs every time the renderer or a live frame loads or remounts the story, so open the UI Flow from a story without a `play` function.
+- The renderer relies on Storybook 10.x's `FORCE_REMOUNT` event and `storyRenderPhaseChanged` messages (verified with Storybook 10.4.1); when a route switch does not render in time, it reloads its iframe instead.
+
 figma-export addon: when the addon's export workspace is open (`globals=figmaExport:on`, as in the tab Open Static Flow opens), the UI Flow canvas keeps its full size and the dock floats above it (the canvas pans, so anything under the dock can be moved into view); the zoom and layout groups move to the left edge of the canvas so the addon's comments toggle and dock never cover them, and while the dock is expanded the layout group wraps within the width the dock leaves (side dock) or sits above it (bottom dock, below 720 pixels).
 
 Comments on the UI Flow canvas: with figma-export addon 0.14.0 or later, the addon listed before the inspector preset in `.storybook/main.*` `addons` (`install_prototype_inspector.mjs` places it that way and reorders an inverted list), and the project calling `configureFigmaExportReview` in `.storybook/preview.*`, reviewers can comment on the canvas while Figma export is on:
 
 - Where: on a route frame's page (the area below its name), on a flow-only node, on a key transition line, or on blank canvas between frames. The comment sticks to that frame, node, position along the line, or canvas point.
 - Pins follow: panning, zooming and dragging frames move the pins in the same animation frame, and a pin on blank canvas keeps its canvas position.
+- Zoomed out: frames that are not live show cached snapshots. A comment on such a frame still sticks to its route; screenshots of line and canvas comments draw the pages of live frames only, and the other frames appear as their snapshots or skeletons.
 - Separate from Story comments: UI Flow comments are recorded in the `ui-flow` view; the comments panel lists the current view's comments (the **Comment views** switch shows the others), and reports filter by view. **Show location** on a comment whose pin is off screen moves the camera to its frame, line or point.
 - Figma export: UI Flow does not export a Figma payload. The export panel says **Open Static Flow to export this flow.** and links the Static Flow story when the prototype declares `figmaExport.flowStoryId`. Docs, Components and Data modes offer neither comments nor export.
 

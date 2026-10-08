@@ -245,7 +245,7 @@ Before implementation starts, confirm:
 - The route list and transition list must be the source of truth for flow review.
 - Flow lines should be simplified dashed orthogonal polylines; only key transitions should appear on the canvas.
 - Flow lines should animate along the dash path so reviewers can read transition direction toward the target UI.
-- Flow nodes should embed the real Storybook route UI in iframe previews, not static placeholder cards.
+- Route frames show the real Storybook route UI: a live iframe preview when zoomed in and a cached snapshot of the same route UI when zoomed out, never a static placeholder card.
 - Route iframe previews should auto-fit the measured width and height of the marked route UI, not a hardcoded project viewport.
 - Static Flow route previews should use the same UI width and height contract as UI Flow iframe previews.
 - Static Flow should apply saved UI Flow layout positions before falling back to route metadata positions.

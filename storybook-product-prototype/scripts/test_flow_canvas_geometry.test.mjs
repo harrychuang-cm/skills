@@ -454,3 +454,214 @@ test("measured label sizes replace the text estimate in label placement", () => 
   assert.deepEqual(same, estimated, "no measurement falls back to the estimate");
   assert.notDeepEqual(huge, estimated, "a measured size changes the placement");
 });
+
+// ---------------------------------------------------------------------------
+// Level of detail (flow-canvas-level-of-detail).
+
+const lodCanvas = { height: 800, width: 1190 };
+
+// One frame of the given box seen at `zoom` (camera at the origin): `fraction`
+// of it inside the canvas, cut by the canvas's right edge, or far outside the
+// expanded viewport when fraction is "outside".
+function lodFrame(key, width, height, zoom, fraction, canvas = lodCanvas) {
+  if (fraction === "outside") {
+    return { height, key, routeId: key.split(":").at(-1), width, x: (canvas.width * 3) / zoom, y: 0 };
+  }
+
+  const screenLeft = fraction === 1 ? 20 : canvas.width - fraction * width * zoom;
+
+  return { height, key, routeId: key.split(":").at(-1), width, x: screenLeft / zoom, y: 20 / zoom };
+}
+
+function lodTier({ fraction, height, hovered = false, pinned = false, previouslyLive = false, width, zoom }) {
+  const frame = lodFrame("review", width, height, zoom, fraction);
+
+  return geometry
+    .selectFrameTiers({
+      camera: { x: 0, y: 0, z: zoom },
+      canvasSize: lodCanvas,
+      frames: [frame],
+      hovered: hovered ? { dwellMs: 200, key: "review" } : null,
+      pinnedId: pinned ? "review" : null,
+      previousTiers: new Map(previouslyLive ? [["review", "live"]] : []),
+      promotedIds: new Set(),
+    })
+    .get("review");
+}
+
+test("LOD thresholds and the live budget keep their values", () => {
+  assert.deepEqual({ ...geometry.LOD_THRESHOLDS }, {
+    hoverDwellMs: 200,
+    hoverLiveMinZoom: 0.4,
+    liveKeepZoom: 0.64,
+    liveMinVisibleFraction: 0.4,
+    liveMinZoom: 0.8,
+    placeholderMaxWidth: 40,
+  });
+  assert.equal(geometry.LIVE_FRAME_LIMIT, 6);
+});
+
+test("tier selection for a 377-pixel-wide phone frame (spec example)", () => {
+  const rows = [
+    [0.1, 1, false, false, "placeholder"],
+    [0.15, 1, false, false, "snapshot"],
+    [0.5, 1, false, false, "snapshot"],
+    [0.5, 1, true, false, "live"],
+    [0.8, 0.5, false, false, "live"],
+    [0.8, 0.3, false, false, "snapshot"],
+    [0.7, 0.5, false, true, "live"],
+    [0.6, 1, false, true, "snapshot"],
+    [1, "outside", false, false, "culled"],
+  ];
+
+  for (const [zoom, fraction, hovered, previouslyLive, expected] of rows) {
+    assert.equal(
+      lodTier({ fraction, height: 878, hovered, previouslyLive, width: 377, zoom }),
+      expected,
+      `zoom ${zoom}, fraction ${fraction}, hovered ${hovered}, previously live ${previouslyLive}`,
+    );
+  }
+});
+
+test("tier selection for a 1282-pixel-wide desktop frame (spec example)", () => {
+  assert.equal(lodTier({ fraction: 1, height: 866, width: 1282, zoom: 0.3 }), "snapshot");
+  assert.equal(lodTier({ fraction: 0.5, height: 866, width: 1282, zoom: 0.8 }), "live");
+});
+
+test("a pinned phone frame stays live at any zoom and off-screen (spec example)", () => {
+  for (const [zoom, fraction] of [[0.08, 1], [0.3, 1], [1, "outside"]]) {
+    assert.equal(lodTier({ fraction, height: 878, pinned: true, width: 377, zoom }), "live", `zoom ${zoom}`);
+  }
+});
+
+test("repeated route instances keep separate tiers", () => {
+  const frames = [
+    { ...lodFrame("1:review", 377, 878, 0.5, 1), routeId: "review" },
+    { ...lodFrame("3:review", 377, 878, 0.5, 1), routeId: "review", x: 500 / 0.5 },
+  ];
+  const tiers = geometry.selectFrameTiers({
+    camera: { x: 0, y: 0, z: 0.5 },
+    canvasSize: lodCanvas,
+    frames,
+    hovered: { dwellMs: 200, key: "1:review" },
+  });
+
+  assert.equal(tiers.get("1:review"), "live");
+  assert.equal(tiers.get("3:review"), "snapshot");
+});
+
+test("hover promotes a frame only after 200 ms", () => {
+  const select = (dwellMs) =>
+    geometry
+      .selectFrameTiers({
+        camera: { x: 0, y: 0, z: 0.5 },
+        canvasSize: lodCanvas,
+        frames: [lodFrame("review", 377, 878, 0.5, 1)],
+        hovered: { dwellMs, key: "review" },
+      })
+      .get("review");
+
+  assert.equal(select(199), "snapshot");
+  assert.equal(select(200), "live");
+});
+
+test("the live budget keeps pinned, promoted, hovered, larger, already live and central frames", () => {
+  const canvas = { height: 3000, width: 4000 };
+  const zoom = 0.8;
+  const at = (key, centerX, centerY) => ({
+    height: 878,
+    key,
+    routeId: key,
+    width: 377,
+    x: (centerX - (377 * zoom) / 2) / zoom,
+    y: (centerY - (878 * zoom) / 2) / zoom,
+  });
+  const frames = [
+    at("pinned", 3000, 2500),
+    at("promoted", 400, 600),
+    at("hovered", 2000, 2550),
+    at("was-live", 3600, 600),
+    at("center", 2000, 1500),
+    at("right", 2400, 1500),
+    at("left", 1600, 1500),
+    at("far-right", 3500, 1500),
+    at("far-left", 500, 1500),
+    // Half of it past the right edge: a candidate with less visible area.
+    { ...at("half", 0, 1500), x: (canvas.width - (377 * zoom) / 2) / zoom },
+  ];
+  const tiers = geometry.selectFrameTiers({
+    camera: { x: 0, y: 0, z: zoom },
+    canvasSize: canvas,
+    frames,
+    hovered: { dwellMs: 250, key: "hovered" },
+    pinnedId: "pinned",
+    previousTiers: new Map([["was-live", "live"]]),
+    promotedIds: new Set(["promoted"]),
+  });
+  const live = frames.filter((frame) => tiers.get(frame.key) === "live").map((frame) => frame.key);
+
+  assert.deepEqual(live.sort(), ["center", "hovered", "left", "pinned", "promoted", "right", "was-live"].sort());
+  assert.equal(tiers.get("far-right"), "snapshot");
+  assert.equal(tiers.get("far-left"), "snapshot");
+  assert.equal(tiers.get("half"), "snapshot");
+});
+
+test("promotedIds accepts an array, and the key breaks a full tie", () => {
+  const zoom = 0.5;
+  const frames = [
+    { height: 878, key: "b", routeId: "b", width: 377, x: 300 / zoom, y: 20 / zoom },
+    { height: 878, key: "a", routeId: "a", width: 377, x: 700 / zoom, y: 20 / zoom },
+  ];
+  const promoted = geometry.selectFrameTiers({
+    camera: { x: 0, y: 0, z: zoom },
+    canvasSize: lodCanvas,
+    frames,
+    promotedIds: ["a"],
+  });
+
+  assert.equal(promoted.get("a"), "live");
+  assert.equal(promoted.get("b"), "snapshot");
+
+  // Seven equal frames at the same distance from the center: keys decide.
+  const ring = Array.from({ length: 7 }, (_, index) => {
+    const angle = (index / 7) * Math.PI * 2;
+    const centerX = 2000 + Math.cos(angle) * 600;
+    const centerY = 1500 + Math.sin(angle) * 600;
+    return { height: 100, key: `k${6 - index}`, routeId: `k${index}`, width: 100, x: centerX - 50, y: centerY - 50 };
+  });
+  const tiers = geometry.selectFrameTiers({ camera: { x: 0, y: 0, z: 1 }, canvasSize: { height: 3000, width: 4000 }, frames: ring });
+  assert.deepEqual(
+    ring.filter((frame) => tiers.get(frame.key) === "live").map((frame) => frame.key).sort(),
+    ["k0", "k1", "k2", "k3", "k4", "k5"],
+  );
+});
+
+test("the visible world rect grows by half the viewport on each side", () => {
+  assert.deepEqual(
+    geometry.getVisibleWorldRect({ x: -100, y: 50, z: 2 }, { height: 800, width: 1000 }, 0.5),
+    { height: 800, width: 1000, x: -200, y: -225 },
+  );
+});
+
+test("hashMarkup is stable and tells one character apart", () => {
+  const markup = '<div data-route="review">Review</div>';
+
+  assert.equal(geometry.hashMarkup(markup), geometry.hashMarkup(markup));
+  assert.notEqual(geometry.hashMarkup(markup), geometry.hashMarkup(markup.replace("Review<", "Reviews<")));
+  assert.match(geometry.hashMarkup(markup), /^[0-9a-f]{14}$/);
+  assert.match(geometry.hashMarkup(""), /^[0-9a-f]{14}$/);
+});
+
+test("acceptMeasuredSize ignores noise, 100vh feedback and runaway heights", () => {
+  const phone = { height: 812, width: 375 };
+
+  assert.deepEqual(geometry.acceptMeasuredSize(null, phone, 0, 812), phone);
+  assert.equal(geometry.acceptMeasuredSize(phone, { height: 813, width: 376 }, 0, 812), null);
+  // min-height: calc(100vh + 20px) grows once, then only follows the iframe.
+  assert.deepEqual(geometry.acceptMeasuredSize(phone, { height: 832, width: 375 }, 0, 812), { height: 832, width: 375 });
+  assert.equal(geometry.acceptMeasuredSize({ height: 832, width: 375 }, { height: 852, width: 375 }, 20, 812), null);
+  assert.equal(geometry.acceptMeasuredSize(phone, { height: 812 * 8 + 1, width: 375 }, 0, 812), null);
+  assert.deepEqual(geometry.acceptMeasuredSize(phone, { height: 1040, width: 375 }, 0, 812), { height: 1040, width: 375 });
+  // A width change still applies while the height feeds back.
+  assert.deepEqual(geometry.acceptMeasuredSize(phone, { height: 832, width: 390 }, 20, 812), { height: 812, width: 390 });
+});

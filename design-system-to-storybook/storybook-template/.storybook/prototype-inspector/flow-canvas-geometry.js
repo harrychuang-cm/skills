@@ -1061,6 +1061,187 @@ export function getFrameVisibleRect(box, frameType) {
   return { height: box.height, width: box.width, x: box.x, y: box.y };
 }
 
+// ---------------------------------------------------------------------------
+// Level of detail: which route frames render live, as snapshots, as
+// placeholders or not at all (flow-canvas-level-of-detail).
+
+// Estimates from 11 real prototypes; the bench and a visual check confirm them,
+// and only these numbers change if they do not.
+export const LOD_THRESHOLDS = Object.freeze({
+  hoverDwellMs: 200,
+  hoverLiveMinZoom: 0.4,
+  liveKeepZoom: 0.64,
+  liveMinVisibleFraction: 0.4,
+  liveMinZoom: 0.8,
+  placeholderMaxWidth: 40,
+});
+// Live route iframes, besides one frame pinned live and the snapshot renderer.
+export const LIVE_FRAME_LIMIT = 6;
+
+// The canvas viewport grown on each side by expandRatio of its own width and
+// height, in world coordinates.
+export function getVisibleWorldRect(camera, canvasSize, expandRatio = 0) {
+  const padX = canvasSize.width * expandRatio;
+  const padY = canvasSize.height * expandRatio;
+
+  return {
+    height: (canvasSize.height + padY * 2) / camera.z,
+    width: (canvasSize.width + padX * 2) / camera.z,
+    x: (-padX - camera.x) / camera.z,
+    y: (-padY - camera.y) / camera.z,
+  };
+}
+
+function getOverlapArea(a, b) {
+  const width = Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x);
+  const height = Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y);
+
+  return width > 0 && height > 0 ? width * height : 0;
+}
+
+// The tier of every frame instance, keyed by instance key: "culled",
+// "placeholder", "snapshot" or "live". frames are { key, routeId, x, y, width,
+// height } world boxes; hovered is { key, dwellMs } or null. The pinned frame
+// is always live; live candidates beyond LIVE_FRAME_LIMIT fall back in order:
+// promoted, hovered, larger visible area, already live, nearer the center,
+// then key. promotedIds is a Set or an array; no input is changed.
+export function selectFrameTiers({
+  camera,
+  canvasSize,
+  frames,
+  hovered = null,
+  pinnedId = null,
+  previousTiers = new Map(),
+  promotedIds = new Set(),
+}) {
+  const tiers = new Map();
+  const promotedKeys = promotedIds instanceof Set ? promotedIds : new Set(promotedIds ?? []);
+  const zoom = camera.z;
+  const viewport = { height: canvasSize.height, width: canvasSize.width, x: 0, y: 0 };
+  const expanded = getVisibleWorldRect(camera, canvasSize, 0.5);
+  const candidates = [];
+
+  frames.forEach((frame) => {
+    if (frame.key === pinnedId) {
+      tiers.set(frame.key, "live");
+      return;
+    }
+
+    if (getOverlapArea(frame, expanded) === 0) {
+      tiers.set(frame.key, "culled");
+      return;
+    }
+
+    const screen = {
+      height: frame.height * zoom,
+      width: frame.width * zoom,
+      x: frame.x * zoom + camera.x,
+      y: frame.y * zoom + camera.y,
+    };
+    const area = screen.width * screen.height;
+    const visibleArea = getOverlapArea(screen, viewport);
+    const fraction = area > 0 ? visibleArea / area : 0;
+    const promoted = promotedKeys.has(frame.key) && zoom >= LOD_THRESHOLDS.hoverLiveMinZoom;
+    const isHovered =
+      hovered?.key === frame.key &&
+      hovered.dwellMs >= LOD_THRESHOLDS.hoverDwellMs &&
+      zoom >= LOD_THRESHOLDS.hoverLiveMinZoom;
+    const wasLive = previousTiers.get(frame.key) === "live";
+
+    tiers.set(
+      frame.key,
+      screen.width < LOD_THRESHOLDS.placeholderMaxWidth ? "placeholder" : "snapshot",
+    );
+
+    if (
+      promoted ||
+      isHovered ||
+      (zoom >= LOD_THRESHOLDS.liveMinZoom && fraction >= LOD_THRESHOLDS.liveMinVisibleFraction) ||
+      (wasLive && zoom >= LOD_THRESHOLDS.liveKeepZoom && fraction > 0)
+    ) {
+      candidates.push({
+        // Hundredths of a pixel, so equally distant frames tie despite rounding.
+        distance:
+          Math.round(
+            Math.hypot(
+              screen.x + screen.width / 2 - canvasSize.width / 2,
+              screen.y + screen.height / 2 - canvasSize.height / 2,
+            ) * 100,
+          ) / 100,
+        isHovered,
+        key: frame.key,
+        promoted,
+        // Whole square pixels, so equally visible frames tie despite rounding.
+        visibleArea: Math.round(visibleArea),
+        wasLive,
+      });
+    }
+  });
+
+  candidates
+    .sort(
+      (a, b) =>
+        Number(b.promoted) - Number(a.promoted) ||
+        Number(b.isHovered) - Number(a.isHovered) ||
+        b.visibleArea - a.visibleArea ||
+        Number(b.wasLive) - Number(a.wasLive) ||
+        a.distance - b.distance ||
+        (a.key < b.key ? -1 : a.key > b.key ? 1 : 0),
+    )
+    .slice(0, LIVE_FRAME_LIMIT)
+    .forEach((candidate) => tiers.set(candidate.key, "live"));
+
+  return tiers;
+}
+
+// cyrb53 (bryc, public domain): a fast 53-bit hash of a string, as 14
+// hexadecimal digits. Pure JS, so it needs no secure context.
+export function hashMarkup(text) {
+  let h1 = 0xdeadbeef;
+  let h2 = 0x41c6ce57;
+
+  for (let index = 0; index < text.length; index += 1) {
+    const code = text.charCodeAt(index);
+
+    h1 = Math.imul(h1 ^ code, 2654435761);
+    h2 = Math.imul(h2 ^ code, 1597334677);
+  }
+
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507);
+  h1 ^= Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507);
+  h2 ^= Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+
+  return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(16).padStart(14, "0");
+}
+
+// The preview size a measurement leaves, or null to keep the previous one.
+// Changes under 2 px on both axes are noise; height growth equal to the
+// iframe's own growth since the previous measurement (within 2 px) is 100vh
+// content feeding back, so the previous height stays; more than 8 viewport
+// heights is runaway.
+export function acceptMeasuredSize(previous, next, iframeGrowth, viewportHeight) {
+  if (!(next?.width > 0) || !(next.height > 0)) {
+    return null;
+  }
+
+  if (viewportHeight > 0 && next.height > viewportHeight * 8) {
+    return null;
+  }
+
+  if (!previous) {
+    return { height: next.height, width: next.width };
+  }
+
+  const widthChange = Math.abs(next.width - previous.width);
+  const heightChange = next.height - previous.height;
+  const isFeedback = iframeGrowth > 0 && Math.abs(heightChange - iframeGrowth) <= 2;
+  const height = isFeedback || Math.abs(heightChange) < 2 ? previous.height : next.height;
+  const width = widthChange < 2 ? previous.width : next.width;
+
+  return height === previous.height && width === previous.width ? null : { height, width };
+}
+
 const controlKeyCodes = new Set(["Space", "Enter", "NumpadEnter", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"]);
 
 // Canvas command for a keydown/keyup, or null when the key must reach

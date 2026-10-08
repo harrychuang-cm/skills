@@ -25,6 +25,7 @@ import {
   writePrototypeFlowLayoutPositions,
 } from "../../src/pages/prototypes/prototypeFlowLayout";
 import {
+  acceptMeasuredSize,
   addFlowEdgeColorVariants,
   aggregateTransitions,
   applyWheelZoom,
@@ -45,9 +46,11 @@ import {
   getPrototypeFlowExportStoryId,
   getRouteBottom,
   getRoutePosition,
+  getVisibleWorldRect,
   getZoomBucket,
   isRecord,
   isVisibleFlowEdge,
+  LOD_THRESHOLDS,
   MAX_ZOOM,
   MIN_ZOOM,
   nodeFrameSize,
@@ -61,9 +64,13 @@ import {
   placeEdgeLabels,
   resolveCanvasShortcut,
   resolvePrototypeViewport,
+  selectFrameTiers,
   stepZoom,
   zoomAtPoint,
 } from "./flow-canvas-geometry.js";
+import { getCodeUpdateCount, subscribeToCodeUpdates } from "./flow-canvas-hmr.js";
+import { captureFrameSnapshot, SNAPSHOT_FORMAT_VERSION } from "./flow-snapshot.js";
+import { createIndexedDbAdapter, createSnapshotCache, getSnapshotKey } from "./flow-snapshot-cache.js";
 
 const routePreviewMeasurementSelector = '[data-prototype-route-preview="true"]';
 
@@ -392,6 +399,116 @@ function getMeasuredFramePreviewSize(iframe) {
   };
 }
 
+// The size cache after one measurement: the measured size when
+// acceptMeasuredSize takes it, the cache unchanged otherwise. Each cached size
+// remembers the preview height the frame had when its height was measured, so
+// the iframe's own growth since then is known however often it is
+// re-measured. A frame is never narrower than its resolved viewport: content
+// taller than the frame shows a scrollbar that would otherwise narrow the
+// frame, which shows the scrollbar again, without end.
+function applyMeasuredSize(sizes, routeId, entry) {
+  const previous = sizes[routeId] ?? entry.fallback;
+  const iframeGrowth =
+    typeof previous?.measuredInHeight === "number" ? entry.appliedHeight - previous.measuredInHeight : 0;
+  const size = { height: entry.size.height, width: Math.max(entry.size.width, entry.fallback?.width ?? 0) };
+  const accepted = acceptMeasuredSize(previous, size, iframeGrowth, entry.viewportHeight);
+
+  if (!accepted) {
+    return sizes;
+  }
+
+  const measuredInHeight =
+    accepted.height !== previous?.height || typeof previous?.measuredInHeight !== "number"
+      ? entry.appliedHeight
+      : previous.measuredInHeight;
+
+  return { ...sizes, [routeId]: { ...accepted, measuredInHeight } };
+}
+
+// Binds a live frame's document after each load: a ResizeObserver from the
+// frame's own window watches #storybook-root (static in iframe.html) and the
+// route preview marker, rebound on every callback because Storybook renders
+// the story after the load event; the frame's storyRenderPhaseChanged
+// "completed" channel message (matched by MessageEvent.source) reports a
+// finished render, and its storyHotUpdated message a code update the frame
+// applied. The returned release runs before the frame reloads (pagehide) or
+// is removed: an observer from the child realm left behind would keep the
+// detached window alive.
+function attachFrameMeasurement(iframe, { onHotUpdated, onRendered, onSize }) {
+  let frameWindow = null;
+  let frameDocument = null;
+
+  try {
+    frameWindow = iframe.contentWindow;
+    frameDocument = iframe.contentDocument;
+  } catch {
+    return () => {};
+  }
+
+  if (!frameWindow || !frameDocument || typeof frameWindow.ResizeObserver !== "function") {
+    return () => {};
+  }
+
+  let marker = null;
+  let released = false;
+  const observer = new frameWindow.ResizeObserver(() => {
+    bindMarker();
+    onSize();
+  });
+  const bindMarker = () => {
+    const storyRoot = frameDocument.querySelector("#storybook-root");
+    const next =
+      frameDocument.querySelector(routePreviewMeasurementSelector) ?? storyRoot?.firstElementChild ?? null;
+
+    if (next !== marker) {
+      if (marker) observer.unobserve(marker);
+      marker = next;
+      if (marker) observer.observe(marker);
+    }
+  };
+  const handleMessage = (event) => {
+    if (
+      event.source !== frameWindow ||
+      typeof event.data !== "string" ||
+      !(event.data.includes("storyRenderPhaseChanged") || event.data.includes("storyHotUpdated"))
+    ) {
+      return;
+    }
+
+    try {
+      const message = JSON.parse(event.data);
+
+      if (message?.event?.type === "storyHotUpdated") {
+        onHotUpdated?.();
+        return;
+      }
+
+      const phase = message?.event?.type === "storyRenderPhaseChanged" ? message.event.args?.[0]?.newPhase : null;
+
+      if (phase === "completed") {
+        bindMarker();
+        onRendered?.();
+      }
+    } catch {
+      // Not a Storybook channel message.
+    }
+  };
+  const release = () => {
+    if (released) return;
+    released = true;
+    observer.disconnect();
+    window.removeEventListener("message", handleMessage);
+    frameWindow.removeEventListener("pagehide", release);
+    marker = null;
+  };
+
+  observer.observe(frameDocument.querySelector("#storybook-root") ?? frameDocument.body);
+  bindMarker();
+  window.addEventListener("message", handleMessage);
+  frameWindow.addEventListener("pagehide", release);
+  return release;
+}
+
 // Memoized frames: a drag moves frames through the DOM, and props are plain
 // values plus stable handlers, so unrelated renders skip every frame.
 const PrototypeFlowNode = memo(function PrototypeFlowNode({
@@ -452,78 +569,148 @@ const PrototypeFlowNode = memo(function PrototypeFlowNode({
   );
 });
 
+// A story that never reports its render still frees the load slot after this.
+const frameRenderedFallbackMs = 6_000;
+
+// A route frame at its level of detail. The preview element keeps the comment
+// anchor and the preview size in every tier. Its first child is the live
+// iframe, present only while the frame is live and holds a load slot; until
+// that iframe's story has rendered, a cover (the snapshot or a skeleton with
+// the route title and id) lies above it. No route iframe takes focus or
+// pointer input.
 const PrototypeRouteCard = memo(function PrototypeRouteCard({
   height,
-  onPreviewSizeChange,
+  instanceKey,
+  isAnchor = true,
+  isRendered,
+  isSnapshotStale = false,
+  mountIframe,
+  onFrameHotUpdated,
+  onFrameLoaded,
+  onFrameRendered,
   onPointerCancel,
   onPointerDown,
   onPointerEnter,
   onPointerLeave,
   onPointerMove,
   onPointerUp,
+  onPreviewSizeChange,
   previewHeight,
+  previewSource,
   previewWidth,
   route,
+  snapshotUrl = null,
+  tier,
   width,
   x,
   y,
 }) {
-  const previewSource = getRoutePreviewSource(route.id);
   const iframeRef = useRef(null);
-  const measurePreviewSize = (iframe) => {
-    const measuredSize = getMeasuredFramePreviewSize(iframe);
-
-    if (measuredSize?.height && measuredSize?.width) {
-      onPreviewSizeChange(route.id, measuredSize);
-      return true;
+  const releaseMeasurementRef = useRef(null);
+  const measureFrameRef = useRef(0);
+  const renderedFallbackRef = useRef(0);
+  // The preview height the frame has now, sent with each measurement so the
+  // size cache can tell 100vh content feedback from real growth.
+  const appliedHeightRef = useRef(previewHeight);
+  appliedHeightRef.current = previewHeight;
+  // At most one measurement per frame, whatever triggered it.
+  const scheduleMeasure = () => {
+    if (measureFrameRef.current) {
+      return;
     }
 
-    return false;
-  };
-
-  useEffect(() => {
-    let isActive = true;
-    let retryCount = 80;
-    let retryTimer = null;
-
-    const updateMeasuredSize = () => {
-      if (!isActive) {
-        return;
-      }
-
+    measureFrameRef.current = window.requestAnimationFrame(() => {
+      measureFrameRef.current = 0;
       const iframe = iframeRef.current;
+      const measuredSize = iframe ? getMeasuredFramePreviewSize(iframe) : null;
 
-      if (iframe && measurePreviewSize(iframe)) {
+      if (!measuredSize?.height || !measuredSize?.width) {
         return;
       }
 
-      if (retryCount > 0) {
-        retryCount -= 1;
-        retryTimer = window.setTimeout(updateMeasuredSize, 250);
-      }
-    };
-
-    updateMeasuredSize();
-
-    return () => {
-      isActive = false;
-
-      if (retryTimer) {
-        window.clearTimeout(retryTimer);
-      }
-    };
-  }, [onPreviewSizeChange, previewSource, route.id]);
-
-  const handlePreviewLoad = (event) => {
-    measurePreviewSize(event.currentTarget);
+      onPreviewSizeChange(route.id, measuredSize, appliedHeightRef.current);
+    });
   };
+  const releaseFrame = () => {
+    window.cancelAnimationFrame(measureFrameRef.current);
+    measureFrameRef.current = 0;
+    window.clearTimeout(renderedFallbackRef.current);
+    releaseMeasurementRef.current?.();
+    releaseMeasurementRef.current = null;
+  };
+
+  useEffect(() => releaseFrame, []);
+
+  // The iframe comes and goes with the live tier; a removed iframe releases
+  // everything bound to its window. React 18 hosts drop inert={true}, so the
+  // property is also set here.
+  const setIframe = useCallback((element) => {
+    if (!element) {
+      releaseFrame();
+    } else {
+      element.inert = true;
+    }
+    iframeRef.current = element;
+  }, []);
+
+  // Every load (first load, reload, HMR full reload) binds the new document.
+  // A completed render reports the iframe (it may refresh the route's
+  // snapshot); the fallback only ends the loading state.
+  const handlePreviewLoad = (event) => {
+    const iframe = event.currentTarget;
+
+    releaseFrame();
+    onFrameLoaded?.(instanceKey, iframe);
+    releaseMeasurementRef.current = attachFrameMeasurement(iframe, {
+      onHotUpdated: () => onFrameHotUpdated?.(instanceKey, iframe),
+      onRendered: () => {
+        window.clearTimeout(renderedFallbackRef.current);
+        onFrameRendered(instanceKey, iframe);
+        scheduleMeasure();
+      },
+      onSize: scheduleMeasure,
+    });
+    renderedFallbackRef.current = window.setTimeout(() => onFrameRendered(instanceKey), frameRenderedFallbackMs);
+    scheduleMeasure();
+  };
+
+  const isLive = tier === "live";
+  const showIframe = isLive && mountIframe && Boolean(previewSource);
+  const cover =
+    tier === "culled" || (showIframe && isRendered)
+      ? null
+      : tier === "placeholder"
+        ? createElement("div", {
+            "aria-hidden": "true",
+            className: "prototype-inspector__flow-frame-placeholder",
+            key: "cover",
+          })
+        : snapshotUrl
+          ? createElement("img", {
+              alt: "",
+              "aria-hidden": "true",
+              className: "prototype-inspector__flow-frame-snapshot",
+              decoding: "async",
+              draggable: false,
+              key: "cover",
+              src: snapshotUrl,
+            })
+          : createElement(
+              "div",
+              { "aria-hidden": "true", className: "prototype-inspector__flow-frame-skeleton", key: "cover" },
+              createElement("strong", null, route.title ?? route.id),
+              createElement("span", null, route.id),
+            );
 
   return createElement(
     "article",
     {
       "aria-label": route.title ?? route.id,
       className: "prototype-inspector__flow-frame",
-      "data-frame-id": route.id,
+      "data-frame-id": instanceKey,
+      "data-live-loading": isLive && !isRendered ? "true" : undefined,
+      "data-snapshot-stale": isSnapshotStale ? "true" : undefined,
+      "data-tier": tier,
       onPointerCancel,
       onPointerDown,
       onPointerEnter,
@@ -545,24 +732,676 @@ const PrototypeRouteCard = memo(function PrototypeRouteCard({
         className: "prototype-inspector__flow-frame-preview",
         // The visible rect is the frame's comment anchor, so a pin keeps its
         // point on the route page (the name area above is not part of it).
-        "data-sbfx-anchor": `route:${route.id}`,
-        "data-sbfx-anchor-label": route.title ?? route.id,
-        "data-sbfx-anchor-route": route.id,
+        // Only this element carries it, in every tier.
+        ...(isAnchor
+          ? {
+              "data-sbfx-anchor": `route:${route.id}`,
+              "data-sbfx-anchor-label": route.title ?? route.id,
+              "data-sbfx-anchor-route": route.id,
+            }
+          : {}),
       },
       previewSource
-        ? createElement("iframe", {
-            loading: "eager",
-            onLoad: handlePreviewLoad,
-            ref: iframeRef,
-            src: previewSource,
-            title: `${route.title ?? route.id} preview`,
-          })
+        ? [
+            showIframe
+              ? createElement("iframe", {
+                  "aria-hidden": "true",
+                  inert: true,
+                  key: "live",
+                  onLoad: handlePreviewLoad,
+                  ref: setIframe,
+                  src: previewSource,
+                  tabIndex: -1,
+                  title: `${route.title ?? route.id} preview`,
+                })
+              : null,
+            cover,
+          ]
         : createElement(FlowEmpty, {
             message: "無法取得 route 預覽。",
           }),
     ),
   );
 });
+
+// The live frame that takes the single load slot next: the pinned frame, then
+// promoted, then hovered frames, then the one nearest the canvas center.
+function pickLoadingFrame(tiers, frames, rendered, { camera, canvasSize, hoveredKey, pinnedId, promotedIds }) {
+  const waiting = frames.filter((frame) => tiers.get(frame.key) === "live" && !rendered.has(frame.key));
+
+  if (!waiting.length) {
+    return null;
+  }
+
+  const rank = (frame) =>
+    frame.key === pinnedId ? 0 : promotedIds.has(frame.key) ? 1 : frame.key === hoveredKey ? 2 : 3;
+  const distance = (frame) =>
+    camera && canvasSize
+      ? Math.hypot(
+          (frame.x + frame.width / 2) * camera.z + camera.x - canvasSize.width / 2,
+          (frame.y + frame.height / 2) * camera.z + camera.y - canvasSize.height / 2,
+        )
+      : 0;
+
+  return [...waiting].sort((a, b) => rank(a) - rank(b) || distance(a) - distance(b))[0].key;
+}
+
+// ---------------------------------------------------------------------------
+// Snapshot renderer: one hidden iframe, outside the canvas, that switches
+// routes in place (history.replaceState and a Storybook FORCE_REMOUNT channel
+// message posted to its window) and captures each route. Its src and size are
+// written to the DOM directly, so switching routes sets no React state. The
+// same one-at-a-time queue also captures live frames from their own iframes
+// ("live" items) when they refresh their route's snapshot.
+
+const rendererLimits = Object.freeze({
+  completedMs: 6_000,
+  completingMs: 2_000,
+  finishedMs: 2_000,
+  frameCapMs: 120,
+  // After a code update, captures wait for the renderer's own
+  // storyHotUpdated and this long without further notifications; without
+  // that signal the renderer reloads its src after hotSignalMs.
+  hotQuietMs: 100,
+  hotSignalMs: 2_000,
+  loadMs: 20_000,
+  // Resizes to the measured size before a capture.
+  maxResizes: 2,
+  // A route whose story never renders is given up after this many tries
+  // (the first can be a cold dev-server load).
+  renderAttempts: 2,
+  switchesBeforeReload: 25,
+});
+function sleep(ms) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+// One animation frame, at most frameCapMs (hidden or headless pages may not
+// run animation frames).
+function nextFrameWithin(ms) {
+  return new Promise((resolve) => {
+    const timer = window.setTimeout(resolve, ms);
+
+    window.requestAnimationFrame(() => {
+      window.clearTimeout(timer);
+      resolve();
+    });
+  });
+}
+
+function scheduleIdle(callback) {
+  return typeof window.requestIdleCallback === "function"
+    ? window.requestIdleCallback(callback, { timeout: 500 })
+    : window.setTimeout(callback, 50);
+}
+
+function cancelIdle(handle) {
+  if (typeof window.cancelIdleCallback === "function") {
+    window.cancelIdleCallback(handle);
+  }
+  window.clearTimeout(handle);
+}
+
+// Queue items are { kind: "renderer" | "live", routeId, minCodeVersion, frame }
+// (frame: the live frame's iframe). A capture reports its result with the
+// code version it ran on: the count of code updates the renderer had applied
+// when a renderer capture started, liveCodeVersion() for a live capture.
+function createSnapshotRenderer({
+  codeVersion: initialCodeVersion = 0,
+  isPaused,
+  layer,
+  liveCodeVersion,
+  markupHashFor,
+  onBusyChange,
+  onFailure,
+  onLoadingChange,
+  onResult,
+  onSettled,
+  onSize,
+  routeIds,
+  sizeFor,
+  sourceFor,
+  storyId,
+}) {
+  let iframe = null;
+  let currentRouteId = null;
+  let inFlight = null;
+  let needsReload = true;
+  // Why the next load happens; marked once, when it happens.
+  let reloadReason = "initial";
+  let switches = 0;
+  let queue = [];
+  let running = false;
+  let destroyed = false;
+  let controller = null;
+  let expectingLoad = false;
+  let lastPhase = null;
+  let phasesSeen = [];
+  let phaseWaiters = [];
+  let idleHandle = 0;
+  let busy = false;
+  // Code updates notified, and applied by the renderer's document. Renderer
+  // captures wait while the renderer is behind (live captures do not).
+  let codeVersion = initialCodeVersion;
+  let notifiedCodeVersion = initialCodeVersion;
+  let hotQuietTimer = 0;
+  let hotSignalTimer = 0;
+  // Every switch reloads the src once a route's snapshot differed from a
+  // clean live capture (state left behind by in-place remounts).
+  let reloadEverySwitch = false;
+  const renderFailures = new Map();
+
+  const markReset = (reason) => {
+    try {
+      performance.mark("pi:flow:renderer-reset", { detail: { reason } });
+    } catch {
+      // Marks are diagnostics only.
+    }
+  };
+  const setBusy = (next) => {
+    if (busy !== next) {
+      busy = next;
+      onBusyChange(next);
+    }
+  };
+  const isBehind = () => notifiedCodeVersion > codeVersion;
+  const clearHotTimers = () => {
+    window.clearTimeout(hotQuietTimer);
+    window.clearTimeout(hotSignalTimer);
+    hotQuietTimer = 0;
+    hotSignalTimer = 0;
+  };
+  // The renderer has applied every notified update.
+  const catchUp = () => {
+    clearHotTimers();
+    codeVersion = notifiedCodeVersion;
+    kick();
+  };
+  const handleHotUpdated = () => {
+    if (!isBehind()) {
+      return;
+    }
+
+    window.clearTimeout(hotQuietTimer);
+    hotQuietTimer = window.setTimeout(catchUp, rendererLimits.hotQuietMs);
+  };
+  const handleMessage = (event) => {
+    if (
+      !iframe ||
+      event.source !== iframe.contentWindow ||
+      typeof event.data !== "string" ||
+      !(event.data.includes("storyRenderPhaseChanged") || event.data.includes("storyHotUpdated"))
+    ) {
+      return;
+    }
+
+    try {
+      const message = JSON.parse(event.data);
+
+      if (message?.event?.type === "storyHotUpdated") {
+        handleHotUpdated();
+        return;
+      }
+
+      const phase = message?.event?.type === "storyRenderPhaseChanged" ? message.event.args?.[0]?.newPhase : null;
+
+      if (!phase) {
+        return;
+      }
+
+      lastPhase = phase;
+      phasesSeen.push(phase);
+      phaseWaiters = phaseWaiters.filter((waiter) => {
+        if (waiter.phase !== phase) {
+          return true;
+        }
+
+        waiter.resolve(true);
+        return false;
+      });
+    } catch {
+      // Not a Storybook channel message.
+    }
+  };
+  // Resolves true when the phase arrives (or, with fromHistory, was already
+  // seen since the last switch), false after ms.
+  const waitForPhase = (phase, ms, { fromHistory = true } = {}) =>
+    fromHistory && phasesSeen.includes(phase)
+      ? Promise.resolve(true)
+      : new Promise((resolve) => {
+          const waiter = { phase, resolve };
+          const timer = window.setTimeout(() => {
+            phaseWaiters = phaseWaiters.filter((entry) => entry !== waiter);
+            resolve(false);
+          }, ms);
+
+          waiter.resolve = (value) => {
+            window.clearTimeout(timer);
+            resolve(value);
+          };
+          phaseWaiters.push(waiter);
+        });
+  const handleLoad = () => {
+    // A new iframe first loads about:blank; that is not a reload.
+    if (!expectingLoad && iframe?.getAttribute("src")) {
+      // A load nobody asked for: Storybook's teardown reloaded the document.
+      currentRouteId = null;
+      needsReload = true;
+      reloadReason = "teardown-reload";
+    }
+  };
+  const ensureIframe = () => {
+    if (iframe?.isConnected) {
+      return;
+    }
+
+    iframe = document.createElement("iframe");
+    iframe.className = "prototype-inspector__flow-renderer";
+    iframe.setAttribute("aria-hidden", "true");
+    iframe.setAttribute("data-prototype-inspector-renderer", "true");
+    iframe.setAttribute("inert", "");
+    iframe.setAttribute("tabindex", "-1");
+    iframe.setAttribute("title", "Route snapshot renderer");
+    iframe.inert = true;
+    iframe.addEventListener("load", handleLoad);
+    layer.append(iframe);
+    needsReload = true;
+  };
+  const setFrameSize = (size) => {
+    iframe.style.width = `${size.width}px`;
+    iframe.style.height = `${size.height}px`;
+  };
+  // Loads the route's preview URL and waits for its first completed render.
+  const load = async (routeId, reason) => {
+    markReset(reason);
+    expectingLoad = true;
+    onLoadingChange?.(true);
+    phasesSeen = [];
+    lastPhase = null;
+    const loaded = new Promise((resolve) => iframe.addEventListener("load", () => resolve(true), { once: true }));
+    // Updates notified before the src changes are in the document it loads.
+    const loadingCodeVersion = notifiedCodeVersion;
+
+    iframe.src = sourceFor(routeId);
+    const ok = await Promise.race([loaded, sleep(rendererLimits.loadMs).then(() => false)]);
+
+    expectingLoad = false;
+    if (!ok || destroyed) {
+      onLoadingChange?.(false);
+      return false;
+    }
+
+    if (loadingCodeVersion > codeVersion) {
+      codeVersion = loadingCodeVersion;
+      if (!isBehind()) {
+        clearHotTimers();
+      }
+    }
+
+    switches = 0;
+    needsReload = false;
+    currentRouteId = (await waitForPhase("completed", rendererLimits.completedMs)) ? routeId : null;
+    onLoadingChange?.(false);
+    return currentRouteId === routeId;
+  };
+  // Switches routes in place; falls back to reloading the src when the
+  // render does not start or finish in time.
+  const switchTo = async (routeId) => {
+    // A FORCE_REMOUNT while the previous render is still pending (afterEach)
+    // makes Storybook reload the document: the next one is posted only after
+    // "finished", and a render that does not get there reloads the src.
+    if (lastPhase !== "finished" && !(await waitForPhase("finished", rendererLimits.finishedMs, { fromHistory: false }))) {
+      return load(routeId, "timeout-finished");
+    }
+
+    switches += 1;
+    if (reloadEverySwitch || switches >= rendererLimits.switchesBeforeReload) {
+      return load(routeId, "scheduled");
+    }
+
+    const frameWindow = iframe.contentWindow;
+    const postedAt = performance.now();
+    const remaining = (ms) => Math.max(0, postedAt + ms - performance.now());
+
+    phasesSeen = [];
+    frameWindow.history.replaceState(frameWindow.history.state, "", sourceFor(routeId));
+    const loading = waitForPhase("loading", rendererLimits.completingMs);
+
+    frameWindow.postMessage(
+      JSON.stringify({
+        event: { args: [{ storyId }], from: "prototype-inspector", type: "forceRemount" },
+        key: "storybook-channel",
+      }),
+      window.location.origin,
+    );
+    if (!(await loading)) {
+      return load(routeId, "timeout-completing");
+    }
+    // Only phases of the new render count; they start with its "loading".
+    phasesSeen = phasesSeen.slice(phasesSeen.indexOf("loading"));
+    if (!(await waitForPhase("completing", remaining(rendererLimits.completingMs)))) {
+      return load(routeId, "timeout-completing");
+    }
+    if (!(await waitForPhase("completed", remaining(rendererLimits.completedMs)))) {
+      return load(routeId, "timeout-completed");
+    }
+
+    // A prototype that keeps its route through a remount still shows the
+    // previous route: reload the src now, and on every later switch.
+    const rootRoute = iframe.contentDocument?.querySelector("[data-prototype-root]")?.getAttribute("data-route");
+
+    if (rootRoute && routeIds.has(rootRoute) && rootRoute !== routeId) {
+      reloadEverySwitch = true;
+      return load(routeId, "wrong-route");
+    }
+
+    currentRouteId = routeId;
+    return true;
+  };
+  const ensureRoute = async (routeId) => {
+    ensureIframe();
+    // The route renders at its own size, not the previous route's (or the
+    // iframe default on the first load).
+    const { cached, fallback } = sizeFor(routeId);
+
+    setFrameSize(cached ?? fallback);
+    if (needsReload || !currentRouteId) {
+      const reason = reloadReason;
+
+      reloadReason = "capture-failed";
+      return load(routeId, reason);
+    }
+
+    return currentRouteId === routeId ? true : switchTo(routeId);
+  };
+  // Fonts, images and two animation frames after the story completed.
+  const settleDocument = async () => {
+    const frameDocument = iframe.contentDocument;
+
+    if (!frameDocument) {
+      return;
+    }
+
+    await Promise.race([frameDocument.fonts?.ready ?? Promise.resolve(), sleep(1_000)]);
+    await Promise.race([
+      Promise.all([...frameDocument.images].map((image) => image.decode?.().catch(() => {}))),
+      sleep(1_000),
+    ]);
+    await nextFrameWithin(rendererLimits.frameCapMs);
+    await nextFrameWithin(rendererLimits.frameCapMs);
+  };
+  // Lays the renderer out at the route's cached size, measures it the way
+  // live frames are measured and resizes (then measures again) at most
+  // twice. The size reaches the size cache with the capture's result.
+  const measureRoute = async (routeId) => {
+    const { cached, fallback, viewportHeight } = sizeFor(routeId);
+    let sizes = { [routeId]: cached ?? fallback };
+    let resizes = 0;
+
+    setFrameSize(sizes[routeId]);
+    for (;;) {
+      await nextFrameWithin(rendererLimits.frameCapMs);
+      const measured = getMeasuredFramePreviewSize(iframe);
+
+      if (!measured?.width || !measured?.height) {
+        break;
+      }
+
+      const next = applyMeasuredSize(sizes, routeId, {
+        appliedHeight: sizes[routeId].height,
+        fallback,
+        size: measured,
+        viewportHeight,
+      });
+
+      if (next === sizes || resizes >= rendererLimits.maxResizes) {
+        break;
+      }
+
+      sizes = next;
+      resizes += 1;
+      setFrameSize(sizes[routeId]);
+    }
+
+    return sizes[routeId];
+  };
+  const capture = async ({ routeId }, signal) => {
+    const startedCodeVersion = codeVersion;
+
+    if (!(await ensureRoute(routeId)) || signal.aborted) {
+      if (signal.aborted) {
+        return "aborted";
+      }
+
+      const failures = (renderFailures.get(routeId) ?? 0) + 1;
+
+      renderFailures.set(routeId, failures);
+      if (failures >= rendererLimits.renderAttempts) {
+        renderFailures.delete(routeId);
+        onFailure(routeId, "not-rendered");
+      }
+      return "failed";
+    }
+
+    const rootRoute = iframe.contentDocument?.querySelector("[data-prototype-root]")?.getAttribute("data-route");
+
+    // Some prototypes put a navigation id in data-route; only a flow route id is compared.
+    if (rootRoute && routeIds.has(rootRoute) && rootRoute !== routeId) {
+      needsReload = true;
+      reloadReason = "capture-failed";
+      onFailure(routeId, "wrong-route");
+      return "failed";
+    }
+
+    await settleDocument();
+    if (signal.aborted) {
+      return "aborted";
+    }
+
+    const size = await measureRoute(routeId);
+
+    if (signal.aborted) {
+      return "aborted";
+    }
+
+    const result = await captureFrameSnapshot(iframe, {
+      devicePixelRatio: window.devicePixelRatio || 1,
+      previewHeight: size.height,
+      previewWidth: size.width,
+      previousMarkupHash: markupHashFor(routeId),
+      signal,
+    });
+
+    // Encoding does not check the signal: a result that comes back after the
+    // abort is dropped, whether it succeeded or failed.
+    if (signal.aborted || (!result.ok && result.reason === "aborted")) {
+      return "aborted";
+    }
+    if (!result.ok) {
+      needsReload = true;
+      reloadReason = "capture-failed";
+      onFailure(routeId, result.reason);
+      return "failed";
+    }
+
+    renderFailures.delete(routeId);
+    onSize(routeId, size);
+    onResult(
+      routeId,
+      { ...result, measuredInHeight: size.measuredInHeight, previewHeight: size.height, previewWidth: size.width },
+      { codeVersion: startedCodeVersion, kind: "renderer" },
+    );
+    return "done";
+  };
+  // A live frame captured from its own iframe at its cached preview size. A
+  // frame that is gone or cannot be captured leaves the stored snapshot alone.
+  const captureLive = async ({ frame, routeId }, signal) => {
+    if (!frame?.isConnected) {
+      return "skipped";
+    }
+
+    const startedCodeVersion = liveCodeVersion();
+    const { cached, fallback } = sizeFor(routeId);
+    const size = cached ?? fallback;
+    const result = await captureFrameSnapshot(frame, {
+      devicePixelRatio: window.devicePixelRatio || 1,
+      previewHeight: size.height,
+      previewWidth: size.width,
+      previousMarkupHash: markupHashFor(routeId),
+      signal,
+    });
+
+    if (signal.aborted || (!result.ok && result.reason === "aborted")) {
+      return "aborted";
+    }
+    if (!result.ok) {
+      console.debug(`[prototype-inspector] No snapshot from live route "${routeId}": ${result.reason}`);
+      return "skipped";
+    }
+
+    onResult(
+      routeId,
+      { ...result, measuredInHeight: size.measuredInHeight, previewHeight: size.height, previewWidth: size.width },
+      { codeVersion: startedCodeVersion, kind: "live" },
+    );
+    return "done";
+  };
+  // Live items run whenever the queue runs; renderer items wait while the
+  // renderer has not applied the latest code update.
+  const nextRunnableIndex = () => queue.findIndex((item) => item.kind === "live" || !isBehind());
+  const runNext = async () => {
+    idleHandle = 0;
+    const index = nextRunnableIndex();
+
+    if (destroyed || running || index < 0 || isPaused()) {
+      setBusy(running || queue.length > 0);
+      return;
+    }
+
+    running = true;
+    setBusy(true);
+    const [item] = queue.splice(index, 1);
+    const current = new AbortController();
+
+    controller = current;
+    inFlight = { codeVersion: item.kind === "live" ? liveCodeVersion() : codeVersion, kind: item.kind, routeId: item.routeId };
+    let outcome = "failed";
+
+    try {
+      outcome = await (item.kind === "live" ? captureLive : capture)(item, current.signal);
+    } catch (error) {
+      if (current.signal.aborted) {
+        outcome = "aborted";
+      } else if (item.kind === "live") {
+        outcome = "skipped";
+      } else {
+        needsReload = true;
+        reloadReason = "capture-failed";
+        onFailure(item.routeId, error?.message ?? "error");
+      }
+    } finally {
+      running = false;
+      controller = null;
+      inFlight = null;
+    }
+
+    if (outcome === "aborted" && !destroyed) {
+      queue = [item, ...queue.filter((entry) => entry.routeId !== item.routeId || entry.kind !== item.kind)];
+    }
+    if (destroyed) {
+      return;
+    }
+    onSettled?.(item, outcome);
+    if (queue.length) {
+      kick();
+    } else {
+      setBusy(false);
+    }
+  };
+  const kick = () => {
+    if (destroyed || running || idleHandle || nextRunnableIndex() < 0) {
+      setBusy(running || queue.length > 0);
+      return;
+    }
+
+    if (isPaused()) {
+      setBusy(true);
+      return;
+    }
+
+    idleHandle = scheduleIdle(runNext);
+  };
+
+  window.addEventListener("message", handleMessage);
+
+  return {
+    // An in-flight capture stops at its next yield point and is requeued.
+    abort() {
+      controller?.abort();
+      if (idleHandle) {
+        cancelIdle(idleHandle);
+        idleHandle = 0;
+      }
+    },
+    destroy() {
+      destroyed = true;
+      controller?.abort();
+      cancelIdle(idleHandle);
+      clearHotTimers();
+      window.removeEventListener("message", handleMessage);
+      phaseWaiters.forEach((waiter) => waiter.resolve(false));
+      phaseWaiters = [];
+      iframe?.remove();
+      iframe = null;
+    },
+    // A code update reached the Inspector's document. A loaded renderer
+    // catches up after its own storyHotUpdated and a quiet period, or reloads
+    // its src when that signal does not arrive in time; a renderer that has
+    // no document yet loads the new code anyway.
+    notifyCodeUpdate() {
+      notifiedCodeVersion += 1;
+      if (!iframe || ((needsReload || !currentRouteId) && !expectingLoad)) {
+        catchUp();
+        return;
+      }
+
+      window.clearTimeout(hotQuietTimer);
+      hotQuietTimer = 0;
+      window.clearTimeout(hotSignalTimer);
+      hotSignalTimer = window.setTimeout(() => {
+        hotSignalTimer = 0;
+        if (!isBehind() || destroyed) {
+          return;
+        }
+
+        needsReload = true;
+        reloadReason = "hmr-no-signal";
+        catchUp();
+      }, rendererLimits.hotSignalMs);
+      setBusy(running || queue.length > 0);
+    },
+    // From now on every switch reloads the src (for this prototype, for the
+    // rest of the page session).
+    reloadEverySwitch() {
+      reloadEverySwitch = true;
+    },
+    resume() {
+      kick();
+    },
+    // Items in capture order. An item the in-flight capture already covers
+    // (same kind and route, and new enough code) is left out.
+    setQueue(items) {
+      queue = items.filter(
+        (item) =>
+          !inFlight ||
+          item.kind !== inFlight.kind ||
+          item.routeId !== inFlight.routeId ||
+          inFlight.codeVersion < (item.minCodeVersion ?? 0),
+      );
+      kick();
+    },
+  };
+}
 
 // Tells figma-export review that anchored elements moved without a React
 // render, so it repositions its pins in the same animation frame.
@@ -706,11 +1545,14 @@ function getCameraTransform(camera) {
 
 // A route frame's label, drawn in the screen-space overlay above the frame's
 // preview: fixed 12 px text that follows the camera through CSS variables.
-// It is also a hit area for the frame (the components button excepted).
+// It is also a hit area for the frame (the components button excepted). While
+// the frame shows a snapshot older than the latest code update, the label
+// carries an Updating snapshot badge.
 const PrototypeFrameLabel = memo(function PrototypeFrameLabel({
   componentCount,
   isHidden,
   isHovered,
+  isUpdating = false,
   onPointerCancel,
   onPointerDown,
   onPointerEnter,
@@ -754,6 +1596,15 @@ const PrototypeFrameLabel = memo(function PrototypeFrameLabel({
           "span",
           { className: "prototype-inspector__flow-frame-badge" },
           viewportBadge,
+        )
+      : null,
+    // Icon-sized, so the route title keeps the room on narrow labels.
+    isUpdating
+      ? createElement(
+          "span",
+          { className: "prototype-inspector__flow-frame-badge", "data-updating": "true", title: "Updating snapshot" },
+          createElement("span", { "aria-hidden": "true" }, "↻"),
+          createElement("span", { className: "prototype-inspector__visually-hidden" }, "Updating snapshot"),
         )
       : null,
     componentCount > 0
@@ -850,7 +1701,45 @@ function markLabelPlacement(startedAt) {
   }
 }
 
-export function PrototypeFlow({ prototype }) {
+// Snapshot keys revalidated in this page session, with the code update count
+// the capture ran on: a cached snapshot is recaptured once per session and
+// again once the count has moved on, also when the update happened while the
+// UI Flow was not mounted.
+const revalidatedSnapshotKeys = new Map();
+
+function isSnapshotRevalidated(key) {
+  return (revalidatedSnapshotKeys.get(key) ?? -1) >= getCodeUpdateCount();
+}
+// How long opening waits for the cached snapshots before rendering frames at
+// their declared sizes.
+const snapshotPreloadWaitMs = 150;
+// A live frame refreshes its snapshot this long after its own last
+// storyHotUpdated (restarted by further notifications).
+const liveHotQuietMs = 100;
+
+// Revokes a snapshot object URL no element shows any more. While a comment
+// is being placed its screenshot may still clone snapshot images, so the URL
+// waits in `deferred` for an idle moment after capture mode ends.
+function revokeSnapshotUrlWhenSafe(url, deferred) {
+  if (typeof document !== "undefined" && document.documentElement.dataset.sbfxCaptureMode === "true") {
+    if (!deferred.size) {
+      scheduleIdle(() => {
+        const waiting = [...deferred];
+
+        deferred.clear();
+        waiting.forEach((entry) => revokeSnapshotUrlWhenSafe(entry, deferred));
+      });
+    }
+    deferred.add(url);
+    return;
+  }
+
+  URL.revokeObjectURL(url);
+}
+
+// initialTiers (instance key -> tier) is for test_flow_canvas_ssr.mjs only:
+// it replaces the computed level of detail so server renders can show tiers.
+export function PrototypeFlow({ initialTiers = null, prototype }) {
   const flow = prototype.flow;
   const routes = useMemo(() => normalizeRoutes(flow), [flow]);
   const flowNodes = useMemo(() => normalizeFlowNodes(flow), [flow]);
@@ -918,6 +1807,102 @@ export function PrototypeFlow({ prototype }) {
   const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
   const [isZoomMenuOpen, setIsZoomMenuOpen] = useState(false);
   const [routePreviewSizes, setRoutePreviewSizes] = useState({});
+  // Measured sizes that arrive while the camera moves or a frame is dragged
+  // wait here and join the commit that settles the camera or ends the drag.
+  const pendingSizesRef = useRef(new Map());
+  // Frames whose measurements must not touch the size cache (a later canvas
+  // capability, such as interact mode, suspends them by instance key).
+  const measurementSuspendedFrameIdsRef = useRef(new Set());
+  // Each route's resolved viewport: the size cache's initial value and the
+  // height the 8x runaway guard compares with.
+  const resolvedViewportsRef = useRef(new Map());
+  // Level of detail. React sees the canvas size, whether the camera has
+  // settled once, the hover that has dwelled long enough and a version bump
+  // when live frames finish rendering; tiers are derived from them in render.
+  // Hover changes and render reports that arrive while the camera moves or a
+  // frame is dragged wait for the commit that ends the gesture.
+  const [canvasSize, setCanvasSize] = useState(null);
+  const [hasSettledCamera, setHasSettledCamera] = useState(false);
+  const [hoverDwellKey, setHoverDwellKey] = useState(null);
+  const [, setRenderedVersion] = useState(0);
+  const hoverDwellTimerRef = useRef(0);
+  const pendingHoverRef = useRef(undefined);
+  const pendingDwellRef = useRef(undefined);
+  const pendingRenderedRef = useRef(false);
+  const renderedFramesRef = useRef(new Set());
+  const loadingFrameRef = useRef(null);
+  // The single load slot: a live frame loading or waiting to load keeps the
+  // snapshot renderer paused, and the renderer loading its document keeps
+  // live frames waiting.
+  const liveLoadPendingRef = useRef(false);
+  const rendererLoadingRef = useRef(false);
+  const pendingCanvasSizeRef = useRef(null);
+  const frameBoxesRef = useRef([]);
+  const previousTiersRef = useRef(new Map());
+  // Measurement suspension is per instance key; a route counts as suspended
+  // while any of its instances is, because its instances share one cached
+  // size and one snapshot record.
+  const isRouteMeasurementSuspended = (routeId) =>
+    measurementSuspendedFrameIdsRef.current.size > 0 &&
+    frameBoxesRef.current.some(
+      (frame) => frame.routeId === routeId && measurementSuspendedFrameIdsRef.current.has(frame.key),
+    );
+  // Interfaces for later canvas capabilities, all keyed by instance key: one
+  // frame pinned live (interact mode), promoted frames (selection), frames
+  // interacted with since their last plain load.
+  const [pinnedFrameId, setPinnedFrameId] = useState(null);
+  const [promotedFrameIds, setPromotedFrameIds] = useState(() => new Set());
+  const interactedFrameIdsRef = useRef(new Set());
+  // Route snapshots: object URLs of the snapshot images shown for frames that
+  // are not live, by route; results that arrive during a gesture wait.
+  // Snapshots are captured for the current story only; the flow export story
+  // (Static Flow) loads the whole flow export in every route iframe.
+  const currentStoryId =
+    typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("id");
+  const snapshotsAllowed =
+    Boolean(currentStoryId) && currentStoryId !== getPrototypeFlowExportStoryId(prototype);
+  // Key prefix of this prototype's snapshot records (see getSnapshotKey).
+  const snapshotPrefix = [SNAPSHOT_FORMAT_VERSION, currentStoryId, prototype.id, ""].join("|");
+  const [snapshotUrls, setSnapshotUrls] = useState(() => new Map());
+  // Until the cached snapshots are read (at most snapshotPreloadWaitMs) the
+  // canvas layers stay hidden, so frames first appear at their cached sizes.
+  const [snapshotPreload, setSnapshotPreload] = useState(snapshotsAllowed ? "pending" : "done");
+  // Routes whose shown snapshot predates the latest code update.
+  const [staleRoutes, setStaleRoutes] = useState(() => new Set());
+  const staleRoutesRef = useRef(staleRoutes);
+  staleRoutesRef.current = staleRoutes;
+  const pendingSnapshotsRef = useRef(new Map());
+  const pendingStaleRef = useRef(new Map());
+  const pendingPreloadRef = useRef(null);
+  const failedSnapshotRoutesRef = useRef(new Set());
+  // routeId -> { key, record } of the stored snapshot the route shows.
+  const routeRecordsRef = useRef(new Map());
+  // Per route, the code update count its snapshot must reach.
+  const staleVersionsRef = useRef(new Map());
+  // Live frames by instance key: whether the last load used the plain route
+  // preview URL and has refreshed the route's snapshot, refresh requests for
+  // the capture queue, and quiet timers after the frame's storyHotUpdated.
+  const liveLoadsRef = useRef(new Map());
+  const liveRefreshRef = useRef(new Map());
+  const liveHotTimersRef = useRef(new Map());
+  const frameLiveHandlersRef = useRef(null);
+  const shownSnapshotUrlsRef = useRef(new Map());
+  const deferredRevokesRef = useRef(new Set());
+  const rendererLayerRef = useRef(null);
+  const rendererRef = useRef(null);
+  const snapshotCacheRef = useRef(null);
+  const snapshotHandlersRef = useRef(null);
+  const syncSnapshotQueueRef = useRef(() => {});
+  const handleCodeUpdateRef = useRef(() => {});
+  const routePreviewSizesRef = useRef(routePreviewSizes);
+  routePreviewSizesRef.current = routePreviewSizes;
+  const levelOfDetailRef = useRef(null);
+  levelOfDetailRef.current = {
+    interactedFrameIds: interactedFrameIdsRef.current,
+    measurementSuspendedFrameIds: measurementSuspendedFrameIdsRef.current,
+    setPinnedFrameId,
+    setPromotedFrameIds,
+  };
   // Camera { x, y, z }: world point (wx, wy) draws at (wx * z + x, wy * z + y).
   // The ref is the live value; React only sees the snapshot taken once the
   // camera has been still for cameraIdleMs.
@@ -981,6 +1966,9 @@ export function PrototypeFlow({ prototype }) {
   const routePositionMap = useMemo(() => {
     const map = new Map();
 
+    resolvedViewportsRef.current = new Map(
+      routes.map((route) => [route.id, getPrototypeViewport(prototype, route)]),
+    );
     routes.forEach((route, index) => {
       const position =
         draggedPositions[route.id] ??
@@ -1058,6 +2046,539 @@ export function PrototypeFlow({ prototype }) {
     () => getFlowBounds(routePositionMap.values()),
     [routePositionMap],
   );
+  // Level of detail. Tiers come from the camera snapshot React holds (it
+  // changes only when the camera settles), so a gesture keeps the tiers it
+  // started with and the settle commit applies the new ones. No frame is live
+  // before the camera has settled once, unless a stored camera was restored
+  // and the canvas has been measured.
+  const frameBoxes = useMemo(
+    () =>
+      routes.map((route, index) => {
+        const position = routePositionMap.get(route.id) ?? getRoutePosition(route, index);
+
+        return {
+          height: position.height ?? defaultNodeHeight,
+          key: route.id,
+          routeId: route.id,
+          width: position.width ?? defaultPreviewWidth + nodeFrameSize,
+          x: position.x,
+          y: position.y,
+        };
+      }),
+    [defaultPreviewWidth, routePositionMap, routes],
+  );
+  const cameraReady = Boolean(canvasSize) && (hasSettledCamera || Boolean(storedCamera));
+  const frameTiers = useMemo(() => {
+    if (initialTiers) {
+      return new Map(frameBoxes.map((frame) => [frame.key, initialTiers[frame.key] ?? "snapshot"]));
+    }
+
+    if (!cameraReady) {
+      return new Map(
+        frameBoxes.map((frame) => [
+          frame.key,
+          frame.width * cameraSnapshot.z < LOD_THRESHOLDS.placeholderMaxWidth ? "placeholder" : "snapshot",
+        ]),
+      );
+    }
+
+    if (typeof performance !== "undefined") {
+      performance.mark("pi:flow:tiers");
+    }
+
+    return selectFrameTiers({
+      camera: cameraSnapshot,
+      canvasSize,
+      frames: frameBoxes,
+      hovered: hoverDwellKey ? { dwellMs: LOD_THRESHOLDS.hoverDwellMs, key: hoverDwellKey } : null,
+      pinnedId: pinnedFrameId,
+      previousTiers: previousTiersRef.current,
+      promotedIds: promotedFrameIds,
+    });
+  }, [cameraReady, cameraSnapshot, canvasSize, frameBoxes, hoverDwellKey, initialTiers, pinnedFrameId, promotedFrameIds]);
+  useIsomorphicLayoutEffect(() => {
+    previousTiersRef.current = frameTiers;
+  }, [frameTiers]);
+  // Live frames whose story has rendered keep their iframe; one more live
+  // frame at a time loads (the slot stays with a frame until it renders or
+  // stops being live). Frames that left the live tier lose their iframe and
+  // start over when they come back.
+  renderedFramesRef.current.forEach((key) => {
+    if (frameTiers.get(key) !== "live") {
+      renderedFramesRef.current.delete(key);
+    }
+  });
+  liveLoadsRef.current.forEach((_load, key) => {
+    if (frameTiers.get(key) !== "live") {
+      liveLoadsRef.current.delete(key);
+    }
+  });
+  if (
+    loadingFrameRef.current &&
+    (frameTiers.get(loadingFrameRef.current) !== "live" || renderedFramesRef.current.has(loadingFrameRef.current))
+  ) {
+    loadingFrameRef.current = null;
+  }
+  if (!loadingFrameRef.current && !rendererLoadingRef.current) {
+    loadingFrameRef.current = pickLoadingFrame(frameTiers, frameBoxes, renderedFramesRef.current, {
+      camera: cameraSnapshot,
+      canvasSize,
+      hoveredKey: hoverDwellKey,
+      pinnedId: pinnedFrameId,
+      promotedIds: promotedFrameIds,
+    });
+  }
+  liveLoadPendingRef.current = frameBoxes.some(
+    (frame) => frameTiers.get(frame.key) === "live" && !renderedFramesRef.current.has(frame.key),
+  );
+  frameBoxesRef.current = frameBoxes;
+  const isGestureActive = () => Boolean(cameraIdleTimerRef.current) || Boolean(dragRef.current?.started);
+  const getRouteSnapshotKey = (routeId) =>
+    getSnapshotKey({
+      formatVersion: SNAPSHOT_FORMAT_VERSION,
+      prototypeId: prototype.id,
+      routeId,
+      storyId: currentStoryId,
+      viewportSignature: getPrototypeFlowLayoutViewportSignature(
+        getPrototypeViewport(prototype, routes.find((entry) => entry.id === routeId) ?? null),
+      ),
+    });
+  const hasSnapshotUrl = (routeId) => snapshotUrls.has(routeId) || pendingSnapshotsRef.current.has(routeId);
+  // Updating marks change state only when they change; during a gesture they
+  // wait like snapshot results.
+  const setRouteStale = (routeId, isStale) => {
+    const current = pendingStaleRef.current.has(routeId)
+      ? pendingStaleRef.current.get(routeId)
+      : staleRoutesRef.current.has(routeId);
+
+    if (current === isStale) {
+      return;
+    }
+    if (isGestureActive()) {
+      pendingStaleRef.current.set(routeId, isStale);
+      return;
+    }
+
+    setStaleRoutes((routesNow) => {
+      const next = new Set(routesNow);
+
+      if (isStale) {
+        next.add(routeId);
+      } else {
+        next.delete(routeId);
+      }
+      return next;
+    });
+  };
+  // Read by the renderer's callbacks, which outlive renders.
+  snapshotHandlersRef.current = {
+    isPaused: () => isGestureActive() || liveLoadPendingRef.current || document.visibilityState === "hidden",
+    // The stored hash a capture compares with (unchanged markup skips drawing).
+    markupHashFor: (routeId) => {
+      const entry = routeRecordsRef.current.get(routeId);
+
+      return entry && entry.key === getRouteSnapshotKey(routeId) ? entry.record.markupHash ?? null : null;
+    },
+    onFailure: (routeId, reason) => {
+      // Not retried until the next revalidation or code update.
+      failedSnapshotRoutesRef.current.add(routeId);
+      console.debug(`[prototype-inspector] No snapshot of route "${routeId}": ${reason}`);
+    },
+    // Every finished capture revalidates the route for this page session. A
+    // capture that ran on code older than the route's last code update leaves
+    // (or puts) the updating mark on its tile.
+    onResult: (routeId, result, { codeVersion = 0, kind = "renderer" } = {}) => {
+      // A route whose measurement another canvas capability suspended keeps
+      // its stored record; it is captured again after the suspension.
+      if (isRouteMeasurementSuspended(routeId)) {
+        return;
+      }
+
+      const key = getRouteSnapshotKey(routeId);
+      const isCurrent = codeVersion >= (staleVersionsRef.current.get(routeId) ?? 0);
+      const previous = routeRecordsRef.current.get(routeId);
+
+      revalidatedSnapshotKeys.set(key, Math.max(revalidatedSnapshotKeys.get(key) ?? -1, codeVersion));
+      if (result.unchanged) {
+        if (previous) {
+          routeRecordsRef.current.set(routeId, { ...previous, codeVersion, source: kind });
+        }
+        snapshotCacheRef.current?.touch(key).catch(() => {});
+        if (isCurrent) {
+          setRouteStale(routeId, false);
+        }
+        return;
+      }
+
+      // A clean live capture that differs from the renderer's capture of the
+      // same code: in-place remounts leave state behind in this prototype.
+      if (kind === "live" && previous?.source === "renderer" && previous.codeVersion === codeVersion) {
+        console.debug(`[prototype-inspector] Route "${routeId}" differs live; snapshots reload the renderer on every switch.`);
+        rendererRef.current?.reloadEverySwitch();
+      }
+
+      const url = URL.createObjectURL(result.blob);
+      const record = {
+        blob: result.blob,
+        capturedAt: Date.now(),
+        height: result.height,
+        markupHash: result.markupHash,
+        measuredInHeight: result.measuredInHeight,
+        previewHeight: result.previewHeight,
+        previewWidth: result.previewWidth,
+        width: result.width,
+      };
+
+      try {
+        performance.mark("pi:flow:snapshot", { detail: { routeId } });
+      } catch {
+        // Marks are diagnostics only.
+      }
+      routeRecordsRef.current.set(routeId, { codeVersion, key, record, source: kind });
+      snapshotCacheRef.current?.put(key, record).catch(() => {});
+      setRouteStale(routeId, !isCurrent);
+      if (isGestureActive()) {
+        const replaced = pendingSnapshotsRef.current.get(routeId);
+
+        if (replaced) {
+          revokeSnapshotUrlWhenSafe(replaced, deferredRevokesRef.current);
+        }
+        pendingSnapshotsRef.current.set(routeId, url);
+        return;
+      }
+
+      setSnapshotUrls((current) => new Map(current).set(routeId, url));
+    },
+    onSettled: (item, outcome) => {
+      if (item.kind === "live" && outcome !== "aborted" && liveRefreshRef.current.get(item.key)?.frame === item.frame) {
+        liveRefreshRef.current.delete(item.key);
+      }
+    },
+    onSize: (routeId, size) =>
+      handlePreviewSizeChange(routeId, { height: size.height, width: size.width }, size.measuredInHeight ?? size.height),
+    sizeFor: (routeId) => {
+      const viewport = resolvedViewportsRef.current.get(routeId);
+      const fallback = viewport ? { height: viewport.height, width: viewport.width } : { height: defaultPreviewHeight, width: defaultPreviewWidth };
+
+      return { cached: routePreviewSizesRef.current[routeId] ?? null, fallback, viewportHeight: fallback.height };
+    },
+  };
+  // Live frames refresh their route's snapshot from their own iframe: after
+  // the first completed render of each plain route preview load, and after
+  // their own storyHotUpdated plus a quiet period. A frame loaded from another
+  // URL, or marked interacted since its last load, does not.
+  const getFrameRouteId = (key) => frameBoxes.find((frame) => frame.key === key)?.routeId ?? key;
+  const requestLiveRefresh = (key, iframe) => {
+    if (
+      !snapshotsAllowed ||
+      !iframe?.isConnected ||
+      !liveLoadsRef.current.get(key)?.plain ||
+      interactedFrameIdsRef.current.has(key)
+    ) {
+      return;
+    }
+
+    liveRefreshRef.current.set(key, { frame: iframe, routeId: getFrameRouteId(key) });
+    syncSnapshotQueueRef.current();
+  };
+  frameLiveHandlersRef.current = {
+    hotUpdated: (key, iframe) => {
+      const restart = () => {
+        window.clearTimeout(liveHotTimersRef.current.get(key)?.timer);
+        liveHotTimersRef.current.set(key, { restart, timer: window.setTimeout(run, liveHotQuietMs) });
+      };
+      const run = () => {
+        liveHotTimersRef.current.delete(key);
+        requestLiveRefresh(key, iframe);
+      };
+
+      restart();
+    },
+    // A plain route preview load also clears the frame's interacted mark.
+    loaded: (key, iframe) => {
+      const plain = iframe.getAttribute("src") === getRoutePreviewSource(getFrameRouteId(key));
+
+      liveLoadsRef.current.set(key, { plain, refreshed: false });
+      if (plain) {
+        interactedFrameIdsRef.current.delete(key);
+      }
+    },
+    rendered: (key, iframe) => {
+      const load = liveLoadsRef.current.get(key);
+
+      if (!iframe || !load || load.refreshed) {
+        return;
+      }
+
+      load.refreshed = true;
+      requestLiveRefresh(key, iframe);
+    },
+  };
+  // Opening reads this prototype's stored snapshots once and shows them, at
+  // their cached preview sizes, in the commit that reveals the canvas; after
+  // snapshotPreloadWaitMs the canvas renders at declared sizes and late
+  // records still apply. Another story or prototype starts over.
+  useEffect(() => {
+    if (!snapshotsAllowed) {
+      setSnapshotPreload("done");
+      return undefined;
+    }
+
+    const cache = createSnapshotCache({ adapter: createIndexedDbAdapter(), formatVersion: SNAPSHOT_FORMAT_VERSION });
+    const routeIdsByKey = new Map(routes.map((route) => [getRouteSnapshotKey(route.id), route.id]));
+    let active = true;
+    let waiting = true;
+    const stopWaiting = () => {
+      if (waiting) {
+        waiting = false;
+        setSnapshotPreload("done");
+      }
+    };
+    const timer = window.setTimeout(stopWaiting, snapshotPreloadWaitMs);
+
+    snapshotCacheRef.current = cache;
+    cache.getAllWithPrefix(snapshotPrefix).then((entries) => {
+      if (!active) {
+        return;
+      }
+
+      window.clearTimeout(timer);
+      const urls = new Map();
+      const sizes = {};
+
+      entries.forEach(([key, record]) => {
+        const routeId = routeIdsByKey.get(key);
+
+        // A capture of this session is newer than the stored record.
+        if (!routeId || !record?.blob || routeRecordsRef.current.has(routeId)) {
+          return;
+        }
+
+        routeRecordsRef.current.set(routeId, { codeVersion: -1, key, record, source: "cache" });
+        urls.set(routeId, URL.createObjectURL(record.blob));
+        if (record.previewWidth > 0 && record.previewHeight > 0) {
+          sizes[routeId] = {
+            height: record.previewHeight,
+            width: record.previewWidth,
+            ...(typeof record.measuredInHeight === "number" ? { measuredInHeight: record.measuredInHeight } : {}),
+          };
+        }
+      });
+
+      // Revalidated earlier in this page session, before a code update made
+      // while the UI Flow was not mounted: shown as updating.
+      const codeVersion = getCodeUpdateCount();
+      const outdated = [...urls.keys()].filter((routeId) => {
+        const recorded = revalidatedSnapshotKeys.get(routeRecordsRef.current.get(routeId)?.key);
+
+        return recorded !== undefined && recorded < codeVersion;
+      });
+      const apply = () => {
+        if (Object.keys(sizes).length) {
+          setRoutePreviewSizes((current) => ({ ...sizes, ...current }));
+        }
+        if (urls.size) {
+          setSnapshotUrls((current) => new Map([...urls, ...current]));
+        }
+        if (outdated.length) {
+          outdated.forEach((routeId) => staleVersionsRef.current.set(routeId, codeVersion));
+          setStaleRoutes((current) => new Set([...current, ...outdated]));
+        }
+        stopWaiting();
+      };
+
+      // The hidden canvas shows no gesture (the opening fit's idle timer must
+      // not delay the reveal); records that arrive after the reveal wait for
+      // the end of a gesture like other async results.
+      if (!waiting && isGestureActive()) {
+        pendingPreloadRef.current = apply;
+      } else {
+        apply();
+      }
+    });
+
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+      rendererRef.current?.destroy();
+      rendererRef.current = null;
+      routeRecordsRef.current = new Map();
+      failedSnapshotRoutesRef.current.clear();
+      liveRefreshRef.current.clear();
+      pendingPreloadRef.current = null;
+      pendingSnapshotsRef.current.forEach((url) => revokeSnapshotUrlWhenSafe(url, deferredRevokesRef.current));
+      pendingSnapshotsRef.current.clear();
+      setSnapshotUrls(new Map());
+      setStaleRoutes(new Set());
+      setSnapshotPreload("pending");
+    };
+  }, [snapshotPrefix, snapshotsAllowed]);
+  // Capture order: live frames refreshing their route, then frames that are
+  // not live: visible frames, frames inside the expanded viewport, then the
+  // rest, each group nearest the canvas center first. A frame that is not live
+  // is captured when it has no snapshot, when its snapshot was not
+  // revalidated in this page session, or when it predates a code update.
+  syncSnapshotQueueRef.current = () => {
+    if (!snapshotsAllowed || snapshotPreload !== "done" || !rendererLayerRef.current || !canvasSize) {
+      return;
+    }
+
+    const visible = getVisibleWorldRect(cameraSnapshot, canvasSize, 0);
+    const expanded = getVisibleWorldRect(cameraSnapshot, canvasSize, 0.5);
+    const centerX = visible.x + visible.width / 2;
+    const centerY = visible.y + visible.height / 2;
+    const overlaps = (frame, rect) =>
+      frame.x < rect.x + rect.width && frame.x + frame.width > rect.x && frame.y < rect.y + rect.height && frame.y + frame.height > rect.y;
+    const liveItems = [];
+
+    liveRefreshRef.current.forEach((request, key) => {
+      if (!request.frame.isConnected || frameTiers.get(key) !== "live") {
+        liveRefreshRef.current.delete(key);
+        return;
+      }
+
+      liveItems.push({ frame: request.frame, key, kind: "live", minCodeVersion: 0, routeId: request.routeId });
+    });
+
+    const seen = new Set();
+    const rendererItems = frameBoxes
+      .filter((frame) => {
+        if (
+          seen.has(frame.routeId) ||
+          frameTiers.get(frame.key) === "live" ||
+          failedSnapshotRoutesRef.current.has(frame.routeId) ||
+          !getRoutePreviewSource(frame.routeId) ||
+          (hasSnapshotUrl(frame.routeId) &&
+            !staleRoutes.has(frame.routeId) &&
+            isSnapshotRevalidated(getRouteSnapshotKey(frame.routeId)))
+        ) {
+          return false;
+        }
+
+        seen.add(frame.routeId);
+        return true;
+      })
+      .map((frame) => ({
+        distance: Math.hypot(frame.x + frame.width / 2 - centerX, frame.y + frame.height / 2 - centerY),
+        group: overlaps(frame, visible) ? 0 : overlaps(frame, expanded) ? 1 : 2,
+        routeId: frame.routeId,
+      }))
+      .sort((a, b) => a.group - b.group || a.distance - b.distance)
+      .map(({ routeId }) => ({ kind: "renderer", minCodeVersion: staleVersionsRef.current.get(routeId) ?? 0, routeId }));
+    const items = [...liveItems, ...rendererItems];
+
+    if (!items.length) {
+      rendererRef.current?.setQueue([]);
+      return;
+    }
+
+    rendererRef.current ??= createSnapshotRenderer({
+      codeVersion: getCodeUpdateCount(),
+      isPaused: () => snapshotHandlersRef.current.isPaused(),
+      layer: rendererLayerRef.current,
+      liveCodeVersion: () => getCodeUpdateCount(),
+      markupHashFor: (...args) => snapshotHandlersRef.current.markupHashFor(...args),
+      onBusyChange: (isBusy) => {
+        if (rootRef.current) {
+          rootRef.current.dataset.snapshotQueue = isBusy ? "busy" : "idle";
+        }
+      },
+      onFailure: (...args) => snapshotHandlersRef.current.onFailure(...args),
+      onLoadingChange: (isLoading) => {
+        rendererLoadingRef.current = isLoading;
+        // A live frame waiting for the slot can load now.
+        if (!isLoading && liveLoadPendingRef.current && !loadingFrameRef.current) {
+          if (isGestureActive()) {
+            pendingRenderedRef.current = true;
+          } else {
+            setRenderedVersion((version) => version + 1);
+          }
+        }
+      },
+      onResult: (...args) => snapshotHandlersRef.current.onResult(...args),
+      onSettled: (...args) => snapshotHandlersRef.current.onSettled(...args),
+      onSize: (...args) => snapshotHandlersRef.current.onSize(...args),
+      routeIds: new Set(routes.map((route) => route.id)),
+      sizeFor: (...args) => snapshotHandlersRef.current.sizeFor(...args),
+      sourceFor: (routeId) => getRoutePreviewSource(routeId),
+      storyId: currentStoryId,
+    });
+    rendererRef.current.setQueue(items);
+  };
+  useEffect(() => {
+    syncSnapshotQueueRef.current();
+  }, [cameraSnapshot, canvasSize, frameBoxes, frameTiers, snapshotPreload, snapshotUrls, snapshotsAllowed, staleRoutes]);
+  // The renderer waits while a live frame loads; resume it once none does.
+  useEffect(() => {
+    if (!liveLoadPendingRef.current) {
+      rendererRef.current?.resume();
+    }
+  });
+  // A code update (Vite HMR in Storybook dev) marks every snapshot of this
+  // prototype stale and queues one more capture of each route, visible
+  // frames first; failed routes are tried again.
+  handleCodeUpdateRef.current = () => {
+    const version = getCodeUpdateCount();
+    const shown = [];
+
+    routes.forEach((route) => {
+      staleVersionsRef.current.set(route.id, version);
+      if (hasSnapshotUrl(route.id)) {
+        shown.push(route.id);
+      }
+    });
+    failedSnapshotRoutesRef.current.clear();
+    snapshotCacheRef.current?.markStale((key) => key.startsWith(snapshotPrefix));
+    rendererRef.current?.notifyCodeUpdate();
+    // A live frame still in its quiet period waits again.
+    liveHotTimersRef.current.forEach((entry) => entry.restart());
+    if (isGestureActive()) {
+      shown.forEach((routeId) => pendingStaleRef.current.set(routeId, true));
+    } else if (shown.some((routeId) => !staleRoutesRef.current.has(routeId))) {
+      setStaleRoutes((current) => new Set([...current, ...shown]));
+    }
+    syncSnapshotQueueRef.current();
+  };
+  useEffect(() => {
+    if (!snapshotsAllowed) {
+      return undefined;
+    }
+
+    return subscribeToCodeUpdates(() => handleCodeUpdateRef.current());
+  }, [snapshotsAllowed]);
+  // Snapshot URLs no frame shows any more are revoked once the commit that
+  // replaced them is on screen.
+  useIsomorphicLayoutEffect(() => {
+    const previous = shownSnapshotUrlsRef.current;
+
+    shownSnapshotUrlsRef.current = snapshotUrls;
+    previous.forEach((url, routeId) => {
+      if (snapshotUrls.get(routeId) !== url) {
+        revokeSnapshotUrlWhenSafe(url, deferredRevokesRef.current);
+      }
+    });
+  }, [snapshotUrls]);
+  useEffect(() => {
+    const resumeWhenVisible = () => {
+      if (document.visibilityState === "visible") {
+        rendererRef.current?.resume();
+      }
+    };
+
+    document.addEventListener("visibilitychange", resumeWhenVisible);
+    return () => {
+      document.removeEventListener("visibilitychange", resumeWhenVisible);
+      rendererRef.current?.destroy();
+      rendererRef.current = null;
+      liveHotTimersRef.current.forEach((entry) => window.clearTimeout(entry.timer));
+      liveHotTimersRef.current.clear();
+      [...shownSnapshotUrlsRef.current.values(), ...pendingSnapshotsRef.current.values()].forEach((url) =>
+        revokeSnapshotUrlWhenSafe(url, deferredRevokesRef.current),
+      );
+      shownSnapshotUrlsRef.current = new Map();
+      pendingSnapshotsRef.current.clear();
+    };
+  }, []);
   const writeCameraToDom = useCallback(() => {
     const camera = cameraRef.current;
 
@@ -1084,15 +2605,81 @@ export function PrototypeFlow({ prototype }) {
     }
     dispatchAnchorsMoved(rootRef.current);
   }, []);
+  // Applies the held measurements in the caller's batch, each against the
+  // size it would replace.
+  const flushPendingSizes = useCallback(() => {
+    if (!pendingSizesRef.current.size) {
+      return;
+    }
+
+    const pending = [...pendingSizesRef.current];
+
+    pendingSizesRef.current.clear();
+    setRoutePreviewSizes((sizes) =>
+      pending.reduce((next, [routeId, entry]) => applyMeasuredSize(next, routeId, entry), sizes),
+    );
+  }, []);
+  // Hover changes, dwell and render reports held during a gesture.
+  const flushPendingFrameState = useCallback(() => {
+    if (pendingHoverRef.current !== undefined) {
+      setFocusedRouteId(pendingHoverRef.current);
+      pendingHoverRef.current = undefined;
+    }
+    if (pendingDwellRef.current !== undefined) {
+      setHoverDwellKey(pendingDwellRef.current);
+      pendingDwellRef.current = undefined;
+    }
+    if (pendingRenderedRef.current) {
+      pendingRenderedRef.current = false;
+      setRenderedVersion((version) => version + 1);
+    }
+    if (pendingCanvasSizeRef.current) {
+      const size = pendingCanvasSizeRef.current;
+
+      pendingCanvasSizeRef.current = null;
+      setCanvasSize((current) =>
+        current && Math.abs(current.width - size.width) < 1 && Math.abs(current.height - size.height) < 1
+          ? current
+          : size,
+      );
+    }
+    if (pendingPreloadRef.current) {
+      const applyPreload = pendingPreloadRef.current;
+
+      pendingPreloadRef.current = null;
+      applyPreload();
+    }
+    if (pendingSnapshotsRef.current.size) {
+      const pending = [...pendingSnapshotsRef.current];
+
+      pendingSnapshotsRef.current.clear();
+      setSnapshotUrls((current) => new Map([...current, ...pending]));
+    }
+    if (pendingStaleRef.current.size) {
+      const changes = [...pendingStaleRef.current];
+
+      pendingStaleRef.current.clear();
+      setStaleRoutes((current) => {
+        const next = new Set(current);
+
+        changes.forEach(([routeId, isStale]) => (isStale ? next.add(routeId) : next.delete(routeId)));
+        return next;
+      });
+    }
+  }, []);
   const settleCamera = useCallback(() => {
     const camera = { ...cameraRef.current };
 
     cameraIdleTimerRef.current = 0;
     worldRef.current?.removeAttribute("data-camera-moving");
+    flushPendingSizes();
+    flushPendingFrameState();
+    setHasSettledCamera(true);
     setCameraSnapshot(camera);
+    rendererRef.current?.resume();
     setIsFitTracking(fitTrackingRef.current);
     writeStoredFlowCamera(cameraStorageKey, camera);
-  }, [cameraStorageKey]);
+  }, [cameraStorageKey, flushPendingFrameState, flushPendingSizes]);
   const setFitTracking = useCallback((isTracking) => {
     if (fitTrackingRef.current === isTracking) {
       return;
@@ -1110,6 +2697,11 @@ export function PrototypeFlow({ prototype }) {
     (nextCamera, { fit = false, immediate = false } = {}) => {
       cameraRef.current = nextCamera;
       setFitTracking(fit);
+      // A reviewer moving the camera stops an in-flight snapshot (it is
+      // requeued); a fit only pauses the queue until the camera settles.
+      if (!fit) {
+        rendererRef.current?.abort();
+      }
       if (immediate) {
         window.cancelAnimationFrame(cameraFrameRef.current);
         writeCameraToDom();
@@ -1226,6 +2818,7 @@ export function PrototypeFlow({ prototype }) {
         ? null
         : new ResizeObserver(() => {
             refitWhileTracking();
+            updateCanvasSize(viewport);
             dispatchAnchorsMoved(rootRef.current);
           });
 
@@ -1237,6 +2830,31 @@ export function PrototypeFlow({ prototype }) {
       window.removeEventListener("resize", refitWhileTracking);
     };
   }, []);
+  useIsomorphicLayoutEffect(() => {
+    if (viewportRef.current) {
+      updateCanvasSize(viewportRef.current);
+    }
+  }, []);
+  // The hover that has lasted LOD_THRESHOLDS.hoverDwellMs; it waits for the
+  // end of a gesture that is under way when the time is up.
+  useEffect(() => {
+    window.clearTimeout(hoverDwellTimerRef.current);
+    pendingDwellRef.current = undefined;
+    if (!focusedRouteId) {
+      setHoverDwellKey(null);
+      return undefined;
+    }
+
+    hoverDwellTimerRef.current = window.setTimeout(() => {
+      if (cameraIdleTimerRef.current || dragRef.current?.started) {
+        pendingDwellRef.current = focusedRouteId;
+      } else {
+        setHoverDwellKey(focusedRouteId);
+      }
+    }, LOD_THRESHOLDS.hoverDwellMs);
+
+    return () => window.clearTimeout(hoverDwellTimerRef.current);
+  }, [focusedRouteId]);
   useEffect(
     () => () => {
       window.cancelAnimationFrame(cameraFrameRef.current);
@@ -1361,23 +2979,62 @@ export function PrototypeFlow({ prototype }) {
       ? "active"
       : "muted";
   };
-  const handlePreviewSizeChange = useCallback((routeId, previewSize) => {
-    setRoutePreviewSizes((sizes) => {
-      const currentSize = sizes[routeId];
+  // Changes under a pixel are not a resize.
+  // Canvas size changes during a gesture (for example a resize while fit
+  // tracking re-fits) wait for the commit that ends it.
+  const updateCanvasSize = useCallback((viewport) => {
+    const size = { height: viewport.clientHeight, width: viewport.clientWidth };
 
-      if (
-        currentSize &&
-        Math.abs(currentSize.height - previewSize.height) < 2 &&
-        Math.abs(currentSize.width - previewSize.width) < 2
-      ) {
-        return sizes;
-      }
+    if (cameraIdleTimerRef.current || dragRef.current?.started) {
+      pendingCanvasSizeRef.current = size;
+      return;
+    }
 
-      return {
-        ...sizes,
-        [routeId]: previewSize,
-      };
-    });
+    setCanvasSize((current) =>
+      current && Math.abs(current.width - size.width) < 1 && Math.abs(current.height - size.height) < 1
+        ? current
+        : size,
+    );
+  }, []);
+  // A live frame's story has rendered: it keeps its iframe, the cover goes,
+  // and the load slot moves on.
+  const handleFrameLoaded = useCallback((key, iframe) => frameLiveHandlersRef.current.loaded(key, iframe), []);
+  const handleFrameHotUpdated = useCallback((key, iframe) => frameLiveHandlersRef.current.hotUpdated(key, iframe), []);
+  const handleFrameRendered = useCallback((key, iframe = null) => {
+    frameLiveHandlersRef.current.rendered(key, iframe);
+    if (renderedFramesRef.current.has(key)) {
+      return;
+    }
+
+    renderedFramesRef.current.add(key);
+    if (cameraIdleTimerRef.current || dragRef.current?.started) {
+      pendingRenderedRef.current = true;
+      return;
+    }
+
+    setRenderedVersion((version) => version + 1);
+  }, []);
+  const handlePreviewSizeChange = useCallback((routeId, previewSize, appliedHeight) => {
+    if (isRouteMeasurementSuspended(routeId)) {
+      return;
+    }
+
+    const viewport = resolvedViewportsRef.current.get(routeId);
+    const entry = {
+      appliedHeight,
+      fallback: viewport ? { height: viewport.height, width: viewport.width } : null,
+      size: previewSize,
+      viewportHeight: viewport?.height ?? 0,
+    };
+
+    // A moving camera or an active drag commits nothing until it ends; the
+    // latest measurement of a frame replaces the one it held.
+    if (cameraIdleTimerRef.current || dragRef.current?.started) {
+      pendingSizesRef.current.set(routeId, entry);
+      return;
+    }
+
+    setRoutePreviewSizes((sizes) => applyMeasuredSize(sizes, routeId, entry));
   }, []);
   useEffect(() => {
     const handleWindowBlur = () => {
@@ -1572,6 +3229,8 @@ export function PrototypeFlow({ prototype }) {
   const latestRef = useRef(null);
   latestRef.current = {
     commitLayoutPositions,
+    flushPendingFrameState,
+    flushPendingSizes,
     arrowScale,
     displayRoutePositionMap,
     draggedPositions,
@@ -1730,6 +3389,7 @@ export function PrototypeFlow({ prototype }) {
 
         drag.started = true;
         setFitTracking(false);
+        rendererRef.current?.abort();
         startDragDom(drag);
       }
 
@@ -1755,6 +3415,10 @@ export function PrototypeFlow({ prototype }) {
     }
 
     restoreDragDom(drag);
+    // Sizes and frame state held during the drag join the release batch.
+    latestRef.current.flushPendingSizes();
+    latestRef.current.flushPendingFrameState();
+    rendererRef.current?.resume();
     // pointercancel coordinates are unreliable, so the last delta is used.
     const moved = drag.frames
       .map(({ id, origin }) => [
@@ -1785,16 +3449,37 @@ export function PrototypeFlow({ prototype }) {
 
     dragRef.current = null;
     restoreDragDom(drag);
+    flushPendingSizes();
+    flushPendingFrameState();
+    rendererRef.current?.resume();
   };
+  // Content sliding under a still pointer while the camera moves changes the
+  // hover only once the camera settles.
   const handleFramePointerEnter = useCallback((event) => {
-    if (!dragRef.current?.started) {
-      setFocusedRouteId(event.currentTarget.getAttribute("data-frame-id"));
+    if (dragRef.current?.started) {
+      return;
     }
+
+    const frameId = event.currentTarget.getAttribute("data-frame-id");
+
+    if (cameraIdleTimerRef.current) {
+      pendingHoverRef.current = frameId;
+      return;
+    }
+
+    setFocusedRouteId(frameId);
   }, []);
   const handleFramePointerLeave = useCallback(() => {
-    if (!dragRef.current?.started) {
-      setFocusedRouteId(null);
+    if (dragRef.current?.started) {
+      return;
     }
+
+    if (cameraIdleTimerRef.current) {
+      pendingHoverRef.current = null;
+      return;
+    }
+
+    setFocusedRouteId(null);
   }, []);
   const getCanvasCenter = () => {
     const viewport = viewportRef.current;
@@ -2001,12 +3686,23 @@ export function PrototypeFlow({ prototype }) {
         ? "Open Static Flow to export this flow."
         : "Figma export is not available in UI Flow.",
       "data-sbfx-view": "ui-flow",
+      // Hides the canvas layers until the cached snapshots are read.
+      "data-snapshot-preload": snapshotPreload === "pending" ? "pending" : undefined,
       ref: rootRef,
       style: {
         "--prototype-inspector-active-viewport-height": `${defaultPreviewHeight}px`,
         "--prototype-inspector-active-viewport-width": `${defaultPreviewWidth}px`,
       },
     },
+    // The snapshot renderer sits outside the comment canvas, under the opaque
+    // viewport: figma-export draws every hooked iframe inside the canvas into
+    // line and canvas comment screenshots, whatever its opacity.
+    createElement("div", {
+      "aria-hidden": "true",
+      className: "prototype-inspector__flow-renderer-layer",
+      "data-sbfx-capture-ignore": "true",
+      ref: rendererLayerRef,
+    }),
     createElement(
       "div",
       {
@@ -2107,9 +3803,21 @@ export function PrototypeFlow({ prototype }) {
           const position =
             routePositionMap.get(route.id) ?? getRoutePosition(route, index);
 
+          const tier = frameTiers.get(route.id) ?? "snapshot";
+          const isRendered = renderedFramesRef.current.has(route.id);
+          const snapshotUrl = snapshotUrls.get(route.id) ?? null;
+
           return createElement(PrototypeRouteCard, {
             height: position.height ?? defaultNodeHeight,
+            instanceKey: route.id,
+            isAnchor: true,
+            isRendered,
+            isSnapshotStale: tier !== "live" && Boolean(snapshotUrl) && staleRoutes.has(route.id),
             key: route.id,
+            mountIframe: tier === "live" && (isRendered || loadingFrameRef.current === route.id),
+            onFrameHotUpdated: handleFrameHotUpdated,
+            onFrameLoaded: handleFrameLoaded,
+            onFrameRendered: handleFrameRendered,
             onPointerCancel: handleFramePointerUp,
             onPointerDown: handleFramePointerDown,
             onPointerEnter: handleFramePointerEnter,
@@ -2118,8 +3826,11 @@ export function PrototypeFlow({ prototype }) {
             onPointerUp: handleFramePointerUp,
             onPreviewSizeChange: handlePreviewSizeChange,
             previewHeight: position.previewHeight ?? defaultPreviewHeight,
+            previewSource: getRoutePreviewSource(route.id),
             previewWidth: position.previewWidth ?? defaultPreviewWidth,
             route,
+            snapshotUrl,
+            tier,
             width: position.width ?? defaultPreviewWidth + nodeFrameSize,
             x: position.x,
             y: position.y,
@@ -2186,6 +3897,8 @@ export function PrototypeFlow({ prototype }) {
             isHidden:
               !isHovered && visible.width * cameraSnapshot.z < frameLabelMinScreenWidth,
             isHovered,
+            isUpdating:
+              frameTiers.get(route.id) !== "live" && snapshotUrls.has(route.id) && staleRoutes.has(route.id),
             key: route.id,
             onPointerCancel: handleFramePointerUp,
             onPointerDown: handleFramePointerDown,

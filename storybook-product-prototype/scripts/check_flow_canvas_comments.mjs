@@ -399,6 +399,21 @@ function installCheckLibrary(config) {
       expected: { x: moves * stepX, y: moves * stepY },
     };
   };
+  // With level of detail only live frames hold an iframe: zoom to 100%
+  // (Shift+0 through the canvas key dispatcher) until one has rendered.
+  lib.bringFrameLive = async (timeoutMs = 30_000) => {
+    const liveIframe = () =>
+      document.querySelector('.prototype-inspector__flow-frame[data-tier="live"]:not([data-live-loading]) .prototype-inspector__flow-frame-preview iframe') ??
+      (document.querySelector(".prototype-inspector__flow-frame[data-tier]") ? null : document.querySelector(".prototype-inspector__flow-frame-preview iframe"));
+    if (!liveIframe()) {
+      document.body.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, code: "Digit0", key: ")", shiftKey: true }));
+    }
+    const started = performance.now();
+    while (!liveIframe() && performance.now() - started < timeoutMs) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    return Boolean(liveIframe());
+  };
   // Frame iframes under a rule that lets them take pointer events (as a frame
   // interaction mode would), with and without comment capture mode.
   lib.capturePointerEvents = () => {
@@ -505,6 +520,38 @@ function installCheckLibrary(config) {
     const client = new DOMPoint(point.x, point.y).matrixTransform(line.getScreenCTM());
     return { x: client.x, y: client.y };
   };
+  // Counts calls to the snapshot renderer's figma-export capture hook: a
+  // comment screenshot that drew the renderer's page would call it. The
+  // renderer stays loaded after its queue empties.
+  const captureHookKey = Symbol.for("sbfx.captureHook");
+  const loadedRenderer = () => {
+    const frame = document.querySelector("iframe[data-prototype-inspector-renderer]");
+    try {
+      return frame && typeof frame.contentWindow?.[captureHookKey] === "function" ? frame : null;
+    } catch {
+      return null;
+    }
+  };
+  lib.watchRendererHook = async () => {
+    let renderer;
+    try {
+      renderer = await waitFor(loadedRenderer, 30_000, "a loaded snapshot renderer");
+    } catch (error) {
+      return { error: error.message };
+    }
+    const frameWindow = renderer.contentWindow;
+    const original = frameWindow[captureHookKey];
+    window.__piRendererHookCalls = 0;
+    frameWindow[captureHookKey] = (...args) => {
+      window.__piRendererHookCalls += 1;
+      return original(...args);
+    };
+    return {
+      insideCanvas: Boolean(renderer.closest("[data-sbfx-canvas]")),
+      route: new URLSearchParams(frameWindow.location.search).get("prototypeRoute"),
+    };
+  };
+  lib.rendererHookCalls = () => ({ calls: window.__piRendererHookCalls ?? null, loaded: Boolean(loadedRenderer()) });
   // A blank canvas point: on the viewport or world layer, at least 30 px from
   // every line, outside frames, nodes, labels, controls and the addon chrome.
   lib.pointOnBlankCanvas = () => {
@@ -904,7 +951,10 @@ async function caseKeysAndCapture(page, args) {
     !unhandled.error && Math.abs(unhandled.delta.x) <= 1 && Math.abs(unhandled.delta.y) <= 1,
     unhandled.error ?? JSON.stringify(unhandled),
   );
-  const pointerEvents = await page.evaluate("window.__piCommentsCheck.capturePointerEvents()");
+  const live = await page.evaluate("window.__piCommentsCheck.bringFrameLive()");
+  const pointerEvents = live
+    ? await page.evaluate("window.__piCommentsCheck.capturePointerEvents()")
+    : { error: "no frame became live after zooming to 100%" };
   check(
     "capture: frame iframes take no pointer events while comment capture mode is on",
     !pointerEvents.error && pointerEvents.interacting === "auto" && pointerEvents.capturing === "none" && pointerEvents.afterCapture === "auto",
@@ -1014,6 +1064,7 @@ async function caseCommentsEndToEnd(page, args) {
     frame.body.anchor?.type === "element" && frame.body.anchor.id === args.frameAnchor && frame.body.story.view === "ui-flow" && frame.status < 300,
     JSON.stringify({ anchor: frame.body.anchor, view: frame.body.story.view, status: frame.status }),
   );
+  const renderer = await lib("watchRendererHook()");
   const linePoint = await lib(`pointOnLine(${JSON.stringify(args.lineAnchor)})`);
   if (!linePoint) throw new Error(`No ${args.lineAnchor} line`);
   const line = await lib(`placeComment(${JSON.stringify({ text: `Line comment ${stamp}`, ...linePoint })})`);
@@ -1021,6 +1072,16 @@ async function caseCommentsEndToEnd(page, args) {
     "comment: a comment on a transition line is anchored along that line",
     line.body.anchor?.type === "path" && line.body.anchor.id === args.lineAnchor && line.body.story.view === "ui-flow",
     JSON.stringify({ anchor: line.body.anchor, view: line.body.story.view }),
+  );
+  const rendererCalls = await lib("rendererHookCalls()");
+  check(
+    "comment: the line comment's screenshot draws no page from the loaded snapshot renderer",
+    !renderer.error &&
+      !renderer.insideCanvas &&
+      rendererCalls.loaded &&
+      rendererCalls.calls === 0 &&
+      String(line.body.capture?.dataUrl ?? "").startsWith("data:image/"),
+    JSON.stringify({ renderer, rendererCalls }),
   );
   const blankPoint = await lib("pointOnBlankCanvas()");
   if (!blankPoint) throw new Error("No blank canvas point on screen");

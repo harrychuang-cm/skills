@@ -13,17 +13,49 @@ const React = require("react");
 const { renderToStaticMarkup } = require("react-dom/server");
 const geometry = await import(new URL("../assets/prototype-inspector/flow-canvas-geometry.js", import.meta.url));
 const helper = await import(new URL("../assets/prototype-flow-layout/prototypeFlowLayout.ts", import.meta.url));
+// flow-canvas.js imports the snapshot modules; the vm context gets their
+// exports, with the IndexedDB adapter replaced by the memory adapter.
+const snapshot = await import(new URL("../assets/prototype-inspector/flow-snapshot.js", import.meta.url));
+const snapshotCacheModule = await import(new URL("../assets/prototype-inspector/flow-snapshot-cache.js", import.meta.url));
+// Loaded natively, import.meta.hot is undefined: subscribeToCodeUpdates is a no-op.
+const hmrModule = await import(new URL("../assets/prototype-inspector/flow-canvas-hmr.js", import.meta.url));
+const snapshotModules = { ...snapshot, ...snapshotCacheModule, ...hmrModule, createIndexedDbAdapter: snapshotCacheModule.createMemoryAdapter };
 const original = fs.readFileSync(`${root}/storybook-product-prototype/assets/prototype-inspector/flow-canvas.js`, "utf8");
 const code = original
   .replace(/^import[\s\S]*?;\n/gm, "")
   .replace(/^export (function|const) /gm, "$1 ");
 const addons = { getChannel: () => ({ emit() {} }) };
-const context = vm.createContext({ ...React, ...geometry, ...helper, console, URL, Date, JSON, Set, Map, UPDATE_GLOBALS: "UPDATE_GLOBALS", addons });
+const context = vm.createContext({ ...React, ...geometry, ...helper, ...snapshotModules, console, URL, Date, JSON, Set, Map, UPDATE_GLOBALS: "UPDATE_GLOBALS", addons });
 vm.runInContext(
-  `${code}\nglobalThis.testApi = { PrototypeFlow, getPrototypeViewport, getRoutePreviewSource, createStorybookGlobals, openPrototypeExternalUrl };`,
+  `${code}\nglobalThis.testApi = { PrototypeFlow, applyMeasuredSize, getFlowLayoutPositions, getPrototypeViewport, getRoutePreviewSource, createStorybookGlobals, openPrototypeExternalUrl };`,
   context,
 );
-const { PrototypeFlow } = context.testApi;
+const { PrototypeFlow, applyMeasuredSize, getFlowLayoutPositions } = context.testApi;
+
+// Frame size cache: measurements of a live frame go through applyMeasuredSize.
+{
+  const phone = { fallback: { height: 812, width: 375 }, viewportHeight: 812 };
+  const measure = (sizes, height, width, appliedHeight) =>
+    applyMeasuredSize(sizes, "vh", { ...phone, appliedHeight, size: { height, width } });
+  // min-height: calc(100vh + 20px) grows once, however often it is re-measured.
+  let sizes = measure({}, 832, 375, 812);
+  assert.equal(sizes.vh.height, 832, "100vh content grows the frame once");
+  sizes = measure(sizes, 852, 375, 832);
+  sizes = measure(sizes, 852, 375, 832);
+  assert.equal(sizes.vh.height, 832, "re-measuring 100vh feedback never grows the frame again");
+  // A scrollbar narrows the content, never the frame below its viewport.
+  assert.equal(measure({}, 832, 360, 812).vh.width, 375, "a frame stays at least as wide as its resolved viewport");
+  assert.equal(measure({}, 812, 400, 812).vh.width, 400, "wider content still widens the frame");
+  // A width change during feedback keeps the height baseline.
+  let wide = measure({}, 832, 375, 812);
+  wide = measure(wide, 852, 400, 832);
+  assert.deepEqual([wide.vh.height, wide.vh.width], [832, 400], "the width applies while the height feedback is ignored");
+  wide = measure(wide, 852, 400, 832);
+  assert.equal(wide.vh.height, 832, "the height baseline survives a width-only change");
+  // Real growth still applies, and noise under 2 px changes nothing.
+  assert.equal(measure(sizes, 1040, 375, 832).vh.height, 1040, "content that really grows still grows the frame");
+  assert.equal(measure(sizes, 833, 376, 832), sizes, "a change under 2 px leaves the cache unchanged");
+}
 
 const render = (prototype) => renderToStaticMarkup(React.createElement(PrototypeFlow, { prototype }));
 const count = (html, pattern) => (html.match(pattern) ?? []).length;
@@ -146,7 +178,7 @@ assert.doesNotMatch(withoutExport, attr("aria-label", "Open Static Flow story fo
 // built from the preview URL, so that case renders with a browser-like window.
 const flowRoot = (markup) => markup.match(/<div class="prototype-inspector prototype-inspector--flow"[^>]*>/)?.[0] ?? "";
 const browserContext = vm.createContext({
-  ...React, ...geometry, ...helper, console, URL, URLSearchParams, Date, JSON, Set, Map, UPDATE_GLOBALS: "UPDATE_GLOBALS", addons,
+  ...React, ...geometry, ...helper, ...snapshotModules, console, URL, URLSearchParams, Date, JSON, Set, Map, UPDATE_GLOBALS: "UPDATE_GLOBALS", addons,
   window: { location: new URL("http://localhost:6006/iframe.html?id=pages-prototypes-ssr-flow--default&viewMode=story") },
 });
 vm.runInContext(`${code}\nglobalThis.testApi = { PrototypeFlow };`, browserContext);
@@ -157,6 +189,62 @@ assert.match(browserRoot, attr("data-sbfx-export-label", "Open Static Flow to ex
 const exportHref = browserRoot.match(/data-sbfx-export-href="([^"]+)"/)?.[1]?.replaceAll("&amp;", "&");
 assert.ok(exportHref, "the UI Flow root links the Static Flow story");
 assert.equal(new URL(exportHref).searchParams.get("path"), "/story/pages-prototypes-ssr-flow--static-flow", "the export href opens the Static Flow story");
+// Level of detail, with a browser-like window so route preview URLs exist
+// (before tiers, every route frame rendered its iframe here).
+const browserRender = (props = {}) =>
+  renderToStaticMarkup(React.createElement(browserContext.testApi.PrototypeFlow, { prototype, ...props }));
+const opened = browserRender();
+const frameTags = opened.match(/<article[^>]*class="prototype-inspector__flow-frame"[^>]*>/g) ?? [];
+assert.equal(count(opened, /<iframe[^>]*src="[^"]*prototypeRoute=/g), 0, "the opening render holds no route iframe");
+assert.equal(frameTags.length, 2, "both route frames render");
+assert.ok(frameTags.every((tag) => /data-tier="(culled|placeholder|snapshot|live)"/.test(tag)), "every route frame carries its tier");
+const hiddenTiers = browserRender({ initialTiers: { intake: "culled", review: "placeholder" } });
+assert.equal(count(hiddenTiers, /data-sbfx-anchor="route:/g), 2, "culled and placeholder frames keep their route anchors");
+assert.equal(count(hiddenTiers, /--prototype-flow-preview-height:/g), 2, "culled and placeholder frames keep their preview size");
+assert.equal(count(hiddenTiers, /<iframe/g), 0, "culled and placeholder frames hold no iframe");
+const liveTier = browserRender({ initialTiers: { intake: "live" } });
+const liveFrame = liveTier.match(/<div class="prototype-inspector__flow-frame-preview"[^>]*data-sbfx-anchor="route:intake"[^>]*>(<iframe[^>]*>)/)?.[1] ?? "";
+assert.ok(liveFrame, "the live frame's iframe is the first child of its preview");
+assert.match(liveFrame, /inert=""/, "the live iframe is inert");
+assert.match(liveFrame, attr("tabindex", "-1"), "the live iframe is out of the tab order");
+assert.match(liveFrame, attr("aria-hidden", "true"), "the live iframe is hidden from assistive technology");
+assert.match(liveFrame, /src="[^"]*prototypeRoute=intake/, "the live iframe loads its route");
+assert.equal(count(liveTier, /<iframe/g), 1, "only the live frame holds an iframe");
+assert.match(liveTier, /data-frame-id="review"[^>]*>/, "the other frame renders");
+assert.match(liveTier, /prototype-inspector__flow-frame-skeleton/, "frames without a snapshot show the skeleton");
+// Promotion does not flash blank: until its story has rendered, the live
+// frame keeps its cover (here the skeleton) after the iframe, on top of it.
+const loadingFrame = liveTier.match(/<article[^>]*data-frame-id="intake"[^>]*>[\s\S]*?<\/article>/)?.[0] ?? "";
+assert.match(loadingFrame, /^<article[^>]*data-live-loading="true"/, "a live frame whose story has not rendered is marked loading");
+assert.match(
+  loadingFrame,
+  /<iframe[^>]*><\/iframe><div aria-hidden="true" class="prototype-inspector__flow-frame-skeleton"/,
+  "the loading live frame keeps its skeleton after (above) the iframe",
+);
+// Snapshots only for the current story: opening the UI Flow from the flow
+// export story (Static Flow) neither waits for nor makes snapshots.
+assert.match(browserRoot, attr("data-snapshot-preload", "pending"), "a regular story waits briefly for the cached snapshots");
+const exportStoryContext = vm.createContext({
+  ...React, ...geometry, ...helper, ...snapshotModules, console, URL, URLSearchParams, Date, JSON, Set, Map, UPDATE_GLOBALS: "UPDATE_GLOBALS", addons,
+  window: { location: new URL("http://localhost:6006/iframe.html?id=pages-prototypes-ssr-flow--static-flow&viewMode=story") },
+});
+vm.runInContext(`${code}\nglobalThis.testApi = { PrototypeFlow };`, exportStoryContext);
+const exportStoryRoot = flowRoot(renderToStaticMarkup(React.createElement(exportStoryContext.testApi.PrototypeFlow, { prototype })));
+assert.ok(exportStoryRoot, "the flow export story renders the UI Flow");
+assert.doesNotMatch(exportStoryRoot, /data-snapshot-preload/, "the flow export story does not wait for snapshots");
+// Measured preview sizes stay out of the layout payload: positions only.
+assert.deepEqual(
+  JSON.parse(JSON.stringify(getFlowLayoutPositions(new Map([["review", { height: 1105, previewHeight: 1040, previewWidth: 375, width: 377, x: 10.4, y: 20.6 }]])))),
+  { review: { x: 10, y: 21 } },
+  "the layout payload stores rounded positions and no measured size",
+);
+assert.doesNotMatch(opened, /data-prototype-inspector-renderer/, "server renders hold no snapshot renderer");
+assert.match(opened, /<div[^>]*class="prototype-inspector__flow-renderer-layer"[^>]*data-sbfx-capture-ignore="true"/, "comment captures ignore the renderer layer");
+assert.ok(
+  opened.indexOf("prototype-inspector__flow-renderer-layer") < opened.indexOf('class="prototype-inspector__flow-viewport"'),
+  "the renderer layer sits outside (before) the comment canvas",
+);
+
 const noExportRoot = flowRoot(render({ ...prototype, figmaExport: undefined }));
 assert.match(noExportRoot, attr("data-sbfx-view", "ui-flow"), "the ui-flow view is declared without a Static Flow story");
 assert.match(noExportRoot, attr("data-sbfx-export", "unavailable"), "Figma export is declined without a Static Flow story");
@@ -188,4 +276,4 @@ const empty = render({ id: "empty-flow", flow: { routes: [] } });
 assert.match(empty, /prototype-inspector__empty/, "a flow without routes renders the empty state");
 assert.match(empty, /data-sbfx-comments="unavailable"/, "an empty UI Flow offers no comments");
 
-console.log("PASS UI Flow server render: frames, flow node, control names, camera layers, fit tracking, frame labels, zoom menu, contrast, comment declarations, comment anchors, empty state");
+console.log("PASS UI Flow server render: frames, flow node, control names, camera layers, fit tracking, frame labels, zoom menu, contrast, comment declarations, comment anchors, empty state, frame size cache, level of detail");

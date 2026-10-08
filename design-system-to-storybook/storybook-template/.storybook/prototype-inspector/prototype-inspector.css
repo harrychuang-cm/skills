@@ -363,6 +363,13 @@
   pointer-events: none;
 }
 
+/* Opening waits briefly for the cached snapshots, so frames first appear at
+   their cached sizes instead of jumping from the declared ones. */
+.prototype-inspector--flow[data-snapshot-preload="pending"] .prototype-inspector__flow-world,
+.prototype-inspector--flow[data-snapshot-preload="pending"] .prototype-inspector__flow-overlay {
+  visibility: hidden;
+}
+
 .prototype-inspector__flow-control-layer {
   position: absolute;
   inset: var(--pi-sys-spacing-none);
@@ -1025,6 +1032,78 @@ html[data-sbfx-workspace-open="true"][data-sbfx-workspace-orientation="bottom"]:
   background: var(--pi-sys-color-background);
   border: var(--pi-sys-spacing-none) solid var(--pi-sys-color-transparent);
   pointer-events: none;
+}
+
+/* The snapshot renderer: laid out (never display: none, or its document has
+   no layout to capture) but invisible, under the opaque viewport and outside
+   the comment canvas. */
+.prototype-inspector__flow-renderer-layer {
+  position: absolute;
+  inset-block-start: var(--pi-sys-spacing-none);
+  inset-inline-start: var(--pi-sys-spacing-none);
+  inline-size: var(--pi-sys-spacing-none);
+  block-size: var(--pi-sys-spacing-none);
+  overflow: visible;
+  pointer-events: none;
+}
+
+.prototype-inspector__flow-renderer {
+  position: absolute;
+  inset-block-start: var(--pi-sys-spacing-none);
+  inset-inline-start: var(--pi-sys-spacing-none);
+  border: var(--pi-sys-spacing-none) solid var(--pi-sys-color-transparent);
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Level of detail: a frame that is not live shows a cover in its preview,
+   which keeps its size and comment anchor in every tier. A cover lies above
+   the live iframe until the iframe's story renders, and never takes pointer
+   input, so presses (and figma-export pin placement) still reach the preview. */
+.prototype-inspector__flow-frame-placeholder,
+.prototype-inspector__flow-frame-skeleton,
+.prototype-inspector__flow-frame-snapshot {
+  position: absolute;
+  inset: var(--pi-sys-spacing-none);
+  box-sizing: border-box;
+  inline-size: 100%;
+  block-size: 100%;
+  pointer-events: none;
+  user-select: none;
+}
+
+.prototype-inspector__flow-frame-placeholder {
+  background: var(--pi-sys-color-surface-raised);
+}
+
+.prototype-inspector__flow-frame-skeleton {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: var(--pi-sys-spacing-xs);
+  padding: var(--pi-sys-spacing-md);
+  background: var(--pi-sys-color-surface-raised);
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.prototype-inspector__flow-frame-skeleton strong {
+  color: var(--pi-sys-color-on-surface-strong);
+  font-size: var(--pi-sys-typescale-title-sm-size);
+  font-weight: var(--pi-sys-weight-semibold);
+  line-height: var(--pi-sys-typescale-title-sm-line-height);
+}
+
+.prototype-inspector__flow-frame-skeleton span {
+  color: var(--pi-sys-color-on-surface-subtle);
+  font-size: var(--pi-sys-typescale-metadata-xs-size);
+  line-height: var(--pi-sys-typescale-metadata-xs-line-height);
+}
+
+.prototype-inspector__flow-frame-snapshot {
+  display: block;
+  object-fit: fill;
+  -webkit-user-drag: none;
 }
 
 /* While figma-export review is placing a comment, a press on any frame must

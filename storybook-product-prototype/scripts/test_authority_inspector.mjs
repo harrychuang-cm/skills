@@ -15,11 +15,18 @@ const geometry = await import(new URL('../assets/prototype-inspector/flow-canvas
 // The Components mode also needs flow-canvas.js helpers (rendered the way test_flow_canvas_ssr.mjs does)
 // and the review fingerprint module.
 const helper = await import(new URL('../assets/prototype-flow-layout/prototypeFlowLayout.ts', import.meta.url));
+// flow-canvas.js imports the snapshot modules; the vm context gets their
+// exports, with the IndexedDB adapter replaced by the memory adapter.
+const snapshot = await import(new URL('../assets/prototype-inspector/flow-snapshot.js', import.meta.url));
+const snapshotCacheModule = await import(new URL('../assets/prototype-inspector/flow-snapshot-cache.js', import.meta.url));
+// Loaded natively, import.meta.hot is undefined: subscribeToCodeUpdates is a no-op.
+const hmrModule = await import(new URL('../assets/prototype-inspector/flow-canvas-hmr.js', import.meta.url));
+const snapshotModules = { ...snapshot, ...snapshotCacheModule, ...hmrModule, createIndexedDbAdapter: snapshotCacheModule.createMemoryAdapter };
 const { computeFingerprint } = await import(new URL('../assets/prototype-review/fingerprint.mjs', import.meta.url));
 const flowCode = fs.readFileSync(`${root}/storybook-product-prototype/assets/prototype-inspector/flow-canvas.js`, 'utf8')
   .replace(/^import[\s\S]*?;\n/gm, '')
   .replace(/^export (function|const) /gm, '$1 ');
-const flowContext = vm.createContext({ ...React, ...geometry, ...helper, console, URL, Date, JSON, Set, Map, UPDATE_GLOBALS: 'UPDATE_GLOBALS', addons: { getChannel: () => ({ emit() {} }) } });
+const flowContext = vm.createContext({ ...React, ...geometry, ...helper, ...snapshotModules, console, URL, Date, JSON, Set, Map, UPDATE_GLOBALS: 'UPDATE_GLOBALS', addons: { getChannel: () => ({ emit() {} }) } });
 vm.runInContext(`${flowCode}\nglobalThis.flowApi = { createStorybookGlobals, getPrototypeViewport, getRoutePreviewSource, openPrototypeExternalUrl, PrototypeFlow };`, flowContext);
 const original = fs.readFileSync(`${root}/storybook-product-prototype/assets/prototype-inspector/preview.js`, 'utf8');
 const code = original.replace(/^import[\s\S]*?;\n/gm, '').replace(/^export const /gm, 'const ');
