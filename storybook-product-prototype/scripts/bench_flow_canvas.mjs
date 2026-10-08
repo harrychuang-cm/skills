@@ -796,6 +796,124 @@ function installFlowBenchInstrumentation(config) {
         return lib.dragFrame && lib.dragFrame.isConnected ? rectOf(lib.dragFrame) : null;
       },
       dragFrame: null,
+      // Editing (flow-canvas-editing): Shift-click three on-screen route
+      // frames, then drag one of them; the result holds each frame's rect
+      // before and the timestamps of the drag.
+      async groupDrag({ moves, stepX, stepY }) {
+        const set = detectSet();
+        if (!set) return { error: "no UI Flow canvas found" };
+        const vp = viewportRect();
+        const picks = [];
+        for (const element of routeFrames(set)) {
+          const preview = element.querySelector(".prototype-inspector__flow-frame-preview") ?? element;
+          const rect = preview.getBoundingClientRect();
+          const x = rect.left + rect.width / 2;
+          const y = rect.top + Math.min(rect.height / 2, 80);
+          if (x < vp.left + 40 || x > vp.left + vp.width - 40 || y < vp.top + 40 || y > vp.top + vp.height - 40) continue;
+          const hit = document.elementFromPoint(x, y);
+          if (hit && element.contains(hit)) picks.push({ element, hit, x, y });
+          if (picks.length === 3) break;
+        }
+        if (picks.length < 3) return { error: "fewer than three route frames on screen" };
+        const pointer = (x, y, buttons, shiftKey = false) => ({
+          bubbles: true, button: 0, buttons, cancelable: true, clientX: x, clientY: y, composed: true, isPrimary: true,
+          pointerId: 1, pointerType: "mouse", pressure: buttons ? 0.5 : 0, shiftKey, view: window,
+        });
+        for (const [index, pick] of picks.entries()) {
+          pick.hit.dispatchEvent(new PointerEvent("pointerdown", pointer(pick.x, pick.y, 1, index > 0)));
+          pick.hit.dispatchEvent(new PointerEvent("pointerup", pointer(pick.x, pick.y, 0, index > 0)));
+          await wait(60);
+        }
+        await wait(400);
+        const selected = picks.filter((pick) => pick.element.getAttribute("data-selected") === "true").length;
+        const rectsBefore = picks.map((pick) => rectOf(pick.element));
+        const { hit, x, y } = picks[1];
+        const tDown = performance.now();
+        hit.dispatchEvent(new PointerEvent("pointerdown", pointer(x, y, 1)));
+        await nextFrame();
+        await wait(50);
+        let tFirstMove = null;
+        for (let index = 1; index <= moves; index += 1) {
+          if (tFirstMove === null) tFirstMove = performance.now();
+          hit.dispatchEvent(new PointerEvent("pointermove", pointer(x + index * stepX, y + index * stepY, 1)));
+          await taskBarrier();
+          await nextFrame();
+        }
+        const tUp = performance.now();
+        hit.dispatchEvent(new PointerEvent("pointerup", pointer(x + moves * stepX, y + moves * stepY, 0)));
+        lib.groupDragFrames = picks.map((pick) => pick.element);
+        return { rectsBefore, selected, tDown, tFirstMove, tUp };
+      },
+      groupDragRects() {
+        return (lib.groupDragFrames ?? []).map((element) => (element.isConnected ? rectOf(element) : null));
+      },
+      groupDragFrames: null,
+      // Selects `count` on-screen route frames (click, then Shift-click) and
+      // reports whether the minimap is shown.
+      async selectFrames(count) {
+        const set = detectSet();
+        if (!set) return { error: "no UI Flow canvas found" };
+        const vp = viewportRect();
+        const picks = [];
+        for (const element of routeFrames(set)) {
+          const preview = element.querySelector(".prototype-inspector__flow-frame-preview") ?? element;
+          const rect = preview.getBoundingClientRect();
+          const x = rect.left + rect.width / 2;
+          const y = rect.top + Math.min(rect.height / 2, 80);
+          if (x < vp.left + 40 || x > vp.left + vp.width - 40 || y < vp.top + 40 || y > vp.top + vp.height - 40) continue;
+          const hit = document.elementFromPoint(x, y);
+          if (hit && element.contains(hit)) picks.push({ element, hit, x, y });
+          if (picks.length === count) break;
+        }
+        const pointer = (x, y, buttons, shiftKey) => ({
+          bubbles: true, button: 0, buttons, cancelable: true, clientX: x, clientY: y, composed: true, isPrimary: true,
+          pointerId: 1, pointerType: "mouse", pressure: buttons ? 0.5 : 0, shiftKey, view: window,
+        });
+        for (const [index, pick] of picks.entries()) {
+          pick.hit.dispatchEvent(new PointerEvent("pointerdown", pointer(pick.x, pick.y, 1, index > 0)));
+          pick.hit.dispatchEvent(new PointerEvent("pointerup", pointer(pick.x, pick.y, 0, index > 0)));
+          await wait(60);
+        }
+        await wait(400);
+        return {
+          minimap: Boolean(document.querySelector(".prototype-inspector__flow-minimap")),
+          selected: routeFrames(set).filter((element) => element.getAttribute("data-selected") === "true").length,
+        };
+      },
+      // A marquee drawn from a blank point of the canvas.
+      async marquee({ moves, stepX, stepY }) {
+        const set = detectSet();
+        if (!set) return { error: "no UI Flow canvas found" };
+        const vp = viewportRect();
+        let start = null;
+        for (let y = vp.top + 60; y < vp.top + vp.height - 60 && !start; y += 20) {
+          for (let x = vp.left + 60; x < vp.left + vp.width / 2 && !start; x += 20) {
+            const hit = document.elementFromPoint(x, y);
+            if (hit && !hit.closest("[data-frame-id]") && !hit.closest(".prototype-inspector__flow-minimap") && hit.closest(set.viewport)) start = { hit, x, y };
+          }
+        }
+        if (!start) return { error: "no blank canvas point" };
+        const pointer = (x, y, buttons) => ({
+          bubbles: true, button: 0, buttons, cancelable: true, clientX: x, clientY: y, composed: true, isPrimary: true,
+          pointerId: 1, pointerType: "mouse", pressure: buttons ? 0.5 : 0, view: window,
+        });
+        const target = start.hit;
+        target.dispatchEvent(new PointerEvent("pointerdown", pointer(start.x, start.y, 1)));
+        await nextFrame();
+        await wait(50);
+        let tFirstMove = null;
+        for (let index = 1; index <= moves; index += 1) {
+          if (tFirstMove === null) tFirstMove = performance.now();
+          target.dispatchEvent(new PointerEvent("pointermove", pointer(start.x + index * stepX, start.y + index * stepY, 1)));
+          await taskBarrier();
+          await nextFrame();
+        }
+        const tUp = performance.now();
+        target.dispatchEvent(new PointerEvent("pointerup", pointer(start.x + moves * stepX, start.y + moves * stepY, 0)));
+        await wait(200);
+        const selected = routeFrames(set).filter((element) => element.getAttribute("data-selected") === "true").length;
+        return { selected, tFirstMove, tUp };
+      },
     };
     Object.defineProperty(window, "__piFlowBenchLib", { configurable: true, value: lib });
 
@@ -1675,7 +1793,29 @@ async function runBench(args) {
       await sleep(DRAG_STORAGE_WINDOW_MS + 100);
       const afterDrag = await waitForQuiet(flowPage, exists.commit);
       const dragRectAfter = await flowPage.evaluate("window.__piFlowBenchLib.dragFrameRect()");
-      return { afterDrag, afterPan, afterPinch, drag, dragRectAfter, pan, pinch };
+      // Editing probes (flow-canvas-editing): a marquee, then a group drag.
+      const marquee = await flowPage.evaluate(`window.__piFlowBenchLib.marquee ? window.__piFlowBenchLib.marquee(${JSON.stringify(DRAG)}) : { error: "no marquee probe" }`);
+      await sleep(400);
+      await waitForQuiet(flowPage, exists.commit);
+      const groupDrag = await flowPage.evaluate(`window.__piFlowBenchLib.groupDrag ? window.__piFlowBenchLib.groupDrag(${JSON.stringify(DRAG)}) : { error: "no group drag probe" }`);
+      await sleep(DRAG_STORAGE_WINDOW_MS + 100);
+      await waitForQuiet(flowPage, exists.commit);
+      const groupDragRectsAfter = await flowPage.evaluate("window.__piFlowBenchLib.groupDragRects()");
+      // Two selected frames with the minimap shown: pinch and pan again.
+      const selectedTwo = await flowPage.evaluate("window.__piFlowBenchLib.selectFrames ? window.__piFlowBenchLib.selectFrames(2) : { error: 'no selection probe' }");
+      await sleep(400);
+      await waitForQuiet(flowPage, exists.commit);
+      const selectedPinch = await flowPage.evaluate(
+        `window.__piFlowBenchLib.pinch(${JSON.stringify({ deltaY: -100 * Math.log(PINCH.scalePerEvent), events: PINCH.events })})`,
+      );
+      await sleep(CAMERA_IDLE_MS + AFTER_IDLE_WINDOW_MS + 150);
+      await waitForQuiet(flowPage, exists.commit);
+      const selectedPan = await flowPage.evaluate(
+        `window.__piFlowBenchLib.pan(${JSON.stringify({ deltaX: PAN.deltaX, deltaY: PAN.deltaY, events: PAN.events })})`,
+      );
+      await sleep(CAMERA_IDLE_MS + AFTER_IDLE_WINDOW_MS + 150);
+      await waitForQuiet(flowPage, exists.commit);
+      return { afterDrag, afterPan, afterPinch, drag, dragRectAfter, groupDrag, groupDragRectsAfter, marquee, pan, pinch, selectedPan, selectedPinch, selectedTwo };
     };
     progress("gestures: pinch, pan, drag");
     const measured = args.trace ? await recordTrace(cdp, args.trace, gestures) : await gestures();
@@ -1733,6 +1873,52 @@ async function runBench(args) {
     }
 
     // Drag.
+    // Editing probes: commits during the gesture and 100 ms after release,
+    // layout writes in [pointerdown, pointerup + 1000 ms], equal offsets.
+    const layoutWritesBetween = (from, to) =>
+      hub.storage.filter((entry) => entry.area === "local" && entry.key?.startsWith(FLOW_LAYOUT_PREFIX) && (entry.op === "setItem" || entry.op === "removeItem") && entry.t >= from && entry.t <= to).length;
+    const marqueeResult = measured.marquee.error
+      ? { error: measured.marquee.error }
+      : {
+          selectedFrames: measured.marquee.selected,
+          commitMarks: {
+            duringGesture: countMarks(hub.marks, MARK_COMMIT, measured.marquee.tFirstMove, measured.marquee.tUp, exists.commit),
+            afterRelease100ms: countMarks(hub.marks, MARK_COMMIT, measured.marquee.tUp, measured.marquee.tUp + AFTER_IDLE_WINDOW_MS + 0.001, exists.commit),
+          },
+        };
+    const groupDrag = measured.groupDrag;
+    const groupOffsets = groupDrag.error
+      ? []
+      : groupDrag.rectsBefore.map((before, index) => {
+          const after = measured.groupDragRectsAfter[index];
+          return after ? { x: round(after.left - before.left), y: round(after.top - before.top) } : null;
+        });
+    const groupDragResult = groupDrag.error
+      ? { error: groupDrag.error }
+      : {
+          selectedBeforeDrag: groupDrag.selected,
+          commitMarks: {
+            duringGesture: countMarks(hub.marks, MARK_COMMIT, groupDrag.tFirstMove, groupDrag.tUp, exists.commit),
+            afterRelease100ms: countMarks(hub.marks, MARK_COMMIT, groupDrag.tUp, groupDrag.tUp + AFTER_IDLE_WINDOW_MS + 0.001, exists.commit),
+          },
+          layoutWrites: layoutWritesBetween(groupDrag.tDown, groupDrag.tUp + DRAG_STORAGE_WINDOW_MS),
+          frameOffsetsPx: groupOffsets,
+          equalOffsets: groupOffsets.length === 3 && groupOffsets.every((offset) => offset && offset.x === groupOffsets[0].x && offset.y === groupOffsets[0].y),
+        };
+    const withSelection = measured.selectedTwo?.error
+      ? { error: measured.selectedTwo.error }
+      : {
+          selectedFrames: measured.selectedTwo?.selected ?? null,
+          minimapShown: measured.selectedTwo?.minimap ?? null,
+          pinchCommitMarks: {
+            duringGesture: countMarks(hub.marks, MARK_COMMIT, measured.selectedPinch.t0, measured.selectedPinch.tLast, exists.commit),
+            afterIdle100ms: countMarks(hub.marks, MARK_COMMIT, measured.selectedPinch.tLast, measured.selectedPinch.tLast + CAMERA_IDLE_MS + AFTER_IDLE_WINDOW_MS, exists.commit),
+          },
+          panCommitMarks: {
+            duringGesture: countMarks(hub.marks, MARK_COMMIT, measured.selectedPan.t0, measured.selectedPan.tLast, exists.commit),
+            afterIdle100ms: countMarks(hub.marks, MARK_COMMIT, measured.selectedPan.tLast, measured.selectedPan.tLast + CAMERA_IDLE_MS + AFTER_IDLE_WINDOW_MS, exists.commit),
+          },
+        };
     let dragResult;
     if (drag.error) {
       notes.push(`drag skipped: ${drag.error}`);
@@ -1961,6 +2147,9 @@ async function runBench(args) {
         strokeZoomVariable: exists.strokeZoom,
       },
       gestures: {
+        marquee: marqueeResult,
+        groupDrag: groupDragResult,
+        selectionWithMinimap: withSelection,
         pinch: {
           events: PINCH.events,
           ...pinchSummary,

@@ -65,7 +65,7 @@ Route metadata should include:
 - `navigationId`: Bottom navigation or shell context id.
 - `component`: Primary design-system component or composed surface. This is a display-only summary string; the structured composition lives in `meta.components`.
 - `description`: What the route proves.
-- `flowGroup`: Optional grouping label. The Static Flow export prints it on route cards; the UI Flow canvas shows it next to the route id while a frame is hovered.
+- `flowGroup`: Optional grouping label. The Static Flow export prints it on route cards; the UI Flow canvas shows it next to the route id while a frame is hovered, and as the section label of groups with at least two routes.
 - `flowPosition`: Optional `{ x, y }` coordinate for stable UI Flow layout.
 
 Transition metadata should include:

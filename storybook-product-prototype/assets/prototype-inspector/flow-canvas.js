@@ -32,6 +32,9 @@ import {
   classifyPointerDown,
   classifyWheel,
   computeAutoLayout,
+  computeSectionShapes,
+  computeSnap,
+  createLayoutHistory,
   computeJourneyLayout,
   createPolyline,
   deriveBranchJourneys,
@@ -39,11 +42,17 @@ import {
   defaultPrototypeModeGlobalName,
   DRAG_THRESHOLD_PX,
   fitCamera,
+  getAdjacentRouteId,
+  getAdjacentStepIndex,
   getAutoLayoutFrameSize,
   getEdgeLabelPrefix,
   getFallbackGridPitch,
   getJourneyBounds,
   getJourneyEdges,
+  getMarqueeSelection,
+  getMinimapTransform,
+  getSnapThreshold,
+  nudgeOffset,
   getFlowArrowPoints,
   getFlowBounds,
   getFlowMetadataNodeSize,
@@ -58,6 +67,7 @@ import {
   isRecord,
   isVisibleFlowEdge,
   LOD_THRESHOLDS,
+  minimapPointToWorld,
   MAX_ZOOM,
   MIN_ZOOM,
   nodeFrameSize,
@@ -524,6 +534,7 @@ const PrototypeFlowNode = memo(function PrototypeFlowNode({
   height,
   instanceKey = node.id,
   isAnchor = true,
+  isSelected = false,
   node,
   onPointerCancel,
   onPointerDown,
@@ -547,6 +558,7 @@ const PrototypeFlowNode = memo(function PrototypeFlowNode({
       ...(isAnchor
         ? { "data-sbfx-anchor": `node:${node.id}`, "data-sbfx-anchor-label": node.title ?? node.id }
         : {}),
+      "data-selected": isSelected ? "true" : undefined,
       "data-shape": node.shape ?? "state",
       "data-tone": node.tone ?? "default",
       onPointerCancel,
@@ -596,6 +608,7 @@ const PrototypeRouteCard = memo(function PrototypeRouteCard({
   instanceKey,
   isAnchor = true,
   isRendered,
+  isSelected = false,
   isSnapshotStale = false,
   mountIframe,
   onFrameHotUpdated,
@@ -722,6 +735,7 @@ const PrototypeRouteCard = memo(function PrototypeRouteCard({
       className: "prototype-inspector__flow-frame",
       "data-frame-id": instanceKey,
       "data-live-loading": isLive && !isRendered ? "true" : undefined,
+      "data-selected": isSelected ? "true" : undefined,
       "data-snapshot-stale": isSnapshotStale ? "true" : undefined,
       "data-tier": tier,
       onPointerCancel,
@@ -1559,6 +1573,31 @@ function writeStoredFlowLanes(storageKey, labels, viewportSignature) {
   }
 }
 
+// Minimap and section preferences (flow-canvas-editing): "shown" or
+// "hidden" per browser; missing or unreadable means the default.
+const flowMinimapStorageKey = "prototype-inspector:flow-minimap";
+const flowSectionsStorageKey = "prototype-inspector:flow-sections";
+// The minimap panel in CSS pixels (176 x 120, the size the CSS gives it).
+const minimapPanelSize = Object.freeze({ height: 120, width: 176 });
+
+function readStoredPreference(storageKey) {
+  try {
+    const value = typeof window === "undefined" ? null : window.localStorage.getItem(storageKey);
+
+    return value === "shown" || value === "hidden" ? value : null;
+  } catch (error) {
+    return null;
+  }
+}
+
+function writeStoredPreference(storageKey, value) {
+  try {
+    window.localStorage.setItem(storageKey, value);
+  } catch (error) {
+    // Without localStorage the choice lasts for this page only.
+  }
+}
+
 const nonTextInputTypes = new Set([
   "button",
   "checkbox",
@@ -1815,6 +1854,9 @@ const journeyEdgeHitStyle = {
   strokeWidth: "calc(var(--pi-sys-spacing-md) / var(--prototype-flow-stroke-zoom, 1))",
 };
 
+// A flow group section's fill: inline, so comment screenshots keep it.
+const sectionFillStyle = { fill: "var(--pi-sys-color-surface-raised)" };
+
 // The journey list (flow-journey-focus): a column beside the canvas viewport
 // with "全部", the declared journeys and the derived journeys grouped by
 // branch node. Visible copy is Traditional Chinese, accessible names English.
@@ -1983,9 +2025,10 @@ function revokeSnapshotUrlWhenSafe(url, deferred) {
   URL.revokeObjectURL(url);
 }
 
-// initialTiers (instance key -> tier) is for test_flow_canvas_ssr.mjs only:
-// it replaces the computed level of detail so server renders can show tiers.
-export function PrototypeFlow({ initialTiers = null, prototype }) {
+// initialTiers (instance key -> tier) and initialSelection (instance keys)
+// are for test_flow_canvas_ssr.mjs only: they replace the computed level of
+// detail and the empty selection so server renders can show them.
+export function PrototypeFlow({ initialSelection = null, initialTiers = null, prototype }) {
   const flow = prototype.flow;
   const routes = useMemo(() => normalizeRoutes(flow), [flow]);
   const flowNodes = useMemo(() => normalizeFlowNodes(flow), [flow]);
@@ -2102,18 +2145,34 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
   const [draggedPositions, setDraggedPositions] = useState(() =>
     readStoredFlowLayoutPositions(layoutStorageKey, canvasNodeIds, viewportSignature),
   );
+  // The saved positions as of the latest commit, also between a commit and
+  // the render it causes (two layout actions can commit in one event).
+  const savedPositionsRef = useRef(draggedPositions);
+  savedPositionsRef.current = draggedPositions;
   // Auto layout (flow-auto-layout): the stored feature names, the dialog
   // asked when a saved layout exists, and the snapshot Undo restores while
   // its notice is shown.
   const lanesStorageKey = getFlowLanesStorageKey(layoutStorageKey);
   const [laneLabels, setLaneLabels] = useState(() => readStoredFlowLanes(lanesStorageKey, viewportSignature));
   const [isAutoLayoutDialogOpen, setIsAutoLayoutDialogOpen] = useState(false);
+  // Minimap: the stored choice, else shown for 8 frames or more.
+  const [minimapPreference, setMinimapPreference] = useState(() => readStoredPreference(flowMinimapStorageKey));
+  const minimapRef = useRef(null);
+  const minimapViewportRef = useRef(null);
+  const minimapStateRef = useRef({ content: null, drag: null });
+  // Flow group sections: shown unless the stored choice hides them; the
+  // rendered frames and shapes are kept for drags and nudges.
+  const [sectionsPreference, setSectionsPreference] = useState(() => readStoredPreference(flowSectionsStorageKey));
+  const sectionsRef = useRef({ frames: [], sections: [] });
   const [autoLayoutUndo, setAutoLayoutUndo] = useState(null);
   const autoLayoutConfirmButtonRef = useRef(null);
   // The frame sizes the last auto layout of this mount used, while no later
   // layout action changed its result: a frame measured larger afterwards
   // (a route measured after applying) arranges the flow again.
   const autoLayoutBasisRef = useRef(null);
+  // Layout undo history (flow-canvas-editing), in memory for this mount.
+  const historyRef = useRef(null);
+  historyRef.current ??= createLayoutHistory(100);
   const [focusedRouteId, setFocusedRouteId] = useState(null);
   const [isPanModifierActive, setIsPanModifierActive] = useState(false);
   const [panState, setPanState] = useState(null);
@@ -2165,6 +2224,15 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
   // interacted with since their last plain load.
   const [pinnedFrameId, setPinnedFrameId] = useState(null);
   const [promotedFrameIds, setPromotedFrameIds] = useState(() => new Set());
+  // Frame selection (flow-canvas-editing): instance keys, changed only when a
+  // press, a marquee or a key ends; selected routes are promoted frames.
+  const [selection, setSelection] = useState(() => new Set(initialSelection ?? []));
+  const selectionRef = useRef(selection);
+  selectionRef.current = selection;
+  const tierPromotedIds = useMemo(
+    () => (selection.size ? new Set([...promotedFrameIds, ...selection]) : promotedFrameIds),
+    [promotedFrameIds, selection],
+  );
   const interactedFrameIdsRef = useRef(new Set());
   // Route snapshots: object URLs of the snapshot images shown for frames that
   // are not live, by route; results that arrive during a gesture wait.
@@ -2267,6 +2335,8 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
     setLaneLabels(readStoredFlowLanes(lanesStorageKey, viewportSignature));
     setAutoLayoutUndo(null);
     autoLayoutBasisRef.current = null;
+    setSelection(new Set());
+    historyRef.current.clear();
   }, [canvasNodeIds, lanesStorageKey, layoutStorageKey, storedLayoutSource, viewportSignature]);
   useEffect(() => {
     if (!hasCustomLayout) {
@@ -2431,6 +2501,39 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
     [activeJourney, laneLabels, routePositionMap],
   );
   const laneLabelReserve = shownLaneLabels.length ? laneLabelReservePx : 0;
+  // Flow group sections, on the complete flow only. Route groups come from
+  // the routes array (route positions carry no flowGroup); a section wraps
+  // its members' frame boxes, and its name avoids the frame label that sits
+  // on the top member's visible rect.
+  const showSections = sectionsPreference !== "hidden";
+  const sectionFrames = useMemo(() => {
+    if (activeJourney || !showSections) {
+      return [];
+    }
+
+    const routeGroups = new Map(routes.map((route) => [route.id, route.flowGroup]));
+
+    return [...routePositionMap].map(([id, position]) => {
+      const type = position.nodeType === "route" ? "route" : "flow";
+
+      return {
+        group: type === "route" ? routeGroups.get(id) : position.flowGroup,
+        height: position.height ?? defaultNodeHeight,
+        id,
+        labelY: getFrameVisibleRect(position, type).y,
+        type,
+        width: position.width ?? defaultPreviewWidth + nodeFrameSize,
+        x: position.x,
+        y: position.y,
+      };
+    });
+  }, [activeJourney, routePositionMap, routes, showSections]);
+  const sections = useMemo(() => computeSectionShapes(sectionFrames), [sectionFrames]);
+  const sectionBounds = sections.length ? getFlowBounds(sections.flatMap((section) => section.rects)) : null;
+  // An auto layout name for the same flowGroup replaces the section name.
+  const laneGroupNames = new Set(shownLaneLabels.map((label) => label.key));
+
+  sectionsRef.current = { frames: sectionFrames, sections };
   // Level of detail. Tiers come from the camera snapshot React holds (it
   // changes only when the camera settles), so a gesture keeps the tiers it
   // started with and the settle commit applies the new ones. No frame is live
@@ -2490,9 +2593,9 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
       hovered: hoverDwellKey ? { dwellMs: LOD_THRESHOLDS.hoverDwellMs, key: hoverDwellKey } : null,
       pinnedId: pinnedFrameId,
       previousTiers: previousTiersRef.current,
-      promotedIds: promotedFrameIds,
+      promotedIds: tierPromotedIds,
     });
-  }, [cameraReady, cameraSnapshot, canvasSize, frameBoxes, hoverDwellKey, initialTiers, pinnedFrameId, promotedFrameIds]);
+  }, [cameraReady, cameraSnapshot, canvasSize, frameBoxes, hoverDwellKey, initialTiers, pinnedFrameId, tierPromotedIds]);
   useIsomorphicLayoutEffect(() => {
     previousTiersRef.current = frameTiers;
   }, [frameTiers]);
@@ -2522,14 +2625,14 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
       canvasSize,
       hoveredKey: hoverDwellKey,
       pinnedId: pinnedFrameId,
-      promotedIds: promotedFrameIds,
+      promotedIds: tierPromotedIds,
     });
   }
   liveLoadPendingRef.current = frameBoxes.some(
     (frame) => frameTiers.get(frame.key) === "live" && !renderedFramesRef.current.has(frame.key),
   );
   frameBoxesRef.current = frameBoxes;
-  const isGestureActive = () => Boolean(cameraIdleTimerRef.current) || Boolean(dragRef.current?.started);
+  const isGestureActive = () => Boolean(cameraIdleTimerRef.current) || Boolean(dragRef.current?.started || marqueeRef.current);
   const getRouteSnapshotKey = (routeId) =>
     getSnapshotKey({
       formatVersion: SNAPSHOT_FORMAT_VERSION,
@@ -3000,8 +3103,50 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
     if (scaleTextRef.current) {
       scaleTextRef.current.textContent = `${Math.round(camera.z * 100)}%`;
     }
+    writeMinimapToDom();
     dispatchAnchorsMoved(rootRef.current);
   }, []);
+  // The minimap draws frames in world coordinates; its viewBox (the union of
+  // the frames and the visible world rect) and its viewport rectangle follow
+  // the camera here, in the camera's animation frame, without a commit. A
+  // drag of the viewport rectangle freezes the viewBox.
+  const getMinimapTransformNow = () => {
+    const viewport = viewportRef.current;
+    const camera = cameraRef.current;
+    const { content, drag } = minimapStateRef.current;
+
+    if (drag?.transform) {
+      return drag.transform;
+    }
+    if (!viewport || !content) {
+      return null;
+    }
+
+    const visible = { height: viewport.clientHeight / camera.z, width: viewport.clientWidth / camera.z, x: -camera.x / camera.z, y: -camera.y / camera.z };
+
+    return { ...getMinimapTransform(content, visible, minimapPanelSize), visible };
+  };
+  const writeMinimapToDom = () => {
+    const svg = minimapRef.current;
+    const rect = minimapViewportRef.current;
+    const viewport = viewportRef.current;
+    const camera = cameraRef.current;
+    const transform = getMinimapTransformNow();
+
+    if (!svg || !rect || !viewport || !transform) {
+      return;
+    }
+    if (!minimapStateRef.current.drag) {
+      svg.setAttribute(
+        "viewBox",
+        `${transform.originX - transform.offsetX / transform.scale} ${transform.originY - transform.offsetY / transform.scale} ${minimapPanelSize.width / transform.scale} ${minimapPanelSize.height / transform.scale}`,
+      );
+    }
+    rect.setAttribute("x", String(-camera.x / camera.z));
+    rect.setAttribute("y", String(-camera.y / camera.z));
+    rect.setAttribute("width", String(viewport.clientWidth / camera.z));
+    rect.setAttribute("height", String(viewport.clientHeight / camera.z));
+  };
   // Applies the held measurements in the caller's batch, each against the
   // size it would replace.
   const flushPendingSizes = useCallback(() => {
@@ -3294,7 +3439,7 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
     }
 
     hoverDwellTimerRef.current = window.setTimeout(() => {
-      if (cameraIdleTimerRef.current || dragRef.current?.started) {
+      if (cameraIdleTimerRef.current || dragRef.current?.started || marqueeRef.current) {
         pendingDwellRef.current = focusedRouteId;
       } else {
         setHoverDwellKey(focusedRouteId);
@@ -3436,7 +3581,7 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
   const updateCanvasSize = useCallback((viewport) => {
     const size = { height: viewport.clientHeight, width: viewport.clientWidth };
 
-    if (cameraIdleTimerRef.current || dragRef.current?.started) {
+    if (cameraIdleTimerRef.current || dragRef.current?.started || marqueeRef.current) {
       pendingCanvasSizeRef.current = size;
       return;
     }
@@ -3458,7 +3603,7 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
     }
 
     renderedFramesRef.current.add(key);
-    if (cameraIdleTimerRef.current || dragRef.current?.started) {
+    if (cameraIdleTimerRef.current || dragRef.current?.started || marqueeRef.current) {
       pendingRenderedRef.current = true;
       return;
     }
@@ -3480,7 +3625,7 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
 
     // A moving camera or an active drag commits nothing until it ends; the
     // latest measurement of a frame replaces the one it held.
-    if (cameraIdleTimerRef.current || dragRef.current?.started) {
+    if (cameraIdleTimerRef.current || dragRef.current?.started || marqueeRef.current) {
       pendingSizesRef.current.set(routeId, entry);
       return;
     }
@@ -3532,6 +3677,171 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
     const scale = viewport.offsetWidth ? rect.width / viewport.offsetWidth || 1 : 1;
 
     return { x: (clientX - rect.left) / scale, y: (clientY - rect.top) / scale };
+  };
+  // A primary press on empty canvas: a click clears the selection, a drag
+  // becomes a marquee.
+  const blankPressRef = useRef(null);
+  // Marquee selection: world-anchored, drawn and reflected in the outlines
+  // through the DOM only; the selection commits once on release.
+  const marqueeRef = useRef(null);
+  const marqueeFrameRef = useRef(0);
+  const marqueeElementRef = useRef(null);
+  const frameVisibleRectsRef = useRef([]);
+  const toWorldPoint = (clientX, clientY) => {
+    const point = toCanvasPoint(clientX, clientY);
+    const camera = cameraRef.current;
+
+    return { x: (point.x - camera.x) / camera.z, y: (point.y - camera.y) / camera.z };
+  };
+  const getMarqueeHits = (marquee) => {
+    const rect = {
+      height: Math.abs(marquee.end.y - marquee.start.y),
+      width: Math.abs(marquee.end.x - marquee.start.x),
+      x: Math.min(marquee.start.x, marquee.end.x),
+      y: Math.min(marquee.start.y, marquee.end.y),
+    };
+
+    return { hits: getMarqueeSelection(frameVisibleRectsRef.current, rect, { additive: marquee.additive, base: marquee.base }), rect };
+  };
+  const setOutlinesSelected = (keys) => {
+    overlayRef.current?.querySelectorAll("[data-frame-outline]").forEach((outline) => {
+      if (keys.has(outline.getAttribute("data-frame-outline"))) {
+        outline.setAttribute("data-selected", "true");
+      } else {
+        outline.removeAttribute("data-selected");
+      }
+    });
+  };
+  const writeMarqueeToDom = () => {
+    const marquee = marqueeRef.current;
+    const element = marqueeElementRef.current;
+
+    marqueeFrameRef.current = 0;
+    if (!marquee || !element) {
+      return;
+    }
+
+    const { hits, rect } = getMarqueeHits(marquee);
+    const camera = cameraRef.current;
+
+    element.hidden = false;
+    element.style.setProperty("transform", `translate(${rect.x * camera.z + camera.x}px, ${rect.y * camera.z + camera.y}px)`);
+    element.style.setProperty("inline-size", `${rect.width * camera.z}px`);
+    element.style.setProperty("block-size", `${rect.height * camera.z}px`);
+    setOutlinesSelected(new Set(hits));
+  };
+  const updateMarquee = (event, press) => {
+    if (press.cancelled) {
+      return;
+    }
+    if (!marqueeRef.current) {
+      if (Math.hypot(event.clientX - press.startX, event.clientY - press.startY) < DRAG_THRESHOLD_PX) {
+        return;
+      }
+
+      event.currentTarget.setPointerCapture?.(event.pointerId);
+      const start = toWorldPoint(press.startX, press.startY);
+
+      marqueeRef.current = { additive: press.additive, base: [...selectionRef.current], end: start, start };
+    }
+
+    marqueeRef.current.end = toWorldPoint(event.clientX, event.clientY);
+    if (!marqueeFrameRef.current) {
+      marqueeFrameRef.current = window.requestAnimationFrame(writeMarqueeToDom);
+    }
+  };
+  // Puts the outlines back the way React rendered them, then (on release)
+  // commits the marquee's selection.
+  const finishMarquee = (commit) => {
+    const marquee = marqueeRef.current;
+
+    window.cancelAnimationFrame(marqueeFrameRef.current);
+    marqueeFrameRef.current = 0;
+    marqueeRef.current = null;
+    if (marqueeElementRef.current) {
+      marqueeElementRef.current.hidden = true;
+    }
+    setOutlinesSelected(selectionRef.current);
+    if (commit && marquee) {
+      setSelection(new Set(getMarqueeHits(marquee).hits));
+    }
+    // Results held during the marquee join this batch, like a drag release.
+    flushPendingSizes();
+    flushPendingFrameState();
+    rendererRef.current?.resume();
+  };
+  const cancelMarquee = () => {
+    if (blankPressRef.current) {
+      blankPressRef.current = { ...blankPressRef.current, cancelled: true };
+    }
+    finishMarquee(false);
+  };
+  const minimapWorldPoint = (event, transform) => {
+    const bounds = minimapRef.current.getBoundingClientRect();
+    const scale = bounds.width / minimapPanelSize.width || 1;
+
+    return minimapPointToWorld({ x: (event.clientX - bounds.left) / scale, y: (event.clientY - bounds.top) / scale }, transform);
+  };
+  const centerCameraOn = (point, viewport) => {
+    const { z } = cameraRef.current;
+
+    setCamera({ x: viewport.clientWidth / 2 - point.x * z, y: viewport.clientHeight / 2 - point.y * z, z }, { immediate: true });
+  };
+  const handleMinimapPointerDown = (event) => {
+    if (event.button !== 0) {
+      return;
+    }
+
+    // The minimap starts no marquee and no pan of the canvas.
+    event.stopPropagation();
+    event.preventDefault();
+    const viewport = viewportRef.current;
+    const transform = getMinimapTransformNow();
+
+    if (!viewport || !transform) {
+      return;
+    }
+
+    const point = minimapWorldPoint(event, transform);
+    const visible = transform.visible;
+    const onViewport =
+      point.x >= visible.x && point.x <= visible.x + visible.width && point.y >= visible.y && point.y <= visible.y + visible.height;
+
+    if (!onViewport) {
+      centerCameraOn(point, viewport);
+      return;
+    }
+
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    minimapStateRef.current.drag = {
+      grab: { x: point.x - (visible.x + visible.width / 2), y: point.y - (visible.y + visible.height / 2) },
+      pointerId: event.pointerId,
+      transform,
+    };
+  };
+  const handleMinimapPointerMove = (event) => {
+    const drag = minimapStateRef.current.drag;
+
+    if (!drag || drag.pointerId !== event.pointerId || !viewportRef.current) {
+      return;
+    }
+
+    event.stopPropagation();
+    const point = minimapWorldPoint(event, drag.transform);
+
+    centerCameraOn({ x: point.x - drag.grab.x, y: point.y - drag.grab.y }, viewportRef.current);
+  };
+  const handleMinimapPointerUp = (event) => {
+    const drag = minimapStateRef.current.drag;
+
+    if (!drag || drag.pointerId !== event.pointerId) {
+      return;
+    }
+
+    event.stopPropagation();
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
+    minimapStateRef.current.drag = null;
+    writeMinimapToDom();
   };
   const toCanvasPointRef = useRef(toCanvasPoint);
   toCanvasPointRef.current = toCanvasPoint;
@@ -3621,6 +3931,25 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
       spaceHeld: isPanModifierActiveRef.current,
     });
 
+    latestRef.current.flushNudge?.();
+    // A primary press on empty canvas (frame presses bubble here too): a
+    // click clears the selection, a drag draws a marquee. On macOS a
+    // Ctrl+press opens the context menu instead.
+    if (action === "canvas" && !(event.target instanceof Element && event.target.closest("[data-frame-id]"))) {
+      if (!(isMacPlatform() && event.ctrlKey)) {
+        // Captured at once, like a pan, so the release reaches the viewport
+        // even over the controls or outside the canvas.
+        event.currentTarget.setPointerCapture?.(event.pointerId);
+        blankPressRef.current = {
+          additive: event.shiftKey,
+          pointerId: event.pointerId,
+          startX: event.clientX,
+          startY: event.clientY,
+        };
+      }
+      return;
+    }
+
     if (action !== "pan") {
       return;
     }
@@ -3640,6 +3969,23 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
     });
   };
   const updatePan = (event) => {
+    const blankPress = blankPressRef.current;
+
+    if (blankPress && blankPress.pointerId === event.pointerId) {
+      // A move with the primary button up means the release never arrived:
+      // the press and any marquee end without selecting.
+      if ((event.buttons & 1) === 0) {
+        blankPressRef.current = null;
+        if (marqueeRef.current) {
+          event.currentTarget.releasePointerCapture?.(event.pointerId);
+          finishMarquee(false);
+        }
+        return;
+      }
+      updateMarquee(event, blankPress);
+      return;
+    }
+
     if (!panState || panState.pointerId !== event.pointerId) {
       return;
     }
@@ -3652,6 +3998,28 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
     });
   };
   const endPan = (event) => {
+    const blankPress = blankPressRef.current;
+
+    // A marquee ends (selecting on release), or a click on empty canvas
+    // clears the selection.
+    if (blankPress && blankPress.pointerId === event.pointerId) {
+      blankPressRef.current = null;
+      event.currentTarget.releasePointerCapture?.(event.pointerId);
+      if (marqueeRef.current) {
+        finishMarquee(event.type === "pointerup");
+        return;
+      }
+      if (
+        !blankPress.cancelled &&
+        event.type === "pointerup" &&
+        Math.hypot(event.clientX - blankPress.startX, event.clientY - blankPress.startY) < DRAG_THRESHOLD_PX &&
+        selectionRef.current.size
+      ) {
+        setSelection(new Set());
+      }
+      return;
+    }
+
     if (!panState || panState.pointerId !== event.pointerId) {
       return;
     }
@@ -3660,12 +4028,23 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
     setPanState(null);
   };
   // The only storage writer: each committed layout action (drag release,
-  // Reset, Import) writes once; opening or re-rendering the UI Flow never does.
-  // Every committed layout action also ends an auto layout's Undo (applying
-  // one sets its own right after).
-  const commitLayoutPositions = (positions) => {
+  // nudge, Reset, Import, Auto Layout, undo, redo) writes once; opening or
+  // re-rendering the UI Flow never does. Every committed layout action ends
+  // an auto layout's notice (applying one sets its own right after) and,
+  // unless it replays history, records a history entry with the complete
+  // saved positions before and after (and the feature names when `lanes`
+  // gives them).
+  const commitLayoutPositions = (positions, { lanes = null, record = true } = {}) => {
     setAutoLayoutUndo(null);
     autoLayoutBasisRef.current = null;
+    if (record) {
+      historyRef.current.push({
+        after: positions,
+        before: savedPositionsRef.current,
+        ...(lanes ? { lanesAfter: lanes.after, lanesBefore: lanes.before } : {}),
+      });
+    }
+    savedPositionsRef.current = positions;
     setDraggedPositions(positions);
     writeStoredFlowLayout(
       layoutStorageKey,
@@ -3681,6 +4060,24 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
   // the integer positions in one React commit (and one storage write).
   const dragRef = useRef(null);
   const dragFrameRef = useRef(0);
+  // Presses that select on release on a frame in a read-only view.
+  const framePressRef = useRef(null);
+  const selectFrame = useCallback((id, toggle) => {
+    latestRef.current.flushNudge?.();
+    setSelection((current) => {
+      if (toggle) {
+        const next = new Set(current);
+
+        if (next.has(id)) {
+          next.delete(id);
+        } else {
+          next.add(id);
+        }
+        return next;
+      }
+      return current.size === 1 && current.has(id) ? current : new Set([id]);
+    });
+  }, []);
   const latestRef = useRef(null);
   latestRef.current = {
     commitLayoutPositions,
@@ -3695,18 +4092,14 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
     routePositionMap,
     routingPositionMap,
   };
-  const writeDragToDom = useCallback(() => {
-    const drag = dragRef.current;
-
-    dragFrameRef.current = 0;
-    if (!drag?.started) {
-      return;
-    }
-
+  // Writes a move (a frame drag or a keyboard nudge) to the DOM only: the
+  // moved frames, their labels, feature names and selection outlines, and
+  // the edges connected to them.
+  const writeMoveToDom = useCallback((drag) => {
     const { reverseEdgeKeys: reverseKeys, routingPositionMap: routingMap } = latestRef.current;
     const shiftedMap = new Map(routingMap);
 
-    drag.frames.forEach(({ element, id, label, labelOrigin, lanes = [] }) => {
+    drag.frames.forEach(({ element, id, label, labelOrigin, lanes = [], outline, outlineOrigin }) => {
       const position = routingMap.get(id);
 
       element.style.transform = `translate(${drag.delta.x}px, ${drag.delta.y}px)`;
@@ -3718,6 +4111,10 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
         lane.element.style.setProperty("--prototype-flow-label-wx", `${lane.origin.x + drag.delta.x}px`);
         lane.element.style.setProperty("--prototype-flow-label-wy", `${lane.origin.y + drag.delta.y}px`);
       });
+      if (outline && outlineOrigin) {
+        outline.style.setProperty("--prototype-flow-outline-wx", `${outlineOrigin.x + drag.delta.x}px`);
+        outline.style.setProperty("--prototype-flow-outline-wy", `${outlineOrigin.y + drag.delta.y}px`);
+      }
       if (position) {
         shiftedMap.set(id, {
           ...position,
@@ -3740,14 +4137,106 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
         arrow.setAttribute("points", arrowPoints);
       }
     });
+    drawGuides(drag.guides ?? []);
+    drawSections(drag.delta, new Set(drag.frames.map((frame) => frame.id)));
     dispatchAnchorsMoved(rootRef.current);
   }, []);
+  const writeDragToDom = useCallback(() => {
+    const drag = dragRef.current;
+
+    dragFrameRef.current = 0;
+    if (drag?.started) {
+      writeMoveToDom(drag);
+    }
+  }, [writeMoveToDom]);
+  // The DOM of a dragged or nudged frame: its element, label, feature names
+  // and outline with their rendered positions, and its saved origin.
+  const collectMovedFrame = (id) => {
+    const position = latestRef.current.routePositionMap.get(id);
+
+    if (!position) {
+      return null;
+    }
+
+    const frameSelector = `[data-frame-id="${CSS.escape(id)}"]`;
+    const element = worldRef.current?.querySelector(frameSelector);
+
+    if (!element) {
+      return null;
+    }
+
+    const readVars = (target, prefix) =>
+      target
+        ? {
+            x: Number.parseFloat(target.style.getPropertyValue(`${prefix}x`)),
+            y: Number.parseFloat(target.style.getPropertyValue(`${prefix}y`)),
+          }
+        : null;
+    const label = overlayRef.current?.querySelector(`.prototype-inspector__flow-frame-label${frameSelector}`) ?? null;
+    const outline = overlayRef.current?.querySelector(`[data-frame-outline="${CSS.escape(id)}"]`) ?? null;
+
+    return {
+      element,
+      id,
+      label,
+      labelOrigin: readVars(label, "--prototype-flow-label-w"),
+      lanes: [...(overlayRef.current?.querySelectorAll(`[data-lane-anchor="${CSS.escape(id)}"]`) ?? [])].map((lane) => ({
+        element: lane,
+        origin: readVars(lane, "--prototype-flow-label-w"),
+      })),
+      origin: { x: position.x, y: position.y },
+      outline,
+      outlineOrigin: readVars(outline, "--prototype-flow-outline-w"),
+    };
+  };
+  // Snapping guides: two pre-rendered lines (x and y), shown while a drag
+  // snaps; world positions in CSS variables like the outlines.
+  const drawGuides = (guides) => {
+    overlayRef.current?.querySelectorAll(".prototype-inspector__flow-guide").forEach((element) => {
+      const guide = guides.find((candidate) => candidate.axis === element.getAttribute("data-axis"));
+
+      element.hidden = !guide;
+      if (guide) {
+        element.style.setProperty("--prototype-flow-guide-wx", `${guide.axis === "x" ? guide.position : guide.start}px`);
+        element.style.setProperty("--prototype-flow-guide-wy", `${guide.axis === "x" ? guide.start : guide.position}px`);
+        element.style.setProperty("--prototype-flow-guide-wlen", `${guide.end - guide.start}px`);
+      }
+    });
+  };
+  // Sections follow a drag or a nudge through the DOM. Every section is
+  // recomputed, since a padding depends on the nearest foreign frame; without
+  // a delta the rendered shapes are written back.
+  const drawSections = (delta, movedIds) => {
+    const { frames, sections: rendered } = sectionsRef.current;
+
+    if (!rendered.length) {
+      return;
+    }
+
+    const shapes = delta
+      ? computeSectionShapes(
+          frames.map((frame) => (movedIds.has(frame.id) ? { ...frame, x: frame.x + delta.x, y: frame.y + delta.y } : frame)),
+        )
+      : rendered;
+
+    shapes.forEach((shape) => {
+      const selector = `[data-section-group="${CSS.escape(shape.group)}"]`;
+      const label = overlayRef.current?.querySelector(`.prototype-inspector__flow-section-label${selector}`);
+
+      worldRef.current?.querySelector(`.prototype-inspector__flow-section${selector}`)?.setAttribute("d", shape.path);
+      if (label) {
+        label.style.setProperty("--prototype-flow-label-wx", `${shape.label.x}px`);
+        label.style.setProperty("--prototype-flow-label-wy", `${shape.label.y}px`);
+        label.style.setProperty("--prototype-flow-section-member-wy", `${shape.memberTop}px`);
+      }
+    });
+  };
   // Puts the DOM back the way React rendered it.
   const restoreDragDom = (drag) => {
     window.cancelAnimationFrame(dragFrameRef.current);
     dragFrameRef.current = 0;
     worldRef.current?.removeAttribute("data-dragging");
-    drag.frames.forEach(({ element, label, labelOrigin, lanes = [] }) => {
+    drag.frames.forEach(({ element, label, labelOrigin, lanes = [], outline, outlineOrigin }) => {
       element.style.removeProperty("transform");
       element.removeAttribute("data-dragging");
       if (label && labelOrigin) {
@@ -3758,7 +4247,14 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
         lane.element.style.setProperty("--prototype-flow-label-wx", `${lane.origin.x}px`);
         lane.element.style.setProperty("--prototype-flow-label-wy", `${lane.origin.y}px`);
       });
+      if (outline && outlineOrigin) {
+        outline.style.setProperty("--prototype-flow-outline-wx", `${outlineOrigin.x}px`);
+        outline.style.setProperty("--prototype-flow-outline-wy", `${outlineOrigin.y}px`);
+      }
     });
+    setOutlinesSelected(selectionRef.current);
+    drawGuides([]);
+    drawSections(null);
     drag.edges.forEach(({ arrow, arrowPoints, label, line, linePoints }) => {
       if (line && linePoints !== null) {
         line.setAttribute("points", linePoints);
@@ -3801,48 +4297,47 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
     drag.frames.forEach(({ element }) => element.setAttribute("data-dragging", "true"));
   };
   const handleFramePointerDown = useCallback((event) => {
-    // A read-only view never starts a frame drag; pans and clicks still work.
-    if (latestRef.current.isReadOnlyView) {
-      return;
-    }
-
     const id = event.currentTarget.getAttribute("data-frame-id");
-    const position = latestRef.current.routePositionMap.get(id);
 
-    if (event.button !== 0 || isPanModifierActiveRef.current || !position) {
+    if (event.button !== 0 || isPanModifierActiveRef.current) {
       return;
     }
 
-    const frameSelector = `[data-frame-id="${CSS.escape(id)}"]`;
-    const element = worldRef.current?.querySelector(frameSelector) ?? event.currentTarget;
-    const label = overlayRef.current?.querySelector(frameSelector) ?? null;
-    const labelOrigin = label
-      ? {
-          x: Number.parseFloat(label.style.getPropertyValue("--prototype-flow-label-wx")),
-          y: Number.parseFloat(label.style.getPropertyValue("--prototype-flow-label-wy")),
-        }
-      : null;
-    // Feature names anchored on this frame move with it.
-    const lanes = [...(overlayRef.current?.querySelectorAll(`[data-lane-anchor="${CSS.escape(id)}"]`) ?? [])].map((element) => ({
-      element,
-      origin: {
-        x: Number.parseFloat(element.style.getPropertyValue("--prototype-flow-label-wx")),
-        y: Number.parseFloat(element.style.getPropertyValue("--prototype-flow-label-wy")),
-      },
-    }));
+    // A read-only view never starts a frame drag; pans and clicks (which
+    // select on release) still work. The pointer is captured so the release
+    // comes back here wherever it happens.
+    if (latestRef.current.isReadOnlyView) {
+      event.currentTarget.setPointerCapture?.(event.pointerId);
+      framePressRef.current = { id, pointerId: event.pointerId, shiftKey: event.shiftKey, startX: event.clientX, startY: event.clientY };
+      return;
+    }
+    framePressRef.current = null;
+
+    if (!latestRef.current.routePositionMap.get(id)) {
+      return;
+    }
+
+    // A pending nudge commits first. Its render lands before the next pointer
+    // move, so the dragged frames are collected when the drag starts.
+    latestRef.current.flushNudge();
+    const pressedSelected = selectionRef.current.has(id);
+    // Group drag: pressing a selected frame moves the whole selection.
+    const ids = pressedSelected ? [...selectionRef.current].filter((key) => latestRef.current.routePositionMap.has(key)) : [id];
 
     // Pressing the frame label also grabs the frame; the pointer is captured
     // by whichever element was pressed.
     event.currentTarget.setPointerCapture?.(event.pointerId);
     event.preventDefault();
-    // Group drag (a later canvas capability) adds frames to this list; every
-    // dragged frame moves by the same delta.
     dragRef.current = {
       delta: { x: 0, y: 0 },
       edges: [],
-      frames: [{ element, id, label, labelOrigin, lanes, origin: { x: position.x, y: position.y } }],
+      frameIds: ids,
+      frames: [],
       pointerId: event.pointerId,
+      pressedId: id,
+      pressedSelected,
       scale: getScreenScale(),
+      shiftKey: event.shiftKey,
       started: false,
       startX: event.clientX,
       startY: event.clientY,
@@ -3864,13 +4359,74 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
           return;
         }
 
+        drag.frames = drag.frameIds.map((key) => collectMovedFrame(key)).filter(Boolean);
+        if (!drag.frames.length) {
+          dragRef.current = null;
+          return;
+        }
         drag.started = true;
         setFitTracking(false);
         rendererRef.current?.abort();
         startDragDom(drag);
+        if (!drag.pressedSelected) {
+          setOutlinesSelected(new Set([drag.pressedId]));
+        }
+        // Snapping compares the dragged frames' visible bounding box with the
+        // other frames on screen.
+        const ids = new Set(drag.frames.map(({ id }) => id));
+        const rects = frameVisibleRectsRef.current;
+        const dragged = rects.filter((rect) => ids.has(rect.key));
+        const viewport = viewportRef.current;
+        const camera = cameraRef.current;
+        const onScreen = viewport
+          ? { height: viewport.clientHeight / camera.z, width: viewport.clientWidth / camera.z, x: -camera.x / camera.z, y: -camera.y / camera.z }
+          : null;
+
+        drag.snapBase = dragged.length ? getFlowBounds(dragged) : null;
+        drag.candidates = rects.filter(
+          (rect) =>
+            !ids.has(rect.key) &&
+            onScreen &&
+            rect.x < onScreen.x + onScreen.width &&
+            rect.x + rect.width > onScreen.x &&
+            rect.y < onScreen.y + onScreen.height &&
+            rect.y + rect.height > onScreen.y,
+        );
       }
 
-      drag.delta = { x: screenX / cameraRef.current.z, y: screenY / cameraRef.current.z };
+      let deltaX = screenX / cameraRef.current.z;
+      let deltaY = screenY / cameraRef.current.z;
+
+      // Shift keeps the axis with the larger movement.
+      let lockedAxis = null;
+
+      if (event.shiftKey) {
+        if (Math.abs(deltaX) >= Math.abs(deltaY)) {
+          deltaY = 0;
+          lockedAxis = "y";
+        } else {
+          deltaX = 0;
+          lockedAxis = "x";
+        }
+      }
+      // Snapping (Ctrl held: none), on the axes Shift leaves free.
+      drag.guides = [];
+      if (!event.ctrlKey && drag.snapBase && drag.candidates?.length) {
+        const snap = computeSnap(
+          { ...drag.snapBase, x: drag.snapBase.x + deltaX, y: drag.snapBase.y + deltaY },
+          drag.candidates,
+          getSnapThreshold(cameraRef.current.z),
+        );
+
+        if (lockedAxis !== "x") {
+          deltaX += snap.dx;
+        }
+        if (lockedAxis !== "y") {
+          deltaY += snap.dy;
+        }
+        drag.guides = snap.guides.filter((guide) => guide.axis !== lockedAxis);
+      }
+      drag.delta = { x: deltaX, y: deltaY };
       if (!dragFrameRef.current) {
         dragFrameRef.current = window.requestAnimationFrame(writeDragToDom);
       }
@@ -3878,6 +4434,18 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
     [setFitTracking, writeDragToDom],
   );
   const handleFramePointerUp = useCallback((event) => {
+    const press = framePressRef.current;
+
+    // A click in a read-only view selects the step instance.
+    if (press && press.pointerId === event.pointerId) {
+      framePressRef.current = null;
+      event.currentTarget.releasePointerCapture?.(event.pointerId);
+      if (event.type === "pointerup" && Math.hypot(event.clientX - press.startX, event.clientY - press.startY) < DRAG_THRESHOLD_PX) {
+        selectFrame(press.id, press.shiftKey);
+      }
+      return;
+    }
+
     const drag = dragRef.current;
 
     if (!drag || drag.pointerId !== event.pointerId) {
@@ -3887,11 +4455,19 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
     event.currentTarget.releasePointerCapture?.(event.pointerId);
     dragRef.current = null;
     if (!drag.started) {
-      // A click: no layout action; the fit and storage stay as they were.
+      // A click selects (Shift toggles); no layout action, the fit and
+      // storage stay as they were.
+      if (event.type === "pointerup") {
+        selectFrame(drag.pressedId, drag.shiftKey);
+      }
       return;
     }
 
     restoreDragDom(drag);
+    // Dragging an unselected frame selected it alone (same batch).
+    if (!drag.pressedSelected) {
+      setSelection(new Set([drag.pressedId]));
+    }
     // Sizes and frame state held during the drag join the release batch.
     latestRef.current.flushPendingSizes();
     latestRef.current.flushPendingFrameState();
@@ -3912,10 +4488,8 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
       return;
     }
 
-    const { commitLayoutPositions: commit, draggedPositions: positions } = latestRef.current;
-
     setIsFitTracking(false);
-    commit({ ...positions, ...Object.fromEntries(moved.map(([id, next]) => [id, next])) });
+    latestRef.current.commitLayoutPositions({ ...savedPositionsRef.current, ...Object.fromEntries(moved.map(([id, next]) => [id, next])) });
   }, []);
   const cancelDrag = () => {
     const drag = dragRef.current;
@@ -3953,9 +4527,94 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
     const { positions, sizes } = computeCurrentAutoLayout();
 
     autoLayoutBasisRef.current = { sizes };
+    historyRef.current.updateLatestAfter(positions);
+    savedPositionsRef.current = positions;
     setDraggedPositions(positions);
     writeStoredFlowLayout(layoutStorageKey, prototype, positions, canvasNodeIds, viewportSignature);
   }, [routePositionMap]);
+  // Keyboard nudges: one DOM-only move per run of arrow presses, committed
+  // 500 ms after the last arrow keyup (later if a gesture is under way), or
+  // at once before another layout action, an undo or redo, a selection
+  // change, a lost window focus or unmounting.
+  const nudgeRef = useRef(null);
+  const commitNudge = (force) => {
+    const nudge = nudgeRef.current;
+
+    if (!nudge) {
+      return false;
+    }
+
+    window.clearTimeout(nudge.timer);
+    if (!force && (cameraIdleTimerRef.current || dragRef.current?.started || marqueeRef.current)) {
+      nudge.timer = window.setTimeout(() => commitNudge(false), 250);
+      return false;
+    }
+
+    nudgeRef.current = null;
+    restoreDragDom(nudge);
+    const moved = nudge.frames.map(({ id, origin }) => [id, { x: Math.round(origin.x + nudge.delta.x), y: Math.round(origin.y + nudge.delta.y) }]);
+
+    setFitTracking(false);
+    setIsFitTracking(false);
+    latestRef.current.commitLayoutPositions({ ...savedPositionsRef.current, ...Object.fromEntries(moved) });
+    return true;
+  };
+  const flushPendingNudge = () => commitNudge(true);
+  latestRef.current.flushNudge = flushPendingNudge;
+  const applyNudge = (code, shiftKey) => {
+    const offset = nudgeOffset(code, shiftKey);
+
+    if (!offset) {
+      return;
+    }
+    if (!nudgeRef.current) {
+      const frames = [...selectionRef.current].map((key) => collectMovedFrame(key)).filter(Boolean);
+
+      if (!frames.length) {
+        return;
+      }
+      nudgeRef.current = { delta: { x: 0, y: 0 }, edges: [], frames, started: true, timer: 0 };
+      // A nudge ends the auto layout notice's undo period.
+      if (autoLayoutUndo) {
+        setAutoLayoutUndo(null);
+      }
+      startDragDom(nudgeRef.current);
+      rendererRef.current?.abort();
+    }
+
+    const nudge = nudgeRef.current;
+
+    window.clearTimeout(nudge.timer);
+    nudge.delta = { x: nudge.delta.x + offset.dx, y: nudge.delta.y + offset.dy };
+    writeMoveToDom(nudge);
+  };
+  const scheduleNudgeCommit = () => {
+    const nudge = nudgeRef.current;
+
+    if (nudge) {
+      window.clearTimeout(nudge.timer);
+      nudge.timer = window.setTimeout(() => commitNudge(false), 500);
+    }
+  };
+  useIsomorphicLayoutEffect(() => {
+    writeMinimapToDom();
+  });
+  // Another commit can rewrite what a nudge wrote to the DOM: write it again.
+  useIsomorphicLayoutEffect(() => {
+    if (nudgeRef.current) {
+      writeMoveToDom(nudgeRef.current);
+    }
+  });
+  useEffect(() => {
+    const flushOnBlur = () => latestRef.current.flushNudge?.();
+
+    window.addEventListener("blur", flushOnBlur);
+    return () => {
+      window.removeEventListener("blur", flushOnBlur);
+      // Unmounting still writes a pending nudge to storage.
+      latestRef.current.flushNudge?.();
+    };
+  }, []);
   // The Undo notice lasts 8000 ms; ending during a gesture would commit, so
   // it waits for the gesture to end.
   useEffect(() => {
@@ -3965,7 +4624,7 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
 
     let timer = 0;
     const expire = () => {
-      if (cameraIdleTimerRef.current || dragRef.current?.started) {
+      if (cameraIdleTimerRef.current || dragRef.current?.started || marqueeRef.current) {
         timer = window.setTimeout(expire, 250);
         return;
       }
@@ -3981,6 +4640,7 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
   const beforeJourneySwitchRef = useRef([]);
   beforeJourneySwitchRef.current = [
     cancelDrag,
+    () => flushPendingNudge(),
     () => {
       window.clearTimeout(hoverDwellTimerRef.current);
       pendingHoverRef.current = undefined;
@@ -3989,8 +4649,10 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
       setHoverDwellKey(null);
     },
     () => {
+      framePressRef.current = null;
       setPinnedFrameId(null);
       setPromotedFrameIds(new Set());
+      setSelection(new Set());
     },
     () => setIsResetDialogOpen(false),
     () => {
@@ -4102,12 +4764,25 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
       return;
     }
 
+    // Releasing an arrow key starts the pending nudge's 500 ms wait.
+    if (event.type === "keyup" && nudgeRef.current && nudgeOffset(event.code, false)) {
+      scheduleNudgeCommit();
+    }
+
     const target = event.composedPath?.()[0] ?? event.target;
     const command = resolveCanvasShortcut(event, {
       dragActive: Boolean(dragRef.current?.started),
       isMac: isMacPlatform(),
       isTextEntry: isTextEntryTarget(target),
       journeyEntryCount: hasJourneyList ? journeyEntries.length : 0,
+      // A pending nudge commits before an undo, so it is undoable, and it
+      // discards what could have been redone.
+      canRedo: historyRef.current.canRedo() && !nudgeRef.current,
+      canUndo: historyRef.current.canUndo() || Boolean(nudgeRef.current),
+      journeyFocus: Boolean(activeJourney),
+      marqueeActive: Boolean(marqueeRef.current),
+      selectedRouteCount: [...selection].filter((key) => routeInstanceKeys.has(key)).length,
+      selectionSize: selection.size,
       overlayOpen: isResetDialogOpen || isZoomMenuOpen || isAutoLayoutDialogOpen,
       targetIsControl: isControlTarget(target),
     });
@@ -4118,6 +4793,12 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
 
     event.preventDefault();
     event.stopPropagation();
+
+    if (command === "nudge") {
+      applyNudge(event.code, event.shiftKey);
+      return;
+    }
+    flushPendingNudge();
 
     if (command === "fit") {
       fitToView();
@@ -4141,6 +4822,20 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
       }
     } else if (command === "cancel-drag") {
       cancelDrag();
+    } else if (command === "undo") {
+      undoLayout();
+    } else if (command === "redo") {
+      redoLayout();
+    } else if (command === "cancel-marquee") {
+      cancelMarquee();
+    } else if (command === "clear-selection") {
+      setSelection(new Set());
+    } else if (command === "select-all") {
+      setSelection(new Set(displayedFrameKeys));
+    } else if (command === "zoom-to-selection") {
+      fitFrames(selection);
+    } else if (command === "next-frame" || command === "previous-frame") {
+      selectAdjacentFrame(command === "next-frame" ? 1 : -1);
     } else if (command === "previous-journey" || command === "next-journey") {
       const index = journeyEntries.findIndex((entry) => entry.key === journeyFocusKey);
       const offset = command === "next-journey" ? 1 : -1;
@@ -4168,7 +4863,8 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
     setIsResetDialogOpen(false);
   };
   const confirmResetLayout = () => {
-    commitLayoutPositions({});
+    flushPendingNudge();
+    commitLayoutPositions({}, { lanes: { after: null, before: laneLabels } });
     writeStoredFlowLanes(lanesStorageKey, [], viewportSignature);
     setLaneLabels(null);
     setFocusedRouteId(null);
@@ -4199,12 +4895,15 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
     return { labels: showTitles ? labels.filter((label) => label.title) : [], positions, sizes };
   };
   const applyAutoLayout = () => {
+    flushPendingNudge();
     const { labels, positions, sizes } = computeCurrentAutoLayout();
-    const undo = { labels: laneLabels, positions: draggedPositions };
 
     setFitTracking(true);
     setIsFitTracking(true);
-    commitLayoutPositions(positions);
+    commitLayoutPositions(positions, { lanes: { after: labels.length ? labels : null, before: laneLabels } });
+    // The notice's Undo undoes this history entry while it is the latest.
+    const undo = historyRef.current.peekUndo();
+
     autoLayoutBasisRef.current = { sizes };
     writeStoredFlowLanes(lanesStorageKey, labels, viewportSignature);
     setLaneLabels(labels.length ? labels : null);
@@ -4225,16 +4924,34 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
   const closeAutoLayoutDialog = () => {
     setIsAutoLayoutDialogOpen(false);
   };
-  // Restores the layout and names saved before the auto layout (an empty
-  // layout removes the stored one).
-  const undoAutoLayout = () => {
-    if (!autoLayoutUndo) {
-      return;
+  // Undo and redo replay a history entry: one committed layout action, one
+  // write, no new entry; the names come back when the entry holds them.
+  const replayHistory = (positions, lanes) => {
+    setAutoLayoutUndo(null);
+    autoLayoutBasisRef.current = null;
+    savedPositionsRef.current = positions;
+    setDraggedPositions(positions);
+    writeStoredFlowLayout(layoutStorageKey, prototype, positions, canvasNodeIds, viewportSignature);
+    if (lanes !== undefined) {
+      writeStoredFlowLanes(lanesStorageKey, lanes ?? [], viewportSignature);
+      setLaneLabels(lanes?.length ? lanes : null);
     }
+  };
+  const undoLayout = () => {
+    flushPendingNudge();
+    const entry = historyRef.current.undo();
 
-    commitLayoutPositions(autoLayoutUndo.positions);
-    writeStoredFlowLanes(lanesStorageKey, autoLayoutUndo.labels ?? [], viewportSignature);
-    setLaneLabels(autoLayoutUndo.labels);
+    if (entry) {
+      replayHistory(entry.before, "lanesBefore" in entry ? entry.lanesBefore : undefined);
+    }
+  };
+  const redoLayout = () => {
+    flushPendingNudge();
+    const entry = historyRef.current.redo();
+
+    if (entry) {
+      replayHistory(entry.after, "lanesAfter" in entry ? entry.lanesAfter : undefined);
+    }
   };
   const exportLayout = () => {
     const exportedLaneLabels = (laneLabels ?? []).filter((label) => routePositionMap.has(label.anchor));
@@ -4291,10 +5008,12 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
           return;
         }
 
-        commitLayoutPositions(importedPositions);
+        flushPendingNudge();
         // Feature names come with the file, signed for this flow; names on
         // frames the flow lacks are dropped.
         const importedLanes = normalizeLaneLabels(importedLayout.lanes, canvasNodeIds);
+
+        commitLayoutPositions(importedPositions, { lanes: { after: importedLanes.length ? importedLanes : null, before: laneLabels } });
 
         writeStoredFlowLanes(lanesStorageKey, importedLanes, viewportSignature);
         setLaneLabels(importedLanes.length ? importedLanes : null);
@@ -4347,6 +5066,82 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
         node,
         position: routePositionMap.get(node.id) ?? getRoutePosition(node, routes.length + index),
       }));
+  // The minimap shows by the stored choice, else for 8 frames or more.
+  const showMinimap = minimapPreference ? minimapPreference === "shown" : routes.length + flowNodes.length >= 8;
+  const toggleMinimap = () => {
+    const next = showMinimap ? "hidden" : "shown";
+
+    setMinimapPreference(next);
+    writeStoredPreference(flowMinimapStorageKey, next);
+  };
+  const toggleSections = () => {
+    const next = showSections ? "hidden" : "shown";
+
+    setSectionsPreference(next);
+    writeStoredPreference(flowSectionsStorageKey, next);
+  };
+  // Shift+2, N and Shift+N fit the given frames (fitCamera never zooms past
+  // 100%). Fitting every displayed frame is a plain Fit, which keeps fit
+  // tracking; any other fit is a programmatic move that ends it.
+  const fitFrames = (keys) => {
+    const viewport = viewportRef.current;
+    const rects = frameVisibleRectsRef.current.filter((rect) => keys.has(rect.key));
+
+    if (!viewport || !rects.length) {
+      return;
+    }
+    if (displayedFrameKeys.every((key) => keys.has(key))) {
+      fitToView();
+      return;
+    }
+    setCamera(fitCamera(getFlowBounds(rects), { height: viewport.clientHeight, width: viewport.clientWidth }), { immediate: true });
+  };
+  // N / Shift+N select the next or previous frame and fit it: in the complete
+  // flow by route order after the first selected route, in a journey view by
+  // step index after the lowest selected step; both wrap.
+  const selectAdjacentFrame = (direction) => {
+    let nextKey = null;
+
+    if (journeyLayout) {
+      const steps = journeyLayout.layout;
+      const selectedIndices = steps.filter((step) => selection.has(step.instanceKey)).map((step) => step.stepIndex);
+      const nextIndex = getAdjacentStepIndex(steps.length, selectedIndices.length ? Math.min(...selectedIndices) : null, direction);
+
+      nextKey = steps.find((step) => step.stepIndex === nextIndex)?.instanceKey ?? null;
+    } else {
+      const routeIds = routes.map((route) => route.id);
+
+      nextKey = getAdjacentRouteId(routeIds, routeIds.find((id) => selection.has(id)) ?? null, direction);
+    }
+    if (!nextKey) {
+      return;
+    }
+
+    const next = new Set([nextKey]);
+
+    setSelection(next);
+    fitFrames(next);
+  };
+  // Every displayed frame by instance key (Mod+A, outlines, route counts).
+  const routeInstanceKeys = new Set(routeInstances.map((instance) => instance.key));
+  frameVisibleRectsRef.current = [
+    ...routeInstances.map((instance) => ({ instance, type: "route" })),
+    ...nodeInstances.map((instance) => ({ instance, type: "flow" })),
+  ].map(({ instance: { key, position }, type }) => ({
+    key,
+    ...getFrameVisibleRect(
+      { height: position.height ?? defaultNodeHeight, width: position.width ?? defaultPreviewWidth + nodeFrameSize, x: position.x, y: position.y },
+      type,
+    ),
+  }));
+  const displayedFrameKeys = [...routeInstances, ...nodeInstances].map((instance) => instance.key);
+  const minimapContent = frameVisibleRectsRef.current.length ? getFlowBounds(frameVisibleRectsRef.current) : null;
+
+  minimapStateRef.current.content = minimapContent;
+  // The first viewBox (later ones come from writeMinimapToDom): the frames.
+  const minimapViewBox = minimapContent
+    ? `${minimapContent.x} ${minimapContent.y} ${Math.max(1, minimapContent.width)} ${Math.max(1, minimapContent.height)}`
+    : "0 0 1 1";
   // Journey edges are hovered by instance key.
   const getJourneyEdgeFocus = (edge) => {
     if (!focusedRouteId) {
@@ -4483,6 +5278,30 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
             transform: getCameraTransform(cameraRef.current),
           },
         },
+        // Flow group sections: behind edges and frames, no pointer input; the
+        // inline fill survives comment screenshots, which keep sections.
+        sectionBounds
+          ? createElement(
+              "svg",
+              {
+                "aria-hidden": "true",
+                className: "prototype-inspector__flow-sections",
+                height: sectionBounds.height,
+                style: { left: `${sectionBounds.x}px`, top: `${sectionBounds.y}px` },
+                viewBox: `${sectionBounds.x} ${sectionBounds.y} ${sectionBounds.width} ${sectionBounds.height}`,
+                width: sectionBounds.width,
+              },
+              sections.map((section) =>
+                createElement("path", {
+                  className: "prototype-inspector__flow-section",
+                  d: section.path,
+                  "data-section-group": section.group,
+                  key: section.group,
+                  style: sectionFillStyle,
+                }),
+              ),
+            )
+          : null,
         journeyCanvas
           ? createElement(
               "svg",
@@ -4592,6 +5411,7 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
             height: position.height ?? size.height,
             instanceKey: key,
             isAnchor,
+            isSelected: selection.has(key),
             key,
             node,
             onPointerCancel: handleFramePointerUp,
@@ -4615,6 +5435,7 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
             instanceKey: key,
             isAnchor,
             isRendered,
+            isSelected: selection.has(key),
             isSnapshotStale: tier !== "live" && Boolean(snapshotUrl) && staleRoutes.has(route.id),
             key,
             mountIframe: tier === "live" && (isRendered || loadingFrameRef.current === key),
@@ -4651,6 +5472,27 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
             "--prototype-flow-camera-zoom": cameraRef.current.z,
           },
         },
+        // Section names: constant size, above the top-left corner of the
+        // section's top member (and above that member's frame label); first in
+        // the overlay, so frame and edge labels paint over them.
+        sections
+          .filter((section) => !laneGroupNames.has(`group:${section.group}`))
+          .map((section) =>
+            createElement(
+              "div",
+              {
+                className: "prototype-inspector__flow-section-label",
+                "data-section-group": section.group,
+                key: `section:${section.group}`,
+                style: {
+                  "--prototype-flow-label-wx": `${section.label.x}px`,
+                  "--prototype-flow-label-wy": `${section.label.y}px`,
+                  "--prototype-flow-section-member-wy": `${section.memberTop}px`,
+                },
+              },
+              section.group,
+            ),
+          ),
         journeyLayout
           ? [
               // Journey labels: fixed 12 px, truncated to the room between the
@@ -4755,6 +5597,38 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
             y: visible.y,
           });
         }),
+        createElement(
+          "div",
+          { className: "prototype-inspector__flow-guides", "data-sbfx-capture-ignore": "true", key: "guides" },
+          ["x", "y"].map((axis) => createElement("div", { className: "prototype-inspector__flow-guide", "data-axis": axis, hidden: true, key: axis })),
+        ),
+        createElement("div", {
+          className: "prototype-inspector__flow-marquee",
+          "data-sbfx-capture-ignore": "true",
+          hidden: true,
+          key: "marquee",
+          ref: marqueeElementRef,
+        }),
+        // Selection outlines, one per displayed frame (hidden unless selected),
+        // around the visible rect; marquee and drags only touch the DOM.
+        createElement(
+          "div",
+          { className: "prototype-inspector__flow-selection", "data-sbfx-capture-ignore": "true", key: "selection" },
+          frameVisibleRectsRef.current.map(({ height, key, width, x, y }) =>
+            createElement("div", {
+              className: "prototype-inspector__flow-selection-outline",
+              "data-frame-outline": key,
+              "data-selected": selection.has(key) ? "true" : undefined,
+              key,
+              style: {
+                "--prototype-flow-outline-wx": `${x}px`,
+                "--prototype-flow-outline-wy": `${y}px`,
+                "--prototype-flow-outline-ww": `${width}px`,
+                "--prototype-flow-outline-wh": `${height}px`,
+              },
+            }),
+          ),
+        ),
         // Auto layout feature names: right edge left of the anchor frame's
         // visible rect, top on its top; no pointer input, no comment anchor.
         shownLaneLabels.map((label) => {
@@ -4777,6 +5651,45 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
           );
         }),
       ),
+      // Minimap (flow-canvas-editing): inside the viewport, so a wheel over
+      // it pans the canvas; frames in world coordinates, the viewBox and the
+      // viewport rectangle follow the camera through the DOM.
+      showMinimap
+        ? createElement(
+            "svg",
+            {
+              "aria-hidden": "true",
+              className: "prototype-inspector__flow-minimap",
+              "data-sbfx-capture-ignore": "true",
+              onPointerCancel: handleMinimapPointerUp,
+              onPointerDown: handleMinimapPointerDown,
+              onPointerMove: handleMinimapPointerMove,
+              onPointerUp: handleMinimapPointerUp,
+              preserveAspectRatio: "xMidYMid meet",
+              ref: minimapRef,
+              viewBox: minimapViewBox,
+            },
+            frameVisibleRectsRef.current.map((rect) =>
+              createElement("rect", {
+                className: "prototype-inspector__flow-minimap-frame",
+                "data-selected": selection.has(rect.key) ? "true" : undefined,
+                height: rect.height,
+                key: rect.key,
+                width: rect.width,
+                x: rect.x,
+                y: rect.y,
+              }),
+            ),
+            createElement("rect", {
+              className: "prototype-inspector__flow-minimap-viewport",
+              height: 0,
+              ref: minimapViewportRef,
+              width: 0,
+              x: 0,
+              y: 0,
+            }),
+          )
+        : null,
     ),
     createElement(
       "div",
@@ -4885,12 +5798,40 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
             ),
           ),
           createElement(
+            "button",
+            {
+              "aria-checked": showMinimap,
+              className: "prototype-inspector__flow-zoom-menu-item",
+              key: "minimap",
+              onClick: () => chooseZoomMenuItem(toggleMinimap),
+              role: "menuitemcheckbox",
+              type: "button",
+            },
+            createElement("span", null, "Minimap"),
+            createElement("kbd", null, showMinimap ? "On" : "Off"),
+          ),
+          createElement(
+            "button",
+            {
+              "aria-checked": showSections,
+              className: "prototype-inspector__flow-zoom-menu-item",
+              key: "sections",
+              onClick: () => chooseZoomMenuItem(toggleSections),
+              role: "menuitemcheckbox",
+              type: "button",
+            },
+            createElement("span", null, "Sections"),
+            createElement("kbd", null, showSections ? "On" : "Off"),
+          ),
+          createElement(
             "dl",
             { className: "prototype-inspector__flow-zoom-menu-help" },
             [
               ["Zoom", "Pinch, ⌘/Ctrl + scroll, = / -"],
               ["Pan", "Two-finger scroll, Space + drag, middle-button drag"],
               ["Fit / 100%", "Shift+1 / Shift+0"],
+              ["Zoom to selection", "Shift+2"],
+              ["Next / previous frame", "N / Shift+N"],
               ...(hasJourneyList ? [["切換功能流程", "[ / ]"]] : []),
             ].map(([term, detail]) =>
               createElement(
@@ -4916,7 +5857,7 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
               "div",
               { className: "prototype-inspector__flow-auto-layout-notice", role: "status" },
               createElement("span", null, "Auto layout applied."),
-              createElement("button", { onClick: undoAutoLayout, type: "button" }, "Undo"),
+              createElement("button", { onClick: undoLayout, type: "button" }, "Undo"),
             )
           : null,
         createElement("input", {

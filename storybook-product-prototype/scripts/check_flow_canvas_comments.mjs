@@ -641,6 +641,65 @@ function installCheckLibrary(config) {
     const moved = Math.hypot(preview.getBoundingClientRect().left - rect.left, preview.getBoundingClientRect().top - rect.top);
     return { end, frameMovedPx: moved, samples: samples.length, start, worstOffsetDriftPx: worst };
   };
+  // Group drag (flow-canvas-editing): selects two frames (click, then
+  // Shift-click) and drags one; samples each saved pin's offset from its
+  // frame's visible rect at the start of every animation frame.
+  lib.groupPinsFollowDrag = async ({ anchorIds, commentIds, moves, stepX, stepY }) => {
+    const previews = anchorIds.map((anchorId) => document.querySelector(`[data-sbfx-anchor="${CSS.escape(anchorId)}"]`));
+    const pins = () => commentIds.map((commentId) => document.querySelector(`[data-saved-comment-pin="${CSS.escape(commentId)}"]`));
+    if (previews.some((preview) => !preview) || pins().some((pin) => !pin)) return { error: "a frame or a saved pin is missing" };
+    // Click each frame on its preview, away from its pin (which covers the
+    // point the comment was placed at).
+    const awayFromPin = (preview, pin) => {
+      const rect = preview.getBoundingClientRect();
+      const pinRect = pin.getBoundingClientRect();
+      return {
+        x: pinRect.left - rect.left > rect.width / 2 ? rect.left + rect.width * 0.25 : rect.left + rect.width * 0.75,
+        y: rect.top + Math.min(rect.height / 2, 200),
+      };
+    };
+    for (const [index, preview] of previews.entries()) {
+      const point = awayFromPin(preview, pins()[index]);
+      const target = document.elementFromPoint(point.x, point.y);
+      target.dispatchEvent(new PointerEvent("pointerdown", { ...pointer(point.x, point.y, 1), shiftKey: index > 0 }));
+      target.dispatchEvent(new PointerEvent("pointerup", { ...pointer(point.x, point.y, 0), shiftKey: index > 0 }));
+      await wait(100);
+    }
+    await wait(config.settleMs);
+    const selected = previews.filter((preview) => preview.closest("[data-frame-id]")?.getAttribute("data-selected") === "true").length;
+    const offsets = () =>
+      previews.map((preview, index) => {
+        const frameRect = preview.getBoundingClientRect();
+        const pinRect = pins()[index].getBoundingClientRect();
+        return { x: pinRect.left + pinRect.width / 2 - frameRect.left, y: pinRect.top + pinRect.height / 2 - frameRect.top };
+      });
+    const start = offsets();
+    const before = previews.map((preview) => preview.getBoundingClientRect());
+    let worst = 0;
+    let sampling = true;
+    const tick = () => {
+      if (!sampling) return;
+      offsets().forEach((offset, index) => {
+        worst = Math.max(worst, Math.abs(offset.x - start[index].x), Math.abs(offset.y - start[index].y));
+      });
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+    // Press the first frame away from its pin.
+    const { x, y } = awayFromPin(previews[0], pins()[0]);
+    const target = document.elementFromPoint(x, y);
+    target.dispatchEvent(new PointerEvent("pointerdown", pointer(x, y, 1)));
+    await nextFrame();
+    for (let index = 1; index <= moves; index += 1) {
+      target.dispatchEvent(new PointerEvent("pointermove", pointer(x + index * stepX, y + index * stepY, 1)));
+      await nextFrame();
+    }
+    target.dispatchEvent(new PointerEvent("pointerup", pointer(x + moves * stepX, y + moves * stepY, 0)));
+    await wait(config.settleMs);
+    sampling = false;
+    const moved = previews.map((preview, index) => Math.hypot(preview.getBoundingClientRect().left - before[index].left, preview.getBoundingClientRect().top - before[index].top));
+    return { moved, selected, worstOffsetDriftPx: worst };
+  };
   // Drags a saved pin onto another frame's visible rect and waits for the save.
   lib.dragPinOntoFrame = async ({ anchorId, commentId }) => {
     const pin = document.querySelector(`[data-saved-comment-pin="${CSS.escape(commentId)}"]`);
@@ -976,19 +1035,55 @@ async function caseWorkspaceOverCanvas(page, args) {
       collapsed: workspace?.getAttribute("data-export-collapsed") ?? null,
       journeyListRight: document.querySelector(".prototype-inspector__flow-journeys")?.getBoundingClientRect().right ?? 0,
       layout: rect(document.querySelector(".prototype-inspector__flow-controls--layout")),
+      minimap: rect(document.querySelector(".prototype-inspector__flow-minimap")),
       open: document.documentElement.dataset.sbfxWorkspaceOpen ?? null,
       orientation: document.documentElement.dataset.sbfxWorkspaceOrientation ?? null,
       viewport: rect(document.querySelector(".prototype-inspector__flow-viewport")),
       window: { height: window.innerHeight, width: window.innerWidth },
       workspace: rect(workspace),
+      zoom: rect(document.querySelector(".prototype-inspector__flow-controls--zoom")),
     };
   })()`;
+  // The minimap (shown here whatever the flow size) never covers the zoom
+  // group, the layout group or the expanded dock.
+  const clearOf = (a, b) => !a || !b || a.right <= b.left + 0.5 || a.left >= b.right - 0.5 || a.bottom <= b.top + 0.5 || a.top >= b.bottom - 0.5;
+  const minimapClear = (state) =>
+    Boolean(state.minimap) && clearOf(state.minimap, state.zoom) && clearOf(state.minimap, state.layout) && clearOf(state.minimap, state.workspace);
   const resize = async (size) => {
     await page.send("Emulation.setDeviceMetricsOverride", { ...VIEWPORT, ...size, mobile: false });
     await sleep(800);
     return page.evaluate(measure);
   };
+  // The zoom menu, opened from the zoom group on the left edge, fits in the
+  // window and stays clear of the dock (it scrolls when the height runs out).
+  const menuState = () =>
+    page.evaluate(`(async () => {
+      const button = document.querySelector(".prototype-inspector__flow-scale");
+      const menu = document.querySelector(".prototype-inspector__flow-zoom-menu");
+      const frame = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      button.click();
+      await frame();
+      const box = menu.hidden ? null : menu.getBoundingClientRect().toJSON();
+      const state = {
+        box,
+        scrollable: menu.scrollHeight > menu.clientHeight + 1,
+        window: { height: window.innerHeight, width: window.innerWidth },
+        workspace: document.querySelector(".sbfx-workspace")?.getBoundingClientRect().toJSON() ?? null,
+      };
+      if (!menu.hidden) button.click();
+      await frame();
+      return state;
+    })()`);
+  const menuVisible = (menu) =>
+    Boolean(menu.box) &&
+    menu.box.left >= -0.5 &&
+    menu.box.top >= -0.5 &&
+    menu.box.right <= menu.window.width + 0.5 &&
+    menu.box.bottom <= menu.window.height + 0.5 &&
+    clearOf(menu.box, menu.workspace);
   try {
+    await openFlow(page, withGlobals(args.url, { figmaExport: "on", prototypeMode: "flow" }));
+    await page.evaluate(`localStorage.setItem("prototype-inspector:flow-minimap", "shown")`);
     await openFlow(page, withGlobals(args.url, { figmaExport: "on", prototypeMode: "flow" }));
     // A previous run can leave the export panel collapsed; the check needs it expanded.
     await page.evaluate(`(async () => {
@@ -999,6 +1094,7 @@ async function caseWorkspaceOverCanvas(page, args) {
       await new Promise((resolve) => setTimeout(resolve, 400));
     })()`);
     const wide = await page.evaluate(measure);
+    const wideMenu = await menuState();
     const expanded = (state) => state.open === "true" && state.collapsed !== "true" && Boolean(state.workspace && state.layout && state.viewport);
     // The canvas spans from the journey list (or the left edge) to the right edge.
     const fullWidth = (state) =>
@@ -1013,6 +1109,7 @@ async function caseWorkspaceOverCanvas(page, args) {
       JSON.stringify(wide),
     );
     const medium = await resize({ height: 1000, width: 800 });
+    const mediumMenu = await menuState();
     check(
       "workspace: at 800 pixels the layout group wraps clear of the side dock",
       expanded(medium) &&
@@ -1023,6 +1120,7 @@ async function caseWorkspaceOverCanvas(page, args) {
       JSON.stringify(medium),
     );
     const narrow = await resize({ height: 800, width: 640 });
+    const narrowMenu = await menuState();
     check(
       "workspace: at 640 pixels the canvas keeps the full height and the layout group sits above the bottom dock",
       expanded(narrow) &&
@@ -1031,7 +1129,18 @@ async function caseWorkspaceOverCanvas(page, args) {
         narrow.layout.bottom <= narrow.workspace.top + 0.5,
       JSON.stringify(narrow),
     );
+    check(
+      "workspace: the minimap stays clear of the zoom group, the layout group and the dock at 1600, 800 and 640 pixels",
+      [wide, medium, narrow].every(minimapClear),
+      JSON.stringify([wide, medium, narrow].map((state) => ({ dock: state.workspace, layout: state.layout, minimap: state.minimap, zoom: state.zoom }))),
+    );
+    check(
+      "workspace: the zoom menu opens fully visible and clear of the dock at 1600, 800 and 640 pixels",
+      [wideMenu, mediumMenu, narrowMenu].every(menuVisible),
+      JSON.stringify([wideMenu, mediumMenu, narrowMenu].map((menu) => ({ dock: menu.workspace, menu: menu.box, scrollable: menu.scrollable }))),
+    );
   } finally {
+    await page.evaluate(`localStorage.removeItem("prototype-inspector:flow-minimap")`).catch(() => undefined);
     await page.send("Emulation.setDeviceMetricsOverride", { ...VIEWPORT, mobile: false });
   }
 }
@@ -1245,6 +1354,28 @@ async function caseCommentsEndToEnd(page, args) {
     !follow.error && follow.frameMovedPx > 20 && follow.worstOffsetDriftPx <= 1,
     JSON.stringify(follow),
   );
+  // A second frame comment, on another route on screen, for the group drag.
+  const secondAnchor = await page.evaluate(`[...document.querySelectorAll('[data-sbfx-anchor^="route:"]')].map((element) => element.getAttribute("data-sbfx-anchor")).find((anchorId) => anchorId !== ${JSON.stringify(args.frameAnchor)} && anchorId !== ${JSON.stringify(args.moveTargetAnchor)}) ?? null`);
+  if (secondAnchor) {
+    const secondPoint = await lib(`pointOnFrame(${JSON.stringify(secondAnchor)})`);
+    const second = await lib(`placeComment(${JSON.stringify({ text: `Second frame comment ${stamp}`, ...secondPoint })})`);
+    // figma-export swallows the rest of a placing press's click sequence for
+    // 500 ms; the selection clicks come after it.
+    await sleep(700);
+    const group = await lib(`groupPinsFollowDrag(${JSON.stringify({ anchorIds: [args.frameAnchor, secondAnchor], commentIds: [frame.id, second.id], ...DRAG })})`);
+    check(
+      "pins: a group drag moves every dragged frame's pin with its frame",
+      !group.error && group.selected === 2 && group.moved.every((px) => px > 20) && group.worstOffsetDriftPx <= 1,
+      JSON.stringify(group),
+    );
+    // Undo the group drag (Mod+Z) and clear the selection, so the frames the
+    // next cases use are back where they were.
+    for (const [code, key, keyCode, modifiers] of [["KeyZ", "z", 90, 4], ["Escape", "Escape", 27, 0]]) {
+      await page.send("Input.dispatchKeyEvent", { code, key, modifiers, type: "keyDown", windowsVirtualKeyCode: keyCode });
+      await page.send("Input.dispatchKeyEvent", { code, key, modifiers, type: "keyUp", windowsVirtualKeyCode: keyCode });
+      await sleep(300);
+    }
+  }
   const edit = await lib(`editComment(${JSON.stringify(frame.id)})`);
   check(
     "edit: Edit on a frame comment opens the edit panel beside its pin, not the centered modal",

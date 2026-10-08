@@ -127,10 +127,18 @@ class CdpClient {
   }
 }
 
-// Counts sbfx:anchors-moved events and route iframe loads on every document.
+// Counts sbfx:anchors-moved events, route iframe loads and writes of the
+// saved layout key on every document.
 const INSTRUMENTATION = `(() => {
   if (window !== window.top) return;
-  window.__autoLayoutCheck = { anchorsMoved: 0, iframeLoads: 0 };
+  window.__autoLayoutCheck = { anchorsMoved: 0, iframeLoads: 0, layoutOps: [] };
+  for (const method of ["setItem", "removeItem"]) {
+    const original = Storage.prototype[method];
+    Storage.prototype[method] = function (key, value) {
+      if (this === window.localStorage && String(key).startsWith("prototype-inspector:flow-layout:")) window.__autoLayoutCheck.layoutOps.push(method);
+      return original.call(this, key, value);
+    };
+  }
   document.addEventListener("sbfx:anchors-moved", () => { window.__autoLayoutCheck.anchorsMoved += 1; }, true);
   document.addEventListener("load", (event) => {
     if (event.target instanceof HTMLIFrameElement) window.__autoLayoutCheck.iframeLoads += 1;
@@ -215,6 +223,7 @@ const READ_STATE = `(() => {
     fitPressed: root.querySelector('[aria-label="Fit canvas"]')?.getAttribute("aria-pressed"),
     frames,
     iframeLoads: window.__autoLayoutCheck?.iframeLoads ?? 0,
+    layoutOps: (window.__autoLayoutCheck?.layoutOps ?? []).slice(),
     lanesStored: Object.keys(localStorage).filter((key) => key.startsWith("prototype-inspector:flow-lanes:")).length,
     layoutGroup: rect(root.querySelector(".prototype-inspector__flow-controls--layout")),
     names: [...root.querySelectorAll(".prototype-inspector__flow-lane-label")].map((element) => ({
@@ -267,9 +276,9 @@ const clickSelector = (page, selector) =>
 const clickButtonText = (page, text) =>
   page.evaluate(`(() => { const button = [...document.querySelectorAll("button")].find((candidate) => candidate.textContent === ${JSON.stringify(text)} && candidate.offsetParent); if (!button) throw new Error("no button ${text}"); button.click(); })()`);
 
-async function pressKey(page, code, key, keyCode) {
-  await page.send("Input.dispatchKeyEvent", { code, key, type: "keyDown", windowsVirtualKeyCode: keyCode });
-  await page.send("Input.dispatchKeyEvent", { code, key, type: "keyUp", windowsVirtualKeyCode: keyCode });
+async function pressKey(page, code, key, keyCode, modifiers = 0) {
+  await page.send("Input.dispatchKeyEvent", { code, key, modifiers, type: "keyDown", windowsVirtualKeyCode: keyCode });
+  await page.send("Input.dispatchKeyEvent", { code, key, modifiers, type: "keyUp", windowsVirtualKeyCode: keyCode });
 }
 
 // A frame's visible preview center on screen (falls back to the node box).
@@ -284,13 +293,13 @@ const framePoint = (page, frameId) =>
 
 // A real pointer drag through Chrome's input pipeline. `during` runs after
 // the moves, before the release.
-async function dragFrame(page, frameId, { dx = 120, dy = 60, steps = 12, during = null } = {}) {
+async function dragFrame(page, frameId, { dx = 120, dy = 60, modifiers = 0, steps = 12, during = null } = {}) {
   const start = await framePoint(page, frameId);
   if (!start) throw new Error(`no frame ${frameId}`);
   await page.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: start.x, y: start.y });
   await page.send("Input.dispatchMouseEvent", { button: "left", clickCount: 1, type: "mousePressed", x: start.x, y: start.y });
   for (let step = 1; step <= steps; step += 1) {
-    await page.send("Input.dispatchMouseEvent", { buttons: 1, type: "mouseMoved", x: start.x + (dx * step) / steps, y: start.y + (dy * step) / steps });
+    await page.send("Input.dispatchMouseEvent", { buttons: 1, modifiers, type: "mouseMoved", x: start.x + (dx * step) / steps, y: start.y + (dy * step) / steps });
     await sleep(16);
   }
   const result = during ? await during({ x: start.x + dx, y: start.y + dy }) : null;
@@ -646,6 +655,98 @@ async function caseMeasuredAfterApply(page, args) {
   );
 }
 
+// Layout undo history (flow-canvas-editing): the spec's history sequence,
+// Auto Layout undone and redone from the keyboard with its names, and one
+// write of the layout key per undo and redo, also around a Reset.
+async function caseUndoHistory(page, args) {
+  const META = 4;
+  const SHIFT = 8;
+  const CTRL = 2;
+  await freshFlow(page, args);
+  const at = (state, id) => state.frames.find((frame) => frame.id === id);
+  const opsSince = (before, after) => after.layoutOps.slice(before.layoutOps.length);
+  const undo = () => pressKey(page, "KeyZ", "z", 90, META);
+  const redo = () => pressKey(page, "KeyZ", "z", 90, META | SHIFT);
+  const s0 = await readState(page);
+  const target = s0.frames.find((frame) => frame.type === "route").id;
+  const z = s0.camera.z;
+  // 1. Drag 200 world px right (Ctrl: no snapping); the drag selects it.
+  await dragFrame(page, target, { dx: 200 * z, dy: 0, modifiers: CTRL });
+  const s1 = await readState(page);
+  // 2. Nudge right once.
+  await pressKey(page, "ArrowRight", "ArrowRight", 39);
+  await sleep(800);
+  const s2 = await readState(page);
+  // 3-5. Undo, undo, redo.
+  await undo();
+  await sleep(SETTLE_MS);
+  const s3 = await readState(page);
+  await undo();
+  await sleep(SETTLE_MS);
+  const s4 = await readState(page);
+  await redo();
+  await sleep(SETTLE_MS);
+  const s5 = await readState(page);
+  // 6. A new drag drops what could be redone.
+  await dragFrame(page, target, { dx: -100 * z, dy: 100 * z, modifiers: CTRL });
+  const s6 = await readState(page);
+  await redo();
+  await sleep(SETTLE_MS);
+  const s7 = await readState(page);
+  const x = (state) => at(state, target).x;
+  check(
+    "history: drag, nudge, undo, undo, redo and a new drag follow the spec's sequence",
+    x(s2) === x(s1) + 20 && x(s3) === x(s1) && x(s4) === x(s0) && x(s5) === x(s1) && at(s7, target).x === at(s6, target).x && at(s7, target).y === at(s6, target).y,
+    JSON.stringify({ start: x(s0), dragged: x(s1), nudged: x(s2), undo1: x(s3), undo2: x(s4), redo: x(s5), newDrag: [x(s6), at(s6, target).y], redoAfterDrag: [x(s7), at(s7, target).y] }),
+  );
+  check(
+    "history: every undo and redo writes the layout key once",
+    opsSince(s2, s3).length === 1 && opsSince(s3, s4).length === 1 && opsSince(s4, s5).length === 1 && opsSince(s6, s7).length === 0,
+    JSON.stringify({ undo1: opsSince(s2, s3), undo2: opsSince(s3, s4), redo: opsSince(s4, s5), redoAfterDrag: opsSince(s6, s7) }),
+  );
+
+  // Auto layout from the keyboard: Mod+Z restores the dragged layout and its
+  // (absent) names and ends the notice; Shift+Mod+Z brings both back.
+  await applyAutoLayout(page);
+  await clickSelector(page, '[role="dialog"] .prototype-inspector__flow-reset-dialog-confirm');
+  await sleep(SETTLE_MS);
+  const applied = await readState(page);
+  await undo();
+  await sleep(SETTLE_MS);
+  const undone = await readState(page);
+  await redo();
+  await sleep(SETTLE_MS);
+  const redone = await readState(page);
+  check(
+    "history: Mod+Z undoes an auto layout with its names and notice; Shift+Mod+Z redoes it",
+    samePositions(undone, s7) && undone.names.length === 0 && !undone.notice && samePositions(redone, applied) && redone.names.length === applied.names.length,
+    JSON.stringify({ appliedNames: applied.names.length, redoneNames: redone.names.length, undoneNames: undone.names.length, noticeAfterUndo: Boolean(undone.notice) }),
+  );
+
+  // Reset, undo, redo: removeItem, setItem, removeItem.
+  const beforeReset = await readState(page);
+  await clickSelector(page, '[aria-label="Reset UI Flow layout"]');
+  await sleep(300);
+  await clickButtonText(page, "Reset");
+  await sleep(SETTLE_MS);
+  const reset = await readState(page);
+  await undo();
+  await sleep(SETTLE_MS);
+  const resetUndone = await readState(page);
+  await redo();
+  await sleep(SETTLE_MS);
+  const resetRedone = await readState(page);
+  check(
+    "history: Reset can be undone and redone, one write each",
+    JSON.stringify(opsSince(beforeReset, reset)) === JSON.stringify(["removeItem"]) &&
+      JSON.stringify(opsSince(reset, resetUndone)) === JSON.stringify(["setItem"]) &&
+      JSON.stringify(opsSince(resetUndone, resetRedone)) === JSON.stringify(["removeItem"]) &&
+      samePositions(resetUndone, beforeReset) &&
+      resetUndone.names.length === beforeReset.names.length,
+    JSON.stringify({ reset: opsSince(beforeReset, reset), redo: opsSince(resetUndone, resetRedone), undo: opsSince(reset, resetUndone) }),
+  );
+}
+
 // With the figma-export workspace open, the button and the notice stay in
 // the layout group, clear of the dock, at three widths.
 async function caseWorkspace(page, args) {
@@ -674,7 +775,7 @@ async function caseWorkspace(page, args) {
   }
 }
 
-const cases = [caseMeasuredAfterApply, caseApplyAndUndo, caseNoticeDuringDrag, caseNames, caseWorkspace];
+const cases = [caseMeasuredAfterApply, caseApplyAndUndo, caseNoticeDuringDrag, caseNames, caseUndoHistory, caseWorkspace];
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));

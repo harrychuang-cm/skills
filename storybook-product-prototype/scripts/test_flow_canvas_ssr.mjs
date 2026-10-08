@@ -154,6 +154,8 @@ for (const item of ["Zoom to fit", "50%", "100%", "200%"]) {
 }
 assert.match(zoomGroup, /<span>Zoom to fit<\/span><kbd>Shift\+1<\/kbd>/, "menu lists the fit shortcut");
 assert.match(zoomGroup, /<span>100%<\/span><kbd>Shift\+0<\/kbd>/, "menu lists the 100% shortcut");
+assert.match(zoomGroup, /<dt>Zoom to selection<\/dt><dd>Shift\+2<\/dd>/, "menu help lists Shift+2 (flow-canvas-editing)");
+assert.match(zoomGroup, /<dt>Next \/ previous frame<\/dt><dd>N \/ Shift\+N<\/dd>/, "menu help lists N / Shift+N (flow-canvas-editing)");
 
 // Reset confirm text uses on-primary over primary; both fallback themes reach 4.5:1.
 const css = fs.readFileSync(`${root}/storybook-product-prototype/assets/prototype-inspector/prototype-inspector.css`, "utf8");
@@ -292,7 +294,7 @@ const storageStub = (entries) => {
 };
 // sessionStorage entries select a journey; localStorage entries carry auto
 // layout names (the layout helper is imported natively and reads neither).
-const journeyRender = (prototypeValue, stored = {}, local = {}) => {
+const journeyRender = (prototypeValue, stored = {}, local = {}, props = {}) => {
   const journeyContext = vm.createContext({
     ...React, ...geometry, ...helper, ...snapshotModules, console, URL, URLSearchParams, Date, JSON, Set, Map, UPDATE_GLOBALS: "UPDATE_GLOBALS", addons,
     window: {
@@ -302,7 +304,7 @@ const journeyRender = (prototypeValue, stored = {}, local = {}) => {
     },
   });
   vm.runInContext(`${code}\nglobalThis.testApi = { PrototypeFlow };`, journeyContext);
-  return renderToStaticMarkup(React.createElement(journeyContext.testApi.PrototypeFlow, { prototype: prototypeValue }));
+  return renderToStaticMarkup(React.createElement(journeyContext.testApi.PrototypeFlow, { ...props, prototype: prototypeValue }));
 };
 const journeyList = (markup) => markup.match(/<section aria-label="UI Flow journeys"[\s\S]*?<\/section>/)?.[0] ?? "";
 const journeyButtons = (markup) =>
@@ -511,4 +513,120 @@ const undeclaredExample = { id: "example-prototype", flow: exampleFlowWithoutJou
   );
 }
 
-console.log("PASS UI Flow server render: frames, flow node, control names, camera layers, fit tracking, frame labels, zoom menu, contrast, comment declarations, comment anchors, empty state, frame size cache, level of detail, journey list, journey focus view, read-only journey view, auto layout button and feature names");
+// Canvas editing (flow-canvas-editing): the selection.
+{
+  const selected = renderToStaticMarkup(React.createElement(PrototypeFlow, { initialSelection: ["intake"], prototype }));
+  const selectedFrames = [...selected.matchAll(/<(?:article)[^>]*data-frame-id="([^"]+)"[^>]*data-selected="true"/g)].map((match) => match[1]);
+
+  assert.deepEqual(selectedFrames, ["intake"], "only the selected frame carries data-selected");
+  assert.match(selected, /<div class="prototype-inspector__flow-selection" data-sbfx-capture-ignore="true">/, "comment screenshots ignore the selection outlines");
+  assert.match(
+    selected,
+    /<div class="prototype-inspector__flow-selection-outline" data-frame-outline="intake" data-selected="true" style="--prototype-flow-outline-wx:1px;--prototype-flow-outline-wy:65px;--prototype-flow-outline-ww:375px;--prototype-flow-outline-wh:812px"><\/div>/,
+    "the selected frame's outline wraps its visible rect",
+  );
+  assert.equal(count(selected, /data-frame-outline="/g), 3, "every displayed frame has an outline, hidden unless selected");
+  assert.equal(count(selected, /flow-selection-outline" data-frame-outline="[^"]+" data-selected="true"/g), 1, "one outline shown");
+  // Snapping guides: the approved token with its light and dark fallbacks,
+  // and two guide lines rendered hidden in a layer screenshots ignore.
+  assert.match(css, /--pi-sys-color-annotation-touch-target: var\(--sbt-sys-color-annotation-touch-target, #db2777\);/, "guide token, light fallback");
+  assert.match(css, /--pi-sys-color-annotation-touch-target: var\(--sbt-sys-color-annotation-touch-target, #f472b6\);/, "guide token, dark fallback");
+  assert.match(
+    selected,
+    /<div class="prototype-inspector__flow-guides" data-sbfx-capture-ignore="true"><div class="prototype-inspector__flow-guide" data-axis="x" hidden=""><\/div><div class="prototype-inspector__flow-guide" data-axis="y" hidden=""><\/div><\/div>/,
+    "two hidden guide lines",
+  );
+}
+
+// Minimap: shown for 8 frames or more (routes and flow nodes together),
+// inside the viewport, ignored by comment screenshots; a stored choice wins.
+{
+  const flowOf = (routeCount, nodeCount = 0) => ({
+    id: `minimap-${routeCount}-${nodeCount}`,
+    flow: {
+      nodes: Array.from({ length: nodeCount }, (_, index) => ({ id: `n${index}`, shape: "decision", title: `N${index}` })),
+      routes: Array.from({ length: routeCount }, (_, index) => ({ id: `r${index}`, title: `R${index}` })),
+      transitions: [],
+    },
+  });
+  const hasMinimap = (markup) => /class="prototype-inspector__flow-minimap"/.test(markup);
+  const thirty = journeyRender(flowOf(30));
+
+  assert.ok(hasMinimap(thirty), "30 routes show the minimap");
+  assert.ok(!hasMinimap(journeyRender(flowOf(5))), "5 routes hide it");
+  assert.ok(hasMinimap(journeyRender(flowOf(7, 1))), "7 routes and 1 flow node show it");
+  const viewportMarkup = thirty.slice(thirty.indexOf('class="prototype-inspector__flow-viewport"'), thirty.indexOf('class="prototype-inspector__flow-control-layer"'));
+
+  assert.match(viewportMarkup, /<svg aria-hidden="true" class="prototype-inspector__flow-minimap" data-sbfx-capture-ignore="true"/, "the minimap sits inside the viewport and screenshots ignore it");
+  assert.equal(count(viewportMarkup, /class="prototype-inspector__flow-minimap-frame"/g), 30, "one minimap rectangle per frame");
+  assert.ok(!hasMinimap(journeyRender(flowOf(30), {}, { "prototype-inspector:flow-minimap": "hidden" })), "a stored choice hides it");
+  assert.ok(hasMinimap(journeyRender(flowOf(5), {}, { "prototype-inspector:flow-minimap": "shown" })), "a stored choice shows it");
+  assert.match(thirty, /role="menuitemcheckbox" type="button"><span>Minimap<\/span><kbd>On<\/kbd>/, "the zoom menu toggles the minimap");
+}
+
+// Flow group sections: a flowGroup of two or more routes draws one section
+// (inline fill, first in the world layer, kept by comment screenshots); a
+// one-route group draws none even with a flow node of that group; an auto
+// layout name for the group replaces the section name; a stored choice or a
+// journey view hides sections.
+{
+  const sectionsFlow = {
+    id: "sections",
+    flow: {
+      nodes: [{ id: "decide", flowGroup: "Solo", flowPosition: { x: 480, y: 1200 }, shape: "decision", title: "Decide?" }],
+      routes: [
+        ...["a", "b", "c", "d"].map((id, index) => ({ id, flowGroup: "Checkout", flowPosition: { x: index * 480, y: 0 }, title: id.toUpperCase() })),
+        { id: "e", flowGroup: "Solo", flowPosition: { x: 0, y: 1200 }, title: "E" },
+      ],
+      transitions: [],
+    },
+  };
+  const markup = journeyRender(sectionsFlow);
+  const world = markup.slice(markup.indexOf('class="prototype-inspector__flow-world"'));
+
+  assert.match(world, /^class="prototype-inspector__flow-world"[^>]*><svg aria-hidden="true" class="prototype-inspector__flow-sections"/, "sections are the first child of the world layer");
+  const paths = [...markup.matchAll(/<path class="prototype-inspector__flow-section" d="([^"]+)" data-section-group="([^"]+)" style="([^"]+)"/g)];
+
+  assert.deepEqual(paths.map((match) => match[2]), ["Checkout"], "only the four-route group draws a section");
+  assert.equal(paths[0][3], "fill:var(--pi-sys-color-surface-raised)", "the fill is an inline style");
+  assert.equal((paths[0][1].match(/M/g) ?? []).length, 4, "the section joins its four padded member boxes");
+  assert.doesNotMatch(markup.match(/<svg aria-hidden="true" class="prototype-inspector__flow-sections"[^>]*>/)[0], /data-sbfx-capture-ignore/, "comment screenshots keep sections");
+  const overlay = markup.slice(markup.indexOf('class="prototype-inspector__flow-overlay"'), markup.indexOf('class="prototype-inspector__flow-control-layer"'));
+
+  assert.match(overlay, /<div class="prototype-inspector__flow-section-label" data-section-group="Checkout" style="[^"]+">Checkout<\/div>/, "the group name is drawn in the screen-space overlay");
+  assert.match(markup, /role="menuitemcheckbox" type="button"><span>Sections<\/span><kbd>On<\/kbd>/, "the zoom menu toggles sections, shown by default");
+  const hidden = journeyRender(sectionsFlow, {}, { "prototype-inspector:flow-sections": "hidden" });
+
+  assert.doesNotMatch(hidden, /prototype-inspector__flow-section/, "a stored choice hides sections and their names");
+  assert.match(hidden, /<span>Sections<\/span><kbd>Off<\/kbd>/, "the menu shows the stored choice");
+  const laneNamed = journeyRender(sectionsFlow, {}, {
+    "prototype-inspector:flow-lanes:sections": JSON.stringify({ labels: [{ anchor: "a", key: "group:Checkout", title: "Checkout" }], version: 1, viewport: null }),
+  });
+
+  assert.match(laneNamed, /data-section-group="Checkout"/, "the section stays under an auto layout name");
+  assert.doesNotMatch(laneNamed, /prototype-inspector__flow-section-label/, "an auto layout name for the group replaces the section name");
+  assert.doesNotMatch(
+    journeyRender(examplePrototype, { "prototype-inspector:flow-journey:example-prototype": "declared:request-changes" }),
+    /prototype-inspector__flow-section/,
+    "a journey view draws no sections",
+  );
+}
+
+// Editing in a journey view: the selection holds step instances, so of the
+// two review steps only the selected one is outlined.
+{
+  const journeySelected = journeyRender(
+    examplePrototype,
+    { "prototype-inspector:flow-journey:example-prototype": "declared:request-changes" },
+    {},
+    { initialSelection: ["3:review"] },
+  );
+  const shownOutlines = [...journeySelected.matchAll(/flow-selection-outline" data-frame-outline="([^"]+)" data-selected="true"/g)].map((match) => match[1]);
+
+  assert.deepEqual(shownOutlines, ["3:review"], "only the selected step instance is outlined");
+  assert.equal(count(journeySelected, /data-frame-outline="\d+:review"/g), 2, "both review steps have outlines");
+  assert.equal(count(journeySelected, /<article[^>]*data-selected="true"/g), 1, "one frame instance carries data-selected");
+  assert.doesNotMatch(journeySelected, /prototype-inspector__flow-section/, "no sections in the journey view");
+}
+
+console.log("PASS UI Flow server render: frames, flow node, control names, camera layers, fit tracking, frame labels, zoom menu, contrast, comment declarations, comment anchors, empty state, frame size cache, level of detail, journey list, journey focus view, read-only journey view, auto layout button and feature names, selection, snapping guides, minimap, flow group sections, journey view editing");

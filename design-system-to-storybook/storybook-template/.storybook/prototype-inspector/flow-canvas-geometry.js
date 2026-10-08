@@ -2017,13 +2017,251 @@ export function getAutoLayoutLabelPlacement(anchorBox, camera, frameType = "rout
   };
 }
 
+// ---------------------------------------------------------------------------
+// Canvas editing (flow-canvas-editing): marquee, snapping, nudges, layout
+// history, flowGroup sections, the minimap and frame navigation. Frames are
+// visible rects keyed by instance key.
+
+function rectsTouch(a, b) {
+  return a.x <= b.x + b.width && b.x <= a.x + a.width && a.y <= b.y + b.height && b.y <= a.y + a.height;
+}
+
+// The frames a marquee touches, in frame order; additive keeps `base` first.
+export function getMarqueeSelection(frames, rect, { additive = false, base = [] } = {}) {
+  const hits = frames.filter((frame) => rectsTouch(frame, rect)).map((frame) => frame.key);
+
+  return additive ? [...base, ...hits.filter((key) => !base.includes(key))] : hits;
+}
+
+// Six screen pixels in world pixels, clamped to 2..20 (20 is under the
+// smallest real gutter, 22 px, and matches the 20 px grid authors use).
+export function getSnapThreshold(zoom) {
+  return Math.min(20, Math.max(2, 6 / zoom));
+}
+
+const snapLines = (start, size) => [start, start + size / 2, start + size];
+
+function nearestSnap(dragged, candidates, threshold, axis) {
+  const start = axis === "x" ? "x" : "y";
+  const size = axis === "x" ? "width" : "height";
+  let best = null;
+
+  snapLines(dragged[start], dragged[size]).forEach((line) => {
+    candidates.forEach((candidate) => {
+      snapLines(candidate[start], candidate[size]).forEach((target) => {
+        const delta = target - line;
+
+        if (Math.abs(delta) <= threshold && (!best || Math.abs(delta) < Math.abs(best.delta))) {
+          best = { candidate, delta, position: target };
+        }
+      });
+    });
+  });
+  return best;
+}
+
+// Snaps the dragged selection's visible bounding box to candidate visible
+// rects: on each axis its left/centre/right (top/middle/bottom) lines meet
+// every candidate's three lines, and the nearest pair within the threshold
+// wins (ties: the dragged line order, then candidate order). Returns the
+// correction and the guides spanning the aligned rects.
+export function computeSnap(draggedRect, candidateRects, threshold) {
+  const x = nearestSnap(draggedRect, candidateRects, threshold, "x");
+  const y = nearestSnap(draggedRect, candidateRects, threshold, "y");
+  const dx = x ? x.delta : 0;
+  const dy = y ? y.delta : 0;
+  const moved = { ...draggedRect, x: draggedRect.x + dx, y: draggedRect.y + dy };
+  const guides = [];
+
+  if (x) {
+    guides.push({
+      axis: "x",
+      end: Math.max(moved.y + moved.height, x.candidate.y + x.candidate.height),
+      position: x.position,
+      start: Math.min(moved.y, x.candidate.y),
+    });
+  }
+  if (y) {
+    guides.push({
+      axis: "y",
+      end: Math.max(moved.x + moved.width, y.candidate.x + y.candidate.width),
+      position: y.position,
+      start: Math.min(moved.x, y.candidate.x),
+    });
+  }
+  return { dx, dy, guides };
+}
+
+const nudgeDirections = {
+  ArrowDown: [0, 1],
+  ArrowLeft: [-1, 0],
+  ArrowRight: [1, 0],
+  ArrowUp: [0, -1],
+};
+
+// One arrow key press: 20 world px, or 100 with Shift (the 20 px grid of
+// real prototypes, not Figma's 1 / 10).
+export function nudgeOffset(code, shiftKey) {
+  const direction = nudgeDirections[code];
+
+  if (!direction) {
+    return null;
+  }
+
+  const step = shiftKey ? 100 : 20;
+
+  return { dx: direction[0] * step, dy: direction[1] * step };
+}
+
+// Undo history of committed layout actions. Each entry holds the complete
+// saved positions before and after ({ before, after }, an auto layout also
+// lanesBefore / lanesAfter): a Reset saves {} and an import replaces the map,
+// so changed nodes alone could not restore them. At most `limit` entries.
+export function createLayoutHistory(limit = 100) {
+  let entries = [];
+  let index = 0;
+
+  return {
+    canRedo: () => index < entries.length,
+    canUndo: () => index > 0,
+    clear: () => {
+      entries = [];
+      index = 0;
+    },
+    // The entry an undo would apply now.
+    peekUndo: () => (index > 0 ? entries[index - 1] : null),
+    push: (entry) => {
+      entries = [...entries.slice(0, index), entry].slice(-limit);
+      index = entries.length;
+    },
+    redo: () => (index < entries.length ? entries[index++] : null),
+    undo: () => (index > 0 ? entries[--index] : null),
+    // A re-arranged auto layout replaces the after state of the latest entry.
+    updateLatestAfter: (after) => {
+      if (index > 0) {
+        entries = entries.map((entry, position) => (position === index - 1 ? { ...entry, after } : entry));
+      }
+    },
+  };
+}
+
+function rectDistance(a, b) {
+  const dx = Math.max(0, b.x - (a.x + a.width), a.x - (b.x + b.width));
+  const dy = Math.max(0, b.y - (a.y + a.height), a.y - (b.y + b.height));
+
+  return Math.hypot(dx, dy);
+}
+
+// Sections of the flowGroups shared by at least two route frames: each member
+// box padded by min(32, max(0, (g - 8) / 2)), g its distance to the nearest
+// frame outside the group, so a section never reaches a foreign frame.
+// Flow-only nodes join an existing section. Frames: { key, group, type,
+// x, y, width, height }. Returns [{ group, rects, path, label }], the label
+// at the top-left of the top-most, then left-most, padded member box.
+export function computeSectionShapes(frames) {
+  const groups = new Map();
+
+  for (const frame of frames) {
+    if (typeof frame.group === "string" && frame.group) {
+      groups.set(frame.group, [...(groups.get(frame.group) ?? []), frame]);
+    }
+  }
+
+  const sections = [];
+
+  for (const [group, members] of groups) {
+    if (members.filter((member) => member.type === "route").length < 2) {
+      continue;
+    }
+
+    const foreign = frames.filter((frame) => frame.group !== group);
+    const rects = members.map((member) => {
+      const gap = foreign.reduce((nearest, frame) => Math.min(nearest, rectDistance(member, frame)), Infinity);
+      const padding = Math.min(32, Math.max(0, (gap - 8) / 2));
+
+      return {
+        height: member.height + padding * 2,
+        width: member.width + padding * 2,
+        x: member.x - padding,
+        y: member.y - padding,
+      };
+    });
+    const topIndex = rects.reduce((best, rect, index) => {
+      const current = rects[best];
+
+      return rect.y < current.y || (rect.y === current.y && rect.x < current.x) ? index : best;
+    }, 0);
+    const top = rects[topIndex];
+
+    sections.push({
+      group,
+      label: { x: top.x, y: top.y },
+      // Where the top member's frame label sits on (its labelY, else its top).
+      memberTop: members[topIndex].labelY ?? members[topIndex].y,
+      path: rects.map((rect) => `M${rect.x} ${rect.y}h${rect.width}v${rect.height}h${-rect.width}Z`).join(""),
+      rects,
+    });
+  }
+  return sections;
+}
+
+// Scales the union of the content and the viewport into the minimap panel,
+// centred. A world point maps to (world - origin) * scale + offset.
+export function getMinimapTransform(contentBounds, viewportRect, panelSize) {
+  const union = getFlowBounds([contentBounds, viewportRect].filter(Boolean));
+  const scale = Math.min(panelSize.width / union.width, panelSize.height / union.height);
+
+  return {
+    offsetX: (panelSize.width - union.width * scale) / 2,
+    offsetY: (panelSize.height - union.height * scale) / 2,
+    originX: union.x,
+    originY: union.y,
+    scale,
+  };
+}
+
+export function minimapPointToWorld(point, transform) {
+  return {
+    x: (point.x - transform.offsetX) / transform.scale + transform.originX,
+    y: (point.y - transform.offsetY) / transform.scale + transform.originY,
+  };
+}
+
+// N / Shift+N in the complete flow: the next or previous route in flow order,
+// wrapping; without a current route, the first or the last.
+export function getAdjacentRouteId(routeIds, currentId, direction) {
+  if (!routeIds.length) {
+    return null;
+  }
+
+  const index = routeIds.indexOf(currentId);
+
+  if (index < 0) {
+    return direction > 0 ? routeIds[0] : routeIds[routeIds.length - 1];
+  }
+  return routeIds[(index + direction + routeIds.length) % routeIds.length];
+}
+
+// N / Shift+N in a journey view, by step index (a repeated step found by node
+// id would always be its first occurrence).
+export function getAdjacentStepIndex(stepCount, currentIndex, direction) {
+  if (stepCount <= 0) {
+    return null;
+  }
+  if (currentIndex == null || currentIndex < 0) {
+    return direction > 0 ? 0 : stepCount - 1;
+  }
+  return (currentIndex + direction + stepCount) % stepCount;
+}
+
 const controlKeyCodes = new Set(["Space", "Enter", "NumpadEnter", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"]);
 
 // Canvas command for a keydown/keyup, or null when the key must reach
 // Storybook (or a focused control) unchanged. Matches KeyboardEvent.code;
 // Mod is Cmd on macOS and Ctrl elsewhere.
 export function resolveCanvasShortcut(eventLike, context) {
-  if (context.isTextEntry || eventLike.altKey) {
+  // Text entry, Alt and IME composition always reach their target.
+  if (context.isTextEntry || eventLike.altKey || eventLike.isComposing || eventLike.keyCode === 229) {
     return null;
   }
 
@@ -2063,8 +2301,50 @@ export function resolveCanvasShortcut(eventLike, context) {
       : null;
   }
 
+  // Escape does the first thing that applies: cancel a drag, cancel a
+  // marquee, clear the selection (an open menu or dialog closed above).
   if (code === "Escape") {
-    return !mod && !eventLike.shiftKey && context.dragActive ? "cancel-drag" : null;
+    if (mod || eventLike.shiftKey) {
+      return null;
+    }
+    if (context.dragActive) {
+      return "cancel-drag";
+    }
+    if (context.marqueeActive) {
+      return "cancel-marquee";
+    }
+    return (context.selectionSize ?? 0) > 0 ? "clear-selection" : null;
+  }
+
+  // Editing keys (flow-canvas-editing): only with something to act on, and
+  // never while a drag or a marquee is under way.
+  const gestureActive = Boolean(context.dragActive || context.marqueeActive);
+
+  if (nudgeDirections[code]) {
+    return !mod && !gestureActive && !context.journeyFocus && (context.selectionSize ?? 0) > 0 ? "nudge" : null;
+  }
+
+  if (code === "KeyZ" && mod) {
+    if (gestureActive || context.journeyFocus) {
+      return null;
+    }
+    return eventLike.shiftKey ? (context.canRedo ? "redo" : null) : context.canUndo ? "undo" : null;
+  }
+
+  if (code === "KeyY" && mod && !context.isMac) {
+    return !eventLike.shiftKey && !gestureActive && !context.journeyFocus && context.canRedo ? "redo" : null;
+  }
+
+  if (code === "KeyA" && mod) {
+    return !eventLike.shiftKey && !gestureActive ? "select-all" : null;
+  }
+
+  if (code === "KeyN") {
+    return !mod && !gestureActive ? (eventLike.shiftKey ? "previous-frame" : "next-frame") : null;
+  }
+
+  if (code === "Digit2") {
+    return eventLike.shiftKey && !mod && (context.selectionSize ?? 0) > 0 ? "zoom-to-selection" : null;
   }
 
   if (code === "Digit1") {

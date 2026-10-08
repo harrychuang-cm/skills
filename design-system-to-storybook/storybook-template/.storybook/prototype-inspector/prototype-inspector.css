@@ -81,6 +81,7 @@
   --pi-sys-color-disabled-container: var(--sbt-sys-color-disabled-container, #e5e7eb);
   --pi-sys-color-on-disabled-container: var(--sbt-sys-color-on-disabled-container, #8b93a1);
   --pi-sys-color-annotation-flow: var(--sbt-sys-color-annotation-flow, #7c3aed);
+  --pi-sys-color-annotation-touch-target: var(--sbt-sys-color-annotation-touch-target, #db2777);
   --pi-sys-color-annotation-ratio: var(--sbt-sys-color-annotation-ratio, #0f766e);
   --pi-sys-color-portfolio-allocation-series-4: var(--sbt-sys-color-portfolio-allocation-series-4, #b45309);
   --pi-ref-color-violet-50: var(--sbt-ref-color-violet-50, #7c3aed);
@@ -127,6 +128,7 @@
     --pi-sys-color-disabled-container: var(--sbt-sys-color-disabled-container, #262c35);
     --pi-sys-color-on-disabled-container: var(--sbt-sys-color-on-disabled-container, #6f7887);
     --pi-sys-color-annotation-flow: var(--sbt-sys-color-annotation-flow, #a78bfa);
+    --pi-sys-color-annotation-touch-target: var(--sbt-sys-color-annotation-touch-target, #f472b6);
     --pi-sys-color-annotation-ratio: var(--sbt-sys-color-annotation-ratio, #2dd4bf);
     --pi-sys-color-portfolio-allocation-series-4: var(--sbt-sys-color-portfolio-allocation-series-4, #fbbf24);
     --pi-ref-color-violet-50: var(--sbt-ref-color-violet-50, #a78bfa);
@@ -641,6 +643,26 @@ html[data-sbfx-workspace-open="true"] .prototype-inspector__flow-controls--layou
   justify-content: flex-start;
 }
 
+/* With the zoom group on the left, its menu opens left-aligned and scrolls
+   within the height below the group (above an expanded bottom dock). */
+html[data-sbfx-comments-open="true"] .prototype-inspector__flow-zoom-menu,
+html[data-sbfx-workspace-open="true"] .prototype-inspector__flow-zoom-menu {
+  inset-inline-start: var(--pi-sys-spacing-none);
+  inset-inline-end: auto;
+  max-block-size: calc(
+    100vh - var(--pi-sys-spacing-container-xl) * 2 - var(--pi-sys-size-control-height-sm) -
+      var(--pi-sys-spacing-xxs) * 2 - var(--pi-sys-spacing-xs)
+  );
+  overflow-y: auto;
+}
+
+html[data-sbfx-workspace-open="true"][data-sbfx-workspace-orientation="bottom"]:has(.sbfx-workspace:not([data-export-collapsed="true"])) .prototype-inspector__flow-zoom-menu {
+  max-block-size: calc(
+    100vh - var(--sbfx-workspace-reserved-block-size, min(38vh, 340px)) - var(--pi-sys-spacing-container-xl) * 2 -
+      var(--pi-sys-size-control-height-sm) - var(--pi-sys-spacing-xxs) * 2 - var(--pi-sys-spacing-xs)
+  );
+}
+
 /* The figma-export workspace dock floats over the canvas: the canvas pans, so
    it keeps the full preview size (the addon leaves a #storybook-root that holds
    a declared canvas unnarrowed too). While the dock is expanded, the layout
@@ -933,6 +955,16 @@ html[data-sbfx-workspace-open="true"][data-sbfx-workspace-orientation="bottom"]:
   pointer-events: none;
 }
 
+/* Flow group sections (flow-canvas-editing): behind edges and frames, no
+   pointer input; the fill is an inline style so comment screenshots keep it.
+   A drag may grow a section past the svg box, so it paints overflow. */
+.prototype-inspector__flow-sections {
+  position: absolute;
+  z-index: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
 /* Edge paint (fill, stroke, width, dashes, opacity per focus state) is set as
    inline styles by flow-canvas.js so DOM-to-image captures keep it; only the
    dash animation lives here. */
@@ -1144,7 +1176,7 @@ html[data-sbfx-workspace-open="true"][data-sbfx-workspace-orientation="bottom"]:
 }
 
 .prototype-inspector__flow-node[data-dragging="true"] {
-  z-index: 5;
+  z-index: 6;
   cursor: grabbing;
 }
 
@@ -1241,8 +1273,14 @@ html[data-sbfx-workspace-open="true"][data-sbfx-workspace-orientation="bottom"]:
   user-select: none;
 }
 
-.prototype-inspector__flow-frame[data-dragging="true"] {
+/* World z-order: frames 3, selected 4, dragged 6 (frames and nodes alike). */
+.prototype-inspector__flow-frame[data-selected="true"],
+.prototype-inspector__flow-node[data-selected="true"] {
   z-index: 4;
+}
+
+.prototype-inspector__flow-frame[data-dragging="true"] {
+  z-index: 6;
 }
 
 .prototype-inspector__flow-frame-preview {
@@ -1303,6 +1341,122 @@ html[data-sbfx-workspace-open="true"][data-sbfx-workspace-orientation="bottom"]:
   visibility: hidden;
 }
 
+/* Selection outlines (flow-canvas-editing): 2 px outside each selected
+   frame's visible rect, constant on screen, following the camera variables;
+   comment screenshots ignore the layer. */
+.prototype-inspector__flow-selection {
+  position: absolute;
+  inset: var(--pi-sys-spacing-none);
+  z-index: 3;
+  pointer-events: none;
+}
+
+.prototype-inspector__flow-selection-outline {
+  position: absolute;
+  inset-block-start: var(--pi-sys-spacing-none);
+  inset-inline-start: var(--pi-sys-spacing-none);
+  display: none;
+  box-sizing: border-box;
+  inline-size: calc(var(--prototype-flow-outline-ww) * var(--prototype-flow-camera-zoom));
+  block-size: calc(var(--prototype-flow-outline-wh) * var(--prototype-flow-camera-zoom));
+  box-shadow: 0 0 0 var(--pi-sys-size-control-border-width-strong) var(--pi-sys-color-primary);
+  transform: translate(
+    calc(var(--prototype-flow-outline-wx) * var(--prototype-flow-camera-zoom) + var(--prototype-flow-camera-x)),
+    calc(var(--prototype-flow-outline-wy) * var(--prototype-flow-camera-zoom) + var(--prototype-flow-camera-y))
+  );
+}
+
+.prototype-inspector__flow-selection-outline[data-selected="true"] {
+  display: block;
+}
+
+/* Snapping guides: 1 px lines in the guide color through the aligned edges
+   or centres, positioned from world variables like the outlines. */
+.prototype-inspector__flow-guide {
+  position: absolute;
+  inset-block-start: var(--pi-sys-spacing-none);
+  inset-inline-start: var(--pi-sys-spacing-none);
+  z-index: 6;
+  background: var(--pi-sys-color-annotation-touch-target);
+  pointer-events: none;
+  transform: translate(
+    calc(var(--prototype-flow-guide-wx) * var(--prototype-flow-camera-zoom) + var(--prototype-flow-camera-x)),
+    calc(var(--prototype-flow-guide-wy) * var(--prototype-flow-camera-zoom) + var(--prototype-flow-camera-y))
+  );
+}
+
+.prototype-inspector__flow-guide[data-axis="x"] {
+  inline-size: var(--pi-sys-spacing-hairline);
+  block-size: calc(var(--prototype-flow-guide-wlen) * var(--prototype-flow-camera-zoom));
+}
+
+.prototype-inspector__flow-guide[data-axis="y"] {
+  inline-size: calc(var(--prototype-flow-guide-wlen) * var(--prototype-flow-camera-zoom));
+  block-size: var(--pi-sys-spacing-hairline);
+}
+
+.prototype-inspector__flow-guide[hidden] {
+  display: none;
+}
+
+/* Minimap (flow-canvas-editing): 176 x 120 at the viewport's bottom-left
+   corner (beside the journey list, which the viewport already clears);
+   while the figma-export workspace moves the layout group to the
+   bottom-left, it sits top-left below the zoom group. */
+.prototype-inspector__flow-minimap {
+  position: absolute;
+  inset-inline-start: var(--pi-sys-spacing-container-xl);
+  inset-block-end: var(--pi-sys-spacing-container-xl);
+  z-index: 5;
+  box-sizing: border-box;
+  inline-size: var(--pi-ref-size-176);
+  block-size: calc(var(--pi-ref-size-60) * 2);
+  background: var(--pi-sys-color-surface-raised);
+  border: var(--pi-sys-spacing-hairline) solid var(--pi-sys-color-outline);
+  border-radius: var(--pi-sys-shape-corner-md);
+  box-shadow: var(--pi-sys-shadow-raised-surface);
+  cursor: pointer;
+  touch-action: none;
+}
+
+html[data-sbfx-workspace-open="true"] .prototype-inspector__flow-minimap {
+  inset-block-start: calc(
+    var(--pi-sys-spacing-container-xl) + var(--pi-sys-size-control-height-sm) + var(--pi-sys-spacing-xxs) * 2 +
+      var(--pi-sys-spacing-md)
+  );
+  inset-block-end: auto;
+}
+
+.prototype-inspector__flow-minimap-frame {
+  fill: var(--pi-sys-color-outline-strong);
+}
+
+.prototype-inspector__flow-minimap-frame[data-selected="true"] {
+  fill: var(--pi-sys-color-primary);
+}
+
+.prototype-inspector__flow-minimap-viewport {
+  fill: none;
+  stroke: var(--pi-sys-color-primary);
+  stroke-width: var(--pi-sys-size-control-border-width-strong);
+  vector-effect: non-scaling-stroke;
+}
+
+/* The marquee: a 1 px outline in the selection color, no fill. */
+.prototype-inspector__flow-marquee {
+  position: absolute;
+  inset-block-start: var(--pi-sys-spacing-none);
+  inset-inline-start: var(--pi-sys-spacing-none);
+  z-index: 6;
+  box-sizing: border-box;
+  border: var(--pi-sys-spacing-hairline) solid var(--pi-sys-color-primary);
+  pointer-events: none;
+}
+
+.prototype-inspector__flow-marquee[hidden] {
+  display: none;
+}
+
 /* Auto layout feature names: screen-space and constant size, the right edge
    one screen gutter left of the anchor frame's visible rect and the top on
    that rect's top (the world variables hold the rect's top-left corner).
@@ -1338,6 +1492,44 @@ html[data-sbfx-workspace-open="true"][data-sbfx-workspace-orientation="bottom"]:
       )
     )
     translateX(-100%);
+}
+
+/* Section names: constant size above the section's top-left corner, and
+   above the frame label of its top member when the padding is thinner than
+   that label at the current zoom. That label's height is estimated as two
+   font sizes plus its bottom padding (it can hold the figma-export badge),
+   since a theme may set the caption line height to normal, which calc()
+   rejects. */
+.prototype-inspector__flow-section-label {
+  position: absolute;
+  inset-block-start: var(--pi-sys-spacing-none);
+  inset-inline-start: var(--pi-sys-spacing-none);
+  box-sizing: border-box;
+  max-inline-size: calc(var(--pi-ref-size-80) * 3);
+  overflow: hidden;
+  padding-block-end: var(--pi-sys-spacing-xxs);
+  color: var(--pi-sys-color-on-surface-subtle);
+  font-size: var(--pi-sys-typescale-caption-sm-size);
+  font-weight: var(--pi-sys-weight-semibold);
+  line-height: var(--pi-sys-typescale-caption-sm-line-height);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
+  transform: translate(
+      calc(
+        var(--prototype-flow-label-wx) * var(--prototype-flow-camera-zoom) +
+          var(--prototype-flow-camera-x)
+      ),
+      calc(
+        min(
+            var(--prototype-flow-label-wy) * var(--prototype-flow-camera-zoom),
+            var(--prototype-flow-section-member-wy) * var(--prototype-flow-camera-zoom) -
+              var(--pi-sys-typescale-caption-sm-size) * 2 - var(--pi-sys-spacing-xxs)
+          ) +
+          var(--prototype-flow-camera-y)
+      )
+    )
+    translateY(-100%);
 }
 
 .prototype-inspector__flow-frame-title {

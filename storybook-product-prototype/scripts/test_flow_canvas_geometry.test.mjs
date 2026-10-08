@@ -1336,3 +1336,220 @@ test("auto layout frame sizes take the larger of the measured preview and the vi
     width: 220,
   });
 });
+
+// ---------------------------------------------------------------------------
+// Canvas editing (flow-canvas-editing)
+
+const visibleOf = (key, x, y, width = 377, height = 878) => ({ key, ...geometry.getFrameVisibleRect({ height, width, x, y }, "route") });
+
+test("marquee selection selects touching visible rects (spec example)", () => {
+  const frames = [visibleOf("A", 0, 0), visibleOf("B", 480, 0), visibleOf("C", 0, 2000)];
+  const touchingAB = { height: 100, width: 200, x: 300, y: 100 };
+  const touchingNone = { height: 50, width: 50, x: 400, y: 900 };
+
+  assert.deepEqual(geometry.getMarqueeSelection(frames, touchingAB), ["A", "B"]);
+  assert.deepEqual(geometry.getMarqueeSelection(frames, touchingAB, { additive: true, base: ["C"] }), ["C", "A", "B"]);
+  assert.deepEqual(geometry.getMarqueeSelection(frames, touchingNone), []);
+  // The empty name band above a route's preview selects nothing.
+  assert.deepEqual(geometry.getMarqueeSelection(frames, { height: 40, width: 100, x: 100, y: 10 }), []);
+});
+
+test("snapping threshold by zoom (spec example)", () => {
+  for (const [zoom, threshold] of [[4, 2], [1, 6], [0.5, 12], [0.3, 20], [0.1, 20]]) {
+    assert.equal(geometry.getSnapThreshold(zoom), threshold, `zoom ${zoom}`);
+  }
+});
+
+test("snapping between two route frames (spec example)", () => {
+  const far = geometry.computeSnap(visibleOf("d", 2290, 905), [visibleOf("c", 2280, 0)], geometry.getSnapThreshold(0.1));
+
+  assert.equal(far.dx, -10);
+  assert.equal(far.dy, 0);
+  assert.deepEqual(far.guides.map(({ axis, position }) => [axis, position]), [["x", 2281]]);
+
+  const near = geometry.computeSnap(visibleOf("d", 101, 2000), [visibleOf("c", 480, 0)], geometry.getSnapThreshold(1));
+
+  assert.equal(near.dx, 4);
+  assert.equal(near.dy, 0);
+  assert.deepEqual(near.guides.map(({ axis, position }) => [axis, position]), [["x", 481]]);
+});
+
+test("left edges align at zoom 0.5 (spec scenario)", () => {
+  const snap = geometry.computeSnap(visibleOf("d", 487, 3000), [visibleOf("c", 480, 0)], geometry.getSnapThreshold(0.5));
+
+  assert.equal(snap.dx, -7);
+  assert.equal(snap.dy, 0);
+  assert.deepEqual(snap.guides[0], { axis: "x", end: 3000 + 878 - 1, position: 481, start: 65 });
+  assert.deepEqual(geometry.computeSnap(visibleOf("d", 487, 3000), [], 12), { dx: 0, dy: 0, guides: [] });
+});
+
+test("keyboard nudges move 20, or 100 with Shift (spec example)", () => {
+  assert.deepEqual(geometry.nudgeOffset("ArrowRight", false), { dx: 20, dy: 0 });
+  assert.deepEqual(geometry.nudgeOffset("ArrowDown", true), { dx: 0, dy: 100 });
+  assert.deepEqual(geometry.nudgeOffset("ArrowLeft", false), { dx: -20, dy: 0 });
+  assert.deepEqual(geometry.nudgeOffset("ArrowUp", true), { dx: 0, dy: -100 });
+  assert.equal(geometry.nudgeOffset("KeyA", false), null);
+  // Three taps in one action from (480, 980): (540, 980).
+  const total = [1, 2, 3].map(() => geometry.nudgeOffset("ArrowRight", false)).reduce((sum, { dx }) => sum + dx, 0);
+
+  assert.equal(480 + total, 540);
+});
+
+test("layout history keeps complete position maps (spec example)", () => {
+  const history = geometry.createLayoutHistory(100);
+  const state = { positions: { A: { x: 0, y: 0 } } };
+  const apply = (after) => {
+    history.push({ after, before: state.positions });
+    state.positions = after;
+  };
+
+  apply({ A: { x: 200, y: 0 } });
+  assert.equal(history.canRedo(), false);
+  apply({ A: { x: 220, y: 0 } });
+  state.positions = history.undo().before;
+  assert.deepEqual([state.positions.A, history.canRedo()], [{ x: 200, y: 0 }, true]);
+  state.positions = history.undo().before;
+  assert.deepEqual([state.positions.A, history.canRedo()], [{ x: 0, y: 0 }, true]);
+  state.positions = history.redo().after;
+  assert.deepEqual([state.positions.A, history.canRedo()], [{ x: 200, y: 0 }, true]);
+  apply({ A: { x: 100, y: 100 } });
+  assert.deepEqual([state.positions.A, history.canRedo()], [{ x: 100, y: 100 }, false]);
+
+  // Reset records the complete map before and an empty map after.
+  apply({});
+  assert.deepEqual(history.undo().before, { A: { x: 100, y: 100 } });
+  assert.deepEqual(history.redo().after, {});
+  // An auto layout entry carries its feature names; a re-arrangement updates its after state.
+  history.push({ after: { A: { x: 0, y: 0 } }, before: {}, lanesAfter: [{ anchor: "A", key: "group:a", title: "a" }], lanesBefore: null });
+  assert.equal(history.peekUndo().lanesAfter.length, 1);
+  history.updateLatestAfter({ A: { x: 0, y: 40 } });
+  assert.deepEqual(history.undo().after, { A: { x: 0, y: 40 } });
+  assert.deepEqual(history.redo().after, { A: { x: 0, y: 40 } });
+  history.clear();
+  assert.equal(history.canUndo(), false);
+
+  // The 101st entry drops the oldest.
+  const limited = geometry.createLayoutHistory(100);
+
+  for (let index = 0; index < 101; index += 1) limited.push({ after: { A: { x: index + 1, y: 0 } }, before: { A: { x: index, y: 0 } } });
+  let undone = 0;
+  while (limited.canUndo()) {
+    limited.undo();
+    undone += 1;
+  }
+  assert.equal(undone, 100);
+});
+
+test("section padding keeps clear of foreign frames (spec example)", () => {
+  for (const [gap, padding] of [[103, 32], [60, 26], [22, 7], [6, 0]]) {
+    const frames = [
+      { group: "g", key: "a", type: "route", x: 0, y: 0, width: 377, height: 878 },
+      { group: "g", key: "b", type: "route", x: 0, y: 2000, width: 377, height: 878 },
+      { group: "other", key: "c", type: "route", x: 377 + gap, y: 0, width: 377, height: 878 },
+    ];
+    const [section] = geometry.computeSectionShapes(frames).filter((shape) => shape.group === "g");
+
+    assert.equal(section.rects[0].x, 0 - padding, `gap ${gap}`);
+    assert.equal(section.rects[0].width, 377 + padding * 2, `gap ${gap}`);
+  }
+});
+
+test("only groups with two routes draw a section; nodes join one (spec scenario)", () => {
+  const frames = [
+    { group: "solo", key: "s", type: "route", x: 0, y: 0, width: 377, height: 878 },
+    ...[0, 1, 2, 3].map((index) => ({ group: "four", key: `f${index}`, type: "route", x: 600 + index * 480, y: 0, width: 377, height: 878 })),
+    { group: "four", key: "decision", type: "flow", x: 600, y: 1100, width: 220, height: 220 },
+    { group: "solo", key: "lonely-node", type: "flow", x: 0, y: 1100, width: 220, height: 220 },
+  ];
+  const sections = geometry.computeSectionShapes(frames);
+
+  assert.deepEqual(sections.map((section) => section.group), ["four"]);
+  assert.equal(sections[0].rects.length, 5, "four routes and the node");
+  assert.match(sections[0].path, /^M/);
+  assert.equal(sections[0].path.split("Z").filter(Boolean).length, 5);
+  assert.deepEqual(sections[0].label, { x: sections[0].rects[0].x, y: sections[0].rects[0].y });
+});
+
+test("a section names the top-most, then left-most, member", () => {
+  const frames = [
+    { group: "g", key: "low", type: "route", x: 0, y: 200, width: 377, height: 878 },
+    { group: "g", key: "right", type: "route", x: 960, y: 100, width: 377, height: 878 },
+    { group: "g", key: "left", type: "route", x: 480, y: 100, width: 377, height: 878 },
+  ];
+  const [section] = geometry.computeSectionShapes(frames);
+
+  assert.deepEqual(section.label, { x: 480 - 32, y: 100 - 32 });
+  assert.equal(section.memberTop, 100);
+  // A route's frame label sits on its visible rect, 65 px below the box top.
+  const [labelled] = geometry.computeSectionShapes(frames.map((frame) => ({ ...frame, labelY: frame.y + 65 })));
+
+  assert.equal(labelled.memberTop, 165);
+});
+
+test("minimap transform maps world points and back", () => {
+  const transform = geometry.getMinimapTransform({ height: 2000, width: 4000, x: 0, y: 0 }, { height: 1000, width: 1000, x: 3500, y: 1500 }, { height: 120, width: 176 });
+  const worldPoint = { x: 2400, y: 1200 };
+  const panelPoint = { x: (worldPoint.x - transform.originX) * transform.scale + transform.offsetX, y: (worldPoint.y - transform.originY) * transform.scale + transform.offsetY };
+  const back = geometry.minimapPointToWorld(panelPoint, transform);
+
+  assert.ok(Math.abs(back.x - 2400) < 1e-6 && Math.abs(back.y - 1200) < 1e-6);
+  // The union of content (0..4000 x 0..2000) and viewport (..4500 x ..2500) fits the panel.
+  assert.ok(4500 * transform.scale <= 176 + 1e-9 && 2500 * transform.scale <= 120 + 1e-9);
+});
+
+test("adjacent routes and journey steps wrap (spec examples)", () => {
+  const routes = ["a", "b", "c"];
+
+  assert.equal(geometry.getAdjacentRouteId(routes, "b", 1), "c");
+  assert.equal(geometry.getAdjacentRouteId(routes, "c", 1), "a");
+  assert.equal(geometry.getAdjacentRouteId(routes, "a", -1), "c");
+  assert.equal(geometry.getAdjacentRouteId(routes, null, 1), "a");
+  assert.equal(geometry.getAdjacentRouteId(routes, null, -1), "c");
+  // intake, review, approval-decision, review
+  for (const [current, direction, expected] of [[null, 1, 0], [null, -1, 3], [1, 1, 2], [3, 1, 0], [0, -1, 3]]) {
+    assert.equal(geometry.getAdjacentStepIndex(4, current, direction), expected, `${current} ${direction}`);
+  }
+});
+
+test("editing keys: Escape order and key routing (spec examples)", () => {
+  const key = (code, extra = {}) => ({ type: "keydown", code, shiftKey: false, ctrlKey: false, metaKey: false, altKey: false, repeat: false, ...extra });
+  const canvas = { dragActive: false, isMac: true, isTextEntry: false, overlayOpen: false, targetIsControl: false };
+  const selected = { ...canvas, selectionSize: 1, selectedRouteCount: 1 };
+  const rows = [
+    ["Escape, zoom menu open", key("Escape"), { ...selected, overlayOpen: true }, "close-overlay"],
+    ["Escape, group drag", key("Escape"), { ...selected, dragActive: true }, "cancel-drag"],
+    ["Escape, marquee", key("Escape"), { ...selected, marqueeActive: true }, "cancel-marquee"],
+    ["Escape, selection", key("Escape"), selected, "clear-selection"],
+    ["Escape, nothing", key("Escape"), canvas, null],
+    ["Cmd+A", key("KeyA", { metaKey: true }), canvas, "select-all"],
+    ["Cmd+A, dialog open", key("KeyA", { metaKey: true }), { ...canvas, overlayOpen: true }, null],
+    ["Cmd+A, drag", key("KeyA", { metaKey: true }), { ...selected, dragActive: true }, null],
+    ["ArrowRight, selection", key("ArrowRight"), selected, "nudge"],
+    ["Shift+ArrowDown, selection", key("ArrowDown", { shiftKey: true }), selected, "nudge"],
+    ["ArrowRight, nothing selected", key("ArrowRight"), canvas, null],
+    ["ArrowRight, journey focus", key("ArrowRight"), { ...selected, journeyFocus: true }, null],
+    ["ArrowDown, journey list focused", key("ArrowDown"), { ...selected, targetIsControl: true }, null],
+    ["Cmd+ArrowRight (macOS)", key("ArrowRight", { metaKey: true }), selected, null],
+    ["Cmd+Shift+ArrowUp", key("ArrowUp", { metaKey: true, shiftKey: true }), selected, null],
+    ["Cmd+Z, an entry", key("KeyZ", { metaKey: true }), { ...canvas, canUndo: true }, "undo"],
+    ["Cmd+Z, no entry", key("KeyZ", { metaKey: true }), canvas, null],
+    ["Cmd+Z, group drag", key("KeyZ", { metaKey: true }), { ...selected, canUndo: true, dragActive: true }, null],
+    ["Cmd+Z, marquee", key("KeyZ", { metaKey: true }), { ...canvas, canUndo: true, marqueeActive: true }, null],
+    ["Cmd+Z, journey focus", key("KeyZ", { metaKey: true }), { ...canvas, canUndo: true, journeyFocus: true }, null],
+    ["Cmd+Shift+Z, an entry to redo", key("KeyZ", { metaKey: true, shiftKey: true }), { ...canvas, canRedo: true }, "redo"],
+    ["Ctrl+Y (Windows)", key("KeyY", { ctrlKey: true }), { ...canvas, canRedo: true, isMac: false }, "redo"],
+    ["Ctrl+Y (macOS)", key("KeyY", { ctrlKey: true }), { ...canvas, canRedo: true }, null],
+    ["Shift+2, selection", key("Digit2", { shiftKey: true }), selected, "zoom-to-selection"],
+    ["Shift+2, nothing", key("Digit2", { shiftKey: true }), canvas, null],
+    ["N", key("KeyN"), canvas, "next-frame"],
+    ["Shift+N", key("KeyN", { shiftKey: true }), canvas, "previous-frame"],
+    ["N, marquee", key("KeyN"), { ...canvas, marqueeActive: true }, null],
+    ["Cmd+N stays with the browser", key("KeyN", { metaKey: true }), canvas, null],
+    ["IME composition", key("KeyN", { isComposing: true }), canvas, null],
+    ["keyCode 229", key("ArrowRight", { keyCode: 229 }), selected, null],
+  ];
+
+  for (const [label, eventLike, context, expected] of rows) {
+    assert.equal(geometry.resolveCanvasShortcut(eventLike, context), expected, label);
+  }
+});
