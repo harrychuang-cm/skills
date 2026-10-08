@@ -19,7 +19,10 @@
 ## UI Flow
 
 - UI Flow renders three route cards and one decision node.
-- UI Flow draws only the three key transitions.
+- On the full canvas (全部), UI Flow draws only the three key transitions.
+- The journey list shows 全部, Approve a request (4 步) and Request changes (4 步), with no 自動分支 section.
+- Selecting Request changes shows Project Intake, Review Request, Ready for handoff? and a second Review Request in one row, with the edge label 條件 Needs changes into the second Review Request; Reset Layout and Import Layout are disabled and the notice 簡化檢視：位置不會儲存 appears.
+- Returning to 全部 shows the saved layout and camera unchanged.
 - UI Flow route iframes auto-fit the marked route UI width and height.
 - Static Flow keeps flow-only nodes as metadata cards, but route cards use real route UI.
 - Static Flow route cards reserve the same route UI width and height as UI Flow previews.

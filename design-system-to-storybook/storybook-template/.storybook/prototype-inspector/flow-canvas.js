@@ -31,13 +31,17 @@ import {
   applyWheelZoom,
   classifyPointerDown,
   classifyWheel,
+  computeJourneyLayout,
   createPolyline,
+  deriveBranchJourneys,
   defaultNodeHeight,
   defaultPrototypeModeGlobalName,
   DRAG_THRESHOLD_PX,
   fitCamera,
   getEdgeLabelPrefix,
   getFallbackGridPitch,
+  getJourneyBounds,
+  getJourneyEdges,
   getFlowArrowPoints,
   getFlowBounds,
   getFlowMetadataNodeSize,
@@ -48,6 +52,7 @@ import {
   getRoutePosition,
   getVisibleWorldRect,
   getZoomBucket,
+  isJourneyLabelHidden,
   isRecord,
   isVisibleFlowEdge,
   LOD_THRESHOLDS,
@@ -57,6 +62,7 @@ import {
   nodeHeaderHeight,
   normalizeComponentRoutes,
   normalizeFlowNodes,
+  normalizeJourneys,
   normalizeRouteComponents,
   normalizeRoutes,
   normalizeStorybookGlobals,
@@ -513,6 +519,8 @@ function attachFrameMeasurement(iframe, { onHotUpdated, onRendered, onSize }) {
 // values plus stable handlers, so unrelated renders skip every frame.
 const PrototypeFlowNode = memo(function PrototypeFlowNode({
   height,
+  instanceKey = node.id,
+  isAnchor = true,
   node,
   onPointerCancel,
   onPointerDown,
@@ -531,9 +539,11 @@ const PrototypeFlowNode = memo(function PrototypeFlowNode({
     {
       "aria-label": node.title ?? node.id,
       className: "prototype-inspector__flow-node",
-      "data-frame-id": node.id,
-      "data-sbfx-anchor": `node:${node.id}`,
-      "data-sbfx-anchor-label": node.title ?? node.id,
+      "data-frame-id": instanceKey,
+      // A journey view anchors comments to the first instance of a node only.
+      ...(isAnchor
+        ? { "data-sbfx-anchor": `node:${node.id}`, "data-sbfx-anchor-label": node.title ?? node.id }
+        : {}),
       "data-shape": node.shape ?? "state",
       "data-tone": node.tone ?? "default",
       onPointerCancel,
@@ -1454,6 +1464,30 @@ function writeStoredFlowCamera(storageKey, camera) {
   }
 }
 
+// The journey list selection of a prototype in this tab: "all",
+// "declared:<journey id>" or a derived journey key (flow-journey-focus).
+const flowJourneyStoragePrefix = "prototype-inspector:flow-journey:";
+
+function getFlowJourneyStorageKey(prototype) {
+  return `${flowJourneyStoragePrefix}${prototype.id}`;
+}
+
+function readStoredFlowJourney(storageKey) {
+  try {
+    return typeof window === "undefined" ? null : window.sessionStorage.getItem(storageKey);
+  } catch (error) {
+    return null;
+  }
+}
+
+function writeStoredFlowJourney(storageKey, entryKey) {
+  try {
+    window.sessionStorage.setItem(storageKey, entryKey);
+  } catch (error) {
+    // Without sessionStorage every mount starts at the complete flow.
+  }
+}
+
 const nonTextInputTypes = new Set([
   "button",
   "checkbox",
@@ -1550,6 +1584,7 @@ function getCameraTransform(camera) {
 // carries an Updating snapshot badge.
 const PrototypeFrameLabel = memo(function PrototypeFrameLabel({
   componentCount,
+  frameId = null,
   isHidden,
   isHovered,
   isUpdating = false,
@@ -1571,7 +1606,7 @@ const PrototypeFrameLabel = memo(function PrototypeFrameLabel({
     "div",
     {
       className: "prototype-inspector__flow-frame-label",
-      "data-frame-id": route.id,
+      "data-frame-id": frameId ?? route.id,
       "data-hidden": isHidden ? "true" : undefined,
       "data-hovered": isHovered ? "true" : undefined,
       onPointerCancel,
@@ -1687,6 +1722,146 @@ function getFlowArrowStyle(colorVariant, focus) {
   };
 }
 
+// Journey edges: transitions draw like the complete flow in the primary color;
+// a step pair without a transition is a static dotted line in the outline color.
+function getJourneyLineStyle(edge, focus) {
+  const style = getFlowLineStyle("primary", focus);
+
+  return edge.dotted
+    ? {
+        ...style,
+        stroke: "var(--pi-sys-color-outline-strong)",
+        strokeDasharray: "0 calc(var(--pi-sys-spacing-sm) / var(--prototype-flow-stroke-zoom, 1))",
+        strokeLinecap: "round",
+      }
+    : style;
+}
+
+// The invisible, wider stroke that shows a journey label's full text on hover.
+const journeyEdgeHitStyle = {
+  fill: "none",
+  stroke: "var(--pi-sys-color-transparent)",
+  strokeWidth: "calc(var(--pi-sys-spacing-md) / var(--prototype-flow-stroke-zoom, 1))",
+};
+
+// The journey list (flow-journey-focus): a column beside the canvas viewport
+// with "全部", the declared journeys and the derived journeys grouped by
+// branch node. Visible copy is Traditional Chinese, accessible names English.
+function PrototypeJourneyList({ derivedTruncatedCount, detail, entries, isCollapsed, onSelect, onToggle, selectedKey }) {
+  const declared = entries.filter((entry) => entry.kind === "declared");
+  const groups = [];
+
+  entries
+    .filter((entry) => entry.kind === "derived")
+    .forEach((entry) => {
+      const group = groups.find((candidate) => candidate.branchId === entry.branchId);
+
+      if (group) {
+        group.entries.push(entry);
+      } else {
+        groups.push({ branchId: entry.branchId, entries: [entry], title: entry.branchTitle });
+      }
+    });
+
+  const renderEntry = (entry) => {
+    const isSelected = entry.key === selectedKey;
+
+    return createElement(
+      "li",
+      { key: entry.key },
+      createElement(
+        "button",
+        {
+          "aria-label": entry.kind === "all" ? "All" : entry.title,
+          "aria-pressed": isSelected,
+          className: "prototype-inspector__flow-journey",
+          onClick: () => onSelect(entry.key),
+          type: "button",
+        },
+        createElement("span", { className: "prototype-inspector__flow-journey-title" }, entry.title),
+        entry.steps
+          ? createElement("span", { className: "prototype-inspector__flow-journey-count" }, `${entry.steps.length} 步`)
+          : null,
+      ),
+      isSelected && detail
+        ? createElement(
+            "ol",
+            { className: "prototype-inspector__flow-journey-steps" },
+            detail.steps.map((step, index) =>
+              createElement(
+                "li",
+                { key: step.key },
+                createElement("span", null, step.title),
+                step.edgeText
+                  ? createElement("span", { className: "prototype-inspector__flow-journey-step-edge" }, `↓ ${step.edgeText}`)
+                  : null,
+                index === detail.steps.length - 1 && detail.loopText
+                  ? createElement("span", { className: "prototype-inspector__flow-journey-step-loop" }, detail.loopText)
+                  : null,
+              ),
+            ),
+          )
+        : null,
+    );
+  };
+
+  return createElement(
+    "section",
+    {
+      "aria-label": "UI Flow journeys",
+      className: "prototype-inspector__flow-journeys",
+      // Comment screenshots leave the list out; comments stay available.
+      "data-sbfx-capture-ignore": "true",
+      role: "region",
+    },
+    createElement(
+      "div",
+      { className: "prototype-inspector__flow-journeys-header" },
+      isCollapsed ? null : createElement("h2", null, "功能流程"),
+      createElement(
+        "button",
+        {
+          "aria-expanded": !isCollapsed,
+          "aria-label": isCollapsed ? "Expand journey list" : "Collapse journey list",
+          className: "prototype-inspector__flow-journeys-toggle",
+          onClick: onToggle,
+          type: "button",
+        },
+        isCollapsed ? "›" : "‹",
+      ),
+    ),
+    isCollapsed
+      ? null
+      : createElement(
+          "div",
+          { className: "prototype-inspector__flow-journeys-body" },
+          createElement("ul", null, entries.filter((entry) => entry.kind === "all").map(renderEntry), declared.map(renderEntry)),
+          groups.length
+            ? createElement(
+                "div",
+                { className: "prototype-inspector__flow-journeys-derived" },
+                createElement("h3", null, "自動分支"),
+                groups.map((group) =>
+                  createElement(
+                    "div",
+                    { className: "prototype-inspector__flow-journeys-group", key: group.branchId },
+                    createElement("h4", null, group.title),
+                    createElement("ul", null, group.entries.map(renderEntry)),
+                  ),
+                ),
+                derivedTruncatedCount > 0
+                  ? createElement(
+                      "p",
+                      { className: "prototype-inspector__flow-journeys-note" },
+                      `另有 ${derivedTruncatedCount} 條未列出，建議在 flow 宣告 journeys`,
+                    )
+                  : null,
+              )
+            : null,
+        ),
+  );
+}
+
 // Representative zoom of a zoom bucket: stroke widths, arrowheads and label
 // placement are computed for it, so they only change when the bucket does.
 function getBucketZoom(bucket) {
@@ -1744,6 +1919,61 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
   const routes = useMemo(() => normalizeRoutes(flow), [flow]);
   const flowNodes = useMemo(() => normalizeFlowNodes(flow), [flow]);
   const transitions = useMemo(() => normalizeTransitions(flow), [flow]);
+  // Feature journeys (flow-journey-focus): "全部", the declared journeys, then
+  // one derived journey per branch edge that no declaration covers. Selecting
+  // one shows a read-only, single-line view of its steps.
+  const journeyStorageKey = getFlowJourneyStorageKey(prototype);
+  const declaredJourneys = useMemo(() => normalizeJourneys(flow), [flow]);
+  const derivedJourneys = useMemo(
+    () => deriveBranchJourneys(flow, { declared: declaredJourneys }),
+    [declaredJourneys, flow],
+  );
+  const journeyEntries = useMemo(
+    () => [
+      { key: "all", kind: "all", title: "全部" },
+      ...declaredJourneys.map((journey) => ({
+        key: `declared:${journey.id}`,
+        kind: "declared",
+        loopTarget: null,
+        steps: journey.steps,
+        title: journey.title,
+      })),
+      ...derivedJourneys.journeys.map((journey) => ({
+        branchId: journey.branchId,
+        branchTitle: journey.branchTitle,
+        key: journey.key,
+        kind: "derived",
+        loopTarget: journey.loopTarget ?? null,
+        steps: journey.steps,
+        title: journey.title,
+      })),
+    ],
+    [declaredJourneys, derivedJourneys],
+  );
+  const hasJourneyList = journeyEntries.length > 1;
+  // The stored entry is read once; a stored entry that no longer exists falls
+  // back to the complete flow here, in render, without another commit.
+  const [selectedJourneyKey, setSelectedJourneyKey] = useState(
+    () => readStoredFlowJourney(journeyStorageKey) ?? "all",
+  );
+  const activeJourney = hasJourneyList
+    ? (journeyEntries.find((entry) => entry.kind !== "all" && entry.key === selectedJourneyKey) ?? null)
+    : null;
+  const journeyFocusKey = activeJourney ? activeJourney.key : "all";
+  // A journey view is a read-only view (flow-canvas-navigation): no frame
+  // drag, Reset and Import disabled, and the camera is not remembered.
+  const isReadOnlyView = Boolean(activeJourney);
+  const journeyFocusRef = useRef(activeJourney);
+  journeyFocusRef.current = activeJourney;
+  const [isJourneyListCollapsed, setIsJourneyListCollapsed] = useState(false);
+  const frameTitles = useMemo(
+    () =>
+      new Map([
+        ...routes.map((route) => [route.id, route.title ?? route.id]),
+        ...flowNodes.map((node) => [node.id, node.title ?? node.id]),
+      ]),
+    [flowNodes, routes],
+  );
   const routeComponentCounts = useMemo(() => {
     const counts = new Map();
     const seenRouteIds = new Set();
@@ -1908,8 +2138,15 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
   // camera has been still for cameraIdleMs.
   const cameraStorageKey = getFlowCameraStorageKey(prototype);
   const [storedCamera] = useState(() => readStoredFlowCamera(cameraStorageKey));
-  const cameraRef = useRef(storedCamera ?? { x: 0, y: 0, z: 1 });
-  const fitTrackingRef = useRef(!storedCamera);
+  // Only the complete flow restores its camera; a journey view opens fitted.
+  // fullCameraRef keeps the complete-flow camera while a journey is shown.
+  const [restoredCamera] = useState(() => (journeyFocusRef.current ? null : storedCamera));
+  const fullCameraRef = useRef(storedCamera);
+  // Whether the complete flow was fit tracking when the reviewer left it; it
+  // then fits again on return instead of taking back a stale fitted camera.
+  const fullFitTrackingRef = useRef(!storedCamera);
+  const cameraRef = useRef(restoredCamera ?? { x: 0, y: 0, z: 1 });
+  const fitTrackingRef = useRef(!restoredCamera);
   const cameraFrameRef = useRef(0);
   const cameraIdleTimerRef = useRef(0);
   const gestureRef = useRef({ active: false, startZoom: 1 });
@@ -1917,7 +2154,7 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
   const strokeBucketRef = useRef(getZoomBucket(cameraRef.current.z));
   // Rendered edge label sizes in screen pixels, measured once per label text.
   const [labelSizes, setLabelSizes] = useState(() => new Map());
-  const [isFitTracking, setIsFitTracking] = useState(!storedCamera);
+  const [isFitTracking, setIsFitTracking] = useState(!restoredCamera);
   const prototypeViewport = getPrototypeViewport(prototype, null);
   const defaultPreviewHeight = prototypeViewport.height;
   const defaultPreviewWidth = prototypeViewport.width;
@@ -2046,14 +2283,69 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
     () => getFlowBounds(routePositionMap.values()),
     [routePositionMap],
   );
+  // The selected journey's single-line layout, computed from the cached frame
+  // sizes and never written to the layout payload.
+  const journeyLayout = useMemo(() => {
+    if (!activeJourney) {
+      return null;
+    }
+
+    const sizeOf = (id) => {
+      const box = routePositionMap.get(id) ?? { height: defaultNodeHeight, width: defaultPreviewWidth + nodeFrameSize };
+      const visible = getFrameVisibleRect(
+        { height: box.height, width: box.width, x: 0, y: 0 },
+        box.nodeType === "route" ? "route" : "flow",
+      );
+
+      return {
+        height: box.height,
+        visibleHeight: visible.height,
+        visibleLeft: visible.x,
+        visibleTop: visible.y,
+        visibleWidth: visible.width,
+        width: box.width,
+      };
+    };
+    const layout = computeJourneyLayout(activeJourney.steps, sizeOf);
+    const { edges, loopMarker } = getJourneyEdges(layout, transitions, {
+      loopTarget: activeJourney.loopTarget,
+      titleOf: (id) => frameTitles.get(id) ?? id,
+    });
+    // The first instance of each route or node carries its comment anchor.
+    const anchorKeys = new Set();
+    const seenSteps = new Set();
+
+    for (const step of layout) {
+      if (!seenSteps.has(step.nodeId)) {
+        seenSteps.add(step.nodeId);
+        anchorKeys.add(step.instanceKey);
+      }
+    }
+
+    return { anchorKeys, bounds: getJourneyBounds(layout, { loopMarker }), edges, layout, loopMarker };
+  }, [activeJourney, defaultPreviewWidth, frameTitles, routePositionMap, transitions]);
+  // What fitting frames: the journey in a journey view, else the whole flow.
+  const displayedBounds = journeyLayout?.bounds ?? flowBounds;
   // Level of detail. Tiers come from the camera snapshot React holds (it
   // changes only when the camera settles), so a gesture keeps the tiers it
   // started with and the settle commit applies the new ones. No frame is live
   // before the camera has settled once, unless a stored camera was restored
   // and the canvas has been measured.
+  const routeIdSet = useMemo(() => new Set(routes.map((route) => route.id)), [routes]);
   const frameBoxes = useMemo(
     () =>
-      routes.map((route, index) => {
+      journeyLayout
+        ? journeyLayout.layout
+            .filter((step) => routeIdSet.has(step.nodeId))
+            .map((step) => ({
+              height: step.height,
+              key: step.instanceKey,
+              routeId: step.nodeId,
+              width: step.width,
+              x: step.x,
+              y: step.y,
+            }))
+        : routes.map((route, index) => {
         const position = routePositionMap.get(route.id) ?? getRoutePosition(route, index);
 
         return {
@@ -2065,9 +2357,9 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
           y: position.y,
         };
       }),
-    [defaultPreviewWidth, routePositionMap, routes],
+    [defaultPreviewWidth, journeyLayout, routeIdSet, routePositionMap, routes],
   );
-  const cameraReady = Boolean(canvasSize) && (hasSettledCamera || Boolean(storedCamera));
+  const cameraReady = Boolean(canvasSize) && (hasSettledCamera || Boolean(restoredCamera));
   const frameTiers = useMemo(() => {
     if (initialTiers) {
       return new Map(frameBoxes.map((frame) => [frame.key, initialTiers[frame.key] ?? "snapshot"]));
@@ -2678,7 +2970,12 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
     setCameraSnapshot(camera);
     rendererRef.current?.resume();
     setIsFitTracking(fitTrackingRef.current);
-    writeStoredFlowCamera(cameraStorageKey, camera);
+    // Only the complete flow's camera is remembered (in memory for a journey
+    // visit, in sessionStorage for a remount).
+    if (!journeyFocusRef.current) {
+      fullCameraRef.current = camera;
+      writeStoredFlowCamera(cameraStorageKey, camera);
+    }
   }, [cameraStorageKey, flushPendingFrameState, flushPendingSizes]);
   const setFitTracking = useCallback((isTracking) => {
     if (fitTrackingRef.current === isTracking) {
@@ -2724,13 +3021,13 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
     }
 
     setCamera(
-      fitCamera(flowBounds, {
+      fitCamera(displayedBounds, {
         height: viewport.clientHeight,
         width: viewport.clientWidth,
       }),
       { fit: true, immediate: true },
     );
-  }, [flowBounds, setCamera]);
+  }, [displayedBounds, setCamera]);
   const fitToViewRef = useRef(fitToView);
   fitToViewRef.current = fitToView;
   // figma-export review asks the canvas to show a comment's location (its pin
@@ -2755,7 +3052,26 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
     };
     let nextCamera = null;
 
-    if (anchor.type === "element") {
+    // A journey view shows the first instance of an element anchor, or both
+    // ends of the first journey edge of a path anchor; canvas anchors have no
+    // place in it.
+    if (journeyLayout) {
+      const instanceRect = (step) => (step ? getFrameVisibleRect(step, routeIdSet.has(step.nodeId) ? "route" : "flow") : null);
+      const instanceOf = (instanceKey) => journeyLayout.layout.find((step) => step.instanceKey === instanceKey);
+
+      if (anchor.type === "element") {
+        const id = /^(?:route|node):(.+)$/.exec(anchor.id ?? "")?.[1];
+        const rect = instanceRect(journeyLayout.layout.find((step) => step.nodeId === id));
+
+        nextCamera = rect ? fitCamera(rect, canvasSize) : null;
+      } else if (anchor.type === "path") {
+        const key = /^edge:(.+)$/.exec(anchor.id ?? "")?.[1];
+        const edge = journeyLayout.edges.find((candidate) => candidate.firstOccurrence && `${candidate.from}->${candidate.to}` === key);
+        const ends = edge ? [instanceRect(instanceOf(edge.fromKey)), instanceRect(instanceOf(edge.toKey))] : [];
+
+        nextCamera = ends.length === 2 && ends.every(Boolean) ? fitCamera(getFlowBounds(ends), canvasSize) : null;
+      }
+    } else if (anchor.type === "element") {
       const match = /^(?:route|node):(.+)$/.exec(anchor.id ?? "");
       const rect = match ? visibleRectOf(match[1]) : null;
 
@@ -2801,6 +3117,32 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
       fitToView();
     }
   }, [fitToView]);
+  // After the view changes, by a switch or by a flow change that removes the
+  // selected journey (or brings it back); declared after the fit above, so it
+  // wins: a journey fits and keeps fit tracking, the complete flow fits again
+  // if it was fit tracking when left, else gets its remembered camera back
+  // (memory, then sessionStorage), else fits. The
+  // snapshot follows at once, so tiers are not chosen for the new frames with
+  // the old view's camera.
+  const shownJourneyKeyRef = useRef(journeyFocusKey);
+  useIsomorphicLayoutEffect(() => {
+    if (shownJourneyKeyRef.current === journeyFocusKey) {
+      return;
+    }
+
+    const restored =
+      journeyFocusKey === "all" && !fullFitTrackingRef.current
+        ? (fullCameraRef.current ?? readStoredFlowCamera(cameraStorageKey))
+        : null;
+
+    shownJourneyKeyRef.current = journeyFocusKey;
+    if (restored) {
+      setCamera(restored, { immediate: true });
+    } else {
+      fitToView();
+    }
+    setCameraSnapshot({ ...cameraRef.current });
+  }, [journeyFocusKey]);
   useEffect(() => {
     const viewport = viewportRef.current;
 
@@ -2859,9 +3201,12 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
     () => () => {
       window.cancelAnimationFrame(cameraFrameRef.current);
       if (cameraIdleTimerRef.current) {
-        // Unmounting mid-gesture (for example a mode switch): keep the camera.
+        // Unmounting mid-gesture (for example a mode switch): keep the camera
+        // of the complete flow.
         window.clearTimeout(cameraIdleTimerRef.current);
-        writeStoredFlowCamera(cameraStorageKey, cameraRef.current);
+        if (!journeyFocusRef.current) {
+          writeStoredFlowCamera(cameraStorageKey, cameraRef.current);
+        }
       }
     },
     [cameraStorageKey],
@@ -2882,30 +3227,30 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
 
     return map;
   }, [displayRoutePositionMap]);
-  // Route and node titles, for the comment anchor names of transition lines.
-  const canvasTitles = useMemo(
-    () =>
-      new Map([
-        ...routes.map((route) => [route.id, route.title ?? route.id]),
-        ...flowNodes.map((node) => [node.id, node.title ?? node.id]),
-      ]),
-    [flowNodes, routes],
-  );
+  // The complete flow's routed edges and placed labels; a journey view draws
+  // its own edges, so neither is computed while it is shown.
+  const isJourneyView = Boolean(journeyLayout);
   const renderedEdges = useMemo(
     () =>
-      aggregatedEdges
-        .map((edge) => ({
-          ...edge,
-          polyline: createPolyline(edge, routingPositionMap, reverseEdgeKeys),
-        }))
-        .filter((edge) => edge.polyline),
-    [aggregatedEdges, reverseEdgeKeys, routingPositionMap],
+      isJourneyView
+        ? []
+        : aggregatedEdges
+            .map((edge) => ({
+              ...edge,
+              polyline: createPolyline(edge, routingPositionMap, reverseEdgeKeys),
+            }))
+            .filter((edge) => edge.polyline),
+    [aggregatedEdges, isJourneyView, reverseEdgeKeys, routingPositionMap],
   );
   // Labels are placed for the idle camera's zoom bucket, so pans, zooms within
   // a bucket and gestures never re-run placement.
   const labelBucketZoom = getBucketZoom(getZoomBucket(cameraSnapshot.z));
   const arrowScale = 1 / labelBucketZoom;
   const labeledEdges = useMemo(() => {
+    if (isJourneyView) {
+      return [];
+    }
+
     const startedAt = typeof performance === "undefined" ? 0 : performance.now();
     const placed = placeEdgeLabels(
       renderedEdges,
@@ -2917,7 +3262,7 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
 
     markLabelPlacement(startedAt);
     return placed;
-  }, [canvasMetrics, displayRoutePositionMap, labelBucketZoom, labelSizes, renderedEdges]);
+  }, [canvasMetrics, displayRoutePositionMap, isJourneyView, labelBucketZoom, labelSizes, renderedEdges]);
   useIsomorphicLayoutEffect(() => {
     const overlay = overlayRef.current;
 
@@ -3234,6 +3579,7 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
     arrowScale,
     displayRoutePositionMap,
     draggedPositions,
+    isReadOnlyView,
     renderedEdges,
     reverseEdgeKeys,
     routePositionMap,
@@ -3337,6 +3683,11 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
     drag.frames.forEach(({ element }) => element.setAttribute("data-dragging", "true"));
   };
   const handleFramePointerDown = useCallback((event) => {
+    // A read-only view never starts a frame drag; pans and clicks still work.
+    if (latestRef.current.isReadOnlyView) {
+      return;
+    }
+
     const id = event.currentTarget.getAttribute("data-frame-id");
     const position = latestRef.current.routePositionMap.get(id);
 
@@ -3453,6 +3804,43 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
     flushPendingFrameState();
     rendererRef.current?.resume();
   };
+  // Run in order before every journey switch. Later canvas capabilities add
+  // their own steps (clearing a selection, ending interact mode).
+  const beforeJourneySwitchRef = useRef([]);
+  beforeJourneySwitchRef.current = [
+    cancelDrag,
+    () => {
+      window.clearTimeout(hoverDwellTimerRef.current);
+      pendingHoverRef.current = undefined;
+      pendingDwellRef.current = undefined;
+      setFocusedRouteId(null);
+      setHoverDwellKey(null);
+    },
+    () => {
+      setPinnedFrameId(null);
+      setPromotedFrameIds(new Set());
+    },
+    () => setIsResetDialogOpen(false),
+  ];
+  // Selects a journey list entry. Leaving the complete flow keeps its camera
+  // (in memory and in sessionStorage, also mid-gesture); the camera itself
+  // changes in the view-change layout effect once the new view has rendered.
+  const selectJourney = (entryKey) => {
+    const nextKey = journeyEntries.some((entry) => entry.key === entryKey) ? entryKey : "all";
+
+    if (nextKey === journeyFocusKey) {
+      return;
+    }
+
+    beforeJourneySwitchRef.current.forEach((step) => step());
+    if (!journeyFocusRef.current) {
+      fullCameraRef.current = { ...cameraRef.current };
+      fullFitTrackingRef.current = fitTrackingRef.current;
+      writeStoredFlowCamera(cameraStorageKey, cameraRef.current);
+    }
+    writeStoredFlowJourney(journeyStorageKey, nextKey);
+    setSelectedJourneyKey(nextKey);
+  };
   // Content sliding under a still pointer while the camera moves changes the
   // hover only once the camera settles.
   const handleFramePointerEnter = useCallback((event) => {
@@ -3542,6 +3930,7 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
       dragActive: Boolean(dragRef.current?.started),
       isMac: isMacPlatform(),
       isTextEntry: isTextEntryTarget(target),
+      journeyEntryCount: hasJourneyList ? journeyEntries.length : 0,
       overlayOpen: isResetDialogOpen || isZoomMenuOpen,
       targetIsControl: isControlTarget(target),
     });
@@ -3573,6 +3962,11 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
       }
     } else if (command === "cancel-drag") {
       cancelDrag();
+    } else if (command === "previous-journey" || command === "next-journey") {
+      const index = journeyEntries.findIndex((entry) => entry.key === journeyFocusKey);
+      const offset = command === "next-journey" ? 1 : -1;
+
+      selectJourney(journeyEntries[(index + offset + journeyEntries.length) % journeyEntries.length].key);
     }
   };
   useEffect(() => {
@@ -3587,7 +3981,7 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
     };
   }, []);
   const openResetDialog = () => {
-    if (hasCustomLayout) {
+    if (hasCustomLayout && !isReadOnlyView) {
       setIsResetDialogOpen(true);
     }
   };
@@ -3620,7 +4014,9 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
     window.URL.revokeObjectURL(downloadUrl);
   };
   const openImportPicker = () => {
-    importInputRef.current?.click();
+    if (!isReadOnlyView) {
+      importInputRef.current?.click();
+    }
   };
   const importLayout = (event) => {
     const file = event.currentTarget.files?.[0];
@@ -3667,6 +4063,81 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
     dispatchAnchorsMoved(rootRef.current);
   });
 
+  // What the world layer draws: every route and node of the complete flow at
+  // its layout position, or one instance per step of the selected journey.
+  const routeById = new Map(routes.map((route) => [route.id, route]));
+  const nodeById = new Map(flowNodes.map((node) => [node.id, node]));
+  const toInstance = (step) => ({
+    isAnchor: journeyLayout.anchorKeys.has(step.instanceKey),
+    key: step.instanceKey,
+    position: { ...routePositionMap.get(step.nodeId), x: step.x, y: step.y },
+  });
+  const routeInstances = journeyLayout
+    ? journeyLayout.layout
+        .filter((step) => routeById.has(step.nodeId))
+        .map((step) => ({ ...toInstance(step), route: routeById.get(step.nodeId) }))
+    : routes.map((route, index) => ({
+        isAnchor: true,
+        key: route.id,
+        position: routePositionMap.get(route.id) ?? getRoutePosition(route, index),
+        route,
+      }));
+  const nodeInstances = journeyLayout
+    ? journeyLayout.layout
+        .filter((step) => nodeById.has(step.nodeId))
+        .map((step) => ({ ...toInstance(step), node: nodeById.get(step.nodeId) }))
+    : flowNodes.map((node, index) => ({
+        isAnchor: true,
+        key: node.id,
+        node,
+        position: routePositionMap.get(node.id) ?? getRoutePosition(node, routes.length + index),
+      }));
+  // Journey edges are hovered by instance key.
+  const getJourneyEdgeFocus = (edge) => {
+    if (!focusedRouteId) {
+      return undefined;
+    }
+
+    return edge.fromKey === focusedRouteId || edge.toKey === focusedRouteId ? "active" : "muted";
+  };
+  // The journey svg covers the journey bounds plus the turns of its row
+  // connectors; its viewBox is in world coordinates.
+  const journeyCanvas = journeyLayout?.bounds
+    ? {
+        height: journeyLayout.bounds.height + canvasPadding * 2,
+        width: journeyLayout.bounds.width + canvasPadding * 2,
+        x: journeyLayout.bounds.x - canvasPadding,
+        y: journeyLayout.bounds.y - canvasPadding,
+      }
+    : null;
+  // Hovering a journey connector shows its label's full text, without a
+  // React commit (hovering the label itself does so in CSS).
+  const setJourneyLabelExpanded = (index, isExpanded) => {
+    const label = overlayRef.current?.querySelector(`[data-journey-edge="${index}"]`);
+
+    if (isExpanded) {
+      label?.setAttribute("data-expanded", "true");
+    } else {
+      label?.removeAttribute("data-expanded");
+    }
+  };
+  // The selected journey's steps with the label of the edge after each one,
+  // for the list entry that explains truncated labels.
+  const journeyDetail = journeyLayout
+    ? {
+        loopText: journeyLayout.loopMarker?.label ?? null,
+        steps: journeyLayout.layout.map((step, index) => {
+          const edge = journeyLayout.edges[index];
+
+          return {
+            edgeText: edge ? (edge.label ?? "沒有連線") : null,
+            key: step.instanceKey,
+            title: frameTitles.get(step.nodeId) ?? step.nodeId,
+          };
+        }),
+      }
+    : null;
+
   if (!flow || routes.length === 0) {
     return createElement(FlowEmpty, {
       declarations: flowEmptyDeclarations,
@@ -3686,14 +4157,35 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
         ? "Open Static Flow to export this flow."
         : "Figma export is not available in UI Flow.",
       "data-sbfx-view": "ui-flow",
+      "data-journey-focus": activeJourney ? activeJourney.key : undefined,
+      "data-journey-list": hasJourneyList ? (isJourneyListCollapsed ? "collapsed" : "expanded") : undefined,
       // Hides the canvas layers until the cached snapshots are read.
       "data-snapshot-preload": snapshotPreload === "pending" ? "pending" : undefined,
       ref: rootRef,
       style: {
         "--prototype-inspector-active-viewport-height": `${defaultPreviewHeight}px`,
         "--prototype-inspector-active-viewport-width": `${defaultPreviewWidth}px`,
+        // The viewport and the control layer start at the list's right edge.
+        ...(hasJourneyList
+          ? {
+              "--prototype-flow-journey-list-width": isJourneyListCollapsed
+                ? "var(--pi-ref-size-40)"
+                : "calc(var(--pi-ref-size-80) * 3)",
+            }
+          : {}),
       },
     },
+    hasJourneyList
+      ? createElement(PrototypeJourneyList, {
+          derivedTruncatedCount: derivedJourneys.truncatedCount,
+          detail: journeyDetail,
+          entries: journeyEntries,
+          isCollapsed: isJourneyListCollapsed,
+          onSelect: selectJourney,
+          onToggle: () => setIsJourneyListCollapsed((isCollapsed) => !isCollapsed),
+          selectedKey: journeyFocusKey,
+        })
+      : null,
     // The snapshot renderer sits outside the comment canvas, under the opaque
     // viewport: figma-export draws every hooked iframe inside the canvas into
     // line and canvas comment screenshots, whatever its opacity.
@@ -3708,8 +4200,7 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
       {
         className: "prototype-inspector__flow-viewport",
         "data-pan-mode": isPanModifierActive || panState ? "true" : undefined,
-        // The complete flow: world coordinates are layout coordinates, so a
-        // comment on blank canvas can be stored as a canvas point.
+        // Every view declares the comment canvas (screenshots, pin clipping).
         "data-sbfx-canvas": "",
         "data-panning": panState ? "true" : undefined,
         onPointerCancel: endPan,
@@ -3727,7 +4218,9 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
         "div",
         {
           className: "prototype-inspector__flow-world",
-          "data-sbfx-canvas-world": "",
+          // Only the complete flow's world coordinates are layout coordinates,
+          // so only there is a comment on blank canvas stored as a canvas point.
+          "data-sbfx-canvas-world": activeJourney ? undefined : "",
           "data-zoom-low": cameraSnapshot.z < dashAnimationMinZoom ? "true" : undefined,
           ref: worldRef,
           style: {
@@ -3735,7 +4228,66 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
             transform: getCameraTransform(cameraRef.current),
           },
         },
-        createElement(
+        journeyCanvas
+          ? createElement(
+              "svg",
+              {
+                "aria-hidden": "true",
+                className: "prototype-inspector__flow-lines",
+                height: journeyCanvas.height,
+                style: { left: `${journeyCanvas.x}px`, top: `${journeyCanvas.y}px` },
+                viewBox: `${journeyCanvas.x} ${journeyCanvas.y} ${journeyCanvas.width} ${journeyCanvas.height}`,
+                width: journeyCanvas.width,
+              },
+              journeyLayout.edges.map((edge, index) => {
+                const focus = getJourneyEdgeFocus(edge);
+                const points = edge.points.map((point) => `${point.x},${point.y}`).join(" ");
+                const arrowPoints = edge.dotted ? null : getFlowArrowPoints(edge.points, arrowScale);
+
+                return createElement(
+                  "g",
+                  { "data-journey-edge": index, key: `${edge.fromKey}->${edge.toKey ?? "loop"}` },
+                  edge.label ? createElement("title", null, edge.label) : null,
+                  createElement("polyline", {
+                    className: edge.dotted
+                      ? "prototype-inspector__flow-journey-dotted"
+                      : "prototype-inspector__flow-line",
+                    "data-flow-color": "primary",
+                    "data-flow-focus": focus,
+                    // Only the first occurrence of a transition pair is its
+                    // comment anchor; dotted edges have none.
+                    ...(edge.firstOccurrence
+                      ? {
+                          "data-sbfx-anchor": `edge:${edge.from}->${edge.to}`,
+                          "data-sbfx-anchor-kind": "path",
+                          "data-sbfx-anchor-label": `${frameTitles.get(edge.from) ?? edge.from} → ${frameTitles.get(edge.to) ?? edge.to}`,
+                        }
+                      : {}),
+                    points,
+                    style: getJourneyLineStyle(edge, focus),
+                  }),
+                  arrowPoints
+                    ? createElement("polygon", {
+                        className: "prototype-inspector__flow-arrow",
+                        "data-flow-color": "primary",
+                        "data-flow-focus": focus,
+                        points: arrowPoints,
+                        style: getFlowArrowStyle("primary", focus),
+                      })
+                    : null,
+                  edge.label
+                    ? createElement("polyline", {
+                        className: "prototype-inspector__flow-journey-edge-hit",
+                        onPointerEnter: () => setJourneyLabelExpanded(index, true),
+                        onPointerLeave: () => setJourneyLabelExpanded(index, false),
+                        points,
+                        style: journeyEdgeHitStyle,
+                      })
+                    : null,
+                );
+              }),
+            )
+          : createElement(
           "svg",
           {
             "aria-hidden": "true",
@@ -3761,7 +4313,7 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
                 "data-flow-color": edge.colorVariant,
                 "data-sbfx-anchor": `edge:${edge.key}`,
                 "data-sbfx-anchor-kind": "path",
-                "data-sbfx-anchor-label": `${canvasTitles.get(edge.from) ?? edge.from} → ${canvasTitles.get(edge.to) ?? edge.to}`,
+                "data-sbfx-anchor-label": `${frameTitles.get(edge.from) ?? edge.from} → ${frameTitles.get(edge.to) ?? edge.to}`,
                 "data-flow-focus": getEdgeFocusState(edge),
                 points: edge.polyline.points,
                 style: getFlowLineStyle(edge.colorVariant, getEdgeFocusState(edge)),
@@ -3778,15 +4330,14 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
             ),
           ),
         ),
-        flowNodes.map((node, index) => {
-          const position =
-            routePositionMap.get(node.id) ??
-            getRoutePosition(node, routes.length + index);
+        nodeInstances.map(({ isAnchor, key, node, position }) => {
           const size = getFlowMetadataNodeSize(node);
 
           return createElement(PrototypeFlowNode, {
             height: position.height ?? size.height,
-            key: node.id,
+            instanceKey: key,
+            isAnchor,
+            key,
             node,
             onPointerCancel: handleFramePointerUp,
             onPointerDown: handleFramePointerDown,
@@ -3799,22 +4350,19 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
             y: position.y,
           });
         }),
-        routes.map((route, index) => {
-          const position =
-            routePositionMap.get(route.id) ?? getRoutePosition(route, index);
-
-          const tier = frameTiers.get(route.id) ?? "snapshot";
-          const isRendered = renderedFramesRef.current.has(route.id);
+        routeInstances.map(({ isAnchor, key, position, route }) => {
+          const tier = frameTiers.get(key) ?? "snapshot";
+          const isRendered = renderedFramesRef.current.has(key);
           const snapshotUrl = snapshotUrls.get(route.id) ?? null;
 
           return createElement(PrototypeRouteCard, {
             height: position.height ?? defaultNodeHeight,
-            instanceKey: route.id,
-            isAnchor: true,
+            instanceKey: key,
+            isAnchor,
             isRendered,
             isSnapshotStale: tier !== "live" && Boolean(snapshotUrl) && staleRoutes.has(route.id),
-            key: route.id,
-            mountIframe: tier === "live" && (isRendered || loadingFrameRef.current === route.id),
+            key,
+            mountIframe: tier === "live" && (isRendered || loadingFrameRef.current === key),
             onFrameHotUpdated: handleFrameHotUpdated,
             onFrameLoaded: handleFrameLoaded,
             onFrameRendered: handleFrameRendered,
@@ -3848,7 +4396,47 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
             "--prototype-flow-camera-zoom": cameraRef.current.z,
           },
         },
-        labeledEdges.map((edge) =>
+        journeyLayout
+          ? [
+              // Journey labels: fixed 12 px, truncated to the room between the
+              // frames on screen, hidden only below 24 px of room.
+              ...journeyLayout.edges.map((edge, index) =>
+                edge.label
+                  ? createElement(
+                      "div",
+                      {
+                        className: "prototype-inspector__flow-edge-label prototype-inspector__flow-journey-label",
+                        "data-flow-color": "primary",
+                        "data-flow-focus": getJourneyEdgeFocus(edge),
+                        "data-hidden": isJourneyLabelHidden(edge.labelWidth, cameraSnapshot.z) ? "true" : undefined,
+                        "data-journey-edge": index,
+                        key: `${edge.fromKey}->${edge.toKey ?? "loop"}-label`,
+                        style: {
+                          "--prototype-flow-journey-label-room": edge.labelWidth,
+                          "--prototype-flow-label-wx": `${edge.labelX}px`,
+                          "--prototype-flow-label-wy": `${edge.labelY}px`,
+                        },
+                      },
+                      edge.label,
+                    )
+                  : null,
+              ),
+              journeyLayout.loopMarker
+                ? createElement(
+                    "div",
+                    {
+                      className: "prototype-inspector__flow-journey-loop",
+                      key: "loop-marker",
+                      style: {
+                        "--prototype-flow-label-wx": `${journeyLayout.loopMarker.x}px`,
+                        "--prototype-flow-label-wy": `${journeyLayout.loopMarker.y}px`,
+                      },
+                    },
+                    journeyLayout.loopMarker.label,
+                  )
+                : null,
+            ]
+          : labeledEdges.map((edge) =>
           createElement(
             "div",
             {
@@ -3880,9 +4468,7 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
             ),
           ),
         ),
-        routes.map((route, index) => {
-          const position =
-            routePositionMap.get(route.id) ?? getRoutePosition(route, index);
+        routeInstances.map(({ key, position, route }) => {
           const box = {
             height: position.height ?? defaultNodeHeight,
             width: position.width ?? defaultPreviewWidth + nodeFrameSize,
@@ -3890,16 +4476,17 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
             y: position.y,
           };
           const visible = getFrameVisibleRect(box, "route");
-          const isHovered = focusedRouteId === route.id;
+          const isHovered = focusedRouteId === key;
 
           return createElement(PrototypeFrameLabel, {
             componentCount: routeComponentCounts.get(route.id) ?? 0,
+            frameId: key,
             isHidden:
               !isHovered && visible.width * cameraSnapshot.z < frameLabelMinScreenWidth,
             isHovered,
             isUpdating:
-              frameTiers.get(route.id) !== "live" && snapshotUrls.has(route.id) && staleRoutes.has(route.id),
-            key: route.id,
+              frameTiers.get(key) !== "live" && snapshotUrls.has(route.id) && staleRoutes.has(route.id),
+            key,
             onPointerCancel: handleFramePointerUp,
             onPointerDown: handleFramePointerDown,
             onPointerEnter: handleFramePointerEnter,
@@ -3927,6 +4514,9 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
           }
         },
       },
+      isReadOnlyView
+        ? createElement("p", { className: "prototype-inspector__flow-journey-notice" }, "簡化檢視：位置不會儲存")
+        : null,
       createElement(
         "div",
         {
@@ -4025,6 +4615,7 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
               ["Zoom", "Pinch, ⌘/Ctrl + scroll, = / -"],
               ["Pan", "Two-finger scroll, Space + drag, middle-button drag"],
               ["Fit / 100%", "Shift+1 / Shift+0"],
+              ...(hasJourneyList ? [["切換功能流程", "[ / ]"]] : []),
             ].map(([term, detail]) =>
               createElement(
                 "div",
@@ -4055,7 +4646,7 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
           "button",
           {
             "aria-label": "Reset UI Flow layout",
-            disabled: !hasCustomLayout,
+            disabled: !hasCustomLayout || isReadOnlyView,
             onClick: openResetDialog,
             title: "Reset layout",
             type: "button",
@@ -4066,6 +4657,7 @@ export function PrototypeFlow({ initialTiers = null, prototype }) {
           "button",
           {
             "aria-label": "Import UI Flow layout",
+            disabled: isReadOnlyView,
             onClick: openImportPicker,
             title: "Import layout JSON",
             type: "button",

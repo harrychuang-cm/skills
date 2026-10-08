@@ -53,6 +53,14 @@ export type ExamplePrototypeTransition = {
   kind?: "primary" | "return" | "global" | "secondary" | "outcome" | "condition";
 };
 
+/** A feature journey, one per PRD Core Journey: route or flow node ids in order. */
+export type ExamplePrototypeJourney = {
+  id: string;
+  title: string;
+  description?: string;
+  steps: readonly ExamplePrototypeFlowTargetId[];
+};
+
 export const examplePrototypeRoutes = [
   {
     component: "ExamplePrototype",
@@ -146,7 +154,23 @@ export const examplePrototypeTransitions = [
   },
 ] as const satisfies readonly ExamplePrototypeTransition[];
 
+export const examplePrototypeJourneys = [
+  {
+    description: "PRD Journey 1: a complete request goes from intake to handoff.",
+    id: "approve-request",
+    steps: ["intake", "review", "approval-decision", "handoff"],
+    title: "Approve a request",
+  },
+  {
+    description: "PRD Journey 2: the approval decision sends the request back to review.",
+    id: "request-changes",
+    steps: ["intake", "review", "approval-decision", "review"],
+    title: "Request changes",
+  },
+] as const satisfies readonly ExamplePrototypeJourney[];
+
 export const examplePrototypeFlow = {
+  journeys: examplePrototypeJourneys,
   nodes: examplePrototypeFlowNodes,
   routes: examplePrototypeRoutes,
   transitions: examplePrototypeTransitions,

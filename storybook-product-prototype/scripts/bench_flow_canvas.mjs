@@ -7,6 +7,7 @@
 //   node storybook-product-prototype/scripts/bench_flow_canvas.mjs \
 //     --url "http://localhost:6006/iframe.html?id=<story>&globals=prototypeMode:flow&viewMode=story" \
 //     [--project-root <storybook project>] [--out <json>] [--label <run name>]
+//     [--journey <journey list entry key>]
 //
 // Metrics whose performance mark or CSS variable does not exist in the
 // measured build are reported as null (pi:flow:commit, pi:flow:label-placement,
@@ -102,6 +103,9 @@ function usage() {
     "  --out <file>           Also write the JSON there. With --label the run is merged into",
     "                         { runs: { <label>: ... } } of an existing file.",
     "  --label <name>         Run name used with --out (for example growth-fund).",
+    "  --journey <key>        Open the UI Flow on this journey list entry (all, declared:<id> or",
+    "                         derived:<branch id>:<target id>): it is written to sessionStorage",
+    "                         (prototype-inspector:flow-journey:<prototypeId>) before the canvas reads it.",
     "  --chrome-port <port>   Chrome --remote-debugging-port (default 0: pick a free port).",
     "  --headed               Run Chrome with a window instead of --headless=new.",
     "  --trace <file>         Record a Chrome trace of the gestures (devtools timeline categories).",
@@ -115,6 +119,7 @@ function parseArgs(argv) {
     chromePort: 0,
     headed: false,
     help: false,
+    journey: null,
     label: null,
     out: null,
     projectRoot: null,
@@ -151,6 +156,9 @@ function parseArgs(argv) {
         break;
       case "--label":
         args.label = readValue();
+        break;
+      case "--journey":
+        args.journey = readValue();
         break;
       case "--chrome-port": {
         const port = Number(readValue());
@@ -333,6 +341,23 @@ function installFlowBenchInstrumentation(config) {
       }
       return "unknown";
     };
+    // --journey: the first read of a journey selection key finds the entry
+    // already stored, as if it had been selected before opening the UI Flow.
+    // Written with the native setItem, so it is not counted as a page write.
+    if (isTop && config.journey) {
+      const nativeGetItem = Storage.prototype.getItem;
+      const nativeSetItem = Storage.prototype.setItem;
+      Storage.prototype.getItem = function getItemWithJourney(key) {
+        if (
+          this === window.sessionStorage &&
+          String(key).startsWith("prototype-inspector:flow-journey:") &&
+          nativeGetItem.call(this, key) === null
+        ) {
+          nativeSetItem.call(this, key, config.journey);
+        }
+        return nativeGetItem.call(this, key);
+      };
+    }
     for (const method of ["setItem", "removeItem", "clear"]) {
       const original = Storage.prototype[method];
       Storage.prototype[method] = function storageHook(...args) {
@@ -424,6 +449,8 @@ function installFlowBenchInstrumentation(config) {
         iframeErrors: counts.error,
         iframes: iframes.length,
         iframesReady: counts.ready,
+        // The journey list entry shown (flow-journey-focus), null for the full flow.
+        journeyFocus: root.getAttribute("data-journey-focus"),
         liveLoading,
         ready: tiered
           ? frames.length > 0 &&
@@ -1401,6 +1428,7 @@ async function runBench(args) {
     progress(`${version.product} ${args.headed ? "headed" : "headless"}; profile ${profileDir}`);
     const idleMemory = rendererMemory(profileDir, null);
     const baseConfig = {
+      journey: args.journey,
       selectorSets: SELECTOR_SETS,
       strokeZoomVariable: STROKE_ZOOM_VARIABLE,
     };
@@ -1781,6 +1809,7 @@ async function runBench(args) {
     return {
       schema: "prototype-flow-canvas-bench/1",
       label: args.label,
+      journey: args.journey,
       measuredAt: new Date().toISOString(),
       url: flowUrl,
       storyUrl,
@@ -1874,6 +1903,7 @@ async function runBench(args) {
         iframes: flowReady.readyInfo?.iframes ?? null,
         iframeErrors: flowReady.readyInfo?.iframeErrors ?? null,
         tiered: flowReady.readyInfo?.tiered ?? null,
+        journeyFocus: flowReady.readyInfo?.journeyFocus ?? null,
         routeIframes: { fit: fitIframes.route, zoom100: zoom100Iframes.route },
         rendererIframes: { fit: fitIframes.renderer, zoom100: zoom100Iframes.renderer },
         // Resets other than the first load and the scheduled reloads; null

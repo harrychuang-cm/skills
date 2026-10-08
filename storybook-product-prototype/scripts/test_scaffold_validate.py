@@ -48,6 +48,7 @@ each kind of drift and the import check names each kind of violation.
 
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
 import tempfile
@@ -1197,6 +1198,8 @@ def main() -> int:
                         f"({form_factor} {width}x{height})"
                     )
 
+        failures.extend(check_flow_journeys(base_dir))
+
     failures.extend(check_flow_parsing())
     failures.extend(check_handoff_contracts())
     failures.extend(check_authority_and_motion())
@@ -1217,6 +1220,7 @@ def main() -> int:
     for summary in round_summaries:
         print(summary)
     print("flow parsing: nested objects and both id layers resolve")
+    print("flow journeys: spec example table, comments inside the array, empty scaffold export")
     print(
         "handoff contracts: manifest roundtrip, drift, acceptance ids, dual scope, "
         "blocking decisions, flow carrier"
@@ -2033,6 +2037,122 @@ export const featurePrototypeTransitions = [
                 f"flow screen id {expected_id!r} missing from {screen_ids}"
             )
 
+    return failures
+
+
+JOURNEY_FLOW_BASE = """
+export const featurePrototypeRouteIds = ["intake", "review", "handoff", "nav-only"] as const;
+
+export const featurePrototypeRoutes = [
+  { id: "intake", title: "Intake" },
+  { id: "review", title: "Review" },
+  { id: "handoff", title: "Handoff" },
+] satisfies FeaturePrototypeRoute[];
+
+export const featurePrototypeFlowNodes = [] satisfies FeaturePrototypeFlowNode[];
+
+export const featurePrototypeTransitions = [
+  { from: "intake", to: "review", trigger: "a", label: "Submit" },
+  { from: "review", to: "handoff", trigger: "b", label: "Approve" },
+] satisfies FeaturePrototypeTransition[];
+"""
+
+# The validator example table of the flow-journey-focus spec: journeys array
+# body -> (expected errors, expected warnings).
+JOURNEY_CASES = [
+    ('{ id: "main", title: "Main", steps: ["intake", "review"] }', [], []),
+    (
+        '{ id: "main", title: "Main", steps: ["intake", "unknown-screen"] }',
+        ["journey 'main' references unknown step 'unknown-screen'"],
+        [],
+    ),
+    (
+        '{ id: "main", title: "Main", steps: ["intake", "nav-only"] }',
+        ["journey 'main' references unknown step 'nav-only'"],
+        [],
+    ),
+    ('{ id: "main", title: "Main", steps: ["intake"] }', ["journey 'main' needs at least two steps"], []),
+    (
+        '{ id: "main-path", title: "A", steps: ["intake", "review"] },'
+        ' { id: "main-path", title: "B", steps: ["intake", "review"] }',
+        ["journey id 'main-path' is duplicated"],
+        [],
+    ),
+    (
+        '{ id: "MainPath", title: "Main", steps: ["intake", "review"] }',
+        ["journey id 'MainPath' must be lowercase kebab-case"],
+        [],
+    ),
+    (
+        '{ id: "main", title: "Main", steps: ["intake", "handoff"] }',
+        [],
+        ["journey 'main' has no transition from 'intake' to 'handoff'"],
+    ),
+    (None, [], []),
+]
+
+
+def check_flow_journeys(base_dir: Path | None = None) -> list[str]:
+    """Journey validation (spec example table), comment-proof parsing, and the
+    empty journeys export of every scaffolded flow."""
+    sys.path.insert(0, str(SCRIPTS_DIR))
+    import validate_prototype as vp
+
+    failures: list[str] = []
+    with tempfile.TemporaryDirectory(prefix="journeys-") as temp_dir:
+        flow_path = Path(temp_dir) / FLOW_FILE_NAME
+        for body, expected_errors, expected_warnings in JOURNEY_CASES:
+            source = JOURNEY_FLOW_BASE
+            if body is not None:
+                source += f"\nexport const featurePrototypeJourneys = [\n  {body},\n] satisfies FeaturePrototypeJourney[];\n"
+            flow_path.write_text(source)
+            errors: list[str] = []
+            warnings: list[str] = []
+            vp.validate_flow_journeys({"flow": flow_path}, errors, warnings)
+            label = body or "no journeys array"
+            if errors != expected_errors:
+                failures.append(f"journeys {label}: errors {errors}, expected {expected_errors}")
+            if warnings != expected_warnings:
+                failures.append(f"journeys {label}: warnings {warnings}, expected {expected_warnings}")
+
+    commented = """
+export const featurePrototypeJourneys = [
+  // { id: "old", title: "Old", steps: ["intake", "review"] },
+  // the journey's steps follow the PRD
+  { id: "main", title: "Main", steps: ["intake", "unknown-screen"] },
+] satisfies FeaturePrototypeJourney[];
+"""
+    only_commented = """
+export const featurePrototypeJourneys = [
+  // { id: "old", title: "Old", steps: ["intake", "review"] },
+] satisfies FeaturePrototypeJourney[];
+"""
+    for source, expected in ((commented, ["main"]), (only_commented, [])):
+        parsed = [journey["id"] for journey in vp.extract_flow_journeys(vp.sanitize_meta_source(source))]
+        if parsed != expected:
+            failures.append(f"journeys array with comments parsed as {parsed}, expected {expected}")
+    # The validator itself reads past both comments and reports the journey after them.
+    with tempfile.TemporaryDirectory() as temp_dir:
+        flow_path = Path(temp_dir) / FLOW_FILE_NAME
+        flow_path.write_text(JOURNEY_FLOW_BASE + commented)
+        errors = []
+        warnings = []
+        vp.validate_flow_journeys({"flow": flow_path}, errors, warnings)
+        expected_errors = ["journey 'main' references unknown step 'unknown-screen'"]
+        if errors != expected_errors:
+            failures.append(f"journeys array with comments: errors {errors}, expected {expected_errors}")
+
+    if base_dir is not None:
+        flows = sorted(base_dir.rglob(FLOW_FILE_NAME))
+        if not flows:
+            failures.append("no scaffolded flow found for the journeys check")
+        for flow in flows:
+            text = flow.read_text()
+            if not re.search(r"export const \w+Journeys", text):
+                failures.append(f"{flow.relative_to(base_dir)}: scaffolded flow has no Journeys export")
+            parsed = vp.extract_flow_journeys(vp.sanitize_meta_source(text))
+            if parsed:
+                failures.append(f"{flow.relative_to(base_dir)}: scaffolded flow parses {len(parsed)} journeys, expected 0")
     return failures
 
 

@@ -88,6 +88,22 @@ export type __FEATURE_PASCAL__Transition = {
   motionRef?: string;
 };
 
+/**
+ * A feature journey, one per PRD Core Journey ("### Journey N: <Name>"): an id
+ * in lowercase kebab-case, the journey name as title, and the route or flow
+ * node ids in order. A step may repeat (a journey that returns to a screen).
+ * UI Flow lists journeys and shows one at a time in a single line.
+ *
+ * Example entry:
+ *   { id: "approve-request", title: "Approve a request", steps: ["intake", "review", "handoff"] }
+ */
+export type __FEATURE_PASCAL__Journey = {
+  id: string;
+  title: string;
+  description?: string;
+  steps: __FEATURE_PASCAL__FlowTargetId[];
+};
+
 export const __FEATURE_CAMEL__Routes = [
   {
     component: "__FEATURE_PASCAL__",
@@ -106,6 +122,9 @@ export const __FEATURE_CAMEL__FlowNodes: __FEATURE_PASCAL__FlowNode[] =
 export const __FEATURE_CAMEL__Transitions: __FEATURE_PASCAL__Transition[] =
   [] satisfies __FEATURE_PASCAL__Transition[];
 
+export const __FEATURE_CAMEL__Journeys: __FEATURE_PASCAL__Journey[] =
+  [] satisfies __FEATURE_PASCAL__Journey[];
+
 export const __FEATURE_CAMEL__Viewport = {
   formFactor: "__FORM_FACTOR__",
   height: __VIEWPORT_HEIGHT__,
@@ -113,6 +132,7 @@ export const __FEATURE_CAMEL__Viewport = {
 } satisfies __FEATURE_PASCAL__Viewport;
 
 export const __FEATURE_CAMEL__Flow = {
+  journeys: __FEATURE_CAMEL__Journeys,
   nodes: __FEATURE_CAMEL__FlowNodes,
   routes: __FEATURE_CAMEL__Routes,
   transitions: __FEATURE_CAMEL__Transitions,

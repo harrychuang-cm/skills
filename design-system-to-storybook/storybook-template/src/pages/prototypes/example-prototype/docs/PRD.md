@@ -29,10 +29,13 @@ New projects need a repeatable way to align product scope, flow metadata, local 
 
 ## Core Journeys
 
-1. A user opens Project Intake and submits the request for review.
-2. A reviewer inspects requirements and requests approval.
-3. The approval decision sends complete requests to Implementation Handoff.
-4. Incomplete requests can return to review or intake as reference transitions.
+### Journey 1: Approve a request
+
+A user opens Project Intake and submits the request; a reviewer inspects requirements and requests approval; the approval decision sends the complete request to Implementation Handoff (intake → review → approval decision → handoff).
+
+### Journey 2: Request changes
+
+The approval decision finds the request incomplete and sends it back to review with notes (intake → review → approval decision → review). Review can also return to intake as a reference transition.
 
 ## AI Implementation Scope
 

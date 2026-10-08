@@ -33,17 +33,17 @@ In every UI Flow view, the element that represents a route frame's visible rect 
 
 ### Requirement: Canvas coordinate declaration
 
-While the canvas shows the complete flow, the viewport element SHALL carry `data-sbfx-canvas` and the transformed world layer SHALL carry `data-sbfx-canvas-world`, keeping transform-origin 0 0 and a transform made only of a translation and a uniform scale, so that a point in the world layer's coordinate space equals the same point in layout coordinates. While the canvas shows any other view, including a view that another UI Flow canvas capability lays out from computed positions, neither attribute SHALL be present.
+While the canvas shows the complete flow, the viewport element SHALL carry `data-sbfx-canvas` and the transformed world layer SHALL carry `data-sbfx-canvas-world`, keeping transform-origin 0 0 and a transform made only of a translation and a uniform scale, so that a point in the world layer's coordinate space equals the same point in layout coordinates. While the canvas shows a view that another UI Flow canvas capability lays out from computed positions, the viewport element SHALL keep `data-sbfx-canvas`, so that the comment screenshots and pin clipping still use the canvas, and the world layer SHALL NOT carry `data-sbfx-canvas-world`, so that no blank-canvas point is mapped to layout coordinates that the view does not show; a comment placed on blank canvas in such a view therefore has no canvas anchor.
 
 #### Scenario: A blank-canvas comment maps to layout coordinates
 
 - **WHEN** the complete flow is shown with the camera at translation (40, 20) and zoom 0.5, and a comment is placed on blank canvas at the viewport point (340, 170)
 - **THEN** the comment's canvas anchor records world (600, 300), the layout coordinates under that point
 
-#### Scenario: A derived-layout view declares no canvas
+#### Scenario: A derived-layout view keeps the canvas but no world layer
 
 - **WHEN** another UI Flow canvas capability shows a view whose frame positions are computed instead of read from the saved layout
-- **THEN** neither `data-sbfx-canvas` nor `data-sbfx-canvas-world` is present in the UI Flow root
+- **THEN** the viewport element carries `data-sbfx-canvas` and no element of the UI Flow root carries `data-sbfx-canvas-world`
 
 ---
 

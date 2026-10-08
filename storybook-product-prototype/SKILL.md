@@ -101,7 +101,8 @@ Rules:
 - Add every route-changing user action to the transitions array.
 - Give every transition entering a visible route explicit `motion` (`none`, `platform-default`, or `custom`), non-return `presentation`, and return `backBehavior`. Custom motion uses `motionRef: "FLOW_SPEC.md#explicit-anchor"` and a matching definition of entering/returning and reduced-motion behavior. Missing intent remains an open decision; do not invent push, pop, or animation defaults.
 - Use stable triggers such as `quoteRow.click`, `submitButton.click`, `bottomNavigation.watchlist`, or `settingsSheet.dismiss`.
-- Use `flowLine: "key"` only for transitions that should be drawn on the simplified UI Flow canvas; keep the full transition list in metadata.
+- Use `flowLine: "key"` only for transitions that should be drawn on the full UI Flow canvas; keep the full transition list in metadata. `reference` transitions are not drawn on the full canvas, but they take part in deriving branch journeys.
+- Declare one entry in `<featureCamel>Journeys` (exported as `flow.journeys`) for each PRD Core Journey (`### Journey N: <Name>`): a lowercase kebab-case `id`, the journey name as `title`, and `steps` listing route or flow-node ids in order (a step may repeat, for example a return to review). The UI Flow journey list shows each declared journey as a single-line view; branches no journey covers are derived automatically. Keep the exported array a literal `[]` until the first journey exists.
 - Add optional `sourceAnchor: { x, y }` to a transition only when a Static Flow export needs a stable edge origin for future Figma export layout. Treat `x` and `y` as route-card-relative ratios from `0` to `1`.
 
 ### 5. Create Deterministic Data

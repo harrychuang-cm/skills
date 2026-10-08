@@ -80,10 +80,33 @@ Every user-triggered route change must define:
 - `backBehavior`: exit semantics — `pop` (one step back), `popToRoot` (back to the flow's root), `dismiss` (close the overlay), or `none` (no user-initiated back). Required at handoff for every return transition entering a visible route. Declare other nontrivial exits explicitly too; missing return behavior never implies pop.
 - `motion`: `none`, `platform-default`, or `custom`. Required at handoff for every transition entering a visible route, including return transitions. This is animation intent, separate from navigation presentation. `platform-default` explicitly authorizes the native/browser framework default without a guessed duration; `none` explicitly disables transition animation.
 - `motionRef`: required for custom motion, using `FLOW_SPEC.md#explicit-anchor` with a matching actual HTML anchor in that document. Describe entering/returning behavior, direction, duration/easing, and reduced-motion behavior at the anchor. Do not rely on an automatically generated Markdown heading slug.
-- `flowLine`: optional display hint. Use `key` only for transitions drawn on the simplified canvas.
+- `flowLine`: optional display hint. `key`: drawn on the full UI Flow canvas; `reference`: not drawn on the full canvas but used to derive branch journeys; journey focus views draw the transitions between consecutive steps regardless of flowLine.
 - `sourceAnchor`: optional `{ x, y }` route-card-relative ratio used only when Static Flow export needs a stable edge origin for Figma-ready layout. Use sparingly and keep values between `0` and `1`.
 
 Draft/legacy files may omit the navigation and motion fields and remain readable. Report the unresolved choice and its owner; do not infer defaults. Missing intent blocks that flow's complete handoff, not independent work. A non-screen branch target does not need motion solely for branch evaluation. `export_flow.py` preserves motion/motionRef in flow JSON and native scaffold comments; it does not implement an animation engine.
+
+## Journeys
+
+`flow.journeys` lists the feature journeys a reviewer walks through, one per PRD Core Journey (`### Journey N: <Name>`). Each journey defines:
+
+- `id`: lowercase kebab-case (`[a-z0-9][a-z0-9-]*`), unique within the flow.
+- `title`: the journey name from the PRD.
+- `description`: optional.
+- `steps`: route or flow-node ids in order, at least two. A step may repeat (for example a return to an earlier screen). Only `flow.routes` and `flow.nodes` ids are steps; a navigation id that exists only in `<name>RouteIds` is not.
+
+Keep the exported array a literal `[]` until the first journey exists. Usage examples belong in the journey type's JSDoc, written as a bare object literal: flow-file scanners such as `export_flow.py` read the file without removing comments, so an example must not contain `export const`, `Flow = {`, `Viewport = {` or `Routes = [`.
+
+`scripts/validate_prototype.py` checks journeys only when a flow declares some:
+
+- error `journey '<id>' references unknown step '<step>'`
+- error `journey id '<id>' must be lowercase kebab-case`
+- error `journey id '<id>' is duplicated`
+- error `journey '<id>' needs at least two steps`
+- warning `journey '<id>' has no transition from '<a>' to '<b>'` for consecutive steps without a transition (a pair involving an unknown step is not reported again; `--strict-style` promotes the warning to an error)
+
+In the UI Flow, a journey list beside the canvas offers 全部 (the full canvas), the declared journeys and an 自動分支 section. Selecting a journey shows a read-only, single-line view of its steps. Branch journeys are derived automatically: a branch node is a route or flow node whose qualifying transitions (flowLine `key` or `reference`, kind not `return` or `global`) lead to two or more nodes, and each of its distinct targets yields one short journey (up to two steps of lead-in, the branch node, the target, then the path onward while it does not branch), named by the transition labels and the target title. Derived journeys whose steps equal a declared journey are not listed, and at most 24 are listed, with the number left out. Declare journeys when the derived names are not the feature names reviewers should see.
+
+Journeys live in the Flow file. In a prototype that already has `docs/HANDOFF_MANIFEST.json`, adding or editing journeys changes its artifactsDigest and `--verify-manifest` reports drift. Journeys are review-only and do not change production behavior; once the demo is confirmed, republish the manifest with `python3 <skill-root>/scripts/validate_prototype.py <folder> --handoff-ready --changelog "review-only: journeys"`. `export_flow.py` does not write journeys to `docs/flow.json`.
 
 ## Trigger Naming
 
@@ -126,7 +149,7 @@ Keep route ids stable across prototype docs and handoff docs so engineers and AI
 - Every documented click appears in transition metadata.
 - Every transition target exists as a route or flow-only node.
 - Every transition entering a visible route has motion plus its required presentation or return behavior; every custom motion reference resolves to an explicit Flow Spec anchor.
-- UI Flow canvas uses key transitions; Transition Index uses the full transition list.
+- The full UI Flow canvas uses key transitions; journey focus views use all transitions between consecutive steps; Transition Index uses the full transition list.
 - The prototype supports `prototypeRoute=<route-id>` for route-specific iframe previews.
 - The prototype supports `prototypeFlowPreview=true` for compact embedded rendering.
 - In flow preview mode (`isFlowPreview` prop or `prototypeFlowPreview=true`), the prototype hides its own chrome — the prototype header and the route navigation — so flow cards and iframe previews show only what the real page shows.

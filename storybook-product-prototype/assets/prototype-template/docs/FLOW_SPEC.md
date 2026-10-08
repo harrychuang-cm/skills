@@ -57,6 +57,11 @@ Each transition must define:
 - `flowLine`
 - `sourceAnchor` only when Static Flow export needs a stable edge origin for Figma layout.
 
+## Journeys
+
+- One journey per PRD Core Journey (`### Journey N: <Name>`), declared in `__FEATURE_CAMEL__Journeys`: lowercase kebab-case `id`, the journey name as `title`, and `steps` listing route or flow-node ids in order (at least two; a step may repeat).
+- `[journey-id]`: [step-id] -> [step-id] -> [step-id]
+
 ## Motion Definitions
 
 Navigation presentation and animation intent are independent. `none` means no transition animation; `platform-default` authorizes the target platform's standard animation without inventing a duration. `custom` requires a definition here with an explicit HTML anchor such as `<a id="open-detail-motion"></a>`, referenced by `motionRef: "FLOW_SPEC.md#open-detail-motion"`.
@@ -98,5 +103,6 @@ One row per route id; write `Not in scope` in the cells of platforms the product
 - If custom motion changes, update its explicit definition and reference, the prototype behavior, export, and affected acceptance checks together.
 - If a transition exists in metadata, the prototype must expose a matching user action or document why it is out of scope.
 - If a route is added, `prototypeRoute=<route-id>` must render that route in UI Flow iframe preview mode.
+- If a PRD Core Journey is added, renamed, or changes its screens, update its journey in `__FEATURE_CAMEL__Journeys` and the Journeys section together; if a route or flow node is removed or renamed, update every journey step that names it. Consecutive steps should have a transition between them (the validator warns otherwise).
 - If Static Flow export line placement is unclear, adjust `flowPosition` first and use `sourceAnchor` only for stable Figma export edge origins.
 - If production navigation differs from the prototype route model, document the adapter in `PRODUCTION_HANDOFF.md`.

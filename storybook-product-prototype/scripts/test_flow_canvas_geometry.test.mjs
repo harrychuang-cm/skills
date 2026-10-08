@@ -665,3 +665,392 @@ test("acceptMeasuredSize ignores noise, 100vh feedback and runaway heights", () 
   // A width change still applies while the height feeds back.
   assert.deepEqual(geometry.acceptMeasuredSize(phone, { height: 832, width: 390 }, 20, 812), { height: 812, width: 390 });
 });
+
+// ---------------------------------------------------------------------------
+// Feature journeys (flow-journey-focus)
+
+const quiet = { warn: () => {} };
+const route = (id, title = id.toUpperCase()) => ({ id, title });
+const node = (id, title = id.toUpperCase()) => ({ id, shape: "decision", title });
+const link = (from, to, extra = {}) => ({ flowLine: "key", from, label: "", to, trigger: `${from}.${to}`, ...extra });
+const summary = (result) => result.journeys.map(({ key, steps, title, loopTarget }) => ({ key, steps, title, ...(loopTarget ? { loopTarget } : {}) }));
+
+const exampleFlow = {
+  nodes: [node("approval-decision", "Ready for handoff?")],
+  routes: [route("intake", "Project Intake"), route("review", "Review Request"), route("handoff", "Implementation Handoff")],
+  transitions: [
+    link("intake", "review", { kind: "primary", label: "Submit intake" }),
+    link("review", "approval-decision", { kind: "primary", label: "Request approval" }),
+    link("approval-decision", "handoff", { kind: "condition", label: "Approved" }),
+    link("approval-decision", "review", { flowLine: "reference", kind: "condition", label: "Needs changes" }),
+    link("review", "intake", { flowLine: "reference", kind: "return", label: "Edit intake" }),
+    link("handoff", "intake", { flowLine: "reference", kind: "return", label: "Start another request" }),
+  ],
+};
+
+test("branch journeys of the storybook-template example (spec example)", () => {
+  const result = geometry.deriveBranchJourneys(exampleFlow, quiet);
+
+  assert.deepEqual(summary(result), [
+    { key: "derived:approval-decision:handoff", steps: ["intake", "review", "approval-decision", "handoff"], title: "Approved · Implementation Handoff" },
+    { key: "derived:approval-decision:review", loopTarget: "review", steps: ["intake", "review", "approval-decision"], title: "Needs changes · ↩ Review Request" },
+  ]);
+  assert.equal(result.truncatedCount, 0);
+  assert.ok(result.journeys.every((journey) => journey.branchTitle === "Ready for handoff?"));
+
+  const declared = {
+    ...exampleFlow,
+    journeys: [
+      { id: "approve-request", steps: ["intake", "review", "approval-decision", "handoff"], title: "Approve a request" },
+      { id: "request-changes", steps: ["intake", "review", "approval-decision", "review"], title: "Request changes" },
+    ],
+  };
+  assert.deepEqual(geometry.deriveBranchJourneys(declared, quiet).journeys, [], "declared journeys cover both branches");
+});
+
+test("six branches become six journeys", () => {
+  const targets = ["t1", "t2", "t3", "t4", "t5", "t6"];
+  const flow = {
+    nodes: [node("d")],
+    routes: [route("start"), ...targets.map((id) => route(id))],
+    transitions: [link("start", "d"), ...targets.map((id, index) => link("d", id, { flowLine: index % 2 ? "reference" : "key", kind: "condition", label: `Branch ${index + 1}` }))],
+  };
+  const result = geometry.deriveBranchJourneys(flow, quiet);
+
+  assert.equal(result.journeys.length, 6);
+  assert.deepEqual(result.journeys[0].steps, ["start", "d", "t1"]);
+  assert.equal(result.journeys[5].title, "Branch 6 · T6");
+  assert.ok(result.journeys.every((journey) => journey.branchId === "d"));
+});
+
+test("three chained decisions derive one journey per branch edge (spec example)", () => {
+  const flow = {
+    nodes: [node("d1"), node("d2"), node("d3")],
+    routes: ["a", "b1", "b2", "m1", "c1", "c2", "m2", "e1", "e2"].map((id) => route(id)),
+    transitions: [
+      link("a", "d1"),
+      link("d1", "b1", { label: "Left" }),
+      link("d1", "b2", { label: "Right" }),
+      link("b1", "m1"),
+      link("b2", "m1"),
+      link("m1", "d2"),
+      link("d2", "c1", { label: "Left" }),
+      link("d2", "c2", { label: "Right" }),
+      link("c1", "m2"),
+      link("c2", "m2"),
+      link("m2", "d3"),
+      link("d3", "e1", { label: "Left" }),
+      link("d3", "e2", { label: "Right" }),
+    ],
+  };
+
+  assert.deepEqual(
+    geometry.deriveBranchJourneys(flow, quiet).journeys.map(({ branchId, steps, title }) => [branchId, title, steps.join(", ")]),
+    [
+      ["d1", "Left · B1", "a, d1, b1, m1"],
+      ["d1", "Right · B2", "a, d1, b2, m1"],
+      ["d2", "Left · C1", "b1, m1, d2, c1, m2"],
+      ["d2", "Right · C2", "b1, m1, d2, c2, m2"],
+      ["d3", "Left · E1", "c1, m2, d3, e1"],
+      ["d3", "Right · E2", "c1, m2, d3, e2"],
+    ],
+  );
+});
+
+test("parallel and loop-back edges keep distinct identities", () => {
+  const flow = {
+    nodes: [node("d")],
+    routes: [route("s", "S"), route("r1", "R1"), route("r2", "R2"), route("x", "X")],
+    transitions: [
+      link("s", "r1"),
+      link("r1", "r2"),
+      link("r2", "d"),
+      link("d", "r1", { label: "Back to first" }),
+      link("d", "r2", { label: "Back to second" }),
+      link("d", "x", { label: "Retry" }),
+      link("d", "x", { label: "Try again" }),
+    ],
+  };
+
+  assert.deepEqual(summary(geometry.deriveBranchJourneys(flow, quiet)), [
+    { key: "derived:d:r1", loopTarget: "r1", steps: ["r1", "r2", "d"], title: "Back to first · ↩ R1" },
+    { key: "derived:d:r2", loopTarget: "r2", steps: ["r1", "r2", "d"], title: "Back to second · ↩ R2" },
+    { key: "derived:d:x", steps: ["r1", "r2", "d", "x"], title: "Retry / Try again · X" },
+  ]);
+});
+
+test("a route linked only by excluded transitions appears in no journey (spec example)", () => {
+  const flow = {
+    routes: [route("a", "A"), route("b", "B"), route("c", "C"), route("lonely", "L")],
+    transitions: [
+      link("a", "b", { label: "x" }),
+      link("a", "c", { label: "y" }),
+      link("lonely", "a", { flowLine: "reference", kind: "return" }),
+      link("a", "lonely", { kind: "global" }),
+      link("lonely", "b", { flowLine: "hidden" }),
+      { from: "c", label: "", to: "lonely", trigger: "c.lonely" },
+    ],
+  };
+
+  assert.deepEqual(summary(geometry.deriveBranchJourneys(flow, quiet)), [
+    { key: "derived:a:b", steps: ["a", "b"], title: "x · B" },
+    { key: "derived:a:c", steps: ["a", "c"], title: "y · C" },
+  ]);
+});
+
+test("a long fan keeps 24 journeys and reports the rest", () => {
+  const targets = Array.from({ length: 30 }, (_, index) => `t${index}`);
+  const flow = {
+    nodes: [node("d")],
+    routes: [route("start"), ...targets.map((id) => route(id))],
+    transitions: [link("start", "d"), ...targets.map((id) => link("d", id, { label: id }))],
+  };
+  const result = geometry.deriveBranchJourneys(flow, quiet);
+
+  assert.equal(result.journeys.length, 24);
+  assert.equal(result.truncatedCount, 6);
+  assert.equal(result.journeys[23].key, "derived:d:t23");
+});
+
+// Anonymous ids, shaped like growth-fund: four entry routes converge on one
+// chain with seven branch nodes of 2, 2, 2, 2, 2, 3 and 4 targets.
+function growthShapedFlow() {
+  const routes = ["e1", "e2", "e3", "e4", "hub"].map((id) => route(id));
+  const nodes = [];
+  const transitions = ["e1", "e2", "e3", "e4"].map((id) => link(id, "hub"));
+  let previous = "hub";
+
+  [2, 2, 2, 2, 2, 3, 4].forEach((count, branchIndex) => {
+    const branch = `b${branchIndex + 1}`;
+    const merge = `m${branchIndex + 1}`;
+
+    nodes.push(node(branch));
+    transitions.push(link(previous, branch));
+    for (let target = 1; target <= count; target += 1) {
+      const id = `${branch}t${target}`;
+
+      routes.push(route(id));
+      transitions.push(link(branch, id, { kind: "condition", label: `Option ${target}` }));
+      if (branchIndex < 6) transitions.push(link(id, merge));
+    }
+    if (branchIndex < 6) routes.push(route(merge));
+    previous = merge;
+  });
+  return { nodes, routes, transitions };
+}
+
+test("converging entries do not multiply journeys (growth-fund shape)", () => {
+  const result = geometry.deriveBranchJourneys(growthShapedFlow(), quiet);
+
+  assert.equal(result.journeys.length, 17);
+  assert.equal(result.truncatedCount, 0);
+  assert.equal(new Set(result.journeys.map((journey) => journey.branchId)).size, 7);
+  for (const journey of result.journeys) {
+    const index = journey.steps.indexOf(journey.branchId);
+
+    assert.ok(index >= 0 && index <= 2, `${journey.key} keeps its branch node within the first three steps`);
+  }
+  for (const branchId of new Set(result.journeys.map((journey) => journey.branchId))) {
+    const titles = result.journeys.filter((journey) => journey.branchId === branchId).map((journey) => journey.title);
+
+    assert.equal(new Set(titles).size, titles.length, `names under ${branchId} are unique`);
+  }
+});
+
+test("several entries reaching one success/error decision give one journey per branch edge", () => {
+  const shapes = {
+    inventory: { entries: ["list", "scan", "search"], decision: "submit-result", outcomes: ["saved", "failed"] },
+    music: { entries: ["home", "library", "radio", "search"], decision: "play-result", outcomes: ["playing", "unavailable", "offline"] },
+  };
+
+  for (const [name, { entries, decision, outcomes }] of Object.entries(shapes)) {
+    const flow = {
+      nodes: [node(decision)],
+      routes: [...entries, ...outcomes].map((id) => route(id)),
+      transitions: [
+        ...entries.map((id) => link(id, decision)),
+        ...outcomes.map((id) => link(decision, id, { kind: "condition", label: id === outcomes[0] ? "Success" : "Error" })),
+      ],
+    };
+    const { journeys } = geometry.deriveBranchJourneys(flow, quiet);
+
+    assert.equal(journeys.length, outcomes.length, `${name}: one journey per branch edge`);
+    assert.equal(new Set(journeys.map((journey) => journey.title)).size, journeys.length, `${name}: unique names`);
+    assert.ok(journeys.every((journey) => journey.steps.includes(decision)), `${name}: every journey holds its branch node`);
+  }
+});
+
+test("declared journeys skip unknown steps, short journeys and duplicate ids", () => {
+  const warnings = [];
+  const journeys = geometry.normalizeJourneys(
+    {
+      ...exampleFlow,
+      journeys: [
+        { id: "main", steps: ["intake", "missing", "review"], title: "Main" },
+        { id: "main", steps: ["intake", "handoff"], title: "Again" },
+        { id: "short", steps: ["intake", "missing"], title: "Short" },
+        { id: "untitled", steps: ["review", "handoff"] },
+      ],
+    },
+    { warn: (message) => warnings.push(message) },
+  );
+
+  assert.deepEqual(journeys.map(({ id, steps, title }) => ({ id, steps, title })), [
+    { id: "main", steps: ["intake", "review"], title: "Main" },
+    { id: "untitled", steps: ["review", "handoff"], title: "untitled" },
+  ]);
+  assert.equal(warnings.length, 4);
+});
+
+const phone = { height: 878, visibleHeight: 812, visibleLeft: 1, visibleTop: 65, visibleWidth: 375, width: 377 };
+const decisionBox = { height: 220, visibleHeight: 220, visibleTop: 0, width: 220 };
+
+test("a three-step journey centres visible rects on the row centre line (spec example)", () => {
+  const layout = geometry.computeJourneyLayout(["intake", "approval-decision", "handoff"], (id) => (id === "approval-decision" ? decisionBox : phone));
+
+  assert.deepEqual(layout.map(({ instanceKey, x, y }) => [instanceKey, x, y]), [
+    ["0:intake", 0, 0],
+    ["1:approval-decision", 537, 361],
+    ["2:handoff", 917, 0],
+  ]);
+});
+
+test("journeys wrap after 8 steps (spec example)", () => {
+  for (const [count, rows] of [[3, [3]], [8, [8]], [10, [8, 2]], [17, [8, 8, 1]]]) {
+    const layout = geometry.computeJourneyLayout(Array.from({ length: count }, (_, index) => `s${index}`), () => phone);
+    const perRow = [];
+
+    for (const step of layout) perRow[step.row] = (perRow[step.row] ?? 0) + 1;
+    assert.deepEqual(perRow, rows, `${count} steps`);
+  }
+  const wrapped = geometry.computeJourneyLayout(Array.from({ length: 10 }, (_, index) => `s${index}`), () => phone);
+
+  assert.equal(wrapped[8].x, 0);
+  assert.equal(wrapped[8].y, 878 + 240, "the next row starts 240 below the lowest frame of the row before");
+});
+
+test("request-changes renders four distinct step instances", () => {
+  const layout = geometry.computeJourneyLayout(["intake", "review", "approval-decision", "review"], (id) => (id === "approval-decision" ? decisionBox : phone));
+
+  assert.deepEqual(layout.map((step) => step.instanceKey), ["0:intake", "1:review", "2:approval-decision", "3:review"]);
+});
+
+test("journey edges label consecutive steps like the full flow", () => {
+  const steps = ["intake", "review", "approval-decision", "review"];
+  const layout = geometry.computeJourneyLayout(steps, (id) => (id === "approval-decision" ? decisionBox : phone));
+  const { edges, loopMarker } = geometry.getJourneyEdges(layout, exampleFlow.transitions);
+
+  assert.equal(loopMarker, null);
+  assert.deepEqual(edges.map(({ fromKey, toKey, label, dotted, firstOccurrence }) => [fromKey, toKey, label, dotted, firstOccurrence]), [
+    ["0:intake", "1:review", "點擊 Submit intake", false, true],
+    ["1:review", "2:approval-decision", "點擊 Request approval", false, true],
+    ["2:approval-decision", "3:review", "條件 Needs changes", false, true],
+  ]);
+  // Visible rects: intake spans x 1 to 376, review starts at 537 + 1.
+  assert.deepEqual(edges[0].points, [{ x: 376, y: 471 }, { x: 538, y: 471 }]);
+  // The label room is the 160 px gap between the frame boxes (377 to 537).
+  assert.equal(edges[0].labelWidth, 160);
+  assert.equal(edges[0].labelX, 457);
+
+  const joined = geometry.getJourneyEdges(geometry.computeJourneyLayout(["d", "x"], () => decisionBox), [
+    link("d", "x", { label: "Retry" }),
+    link("d", "x", { label: "Try again" }),
+  ]);
+
+  assert.equal(joined.edges[0].label, "點擊 Retry / Try again");
+});
+
+test("a step pair without a transition is a dotted line without a label", () => {
+  const layout = geometry.computeJourneyLayout(["intake", "handoff", "intake"], () => phone);
+  const { edges } = geometry.getJourneyEdges(layout, exampleFlow.transitions);
+
+  assert.deepEqual(edges.map(({ dotted, label }) => [dotted, label]), [
+    [true, null],
+    [false, "點擊 Start another request"],
+  ]);
+  assert.equal(edges[0].firstOccurrence, false);
+});
+
+test("connectors between rows turn through the gap between the rows", () => {
+  const layout = geometry.computeJourneyLayout(Array.from({ length: 9 }, (_, index) => `s${index}`), () => phone);
+  const transitions = Array.from({ length: 8 }, (_, index) => link(`s${index}`, `s${index + 1}`, { label: `Step ${index + 1}` }));
+  const turn = geometry.getJourneyEdges(layout, transitions).edges[7];
+  const lastRight = layout[7].x + 1 + 375;
+  const gapY = 878 + 120;
+
+  assert.deepEqual(turn.points, [
+    { x: lastRight, y: 471 },
+    { x: lastRight + 80, y: 471 },
+    { x: lastRight + 80, y: gapY },
+    { x: -80, y: gapY },
+    { x: -80, y: 878 + 240 + 471 },
+    { x: 1, y: 878 + 240 + 471 },
+  ]);
+  assert.equal(turn.labelY, gapY);
+});
+
+test("a derived journey that stops at a repeated step ends with a loop marker", () => {
+  const steps = ["intake", "review", "approval-decision"];
+  const layout = geometry.computeJourneyLayout(steps, (id) => (id === "approval-decision" ? decisionBox : phone));
+  const titles = { review: "Review Request" };
+  const { edges, loopMarker } = geometry.getJourneyEdges(layout, exampleFlow.transitions, { loopTarget: "review", titleOf: (id) => titles[id] ?? id });
+  const last = layout[2];
+
+  assert.deepEqual(loopMarker, { label: "↩ Review Request", targetId: "review", x: last.x + last.width + 160, y: 471 });
+  assert.equal(edges.at(-1).label, "條件 Needs changes");
+  assert.equal(edges.at(-1).loop, true);
+
+  const bounds = geometry.getJourneyBounds(layout, { loopMarker });
+
+  assert.equal(bounds.x + bounds.width, last.x + last.width + 320, "fitting reaches 320 past the last frame");
+  assert.deepEqual(geometry.getJourneyBounds(layout), { height: 878, width: last.x + last.width, x: 0, y: 0 });
+});
+
+test("journey labels hide only when their room on screen is under 24 px", () => {
+  assert.equal(geometry.isJourneyLabelHidden(160, 0.336), false, "6 steps fitted in 1190 x 800 (spec example)");
+  assert.equal(geometry.isJourneyLabelHidden(160, 0.247), false, "8 steps fitted in 1200 x 900 (spec example)");
+  assert.equal(geometry.isJourneyLabelHidden(160, 23 / 160), true, "23 px");
+  assert.equal(geometry.isJourneyLabelHidden(160, 24 / 160), false, "24 px");
+});
+
+test("[ and ] switch journeys only while the journey list is shown", () => {
+  const key = (code, extra = {}) => ({ type: "keydown", code, shiftKey: false, ctrlKey: false, metaKey: false, altKey: false, repeat: false, ...extra });
+  const canvas = { isMac: true, isTextEntry: false, targetIsControl: false, overlayOpen: false, dragActive: false, journeyEntryCount: 3 };
+  const rows = [
+    ["[ with a list", key("BracketLeft"), canvas, "previous-journey"],
+    ["] with a list", key("BracketRight"), canvas, "next-journey"],
+    ["] on a focused list button", key("BracketRight"), { ...canvas, targetIsControl: true }, "next-journey"],
+    ["] without a list", key("BracketRight"), { ...canvas, journeyEntryCount: 1 }, null],
+    ["] with no journey context", key("BracketRight"), { ...canvas, journeyEntryCount: undefined }, null],
+    ["Cmd+] (browser forward)", key("BracketRight", { metaKey: true }), canvas, null],
+    ["Ctrl+] on macOS", key("BracketRight", { ctrlKey: true }), canvas, null],
+    ["Shift+[", key("BracketLeft", { shiftKey: true }), canvas, null],
+    ["Alt+[", key("BracketLeft", { altKey: true }), canvas, null],
+    ["] while typing", key("BracketRight"), { ...canvas, isTextEntry: true }, null],
+  ];
+
+  for (const [label, eventLike, context, expected] of rows) {
+    assert.equal(geometry.resolveCanvasShortcut(eventLike, context), expected, label);
+  }
+});
+
+test("repeated journey steps are separate instances for the level of detail (spec scenario)", () => {
+  // request-changes at zoom 0.5: the reviewer hovers the second review
+  // instance for 200 ms; only that instance goes live.
+  const box = { height: 878, routeId: "review", width: 377, y: 0 };
+  const tiers = geometry.selectFrameTiers({
+    camera: { x: 0, y: 0, z: 0.5 },
+    canvasSize: lodCanvas,
+    frames: [
+      { ...box, key: "1:review", x: 537 },
+      { ...box, key: "3:review", x: 1454 },
+    ],
+    hovered: { dwellMs: 200, key: "3:review" },
+    pinnedId: null,
+    previousTiers: new Map(),
+    promotedIds: new Set(),
+  });
+
+  assert.equal(tiers.get("3:review"), "live");
+  assert.equal(tiers.get("1:review"), "snapshot");
+});

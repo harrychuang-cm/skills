@@ -49,9 +49,11 @@ journey 檢視中同一個 route 可能出現兩次，只在該檢視順序中�
 
 LOD 會換掉框內容，但錨點元素必須一直存在；這條寫進規格，LOD change 必須遵守。
 
-### 只有完整流程檢視宣告畫布座標
+### 只有完整流程檢視宣告 world 座標，畫布宣告在每個檢視都保留
 
-world 座標等於版面座標，這只在完整流程成立。journey 檢視的位置是計算出來的，宣告畫布會讓畫布留言畫在錯誤的位置，所以不宣告；addon 會因此隱藏畫布錨點的釘點，留言仍在清單中。
+world 座標等於版面座標，這只在完整流程成立。journey 檢視的位置是計算出來的，所以 journey 檢視中 world 圖層不帶 `data-sbfx-canvas-world`：空白處的留言沒有畫布錨點，已存的畫布錨點釘點在該檢視中隱藏，留言仍在清單中。viewport 仍帶 `data-sbfx-canvas`。
+
+Supersedes（2026-10-08，使用者決定，套用 add-flow-journey-focus 前修改）：原本的決定是「journey 檢視兩個屬性都不帶」。不宣告畫布時 addon 會把 Story root 當成一般 story 處理：工作區開啟時每次在「全部」與 journey 之間切換都會縮放 Story root，釘點不再被 viewport 裁切、可能畫到 journey 清單上，連線留言的截圖也退回成整個 root。保留 `data-sbfx-canvas` 後，root 不縮放、釘點照樣被裁切、連線截圖維持「畫布加框內頁面」；只拿掉 world，就不會把空白處的點記成畫面上沒有的版面座標。
 
 ### 在寫入 transform 的同一個 rAF 發出通知
 
@@ -142,7 +144,7 @@ CSS 在 `html[data-sbfx-capture-mode="true"]` 時讓所有框內 iframe 的 `poi
 
 - [每個畫格派送一次 CustomEvent] → 派送成本很低，量測以 bench 的拖曳 p95 與手勢期間 commit 數確認沒有退步。
 - [LOD 的框截圖與空框] → 錨點放在一直存在的可見區域元素上；截圖由 addon 擷取錨點元素（截圖或空框），內容可能較少，但留言位置正確。
-- [journey 檢視重新排版] → 不宣告畫布座標，畫布留言在該檢視中隱藏；框與連線錨點只標第一個實例。
+- [journey 檢視重新排版] → 保留畫布宣告、不宣告 world 座標，畫布錨點的留言在該檢視中隱藏、空白處留言沒有畫布錨點；框與連線錨點只標第一個實例。
 - [editing 的選取、框選與 Esc 順序] → addon 擷取模式在 capture 階段攔截主要按鍵，畫布收不到；Esc 由 addon 停止傳遞，且畫布略過 `defaultPrevented` 的按鍵。
 - [interact 模式讓 iframe 接收指標事件] → 擷取模式優先規則寫進本 change 的規格，interact change 套用時必須遵守。
 - [使用者沒有打開 Figma export，或專案沒有改用 `configureFigmaExportReview`] → 沒有留言面板，畫布行為與現在相同；文件說明必要條件。

@@ -26,9 +26,18 @@
 - `review` to `intake` through `reviewPanel.editIntake`.
 - `handoff` to `intake` through `handoff.startNew`.
 
+## Journeys
+
+`examplePrototypeJourneys` mirrors the PRD Core Journeys, one journey per `### Journey N` heading:
+
+- `approve-request` (Journey 1: Approve a request): `intake`, `review`, `approval-decision`, `handoff`.
+- `request-changes` (Journey 2: Request changes): `intake`, `review`, `approval-decision`, `review`. The repeated `review` step shows the return to review.
+
+When a Core Journey changes in the PRD, update its journey in the same edit. UI Flow lists the journeys; selecting one shows only its steps in one line.
+
 ## UI Flow Rules
 
-Only transitions with `flowLine: "key"` are drawn as canvas edges. Reference transitions remain in metadata and Data mode for reviewers.
+On the full UI Flow canvas, only transitions with `flowLine: "key"` are drawn as canvas edges; reference transitions remain in metadata and Data mode for reviewers. A journey view draws the transitions between consecutive steps whatever their `flowLine`, so `request-changes` shows the reference transition "Needs changes".
 
 UI Flow route cards and Static Flow route cards use the same route UI size contract. The marked `data-prototype-route-preview="true"` surface defines the route preview width and height; headers, borders, and labels are flow chrome outside that UI boundary.
 

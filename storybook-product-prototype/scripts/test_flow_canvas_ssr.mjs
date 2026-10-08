@@ -276,4 +276,168 @@ const empty = render({ id: "empty-flow", flow: { routes: [] } });
 assert.match(empty, /prototype-inspector__empty/, "a flow without routes renders the empty state");
 assert.match(empty, /data-sbfx-comments="unavailable"/, "an empty UI Flow offers no comments");
 
-console.log("PASS UI Flow server render: frames, flow node, control names, camera layers, fit tracking, frame labels, zoom menu, contrast, comment declarations, comment anchors, empty state, frame size cache, level of detail");
+// Journey focus (flow-journey-focus): the journey list and the simplified
+// view. The selection comes from a window.sessionStorage stub.
+const example = await import(
+  new URL("../../design-system-to-storybook/storybook-template/src/pages/prototypes/example-prototype/examplePrototypeFlow.ts", import.meta.url)
+);
+const journeyRender = (prototypeValue, stored = {}) => {
+  const storage = new Map(Object.entries(stored));
+  const journeyContext = vm.createContext({
+    ...React, ...geometry, ...helper, ...snapshotModules, console, URL, URLSearchParams, Date, JSON, Set, Map, UPDATE_GLOBALS: "UPDATE_GLOBALS", addons,
+    window: {
+      location: new URL("http://localhost:6006/iframe.html?id=pages-prototypes-journeys--default&viewMode=story"),
+      sessionStorage: { getItem: (key) => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, String(value)) },
+    },
+  });
+  vm.runInContext(`${code}\nglobalThis.testApi = { PrototypeFlow };`, journeyContext);
+  return renderToStaticMarkup(React.createElement(journeyContext.testApi.PrototypeFlow, { prototype: prototypeValue }));
+};
+const journeyList = (markup) => markup.match(/<section aria-label="UI Flow journeys"[\s\S]*?<\/section>/)?.[0] ?? "";
+const journeyButtons = (markup) =>
+  [...journeyList(markup).matchAll(/<button aria-label="([^"]+)" aria-pressed="(true|false)" class="prototype-inspector__flow-journey"/g)].map(
+    (match) => `${match[1]}${match[2] === "true" ? " *" : ""}`,
+  );
+const examplePrototype = { id: "example-prototype", flow: example.examplePrototypeFlow };
+const { journeys: _declared, ...exampleFlowWithoutJourneys } = example.examplePrototypeFlow;
+const undeclaredExample = { id: "example-prototype", flow: exampleFlowWithoutJourneys };
+{
+  // One branch node with three targets; the derived journey to route a equals
+  // a declaration and is left out.
+  const branching = {
+    id: "branching",
+    flow: {
+      routes: [
+        { id: "start", title: "Start", flowPosition: { x: 0, y: 0 } },
+        { id: "a", title: "Route A", flowPosition: { x: 960, y: 0 } },
+        { id: "b", title: "Route B", flowPosition: { x: 960, y: 960 } },
+        { id: "c", title: "Route C", flowPosition: { x: 960, y: 1920 } },
+      ],
+      nodes: [{ id: "choice", title: "Choose?", shape: "decision", flowPosition: { x: 480, y: 329 } }],
+      transitions: [
+        { from: "start", to: "choice", label: "Go", flowLine: "key" },
+        { from: "choice", to: "a", label: "A", flowLine: "key", kind: "condition" },
+        { from: "choice", to: "b", label: "B", flowLine: "key", kind: "condition" },
+        { from: "choice", to: "c", label: "C", flowLine: "reference", kind: "condition" },
+      ],
+      journeys: [
+        { id: "pick-a", title: "Pick A", steps: ["start", "choice", "a"] },
+        { id: "tour", title: "Tour", steps: ["start", "a", "b"] },
+      ],
+    },
+  };
+  const markup = journeyRender(branching);
+  const list = journeyList(markup);
+
+  assert.deepEqual(journeyButtons(markup), ["All *", "Pick A", "Tour", "B · Route B", "C · Route C"], "全部, the declared journeys, then the uncovered derived journeys");
+  assert.equal(count(list, /<span class="prototype-inspector__flow-journey-count">3 步<\/span>/g), 4, "every journey entry shows its step count");
+  assert.match(list, /<h3>自動分支<\/h3><div class="prototype-inspector__flow-journeys-group"><h4>Choose\?<\/h4><ul><li><button aria-label="B · Route B"/, "derived journeys are grouped under their branch node's title");
+  assert.match(markup, /^<div class="prototype-inspector prototype-inspector--flow"[^>]*><section aria-label="UI Flow journeys"/, "the list is the flow root's first child");
+  assert.match(list, /^<section aria-label="UI Flow journeys" class="prototype-inspector__flow-journeys" data-sbfx-capture-ignore="true" role="region">/, "the list is a region named UI Flow journeys that comment screenshots leave out");
+  assert.doesNotMatch(markup, /data-sbfx-comments=/, "the list leaves comments available");
+  assert.match(list, /<button aria-expanded="true" aria-label="Collapse journey list" class="prototype-inspector__flow-journeys-toggle"/, "the collapse toggle is named and expanded on mount");
+  assert.match(list, /<button aria-label="All" aria-pressed="true" class="prototype-inspector__flow-journey" type="button"><span class="prototype-inspector__flow-journey-title">全部<\/span><\/button>/, "全部 is named All and starts selected");
+  assert.match(flowRoot(markup), attr("data-journey-list", "expanded"), "the root states the expanded list");
+  assert.match(flowRoot(markup), /--prototype-flow-journey-list-width:calc\(var\(--pi-ref-size-80\) \* 3\)/, "the root carries the 240 px list width");
+  assert.doesNotMatch(flowRoot(markup), /data-journey-focus/, "the complete flow is not a journey focus");
+  assert.match(markup, /<dt>切換功能流程<\/dt><dd>\[ \/ \]<\/dd>/, "the zoom menu lists [ / ] while the list renders");
+}
+{
+  const declaredMarkup = journeyRender(examplePrototype);
+
+  assert.deepEqual(journeyButtons(declaredMarkup), ["All *", "Approve a request", "Request changes"], "the example lists its two declared journeys");
+  assert.equal(count(journeyList(declaredMarkup), /4 步/g), 2, "both declared journeys have 4 steps");
+  assert.doesNotMatch(declaredMarkup, /自動分支/, "declarations cover the example's derived journeys");
+  const undeclaredMarkup = journeyRender(undeclaredExample);
+
+  assert.deepEqual(
+    journeyButtons(undeclaredMarkup),
+    ["All *", "Approved · Implementation Handoff", "Needs changes · ↩ Review Request"],
+    "without journeys the example derives two journeys",
+  );
+  assert.match(journeyList(undeclaredMarkup), /<h4>Ready for handoff\?<\/h4>/, "under the approval decision's title");
+  // A flow with neither journeys nor a branch node: no list, no [ / ]
+  // (spec example "a linear flow").
+  const linear = journeyRender({
+    id: "linear",
+    flow: {
+      routes: [{ id: "home", title: "Home" }, { id: "detail", title: "Detail" }, { id: "done", title: "Done" }],
+      transitions: [
+        { from: "home", to: "detail", label: "Open detail", flowLine: "key" },
+        { from: "detail", to: "done", label: "Finish", flowLine: "key" },
+      ],
+    },
+  });
+
+  assert.doesNotMatch(linear, /UI Flow journeys/, "a linear flow renders no journey list");
+  assert.doesNotMatch(flowRoot(linear), /data-journey-list|--prototype-flow-journey-list-width/, "a linear flow's viewport spans the whole tab");
+  assert.doesNotMatch(linear, /\[ \/ \]/, "a linear flow lists no [ / ] help");
+  assert.doesNotMatch(html, /UI Flow journeys/, "no journey list with a single entry");
+  assert.doesNotMatch(html, /\[ \/ \]/, "no [ / ] help without the list");
+  assert.doesNotMatch(flowRoot(html), /data-journey-list|--prototype-flow-journey-list-width/, "the viewport spans the whole tab without a list");
+  // sessionStorage restores the selection; an unknown entry falls back to 全部.
+  const storageKey = "prototype-inspector:flow-journey:example-prototype";
+  const restored = journeyRender(examplePrototype, { [storageKey]: "declared:request-changes" });
+
+  assert.deepEqual(journeyButtons(restored), ["All", "Approve a request", "Request changes *"], "the stored entry is selected again");
+  assert.match(flowRoot(restored), attr("data-journey-focus", "declared:request-changes"), "the root names the shown journey");
+  assert.deepEqual(journeyButtons(journeyRender(examplePrototype, { [storageKey]: "declared:gone" })), ["All *", "Approve a request", "Request changes"], "an unknown stored entry shows 全部");
+
+  // The request-changes view: one instance per step, keyed by instance key.
+  const world = restored.slice(restored.indexOf('class="prototype-inspector__flow-world"'), restored.indexOf('class="prototype-inspector__flow-overlay"'));
+  const overlay = restored.slice(restored.indexOf('class="prototype-inspector__flow-overlay"'), restored.indexOf('class="prototype-inspector__flow-control-layer"'));
+
+  assert.equal(count(world, /class="prototype-inspector__flow-frame"/g), 3, "three route instances");
+  assert.equal(count(world, /class="prototype-inspector__flow-node"/g), 1, "one flow node instance");
+  assert.deepEqual(
+    [...world.matchAll(/<article[^>]*data-frame-id="([^"]+)"/g)].map((match) => match[1]).sort(),
+    ["0:intake", "1:review", "2:approval-decision", "3:review"],
+    "instance keys are distinct",
+  );
+  assert.equal(count(restored, /data-sbfx-anchor="route:review"/g), 1, "one route:review anchor");
+  assert.match(element(world, /<article[^>]*data-frame-id="1:review"[\s\S]*?<\/article>/), /data-sbfx-anchor="route:review"/, "the anchor is on the first review instance");
+  assert.equal(count(world, /<g data-journey-edge=/g), 3, "exactly three journey edges");
+  assert.equal(count(world, /data-sbfx-anchor="edge:/g), 3, "each first transition pair carries its edge anchor");
+  assert.match(world, /data-sbfx-anchor="edge:approval-decision-&gt;review"/, "the condition edge is anchored");
+  assert.match(overlay, /class="prototype-inspector__flow-edge-label prototype-inspector__flow-journey-label"[^>]*>條件 Needs changes<\/div>/, "the condition edge is labelled 條件 Needs changes");
+  assert.deepEqual(
+    [...overlay.matchAll(/class="prototype-inspector__flow-frame-label" data-frame-id="([^"]+)"/g)].map((match) => match[1]),
+    ["0:intake", "1:review", "3:review"],
+    "one frame label per route instance",
+  );
+  assert.match(element(restored, /<div class="prototype-inspector__flow-viewport"[^>]*>/), /data-sbfx-canvas=""/, "the journey viewport keeps the comment canvas");
+  assert.doesNotMatch(element(restored, /<div class="prototype-inspector__flow-world"[^>]*>/), /data-sbfx-canvas-world/, "the journey world declares no canvas world");
+  // The journey view is read-only.
+  assert.match(restored, /aria-label="Reset UI Flow layout" disabled=""/, "Reset is disabled in a journey view");
+  assert.match(restored, /aria-label="Import UI Flow layout" disabled=""/, "Import is disabled in a journey view");
+  assert.match(restored, /<p class="prototype-inspector__flow-journey-notice">簡化檢視：位置不會儲存<\/p>/, "the read-only notice is shown");
+  assert.doesNotMatch(declaredMarkup, /prototype-inspector__flow-journey-notice|aria-label="Import UI Flow layout" disabled/, "the complete flow keeps Import and shows no notice");
+  // The selected entry lists its steps and the edge labels between them.
+  assert.match(
+    journeyList(restored),
+    /<ol class="prototype-inspector__flow-journey-steps"><li><span>Project Intake<\/span><span class="prototype-inspector__flow-journey-step-edge">↓ 點擊 Submit intake<\/span><\/li>/,
+    "the selected journey lists its steps with edge labels",
+  );
+
+  // More than 24 derived journeys: 24 are listed, with the exact remainder.
+  const targets = Array.from({ length: 30 }, (_, index) => `t${String(index + 1).padStart(2, "0")}`);
+  const fanOut = journeyRender({
+    id: "fan-out",
+    flow: {
+      routes: [{ id: "hub", title: "Hub" }, ...targets.map((id) => ({ id, title: `Target ${id}` }))],
+      transitions: targets.map((id) => ({ from: "hub", to: id, label: `Go ${id}`, flowLine: "key" })),
+    },
+  });
+
+  assert.equal(journeyButtons(fanOut).length, 25, "全部 and the first 24 derived journeys");
+  assert.match(journeyList(fanOut), /<p class="prototype-inspector__flow-journeys-note">另有 6 條未列出，建議在 flow 宣告 journeys<\/p>/, "the list states the 6 journeys left out");
+  assert.doesNotMatch(journeyList(undeclaredMarkup), /prototype-inspector__flow-journeys-note/, "no note when nothing is left out");
+
+  // A derived journey with a loop target ends with its loop marker.
+  const looped = journeyRender(undeclaredExample, { [storageKey]: "derived:approval-decision:review" });
+
+  assert.match(looped, /<div class="prototype-inspector__flow-journey-loop"[^>]*>↩ Review Request<\/div>/, "the Needs changes journey ends with ↩ Review Request");
+  assert.match(journeyList(looped), /<span class="prototype-inspector__flow-journey-step-loop">↩ Review Request<\/span><\/li><\/ol>/, "the list detail ends with the loop marker text");
+}
+
+console.log("PASS UI Flow server render: frames, flow node, control names, camera layers, fit tracking, frame labels, zoom menu, contrast, comment declarations, comment anchors, empty state, frame size cache, level of detail, journey list, journey focus view, read-only journey view");

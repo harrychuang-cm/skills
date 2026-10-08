@@ -55,6 +55,7 @@ Required fields:
 
 Optional fields:
 
+- `flow.journeys`: Feature journeys, one per PRD Core Journey: `{ id, title, description?, steps }`, where `id` is lowercase kebab-case and `steps` lists route or flow-node ids in order (at least two; a step may repeat). The UI Flow journey list shows each as a read-only, single-line view; branches no journey covers are derived automatically. Keep the export a literal `[]` until the first journey exists.
 - `components`: Per-route component composition for the Components workspace. `components.routes[]` joins entries to flow routes by route id; each entry carries `name`, `origin` (`shared` | `local` | `promoted`), and `importPath`, plus optional `storyId`, `storyTitle`, `note`, and `domSelector`. `components.classPrefix` (for example `sbt-`) lets the inspector derive highlight selectors from the entry name when no `domSelector` is given. Consumers must tolerate a missing `components` key.
 
 Route metadata should include:
@@ -74,7 +75,7 @@ Transition metadata should include:
 - `trigger`: Stable event name, such as `quoteRow.click` or `topAction.search`.
 - `label`: Human-readable edge label for review.
 - `kind`: Optional semantic category such as `primary`, `return`, `global`, `secondary`, or `outcome`.
-- `flowLine`: Optional display hint. Use `key` only for transitions that should appear as simplified lines in UI Flow; keep reference-only transitions in the Transition Index.
+- `flowLine`: Optional display hint. Use `key` only for transitions that should appear as lines on the full UI Flow canvas; keep reference-only transitions in the Transition Index (they still help derive branch journeys, and journey views draw every transition between consecutive steps).
 - `sourceAnchor`: Optional export hint for key transitions. It defines the relative trigger origin inside the source route card or flow node so static Figma export lines start from the UI action instead of the card center.
 
 ## AI Implementation Workflow
@@ -140,7 +141,7 @@ The flow contract must define:
 - Stable trigger names such as `quoteRow.click`, `submitButton.click`, or `bottomNavigation.watchlist`.
 - Optional `sourceAnchor` metadata for key transitions when the static Figma export should show a line starting from a visible UI trigger.
 - Control-to-route mappings for bottom navigation, top app bar actions, segmented controls, tabs, or sheet actions.
-- `flowLine: "key"` only for transitions that should be drawn on the UI Flow canvas.
+- `flowLine: "key"` only for transitions that should be drawn on the full UI Flow canvas.
 
 Do not rely on screenshots, labels, or DOM text as the source of truth for flow behavior.
 
@@ -193,7 +194,7 @@ Before considering a prototype complete, verify:
 - The default story renders without runtime errors.
 - Docs mode shows PRD, UI Spec, Flow Spec, Data Spec, Implementation Guide, and Acceptance.
 - UI Flow routes are generated from metadata.
-- UI Flow visible edges match transitions marked with `flowLine: "key"`.
+- On the full UI Flow canvas (全部), visible edges match transitions marked with `flowLine: "key"`.
 - The Transition Index still lists every transition, including non-key transitions.
 - Clicking every documented trigger either changes route, updates local state, or is explicitly out of scope.
 - `npm run typecheck` passes.
@@ -243,7 +244,7 @@ Before implementation starts, confirm:
 
 - The prototype must be clickable enough to validate the product flow, not only a static screenshot recreation.
 - The route list and transition list must be the source of truth for flow review.
-- Flow lines should be simplified dashed orthogonal polylines; only key transitions should appear on the canvas.
+- Flow lines should be simplified dashed orthogonal polylines; only key transitions should appear on the full canvas.
 - Flow lines should animate along the dash path so reviewers can read transition direction toward the target UI.
 - Route frames show the real Storybook route UI: a live iframe preview when zoomed in and a cached snapshot of the same route UI when zoomed out, never a static placeholder card.
 - Route iframe previews should auto-fit the measured width and height of the marked route UI, not a hardcoded project viewport.

@@ -1242,6 +1242,417 @@ export function acceptMeasuredSize(previous, next, iframeGrowth, viewportHeight)
   return height === previous.height && width === previous.width ? null : { height, width };
 }
 
+// ---------------------------------------------------------------------------
+// Feature journeys (flow-journey-focus): journeys a flow declares, one short
+// journey per branch edge for flows that declare none, and the single-line
+// layout of a journey focus view.
+
+const journeyRowSize = 8;
+const journeyColumnGap = 160;
+const journeyRowGap = 240;
+// Connectors between rows run this far right of a row's last frame and left
+// of the next row's start; the loop marker counts as this long a segment.
+const journeyTurnOffset = 80;
+const journeyLoopSegment = 160;
+const journeyLabelMinWidth = 24;
+
+function warnOnConsole(message) {
+  console.warn(message);
+}
+
+// The transitions that branch journeys follow: key or reference lines that
+// are not returns or global navigation.
+export function isJourneyEdgeTransition(transition) {
+  return (
+    (transition.flowLine === "key" || transition.flowLine === "reference") &&
+    transition.kind !== "return" &&
+    transition.kind !== "global"
+  );
+}
+
+function getFlowFrameIds(flow) {
+  const ids = [];
+
+  for (const frame of [...normalizeRoutes(flow), ...normalizeFlowNodes(flow)]) {
+    if (typeof frame.id === "string" && !ids.includes(frame.id)) {
+      ids.push(frame.id);
+    }
+  }
+  return ids;
+}
+
+// Declared journeys with steps the canvas renders: unknown steps are skipped,
+// a journey left with fewer than two steps is omitted, and only the first of
+// several journeys sharing an id is kept, each with a warning.
+export function normalizeJourneys(flow, { warn = warnOnConsole } = {}) {
+  if (!Array.isArray(flow?.journeys)) {
+    return [];
+  }
+
+  const frameIds = new Set(getFlowFrameIds(flow));
+  const seen = new Set();
+  const journeys = [];
+
+  for (const journey of flow.journeys) {
+    if (!isRecord(journey) || typeof journey.id !== "string" || !Array.isArray(journey.steps)) {
+      continue;
+    }
+    if (seen.has(journey.id)) {
+      warn(`[prototype-inspector] Journey "${journey.id}" is declared more than once; the first one is shown.`);
+      continue;
+    }
+
+    seen.add(journey.id);
+    const steps = journey.steps.filter((step) => {
+      const known = typeof step === "string" && frameIds.has(step);
+
+      if (!known) {
+        warn(`[prototype-inspector] Journey "${journey.id}" skips unknown step "${step}".`);
+      }
+      return known;
+    });
+
+    if (steps.length < 2) {
+      warn(`[prototype-inspector] Journey "${journey.id}" has fewer than two known steps and is not shown.`);
+      continue;
+    }
+
+    journeys.push({
+      ...(typeof journey.description === "string" ? { description: journey.description } : {}),
+      id: journey.id,
+      steps,
+      title: typeof journey.title === "string" && journey.title ? journey.title : journey.id,
+    });
+  }
+
+  return journeys;
+}
+
+// One journey per branch edge: the (at most two) steps before the branch node
+// on the first breadth-first path, the branch node, its target, then the
+// single-exit nodes after it up to the next branch node, merge node or end.
+// Returns { journeys: [{ key, branchId, branchTitle, title, steps,
+// loopTarget? }], truncatedCount }.
+export function deriveBranchJourneys(flow, { declared, limit = 24, warn = warnOnConsole } = {}) {
+  const order = getFlowFrameIds(flow);
+  const frameSet = new Set(order);
+  const titles = new Map();
+
+  for (const frame of [...normalizeRoutes(flow), ...normalizeFlowNodes(flow)]) {
+    if (typeof frame.id === "string" && !titles.has(frame.id)) {
+      titles.set(frame.id, typeof frame.title === "string" && frame.title ? frame.title : frame.id);
+    }
+  }
+
+  const outgoing = new Map();
+  const incoming = new Map();
+  const labels = new Map();
+
+  for (const transition of normalizeTransitions(flow)) {
+    if (!frameSet.has(transition.from) || !frameSet.has(transition.to) || !isJourneyEdgeTransition(transition)) {
+      continue;
+    }
+
+    const targets = outgoing.get(transition.from) ?? [];
+
+    if (!targets.includes(transition.to)) {
+      targets.push(transition.to);
+    }
+    outgoing.set(transition.from, targets);
+    incoming.set(transition.to, (incoming.get(transition.to) ?? new Set()).add(transition.from));
+    const pair = `${transition.from}->${transition.to}`;
+    const pairLabels = labels.get(pair) ?? [];
+    const text = getTransitionText(transition);
+
+    if (!pairLabels.includes(text)) {
+      pairLabels.push(text);
+    }
+    labels.set(pair, pairLabels);
+  }
+
+  const isBranch = (id) => (outgoing.get(id)?.length ?? 0) >= 2;
+  const isMerge = (id) => (incoming.get(id)?.size ?? 0) >= 2;
+  const routeIds = normalizeRoutes(flow).map((route) => route.id).filter((id) => typeof id === "string");
+  const entries = routeIds.length ? [routeIds[0]] : [];
+
+  for (const id of order) {
+    if (!entries.includes(id) && !incoming.get(id)?.size) {
+      entries.push(id);
+    }
+  }
+
+  const previous = new Map();
+  const reached = new Set(entries);
+  const queue = [...entries];
+
+  while (queue.length) {
+    const id = queue.shift();
+
+    for (const target of outgoing.get(id) ?? []) {
+      if (!reached.has(target)) {
+        reached.add(target);
+        previous.set(target, id);
+        queue.push(target);
+      }
+    }
+  }
+
+  const declaredSteps = new Set((declared ?? normalizeJourneys(flow, { warn })).map((journey) => journey.steps.join("\u0000")));
+  const derived = [];
+
+  for (const branch of order) {
+    if (!isBranch(branch)) {
+      continue;
+    }
+
+    const context = [];
+    let before = previous.get(branch);
+
+    while (before !== undefined && context.length < 2) {
+      context.unshift(before);
+      before = previous.get(before);
+    }
+
+    const group = [];
+
+    for (const target of outgoing.get(branch)) {
+      const steps = [...context, branch];
+      let loopTarget = null;
+      let current = target;
+
+      for (;;) {
+        if (steps.includes(current)) {
+          loopTarget = current;
+          break;
+        }
+
+        steps.push(current);
+        const exits = outgoing.get(current) ?? [];
+
+        if (isBranch(current) || (isMerge(current) && current !== target) || exits.length === 0) {
+          break;
+        }
+        current = exits[0];
+      }
+
+      const prefix = (labels.get(`${branch}->${target}`) ?? []).join(" / ");
+
+      group.push({
+        branchId: branch,
+        branchTitle: titles.get(branch),
+        key: `derived:${branch}:${target}`,
+        ...(loopTarget ? { loopTarget } : {}),
+        steps,
+        target,
+        title: `${prefix} · ${target === loopTarget ? "↩ " : ""}${titles.get(target)}`,
+      });
+    }
+
+    for (const journey of group) {
+      if (group.filter((other) => other.title === journey.title).length > 1) {
+        journey.duplicateName = true;
+      }
+    }
+
+    for (const { duplicateName, target, ...journey } of group) {
+      const named = duplicateName ? { ...journey, title: `${journey.title} (${target})` } : journey;
+      const fullSteps = named.loopTarget ? [...named.steps, named.loopTarget] : named.steps;
+
+      if (named.steps.length >= 2 && !declaredSteps.has(fullSteps.join("\u0000"))) {
+        derived.push(named);
+      }
+    }
+  }
+
+  return { journeys: derived.slice(0, limit), truncatedCount: Math.max(0, derived.length - limit) };
+}
+
+// sizeOf(nodeId) returns { width, height, visibleTop, visibleHeight } and,
+// optionally, visibleLeft and visibleWidth (the frame box and its visible rect
+// relative to the box). Rows hold at most 8 steps; each step's visible rect is
+// centred on its row's centre line.
+export function computeJourneyLayout(steps, sizeOf) {
+  const items = steps.map((nodeId, stepIndex) => {
+    const size = sizeOf(nodeId);
+
+    return {
+      height: size.height,
+      instanceKey: `${stepIndex}:${nodeId}`,
+      nodeId,
+      stepIndex,
+      visibleHeight: size.visibleHeight ?? size.height,
+      visibleLeft: size.visibleLeft ?? 0,
+      visibleTop: size.visibleTop ?? 0,
+      visibleWidth: size.visibleWidth ?? size.width,
+      width: size.width,
+    };
+  });
+  const layout = [];
+  let rowTop = 0;
+
+  for (let start = 0; start < items.length; start += journeyRowSize) {
+    const row = items.slice(start, start + journeyRowSize);
+    const centre = Math.max(...row.map((item) => item.visibleTop + item.visibleHeight / 2));
+    let x = 0;
+    let bottom = rowTop;
+
+    for (const item of row) {
+      const y = rowTop + centre - (item.visibleTop + item.visibleHeight / 2);
+
+      layout.push({ ...item, row: start / journeyRowSize, x, y });
+      x += item.width + journeyColumnGap;
+      bottom = Math.max(bottom, y + item.height);
+    }
+    rowTop = bottom + journeyRowGap;
+  }
+
+  return layout;
+}
+
+function getJourneyCentreY(step) {
+  return step.y + step.visibleTop + step.visibleHeight / 2;
+}
+
+function getJourneyRight(step) {
+  return step.x + step.visibleLeft + step.visibleWidth;
+}
+
+function getJourneyLeft(step) {
+  return step.x + step.visibleLeft;
+}
+
+// Connectors between consecutive steps, labelled like the full flow, plus the
+// loop marker of a derived journey that stopped at a repeated step. Each edge:
+// { from, to, fromKey, toKey, points, label, labelX, labelY, labelWidth,
+// dotted, firstOccurrence }; label geometry is in world coordinates.
+export function getJourneyEdges(layout, transitions, { loopTarget = null, titleOf = (id) => id } = {}) {
+  const pairs = aggregateTransitions(
+    transitions.filter((transition) => typeof transition?.from === "string" && typeof transition?.to === "string"),
+    new Set(layout.map((step) => step.nodeId).concat(loopTarget ? [loopTarget] : [])),
+  );
+  const pairByKey = new Map(pairs.map((pair) => [pair.key, pair]));
+  const labelOf = (from, to) => {
+    const pair = pairByKey.get(`${from}->${to}`);
+
+    return pair ? `${getEdgeLabelPrefix(pair)} ${pair.labels.join(" / ")}` : null;
+  };
+  const rowBottoms = new Map();
+
+  for (const step of layout) {
+    rowBottoms.set(step.row, Math.max(rowBottoms.get(step.row) ?? -Infinity, step.y + step.height));
+  }
+
+  const edges = [];
+  const seenPairs = new Set();
+
+  for (let index = 1; index < layout.length; index += 1) {
+    const before = layout[index - 1];
+    const after = layout[index];
+    const startX = getJourneyRight(before);
+    const startY = getJourneyCentreY(before);
+    const endX = getJourneyLeft(after);
+    const endY = getJourneyCentreY(after);
+    const label = labelOf(before.nodeId, after.nodeId);
+    const pairKey = `${before.nodeId}->${after.nodeId}`;
+    let points;
+    let labelX;
+    let labelY;
+    let labelWidth;
+
+    if (before.row === after.row) {
+      points = [
+        { x: startX, y: startY },
+        { x: endX, y: endY },
+      ];
+      // The room between the two frame boxes (the visible rects sit 1 px
+      // inside a route box), so a label truncated to it never covers a box.
+      labelX = (before.x + before.width + after.x) / 2;
+      labelY = startY;
+      labelWidth = after.x - (before.x + before.width);
+    } else {
+      const turnRight = startX + journeyTurnOffset;
+      const turnLeft = -journeyTurnOffset;
+      const gapY = rowBottoms.get(before.row) + journeyRowGap / 2;
+
+      points = [
+        { x: startX, y: startY },
+        { x: turnRight, y: startY },
+        { x: turnRight, y: gapY },
+        { x: turnLeft, y: gapY },
+        { x: turnLeft, y: endY },
+        { x: endX, y: endY },
+      ];
+      labelX = (turnRight + turnLeft) / 2;
+      labelY = gapY;
+      labelWidth = turnRight - turnLeft;
+    }
+
+    edges.push({
+      dotted: label === null,
+      firstOccurrence: label !== null && !seenPairs.has(pairKey),
+      from: before.nodeId,
+      fromKey: before.instanceKey,
+      label,
+      labelWidth,
+      labelX,
+      labelY,
+      points,
+      to: after.nodeId,
+      toKey: after.instanceKey,
+    });
+    if (label !== null) {
+      seenPairs.add(pairKey);
+    }
+  }
+
+  let loopMarker = null;
+  const last = layout.at(-1);
+
+  if (loopTarget && last) {
+    const startX = getJourneyRight(last);
+    const y = getJourneyCentreY(last);
+    const markerX = last.x + last.width + journeyColumnGap;
+    const label = labelOf(last.nodeId, loopTarget);
+
+    loopMarker = { label: `↩ ${titleOf(loopTarget)}`, targetId: loopTarget, x: markerX, y };
+    edges.push({
+      dotted: label === null,
+      firstOccurrence: false,
+      from: last.nodeId,
+      fromKey: last.instanceKey,
+      label,
+      labelWidth: markerX - (last.x + last.width),
+      labelX: (last.x + last.width + markerX) / 2,
+      labelY: y,
+      loop: true,
+      points: [
+        { x: startX, y },
+        { x: markerX, y },
+      ],
+      to: loopTarget,
+      toKey: null,
+    });
+  }
+
+  return { edges, loopMarker };
+}
+
+// What fitting a journey frames: its frame boxes and the loop marker, which
+// counts as a horizontal segment 160 world px long from its anchor.
+export function getJourneyBounds(layout, { loopMarker = null } = {}) {
+  const boxes = layout.map((step) => ({ height: step.height, width: step.width, x: step.x, y: step.y }));
+
+  if (loopMarker) {
+    boxes.push({ height: 0, width: journeyLoopSegment, x: loopMarker.x, y: loopMarker.y });
+  }
+  return boxes.length ? getFlowBounds(boxes) : null;
+}
+
+// A journey edge label hides only while its room on screen is under 24 px.
+export function isJourneyLabelHidden(availableWorldWidth, zoom) {
+  return availableWorldWidth * zoom < journeyLabelMinWidth;
+}
+
 const controlKeyCodes = new Set(["Space", "Enter", "NumpadEnter", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"]);
 
 // Canvas command for a keydown/keyup, or null when the key must reach
@@ -1276,6 +1687,16 @@ export function resolveCanvasShortcut(eventLike, context) {
 
   if (otherMod) {
     return null;
+  }
+
+  // [ and ] switch journeys while the journey list is shown; with a modifier
+  // they stay with the browser (Cmd+[ is Back) and Storybook.
+  if (code === "BracketLeft" || code === "BracketRight") {
+    return !mod && !eventLike.shiftKey && (context.journeyEntryCount ?? 0) > 1
+      ? code === "BracketLeft"
+        ? "previous-journey"
+        : "next-journey"
+      : null;
   }
 
   if (code === "Escape") {

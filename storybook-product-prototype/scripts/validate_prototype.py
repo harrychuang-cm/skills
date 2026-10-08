@@ -1424,6 +1424,82 @@ def validate_flow_viewport(
             )
 
 
+JOURNEY_ID_PATTERN = re.compile(r"[a-z0-9][a-z0-9-]*\Z")
+
+
+def extract_flow_journeys(flow_text: str) -> list[dict]:
+    """``id`` and ``steps`` of every object in ``export const <name>Journeys = [...]``.
+
+    Expects text that already went through sanitize_meta_source: the bracket
+    scan does not skip comments, so a commented-out journey inside the array
+    would count, and an apostrophe in a comment would read as a string start
+    and swallow the rest of the array.
+    """
+    journeys: list[dict] = []
+    for obj in split_top_level_objects(extract_array_body(flow_text, "Journeys")):
+        steps: list[str] = []
+        match = re.search(r"\bsteps\s*:\s*\[", obj)
+        if match:
+            start = obj.rindex("[", match.start(), match.end())
+            end = scan_matching_bracket(obj, start)
+            if end != -1:
+                steps = quoted_strings(obj[start + 1 : end - 1])
+        journeys.append({"id": extract_string_property(obj, "id") or "", "steps": steps})
+    return journeys
+
+
+def validate_flow_journeys(
+    files: dict[str, Path | None],
+    errors: list[str],
+    warnings: list[str],
+) -> None:
+    """Checks for declared feature journeys; silence when a flow declares none.
+
+    Steps must be frames the Prototype Inspector renders (flow.routes[].id or
+    flow.nodes[].id; navigation-only ids in *RouteIds are not frames), ids are
+    lowercase kebab-case and unique, and a journey has at least two steps
+    (errors). Consecutive steps without a transition between them are allowed
+    but flagged (warning; --strict-style promotes); a pair that involves an
+    unknown step is reported only as the unknown step.
+    """
+    flow_path = files.get("flow")
+    if flow_path is None or not flow_path.is_file():
+        return
+    flow_text = sanitize_meta_source(read(flow_path))
+    journeys = extract_flow_journeys(flow_text)
+    if not journeys:
+        return
+
+    frame_ids = set(
+        extract_object_array_ids(flow_text, "Routes")
+        + extract_object_array_ids(flow_text, "FlowNodes")
+    )
+    linked = {
+        (extract_string_property(obj, "from"), extract_string_property(obj, "to"))
+        for obj in extract_transition_objects(flow_text)
+    }
+    seen: set[str] = set()
+    for journey in journeys:
+        journey_id = journey["id"]
+        steps = journey["steps"]
+        check(
+            bool(JOURNEY_ID_PATTERN.match(journey_id)),
+            f"journey id '{journey_id}' must be lowercase kebab-case",
+            errors,
+        )
+        if journey_id in seen:
+            errors.append(f"journey id '{journey_id}' is duplicated")
+        seen.add(journey_id)
+        check(len(steps) >= 2, f"journey '{journey_id}' needs at least two steps", errors)
+        for step in dict.fromkeys(step for step in steps if step not in frame_ids):
+            errors.append(f"journey '{journey_id}' references unknown step '{step}'")
+        for first, second in dict.fromkeys(zip(steps, steps[1:])):
+            if first in frame_ids and second in frame_ids and (first, second) not in linked:
+                warnings.append(
+                    f"journey '{journey_id}' has no transition from '{first}' to '{second}'"
+                )
+
+
 def validate_surface_viewport_alignment(
     files: dict[str, Path | None], warnings: list[str]
 ) -> None:
@@ -2292,6 +2368,7 @@ def main() -> int:
             validate_meta(files["meta"], errors)
             validate_flow(files["flow"], errors)
             validate_flow_viewport(files, errors, warnings, args.handoff_ready)
+            validate_flow_journeys(files, errors, warnings)
             validate_component_usage(folder, files, warnings, framework)
             validate_components_meta(
                 folder,

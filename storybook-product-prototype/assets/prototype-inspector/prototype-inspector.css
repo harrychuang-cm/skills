@@ -384,6 +384,223 @@
   pointer-events: none;
 }
 
+/* The journey list is a column at the left edge of the UI Flow tab: the
+   canvas viewport and the control layer (zoom group, layout group, notice)
+   start at its right edge, also where the figma-export UI moves the groups to
+   the left. */
+.prototype-inspector__flow-viewport,
+.prototype-inspector__flow-control-layer {
+  inset-inline-start: var(--prototype-flow-journey-list-width, var(--pi-sys-spacing-none));
+}
+
+.prototype-inspector__flow-journeys {
+  position: absolute;
+  inset-block: var(--pi-sys-spacing-none);
+  inset-inline-start: var(--pi-sys-spacing-none);
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  inline-size: var(--prototype-flow-journey-list-width);
+  color: var(--pi-sys-color-on-surface-strong);
+  background: var(--pi-sys-color-surface);
+  border-inline-end: var(--pi-sys-spacing-hairline) solid var(--pi-sys-color-outline-low);
+  font-size: var(--pi-sys-typescale-caption-sm-size);
+  line-height: var(--pi-sys-typescale-caption-sm-line-height);
+}
+
+.prototype-inspector__flow-journeys-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--pi-sys-spacing-xs);
+  padding: var(--pi-sys-spacing-xs);
+  border-block-end: var(--pi-sys-spacing-hairline) solid var(--pi-sys-color-outline-low);
+}
+
+.prototype-inspector--flow[data-journey-list="collapsed"] .prototype-inspector__flow-journeys-header {
+  justify-content: center;
+  padding-inline: var(--pi-sys-spacing-none);
+  border-block-end: none;
+}
+
+.prototype-inspector__flow-journeys-header h2 {
+  margin: var(--pi-sys-spacing-none);
+  font-size: var(--pi-sys-typescale-body-sm-size);
+  font-weight: var(--pi-sys-weight-semibold);
+  line-height: var(--pi-sys-typescale-body-sm-line-height);
+}
+
+.prototype-inspector__flow-journeys-toggle {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  inline-size: var(--pi-sys-size-control-height-sm);
+  block-size: var(--pi-sys-size-control-height-sm);
+  padding: var(--pi-sys-spacing-none);
+  color: var(--pi-sys-color-on-surface-strong);
+  background: var(--pi-sys-color-surface);
+  border: var(--pi-sys-spacing-hairline) solid var(--pi-sys-color-outline-low);
+  border-radius: var(--pi-sys-shape-corner-pill);
+  cursor: pointer;
+  font-size: var(--pi-sys-typescale-body-sm-size);
+  line-height: var(--pi-sys-typescale-body-sm-line-height);
+}
+
+/* Every grid in the list has one column that may shrink below its content,
+   so long titles truncate instead of widening the list. */
+.prototype-inspector__flow-journeys-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  flex: 1 1 auto;
+  align-content: start;
+  gap: var(--pi-sys-spacing-md);
+  min-block-size: var(--pi-sys-spacing-none);
+  padding: var(--pi-sys-spacing-xs);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.prototype-inspector__flow-journeys ul,
+.prototype-inspector__flow-journeys ol {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--pi-sys-spacing-xxs);
+  margin: var(--pi-sys-spacing-none);
+  padding: var(--pi-sys-spacing-none);
+  list-style: none;
+}
+
+.prototype-inspector__flow-journey {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--pi-sys-spacing-xs);
+  box-sizing: border-box;
+  inline-size: 100%;
+  padding: var(--pi-sys-spacing-xs);
+  color: var(--pi-sys-color-on-surface-strong);
+  background: var(--pi-sys-color-transparent);
+  border: var(--pi-sys-spacing-hairline) solid var(--pi-sys-color-transparent);
+  border-radius: var(--pi-sys-shape-corner-xs);
+  cursor: pointer;
+  font: inherit;
+  text-align: start;
+}
+
+.prototype-inspector__flow-journey:hover {
+  background: var(--pi-sys-color-background);
+}
+
+.prototype-inspector__flow-journey[aria-pressed="true"] {
+  color: var(--pi-sys-color-on-primary-container);
+  background: var(--pi-sys-color-primary-container);
+  border-color: var(--pi-sys-color-primary);
+}
+
+.prototype-inspector__flow-journey:focus-visible,
+.prototype-inspector__flow-journeys-toggle:focus-visible {
+  outline: var(--pi-sys-size-control-border-width-strong) solid var(--pi-sys-color-primary);
+  outline-offset: var(--pi-sys-spacing-hairline);
+}
+
+.prototype-inspector__flow-journey-title {
+  min-inline-size: var(--pi-sys-spacing-none);
+  overflow: hidden;
+  font-size: var(--pi-sys-typescale-body-sm-size);
+  font-weight: var(--pi-sys-weight-semibold);
+  line-height: var(--pi-sys-typescale-body-sm-line-height);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.prototype-inspector__flow-journey-count {
+  flex: none;
+  color: var(--pi-sys-color-on-surface-subtle);
+}
+
+.prototype-inspector__flow-journey[aria-pressed="true"] .prototype-inspector__flow-journey-count {
+  color: inherit;
+}
+
+.prototype-inspector__flow-journeys .prototype-inspector__flow-journey-steps {
+  gap: var(--pi-sys-spacing-xs);
+  margin-block-start: var(--pi-sys-spacing-xxs);
+  padding: var(--pi-sys-spacing-xxs) var(--pi-sys-spacing-xs) var(--pi-sys-spacing-xxs) var(--pi-sys-spacing-md);
+  border-inline-start: var(--pi-sys-size-control-border-width-strong) solid var(--pi-sys-color-primary);
+}
+
+.prototype-inspector__flow-journey-steps li {
+  display: grid;
+  gap: var(--pi-sys-spacing-xxs);
+  overflow-wrap: anywhere;
+}
+
+.prototype-inspector__flow-journey-step-edge {
+  color: var(--pi-sys-color-on-surface-subtle);
+}
+
+.prototype-inspector__flow-journey-step-loop {
+  color: var(--pi-sys-color-primary);
+  font-weight: var(--pi-sys-weight-semibold);
+}
+
+.prototype-inspector__flow-journeys-derived,
+.prototype-inspector__flow-journeys-group {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--pi-sys-spacing-xxs);
+}
+
+.prototype-inspector__flow-journeys-derived {
+  gap: var(--pi-sys-spacing-xs);
+}
+
+.prototype-inspector__flow-journeys-derived h3,
+.prototype-inspector__flow-journeys-group h4,
+.prototype-inspector__flow-journeys-note {
+  margin: var(--pi-sys-spacing-none);
+  padding-inline: var(--pi-sys-spacing-xs);
+  color: var(--pi-sys-color-on-surface-subtle);
+  font-size: var(--pi-sys-typescale-caption-sm-size);
+  line-height: var(--pi-sys-typescale-caption-sm-line-height);
+}
+
+.prototype-inspector__flow-journeys-derived h3,
+.prototype-inspector__flow-journeys-group h4 {
+  font-weight: var(--pi-sys-weight-semibold);
+}
+
+.prototype-inspector__flow-journeys-group h4 {
+  overflow: hidden;
+  color: var(--pi-sys-color-on-surface-medium);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A journey view is read-only: the notice sits centred at the top of the
+   canvas, between the zoom group and the comments toggle. */
+.prototype-inspector__flow-journey-notice {
+  position: absolute;
+  inset-block-start: var(--pi-sys-spacing-container-xl);
+  inset-inline: var(--pi-sys-spacing-none);
+  inline-size: max-content;
+  max-inline-size: calc(100% - var(--pi-ref-size-520));
+  margin: var(--pi-sys-spacing-none) auto;
+  padding: var(--pi-sys-spacing-xxs) var(--pi-sys-spacing-sm);
+  overflow: hidden;
+  color: var(--pi-sys-color-on-surface-strong);
+  background: var(--pi-sys-color-surface-raised);
+  border: var(--pi-sys-spacing-hairline) solid var(--pi-sys-color-outline);
+  border-radius: var(--pi-sys-shape-corner-pill);
+  font-size: var(--pi-sys-typescale-caption-sm-size);
+  font-weight: var(--pi-sys-weight-semibold);
+  line-height: var(--pi-sys-typescale-caption-sm-line-height);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .prototype-inspector__flow-controls {
   position: absolute;
   inset-block-start: var(--pi-sys-spacing-container-xl);
@@ -810,6 +1027,75 @@ html[data-sbfx-workspace-open="true"][data-sbfx-workspace-orientation="bottom"]:
   inline-size: max-content;
   color: inherit;
   font-weight: var(--pi-sys-weight-semibold);
+}
+
+/* Journey edge labels: one line of text truncated to the room between the two
+   frame boxes on screen (its world width times the zoom), less a margin on
+   each side, so a label never covers a frame. The margin grows with the room
+   (12% of it, between --pi-sys-spacing-xxs and --pi-sys-spacing-md): wide
+   gaps keep the line ends and the arrowhead visible, narrow fitted gaps keep
+   room for text, which the slimmer padding also leaves. Hovering the label or
+   its connector (which sets data-expanded) shows the full text, also while
+   the label is hidden. */
+.prototype-inspector__flow-edge-label.prototype-inspector__flow-journey-label {
+  --prototype-flow-journey-label-screen-room: calc(
+    var(--prototype-flow-journey-label-room) * var(--prototype-flow-camera-zoom) * 1px
+  );
+
+  display: block;
+  box-sizing: border-box;
+  max-inline-size: calc(
+    var(--prototype-flow-journey-label-screen-room) -
+      clamp(
+        var(--pi-sys-spacing-xxs),
+        var(--prototype-flow-journey-label-screen-room) * 0.12,
+        var(--pi-sys-spacing-md)
+      ) * 2
+  );
+  padding-inline: var(--pi-sys-spacing-xxs);
+  overflow: hidden;
+  pointer-events: auto;
+  text-overflow: ellipsis;
+}
+
+.prototype-inspector__flow-edge-label.prototype-inspector__flow-journey-label:hover,
+.prototype-inspector__flow-edge-label.prototype-inspector__flow-journey-label[data-expanded="true"] {
+  z-index: 6;
+  max-inline-size: none;
+  visibility: visible;
+}
+
+.prototype-inspector__flow-journey-edge-hit {
+  pointer-events: stroke;
+}
+
+/* The loop marker: its left edge at its world anchor, vertically centred. */
+.prototype-inspector__flow-journey-loop {
+  position: absolute;
+  inset-block-start: var(--pi-sys-spacing-none);
+  inset-inline-start: var(--pi-sys-spacing-none);
+  z-index: 4;
+  transform: translate(
+      calc(
+        var(--prototype-flow-label-wx) * var(--prototype-flow-camera-zoom) +
+          var(--prototype-flow-camera-x)
+      ),
+      calc(
+        var(--prototype-flow-label-wy) * var(--prototype-flow-camera-zoom) +
+          var(--prototype-flow-camera-y)
+      )
+    )
+    translate(0, -50%);
+  padding: var(--pi-sys-spacing-xxs) var(--pi-sys-spacing-sm);
+  color: var(--pi-sys-color-on-surface-strong);
+  background: var(--pi-sys-color-surface-raised);
+  border: var(--pi-sys-size-control-border-width-strong) solid var(--pi-sys-color-annotation-flow);
+  border-radius: var(--pi-sys-shape-corner-pill);
+  font-size: var(--pi-sys-typescale-caption-sm-size);
+  font-weight: var(--pi-sys-weight-semibold);
+  line-height: var(--pi-sys-typescale-caption-sm-line-height);
+  pointer-events: none;
+  white-space: nowrap;
 }
 
 .prototype-inspector__flow-node {

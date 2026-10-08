@@ -9,7 +9,9 @@
 //     [--frame review] [--line "intake->review"] [--headed]
 //
 // The end-to-end case saves real comments through the fixture's review server
-// (into the fixture's design-system/figma-export-review folder).
+// (into the fixture's design-system/figma-export-review folder). When the
+// story's UI Flow shows the journey list, a journeys case checks the journey
+// selection, reveal requests, the read-only drag and the camera on remount.
 //
 // The URL's globals are replaced: each case opens the story in the mode it
 // needs. Exits non-zero when a case fails.
@@ -963,14 +965,16 @@ async function caseKeysAndCapture(page, args) {
 }
 
 // The figma-export dock floats over the UI Flow canvas: the canvas keeps the
-// full preview size, and the layout group stays clear of the expanded dock,
-// beside it (wrapping when the width runs out) or above it below 720 pixels.
+// full preview size (beside the journey list when the flow has one), and the
+// layout group stays clear of the expanded dock, beside it (wrapping when the
+// width runs out) or above it below 720 pixels.
 async function caseWorkspaceOverCanvas(page, args) {
   const measure = `(() => {
     const rect = (element) => (element ? element.getBoundingClientRect().toJSON() : null);
     const workspace = document.querySelector(".sbfx-workspace");
     return {
       collapsed: workspace?.getAttribute("data-export-collapsed") ?? null,
+      journeyListRight: document.querySelector(".prototype-inspector__flow-journeys")?.getBoundingClientRect().right ?? 0,
       layout: rect(document.querySelector(".prototype-inspector__flow-controls--layout")),
       open: document.documentElement.dataset.sbfxWorkspaceOpen ?? null,
       orientation: document.documentElement.dataset.sbfxWorkspaceOrientation ?? null,
@@ -996,11 +1000,15 @@ async function caseWorkspaceOverCanvas(page, args) {
     })()`);
     const wide = await page.evaluate(measure);
     const expanded = (state) => state.open === "true" && state.collapsed !== "true" && Boolean(state.workspace && state.layout && state.viewport);
+    // The canvas spans from the journey list (or the left edge) to the right edge.
+    const fullWidth = (state) =>
+      Math.abs(state.viewport.left - state.journeyListRight) <= 1 && Math.abs(state.viewport.right - state.window.width) <= 1;
     check(
       "workspace: the expanded export dock floats over the UI Flow canvas, which keeps the full preview width",
       expanded(wide) &&
         wide.orientation === "side" &&
-        Math.abs(wide.viewport.width - wide.window.width) <= 1 &&
+        fullWidth(wide) &&
+        wide.layout.left >= wide.journeyListRight &&
         wide.layout.right <= wide.workspace.left + 0.5,
       JSON.stringify(wide),
     );
@@ -1009,7 +1017,8 @@ async function caseWorkspaceOverCanvas(page, args) {
       "workspace: at 800 pixels the layout group wraps clear of the side dock",
       expanded(medium) &&
         medium.orientation === "side" &&
-        Math.abs(medium.viewport.width - medium.window.width) <= 1 &&
+        fullWidth(medium) &&
+        medium.layout.left >= medium.journeyListRight &&
         medium.layout.right <= medium.workspace.left + 0.5,
       JSON.stringify(medium),
     );
@@ -1025,6 +1034,137 @@ async function caseWorkspaceOverCanvas(page, args) {
   } finally {
     await page.send("Emulation.setDeviceMetricsOverride", { ...VIEWPORT, mobile: false });
   }
+}
+
+// Journey focus (flow-journey-focus), on a story whose UI Flow shows the
+// journey list: the selection is stored per prototype in sessionStorage, a
+// reveal request for an anchor the journey view does not show is left alone,
+// a frame drag in the read-only view moves and writes nothing, a complete
+// flow that was fit tracking fits again on return, and the complete flow's
+// camera survives a journey visit across a remount.
+async function caseJourneyFocus(page, args) {
+  const url = withGlobals(args.url, { prototypeMode: "flow" });
+  await openFlow(page, url);
+  const evaluate = (expression) => page.evaluate(expression);
+  const entries = await evaluate(`[...document.querySelectorAll(".prototype-inspector__flow-journey")].map((button) => button.getAttribute("aria-label"))`);
+  if (entries.length < 2) {
+    console.log("SKIP journeys: this story's UI Flow shows no journey list");
+    return;
+  }
+  const settled = () => sleep(SETTLE_MS + 300);
+  const worldTransform = () => evaluate(`document.querySelector(".prototype-inspector__flow-world").style.transform`);
+  const select = async (label) => {
+    await evaluate(`[...document.querySelectorAll(".prototype-inspector__flow-journey")].find((button) => button.getAttribute("aria-label") === ${JSON.stringify(label)}).click()`);
+    await settled();
+  };
+  const routeAnchors = () => evaluate(`[...new Set([...document.querySelectorAll('[data-sbfx-anchor^="route:"]')].map((element) => element.getAttribute("data-sbfx-anchor")))]`);
+  const reveal = (id) =>
+    evaluate(`(() => {
+      const event = new CustomEvent("sbfx:reveal-anchor", { bubbles: true, cancelable: true, detail: { anchor: { id: ${JSON.stringify(id)}, type: "element" }, view: "ui-flow" } });
+      document.dispatchEvent(event);
+      return event.defaultPrevented;
+    })()`);
+
+  const fitPressed = () => evaluate(`document.querySelector('[aria-label="Fit canvas"]').getAttribute("aria-pressed")`);
+
+  // A fresh tab fits the complete flow; it is still fit tracking after a
+  // journey visit during which the canvas changed size.
+  await select(entries[1]);
+  await page.send("Emulation.setDeviceMetricsOverride", { ...VIEWPORT, mobile: false, width: VIEWPORT.width - 300 });
+  await settled();
+  await select("All");
+  const returned = { fit: await fitPressed(), transform: await worldTransform() };
+  await evaluate(`document.querySelector('[aria-label="Fit canvas"]').click()`);
+  await settled();
+  const refitted = await worldTransform();
+  check(
+    "journeys: a complete flow that was fit tracking fits the current canvas again on return",
+    returned.fit === "true" && returned.transform === refitted,
+    JSON.stringify({ refitted, returned }),
+  );
+  await page.send("Emulation.setDeviceMetricsOverride", { ...VIEWPORT, mobile: false });
+  await settled();
+
+  // The complete flow at 200% (the zoom menu item, with the menu closed).
+  const allRoutes = await routeAnchors();
+  await evaluate(`[...document.querySelectorAll(".prototype-inspector__flow-zoom-menu-item")].find((item) => item.textContent.startsWith("200%")).click()`);
+  await settled();
+  const fullTransform = await worldTransform();
+
+  // The first journey that leaves a route out of its view.
+  let chosen = null;
+  let hidden = null;
+  for (const label of entries.slice(1)) {
+    await select(label);
+    const shown = await routeAnchors();
+    hidden = allRoutes.find((id) => !shown.includes(id)) ?? null;
+    if (hidden) {
+      chosen = label;
+      break;
+    }
+  }
+  const stored = await evaluate(`(() => {
+    const root = document.querySelector(".prototype-inspector--flow");
+    const entry = Object.keys(sessionStorage).find((key) => key.startsWith("prototype-inspector:flow-journey:"));
+    return { focus: root.getAttribute("data-journey-focus"), key: entry ?? null, value: entry ? sessionStorage.getItem(entry) : null };
+  })()`);
+  check(
+    "journeys: selecting an entry stores it per prototype in sessionStorage",
+    Boolean(stored.focus) && stored.value === stored.focus,
+    JSON.stringify(stored),
+  );
+  if (!chosen) {
+    check("journeys: a reveal request for an anchor outside the journey view is left alone", false, "every journey shows every route");
+  } else {
+    const shownRoute = (await routeAnchors())[0];
+    const ignored = await reveal(hidden);
+    const handled = await reveal(shownRoute);
+    check(
+      "journeys: a reveal request for an anchor outside the journey view is left alone",
+      ignored === false && handled === true,
+      JSON.stringify({ handled: { id: shownRoute, prevented: handled }, ignored: { id: hidden, prevented: ignored }, journey: chosen }),
+    );
+  }
+  await evaluate(`document.querySelector('[aria-label="Fit canvas"]').click()`);
+  await settled();
+
+  // A frame drag in the read-only view.
+  const drag = await evaluate(`(async () => {
+    const preview = document.querySelector('.prototype-inspector__flow-frame[data-frame-id] .prototype-inspector__flow-frame-preview');
+    const before = preview.getBoundingClientRect();
+    let writes = 0;
+    const setItem = Storage.prototype.setItem;
+    Storage.prototype.setItem = function countWrites(key, value) {
+      if (this === window.localStorage) writes += 1;
+      return setItem.call(this, key, value);
+    };
+    const x = before.left + before.width / 2;
+    const y = before.top + Math.min(before.height / 2, 200);
+    const target = document.elementFromPoint(x, y);
+    const pointer = (px, py, buttons) => ({ bubbles: true, button: 0, buttons, cancelable: true, clientX: px, clientY: py, composed: true, isPrimary: true, pointerId: 1, pointerType: "mouse", view: window });
+    target.dispatchEvent(new PointerEvent("pointerdown", pointer(x, y, 1)));
+    for (let step = 1; step <= 20; step += 1) {
+      target.dispatchEvent(new PointerEvent("pointermove", pointer(x + step * 6, y + step * 3, 1)));
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    }
+    target.dispatchEvent(new PointerEvent("pointerup", pointer(x + 120, y + 60, 0)));
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    Storage.prototype.setItem = setItem;
+    const after = preview.getBoundingClientRect();
+    return { localStorageWrites: writes, movedPx: Math.hypot(after.left - before.left, after.top - before.top) };
+  })()`);
+  check("journeys: dragging a frame in a journey view moves nothing and writes no layout", drag.movedPx < 0.5 && drag.localStorageWrites === 0, JSON.stringify(drag));
+
+  // Remount in the same tab: the journey again, fitted; 全部 restores 200%.
+  await openFlow(page, url);
+  const remounted = await evaluate(`({ fit: document.querySelector('[aria-label="Fit canvas"]').getAttribute("aria-pressed"), focus: document.querySelector(".prototype-inspector--flow").getAttribute("data-journey-focus") })`);
+  await select("All");
+  const restored = await worldTransform();
+  check(
+    "journeys: after a remount the journey opens fitted and 全部 restores the complete flow's camera",
+    remounted.focus === stored.focus && remounted.fit === "true" && restored === fullTransform,
+    JSON.stringify({ fullTransform, remounted, restored }),
+  );
 }
 
 // Opens the story in a mode with figma-export on, with the panel recording
@@ -1153,7 +1293,7 @@ async function caseCommentsEndToEnd(page, args) {
   );
 }
 
-const cases = [caseAnchorNotifications, caseLocationRequests, caseKeysAndCapture, caseWorkspaceOverCanvas, caseCommentsEndToEnd];
+const cases = [caseAnchorNotifications, caseLocationRequests, caseKeysAndCapture, caseWorkspaceOverCanvas, caseJourneyFocus, caseCommentsEndToEnd];
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
@@ -1188,6 +1328,11 @@ async function main() {
       } catch (error) {
         check(runCase.name, false, error instanceof Error ? error.message : String(error));
       } finally {
+        // Frame drags save a layout; every case starts from the declared one
+        // (a moved frame can cover the frames a later case clicks).
+        await page
+          .evaluate(`Object.keys(localStorage).filter((key) => key.startsWith("prototype-inspector:flow-layout:")).forEach((key) => localStorage.removeItem(key))`)
+          .catch(() => undefined);
         await cdp.send("Target.closeTarget", { targetId: page.targetId }).catch(() => undefined);
       }
     }
