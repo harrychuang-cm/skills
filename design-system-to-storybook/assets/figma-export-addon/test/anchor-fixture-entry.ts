@@ -1490,6 +1490,20 @@ async function editPanelScenarios() {
     Math.abs(offsetAfterPan.x - offsetBefore.x) <= 0.5 && Math.abs(offsetAfterPan.y - offsetBefore.y) <= 0.5,
     JSON.stringify({ offsetAfterPan, offsetBefore, pinAfterPan }),
   );
+  // A pan that takes the panel past the viewport's block-end margin: the panel
+  // keeps its offset instead of stopping at the margin.
+  const panelBottom = editPanel("edit-frame")!.getBoundingClientRect().bottom;
+  const downBy = Math.round(window.innerHeight - panelBottom + 60);
+  world.style.transform = `translate(-160px, ${20 + downBy}px) scale(0.5)`;
+  world.dispatchEvent(new CustomEvent("sbfx:anchors-moved", { bubbles: true }));
+  const offsetNearEdge = offset();
+  check(
+    "the edit panel keeps its offset from the pin when a pan takes it past the viewport's block-end margin",
+    Math.abs(offsetNearEdge.x - offsetBefore.x) <= 0.5 && Math.abs(offsetNearEdge.y - offsetBefore.y) <= 0.5,
+    JSON.stringify({ downBy, offsetBefore, offsetNearEdge, panelBottom, viewportHeight: window.innerHeight }),
+  );
+  world.style.transform = "translate(-160px, 20px) scale(0.5)";
+  world.dispatchEvent(new CustomEvent("sbfx:anchors-moved", { bubbles: true }));
   let midDragOffset: { x: number; y: number } | null = null;
   before = patchLog.length;
   await dragPin(savedPin("edit-frame")!, 40, 0, {

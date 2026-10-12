@@ -717,6 +717,15 @@ function VisualCommentsSection({
   // Edit opens beside the comment's pin when it is shown, else as the modal.
   const [commentEditSurface, setCommentEditSurface] = useState<"modal" | "panel">("modal");
   const commentEditPanelRef = useRef<HTMLDivElement | null>(null);
+  // Where the placement rules put the open edit panel: its offset from the pin
+  // centre (or docked) and the height it was placed at. Pin and camera moves
+  // keep that offset; opening, a height change and a window resize place it
+  // again.
+  const commentEditPanelPlacementRef = useRef<
+    | { commentId: string; docked: true; height: number }
+    | { commentId: string; docked: false; dx: number; dy: number; height: number }
+    | null
+  >(null);
   const [commentEditPanelHeight, setCommentEditPanelHeight] = useState(200);
   const [commentMutationId, setCommentMutationId] = useState<string | null>(null);
   const [pendingDeleteCommentId, setPendingDeleteCommentId] = useState<string | null>(
@@ -1148,7 +1157,7 @@ function VisualCommentsSection({
   // sbfx:anchors-moved dispatch, by writing their position directly.
   useEffect(() => {
     if (!isPanelActive) return;
-    const syncAnchoredPins = () => {
+    const syncAnchoredPins = (event?: Event) => {
       const target = commentsController.resolveTarget(options?.captureSelector);
       if (!target) return;
       let visibilityChanged = false;
@@ -1173,12 +1182,14 @@ function VisualCommentsSection({
         if (wasHidden !== !placement) visibilityChanged = true;
       }
       if (visibilityChanged) setAnchoredVisibilityVersion((version) => version + 1);
-      placeCommentEditPanel();
+      // A window resize places the edit panel again; anchor and scroll moves
+      // keep its offset from the pin.
+      placeCommentEditPanel(event?.type === "resize");
     };
     document.addEventListener(anchorsMovedEvent, syncAnchoredPins);
     window.addEventListener("resize", syncAnchoredPins);
     document.addEventListener("scroll", syncAnchoredPins, true);
-    const interval = window.setInterval(syncAnchoredPins, 500);
+    const interval = window.setInterval(() => syncAnchoredPins(), 500);
     return () => {
       document.removeEventListener(anchorsMovedEvent, syncAnchoredPins);
       window.removeEventListener("resize", syncAnchoredPins);
@@ -2046,29 +2057,54 @@ function VisualCommentsSection({
   }
 
   // The edit panel follows its pin by direct writes, like anchored pins do, so
-  // drags and host camera moves need no re-render.
-  function placeCommentEditPanel() {
+  // drags and host camera moves need no re-render. The placement rules (flip,
+  // block-axis margins, docking) apply when the panel opens, when its height
+  // changes and on a window resize (`replace`); every other call keeps the
+  // panel's offset from the pin, even past the viewport edge, so it stays
+  // beside its pin, and a docked panel stays docked.
+  function placeCommentEditPanel(replace = false) {
     const panel = commentEditPanelRef.current;
     const commentId = panel?.dataset.commentEditPanel;
-    if (!panel || !commentId) return;
+    if (!panel || !commentId) {
+      commentEditPanelPlacementRef.current = null;
+      return;
+    }
     const pinElement = document.querySelector<HTMLElement>(
       `[data-saved-comment-pin="${CSS.escape(commentId)}"]`,
     );
     if (!pinElement || pinElement.style.display === "none") return;
     const rect = pinElement.getBoundingClientRect();
+    const pin = { left: rect.left + rect.width / 2, top: rect.top + rect.height / 2 };
+    const height = panel.offsetHeight || commentEditPanelHeight;
+    const placed = commentEditPanelPlacementRef.current;
+    if (!replace && placed?.commentId === commentId && Math.abs(placed.height - height) <= 0.5) {
+      if (!placed.docked) {
+        panel.style.left = `${pin.left + placed.dx}px`;
+        panel.style.top = `${pin.top + placed.dy}px`;
+      }
+      return;
+    }
     const placement = getCommentComposerPlacement(
-      { left: rect.left + rect.width / 2, top: rect.top + rect.height / 2 },
+      pin,
       { height: window.innerHeight, width: window.innerWidth },
-      panel.offsetHeight || commentEditPanelHeight,
+      height,
     );
     if ("dock" in placement) {
       panel.dataset.composerDock = placement.dock;
       panel.style.left = "";
       panel.style.top = "";
+      commentEditPanelPlacementRef.current = { commentId, docked: true, height };
     } else {
       delete panel.dataset.composerDock;
       panel.style.left = `${placement.left}px`;
       panel.style.top = `${placement.top}px`;
+      commentEditPanelPlacementRef.current = {
+        commentId,
+        docked: false,
+        dx: placement.left - pin.left,
+        dy: placement.top - pin.top,
+        height,
+      };
     }
   }
 

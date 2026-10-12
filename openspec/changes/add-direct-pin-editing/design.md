@@ -77,7 +77,7 @@ PATCH 新增兩個欄位：
 
 ### 編輯面板開在釘點旁
 
-Edit 被觸發時，如果該留言的釘點目前顯示在畫面上，開啟非強制的編輯面板（`role="dialog"`，不加 `aria-modal`，沒有遮罩），位置以 `getCommentComposerPlacement` 計算，與撰寫輸入框相同。面板跟著釘點移動（視窗調整、捲動、`sbfx:anchors-moved`、拖曳釘點），內容為 `Comment type`、內容、`Cancel`、`Save changes`；`Save changes` 只送 `body` 與 `kind`，位置由拖曳釘點負責。點擊面板外不關閉，避免遺失輸入中的文字。
+Edit 被觸發時，如果該留言的釘點目前顯示在畫面上，開啟非強制的編輯面板（`role="dialog"`，不加 `aria-modal`，沒有遮罩），位置以 `getCommentComposerPlacement` 計算，與撰寫輸入框相同。面板跟著釘點移動（捲動、`sbfx:anchors-moved`、拖曳釘點），沿用開啟時的放置規則給它的偏移量，必要時讓面板部分超出視窗；只有開啟、面板高度改變與視窗調整時才重新套用放置規則（翻面、上下邊距、720px 以下停靠）。使用者回報（2026-10-12）：原本每次移動都重新套用放置規則，含截圖的面板較高，碰到下緣邊距就停住，看起來沒跟著釘點；停靠時則完全不動。內容為 `Comment type`、內容、`Cancel`、`Save changes`；`Save changes` 只送 `body` 與 `kind`，位置由拖曳釘點負責。點擊面板外不關閉，避免遺失輸入中的文字。
 
 釘點不在畫面上時：有錨點的留言先發出 `sbfx:reveal-anchor`，宿主處理且下一個畫格釘點出現時就在釘點旁開啟；否則（宿主未處理、列在其他檢視、記錄於其他狀態、`Show pins` 關閉、錨點不存在）退回現有的置中彈窗，彈窗內容與規則不變。
 

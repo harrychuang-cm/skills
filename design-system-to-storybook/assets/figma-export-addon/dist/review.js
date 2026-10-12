@@ -7202,6 +7202,7 @@ function VisualCommentsSection({
   const [editingCommentId, setEditingCommentId] = useState(null);
   const [commentEditSurface, setCommentEditSurface] = useState("modal");
   const commentEditPanelRef = useRef(null);
+  const commentEditPanelPlacementRef = useRef(null);
   const [commentEditPanelHeight, setCommentEditPanelHeight] = useState(200);
   const [commentMutationId, setCommentMutationId] = useState(null);
   const [pendingDeleteCommentId, setPendingDeleteCommentId] = useState(
@@ -7522,7 +7523,7 @@ function VisualCommentsSection({
   }, [hostDeclarations.view, storyId]);
   useEffect(() => {
     if (!isPanelActive) return;
-    const syncAnchoredPins = () => {
+    const syncAnchoredPins = (event) => {
       const target = commentsController.resolveTarget(options?.captureSelector);
       if (!target) return;
       let visibilityChanged = false;
@@ -7546,12 +7547,12 @@ function VisualCommentsSection({
         if (wasHidden !== !placement) visibilityChanged = true;
       }
       if (visibilityChanged) setAnchoredVisibilityVersion((version) => version + 1);
-      placeCommentEditPanel();
+      placeCommentEditPanel(event?.type === "resize");
     };
     document.addEventListener(anchorsMovedEvent, syncAnchoredPins);
     window.addEventListener("resize", syncAnchoredPins);
     document.addEventListener("scroll", syncAnchoredPins, true);
-    const interval = window.setInterval(syncAnchoredPins, 500);
+    const interval = window.setInterval(() => syncAnchoredPins(), 500);
     return () => {
       document.removeEventListener(anchorsMovedEvent, syncAnchoredPins);
       window.removeEventListener("resize", syncAnchoredPins);
@@ -8230,28 +8231,49 @@ function VisualCommentsSection({
     drag.element.style.top = drag.originTop;
     placeCommentEditPanel();
   }
-  function placeCommentEditPanel() {
+  function placeCommentEditPanel(replace = false) {
     const panel = commentEditPanelRef.current;
     const commentId = panel?.dataset.commentEditPanel;
-    if (!panel || !commentId) return;
+    if (!panel || !commentId) {
+      commentEditPanelPlacementRef.current = null;
+      return;
+    }
     const pinElement = document.querySelector(
       `[data-saved-comment-pin="${CSS.escape(commentId)}"]`
     );
     if (!pinElement || pinElement.style.display === "none") return;
     const rect = pinElement.getBoundingClientRect();
+    const pin = { left: rect.left + rect.width / 2, top: rect.top + rect.height / 2 };
+    const height = panel.offsetHeight || commentEditPanelHeight;
+    const placed = commentEditPanelPlacementRef.current;
+    if (!replace && placed?.commentId === commentId && Math.abs(placed.height - height) <= 0.5) {
+      if (!placed.docked) {
+        panel.style.left = `${pin.left + placed.dx}px`;
+        panel.style.top = `${pin.top + placed.dy}px`;
+      }
+      return;
+    }
     const placement = getCommentComposerPlacement(
-      { left: rect.left + rect.width / 2, top: rect.top + rect.height / 2 },
+      pin,
       { height: window.innerHeight, width: window.innerWidth },
-      panel.offsetHeight || commentEditPanelHeight
+      height
     );
     if ("dock" in placement) {
       panel.dataset.composerDock = placement.dock;
       panel.style.left = "";
       panel.style.top = "";
+      commentEditPanelPlacementRef.current = { commentId, docked: true, height };
     } else {
       delete panel.dataset.composerDock;
       panel.style.left = `${placement.left}px`;
       panel.style.top = `${placement.top}px`;
+      commentEditPanelPlacementRef.current = {
+        commentId,
+        docked: false,
+        dx: placement.left - pin.left,
+        dy: placement.top - pin.top,
+        height
+      };
     }
   }
   function endSavedPinDrag() {
