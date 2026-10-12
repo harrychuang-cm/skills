@@ -42,6 +42,7 @@ import {
   defaultPrototypeModeGlobalName,
   DRAG_THRESHOLD_PX,
   fitCamera,
+  frameClientToHostClient,
   getAdjacentRouteId,
   getAdjacentStepIndex,
   getAutoLayoutFrameSize,
@@ -70,6 +71,7 @@ import {
   minimapPointToWorld,
   MAX_ZOOM,
   MIN_ZOOM,
+  needsInteractFit,
   nodeFrameSize,
   nodeHeaderHeight,
   normalizeComponentRoutes,
@@ -82,6 +84,7 @@ import {
   placeEdgeLabels,
   resolveAutoLayoutLanes,
   resolveCanvasShortcut,
+  resolveInteractRouteTitle,
   resolvePrototypeViewport,
   selectFrameTiers,
   stepZoom,
@@ -610,7 +613,9 @@ const PrototypeRouteCard = memo(function PrototypeRouteCard({
   isRendered,
   isSelected = false,
   isSnapshotStale = false,
+  isInteracting = false,
   mountIframe,
+  onDoubleClick,
   onFrameHotUpdated,
   onFrameLoaded,
   onFrameRendered,
@@ -669,15 +674,23 @@ const PrototypeRouteCard = memo(function PrototypeRouteCard({
 
   // The iframe comes and goes with the live tier; a removed iframe releases
   // everything bound to its window. React 18 hosts drop inert={true}, so the
-  // property is also set here.
+  // property is also set here (an interacting frame's iframe is not inert).
+  const isInteractingRef = useRef(isInteracting);
+  isInteractingRef.current = isInteracting;
   const setIframe = useCallback((element) => {
     if (!element) {
       releaseFrame();
     } else {
-      element.inert = true;
+      element.inert = !isInteractingRef.current;
     }
     iframeRef.current = element;
   }, []);
+
+  useEffect(() => {
+    if (iframeRef.current) {
+      iframeRef.current.inert = !isInteracting;
+    }
+  }, [isInteracting]);
 
   // Every load (first load, reload, HMR full reload) binds the new document.
   // A completed render reports the iframe (it may refresh the route's
@@ -734,10 +747,12 @@ const PrototypeRouteCard = memo(function PrototypeRouteCard({
       "aria-label": route.title ?? route.id,
       className: "prototype-inspector__flow-frame",
       "data-frame-id": instanceKey,
+      "data-interacting": isInteracting ? "true" : undefined,
       "data-live-loading": isLive && !isRendered ? "true" : undefined,
       "data-selected": isSelected ? "true" : undefined,
       "data-snapshot-stale": isSnapshotStale ? "true" : undefined,
       "data-tier": tier,
+      onDoubleClick,
       onPointerCancel,
       onPointerDown,
       onPointerEnter,
@@ -772,13 +787,13 @@ const PrototypeRouteCard = memo(function PrototypeRouteCard({
         ? [
             showIframe
               ? createElement("iframe", {
-                  "aria-hidden": "true",
-                  inert: true,
+                  "aria-hidden": isInteracting ? undefined : "true",
+                  inert: !isInteracting,
                   key: "live",
                   onLoad: handlePreviewLoad,
                   ref: setIframe,
                   src: previewSource,
-                  tabIndex: -1,
+                  tabIndex: isInteracting ? undefined : -1,
                   title: `${route.title ?? route.id} preview`,
                 })
               : null,
@@ -791,9 +806,19 @@ const PrototypeRouteCard = memo(function PrototypeRouteCard({
   );
 });
 
-// The live frame that takes the single load slot next: the pinned frame, then
-// promoted, then hovered frames, then the one nearest the canvas center.
-function pickLoadingFrame(tiers, frames, rendered, { camera, canvasSize, hoveredKey, pinnedId, promotedIds }) {
+// Interact mode (flow-frame-interaction) loads the route preview with
+// prototypeFlowInteractive=true, which lets prototypes that support it
+// navigate inside the frame.
+function getInteractiveRoutePreviewSource(routeId) {
+  const source = getRoutePreviewSource(routeId);
+
+  return source ? `${source}&prototypeFlowInteractive=true` : "";
+}
+
+// The live frame that takes the single load slot next: the pinned frame and a
+// frame reloading its plain route after interact mode, then promoted, then
+// hovered frames, then the one nearest the canvas center.
+function pickLoadingFrame(tiers, frames, rendered, { camera, canvasSize, hoveredKey, pinnedId, promotedIds, reloadIds = null }) {
   const waiting = frames.filter((frame) => tiers.get(frame.key) === "live" && !rendered.has(frame.key));
 
   if (!waiting.length) {
@@ -801,7 +826,7 @@ function pickLoadingFrame(tiers, frames, rendered, { camera, canvasSize, hovered
   }
 
   const rank = (frame) =>
-    frame.key === pinnedId ? 0 : promotedIds.has(frame.key) ? 1 : frame.key === hoveredKey ? 2 : 3;
+    frame.key === pinnedId || reloadIds?.has(frame.key) ? 0 : promotedIds.has(frame.key) ? 1 : frame.key === hoveredKey ? 2 : 3;
   const distance = (frame) =>
     camera && canvasSize
       ? Math.hypot(
@@ -1698,6 +1723,7 @@ const PrototypeFrameLabel = memo(function PrototypeFrameLabel({
   isHidden,
   isHovered,
   isUpdating = false,
+  onDoubleClick,
   onPointerCancel,
   onPointerDown,
   onPointerEnter,
@@ -1719,6 +1745,7 @@ const PrototypeFrameLabel = memo(function PrototypeFrameLabel({
       "data-frame-id": frameId ?? route.id,
       "data-hidden": isHidden ? "true" : undefined,
       "data-hovered": isHovered ? "true" : undefined,
+      onDoubleClick,
       onPointerCancel,
       onPointerDown,
       onPointerEnter,
@@ -2025,10 +2052,11 @@ function revokeSnapshotUrlWhenSafe(url, deferred) {
   URL.revokeObjectURL(url);
 }
 
-// initialTiers (instance key -> tier) and initialSelection (instance keys)
-// are for test_flow_canvas_ssr.mjs only: they replace the computed level of
-// detail and the empty selection so server renders can show them.
-export function PrototypeFlow({ initialSelection = null, initialTiers = null, prototype }) {
+// initialTiers (instance key -> tier), initialSelection (instance keys) and
+// interactingFrameId (an instance key) are for test_flow_canvas_ssr.mjs only:
+// they replace the computed level of detail, the empty selection and the
+// absent interact mode so server renders can show them.
+export function PrototypeFlow({ initialSelection = null, initialTiers = null, interactingFrameId = null, prototype }) {
   const flow = prototype.flow;
   const routes = useMemo(() => normalizeRoutes(flow), [flow]);
   const flowNodes = useMemo(() => normalizeFlowNodes(flow), [flow]);
@@ -2222,7 +2250,7 @@ export function PrototypeFlow({ initialSelection = null, initialTiers = null, pr
   // Interfaces for later canvas capabilities, all keyed by instance key: one
   // frame pinned live (interact mode), promoted frames (selection), frames
   // interacted with since their last plain load.
-  const [pinnedFrameId, setPinnedFrameId] = useState(null);
+  const [pinnedFrameId, setPinnedFrameId] = useState(interactingFrameId);
   const [promotedFrameIds, setPromotedFrameIds] = useState(() => new Set());
   // Frame selection (flow-canvas-editing): instance keys, changed only when a
   // press, a marquee or a key ends; selected routes are promoted frames.
@@ -2242,6 +2270,26 @@ export function PrototypeFlow({ initialSelection = null, initialTiers = null, pr
     typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("id");
   const snapshotsAllowed =
     Boolean(currentStoryId) && currentStoryId !== getPrototypeFlowExportStoryId(prototype);
+  // Interact mode (flow-frame-interaction): the one frame, by instance key,
+  // whose iframe takes input. The flow export story has none: its route
+  // iframes load the whole flow export.
+  const interactAllowed = currentStoryId !== getPrototypeFlowExportStoryId(prototype);
+  const [interaction, setInteraction] = useState(() =>
+    interactingFrameId && interactAllowed ? { key: interactingFrameId } : null,
+  );
+  const interactionRef = useRef(interaction);
+  interactionRef.current = interaction;
+  // What the interacting frame's window holds (listeners, the root's
+  // overscroll style, the data-route observer), released on every exit,
+  // reload or removal; the chip's current-route text, written directly.
+  const frameCleanupRef = useRef(null);
+  const interactChipRouteRef = useRef(null);
+  const frameSourcesRef = useRef(new Map());
+  // Frames reloading their plain route after interact mode: they take the
+  // load slot first until that load renders or they lose their iframe.
+  const exitReloadIdsRef = useRef(new Set());
+  const frameSourceFor = (key, routeId) =>
+    interaction?.key === key ? getInteractiveRoutePreviewSource(routeId) : getRoutePreviewSource(routeId);
   // Key prefix of this prototype's snapshot records (see getSnapshotKey).
   const snapshotPrefix = [SNAPSHOT_FORMAT_VERSION, currentStoryId, prototype.id, ""].join("|");
   const [snapshotUrls, setSnapshotUrls] = useState(() => new Map());
@@ -2301,6 +2349,9 @@ export function PrototypeFlow({ initialSelection = null, initialTiers = null, pr
   const cameraFrameRef = useRef(0);
   const cameraIdleTimerRef = useRef(0);
   const gestureRef = useRef({ active: false, startZoom: 1 });
+  // Zoom input forwarded from the interacting frame's window, with the
+  // pointer already in host client coordinates (set by the root listeners).
+  const canvasZoomInputRef = useRef(null);
   const [cameraSnapshot, setCameraSnapshot] = useState(cameraRef.current);
   const strokeBucketRef = useRef(getZoomBucket(cameraRef.current.z));
   // Rendered edge label sizes in screen pixels, measured once per label text.
@@ -2613,6 +2664,26 @@ export function PrototypeFlow({ initialSelection = null, initialTiers = null, pr
       liveLoadsRef.current.delete(key);
     }
   });
+  // Interact marks (measurement suspended, interacted) last until the frame
+  // reloads its plain route preview or loses its iframe.
+  [interactedFrameIdsRef.current, measurementSuspendedFrameIdsRef.current, exitReloadIdsRef.current].forEach((marks) => {
+    marks.forEach((key) => {
+      if (frameTiers.get(key) !== "live" && interaction?.key !== key) {
+        marks.delete(key);
+      }
+    });
+  });
+  // A frame whose source changes (entering or leaving interact mode) loads
+  // again, taking the single load slot.
+  frameBoxes.forEach((frame) => {
+    const source = frameSourceFor(frame.key, frame.routeId);
+    const previous = frameSourcesRef.current.get(frame.key);
+
+    if (previous !== undefined && previous !== source) {
+      renderedFramesRef.current.delete(frame.key);
+    }
+    frameSourcesRef.current.set(frame.key, source);
+  });
   if (
     loadingFrameRef.current &&
     (frameTiers.get(loadingFrameRef.current) !== "live" || renderedFramesRef.current.has(loadingFrameRef.current))
@@ -2626,6 +2697,7 @@ export function PrototypeFlow({ initialSelection = null, initialTiers = null, pr
       hoveredKey: hoverDwellKey,
       pinnedId: pinnedFrameId,
       promotedIds: tierPromotedIds,
+      reloadIds: exitReloadIdsRef.current,
     });
   }
   liveLoadPendingRef.current = frameBoxes.some(
@@ -2802,9 +2874,20 @@ export function PrototypeFlow({ initialSelection = null, initialTiers = null, pr
       if (plain) {
         interactedFrameIdsRef.current.delete(key);
       }
+      // Every load of the interacting frame binds its new window.
+      if (!plain && interactionRef.current?.key === key) {
+        latestRef.current.attachInteractFrame?.(key, iframe);
+      }
     },
     rendered: (key, iframe) => {
       const load = liveLoadsRef.current.get(key);
+
+      // The plain route preview has rendered again: measurement resumes and
+      // the frame gives up its load priority.
+      if (load?.plain && interactionRef.current?.key !== key) {
+        measurementSuspendedFrameIdsRef.current.delete(key);
+        exitReloadIdsRef.current.delete(key);
+      }
 
       if (!iframe || !load || load.refreshed) {
         return;
@@ -3909,6 +3992,27 @@ export function PrototypeFlow({ initialSelection = null, initialTiers = null, pr
       gestureRef.current = { ...gestureRef.current, active: false };
     };
 
+    // The interacting frame's window forwards zoom wheels and gestures here.
+    canvasZoomInputRef.current = {
+      gesture: (event, point) => {
+        if (event.type === "gesturestart") {
+          gestureRef.current = { active: true, startZoom: cameraRef.current.z };
+        } else if (event.type === "gesturechange") {
+          setCamera(zoomAtPoint(cameraRef.current, gestureRef.current.startZoom * event.scale, toCanvasPointRef.current(point.x, point.y)));
+        } else {
+          gestureRef.current = { ...gestureRef.current, active: false };
+        }
+      },
+      wheel: (event, point) => {
+        const viewport = viewportRef.current;
+
+        // As over the canvas, a zoom wheel during a Safari pinch is ignored,
+        // so the zoom is not applied twice.
+        if (viewport && !gestureRef.current.active) {
+          setCamera(applyWheelZoom(cameraRef.current, event, toCanvasPointRef.current(point.x, point.y), viewport.clientHeight));
+        }
+      },
+    };
     root.addEventListener("wheel", handleWheel, { passive: false });
     root.addEventListener("gesturestart", handleGestureStart, { passive: false });
     root.addEventListener("gesturechange", handleGestureChange, { passive: false });
@@ -3936,6 +4040,7 @@ export function PrototypeFlow({ initialSelection = null, initialTiers = null, pr
     // click clears the selection, a drag draws a marquee. On macOS a
     // Ctrl+press opens the context menu instead.
     if (action === "canvas" && !(event.target instanceof Element && event.target.closest("[data-frame-id]"))) {
+      exitInteract();
       if (!(isMacPlatform() && event.ctrlKey)) {
         // Captured at once, like a pan, so the release reaches the viewport
         // even over the controls or outside the canvas.
@@ -4080,6 +4185,7 @@ export function PrototypeFlow({ initialSelection = null, initialTiers = null, pr
   }, []);
   const latestRef = useRef(null);
   latestRef.current = {
+    interactingKey: interaction?.key ?? null,
     commitLayoutPositions,
     flushPendingFrameState,
     flushPendingSizes,
@@ -4099,10 +4205,14 @@ export function PrototypeFlow({ initialSelection = null, initialTiers = null, pr
     const { reverseEdgeKeys: reverseKeys, routingPositionMap: routingMap } = latestRef.current;
     const shiftedMap = new Map(routingMap);
 
-    drag.frames.forEach(({ element, id, label, labelOrigin, lanes = [], outline, outlineOrigin }) => {
+    drag.frames.forEach(({ element, id, interactParts = [], label, labelOrigin, lanes = [], outline, outlineOrigin }) => {
       const position = routingMap.get(id);
 
       element.style.transform = `translate(${drag.delta.x}px, ${drag.delta.y}px)`;
+      interactParts.forEach((part) => {
+        part.element.style.setProperty(`${part.prefix}x`, `${part.origin.x + drag.delta.x}px`);
+        part.element.style.setProperty(`${part.prefix}y`, `${part.origin.y + drag.delta.y}px`);
+      });
       if (label && labelOrigin) {
         label.style.setProperty("--prototype-flow-label-wx", `${labelOrigin.x + drag.delta.x}px`);
         label.style.setProperty("--prototype-flow-label-wy", `${labelOrigin.y + drag.delta.y}px`);
@@ -4178,6 +4288,12 @@ export function PrototypeFlow({ initialSelection = null, initialTiers = null, pr
     return {
       element,
       id,
+      // The interaction outline and chip (interact mode) follow the frame.
+      interactParts: [...(overlayRef.current?.querySelectorAll(`[data-interact-frame="${CSS.escape(id)}"]`) ?? [])].map((part) => {
+        const prefix = part.classList.contains("prototype-inspector__flow-interact-chip") ? "--prototype-flow-label-w" : "--prototype-flow-outline-w";
+
+        return { element: part, origin: readVars(part, prefix), prefix };
+      }),
       label,
       labelOrigin: readVars(label, "--prototype-flow-label-w"),
       lanes: [...(overlayRef.current?.querySelectorAll(`[data-lane-anchor="${CSS.escape(id)}"]`) ?? [])].map((lane) => ({
@@ -4236,9 +4352,13 @@ export function PrototypeFlow({ initialSelection = null, initialTiers = null, pr
     window.cancelAnimationFrame(dragFrameRef.current);
     dragFrameRef.current = 0;
     worldRef.current?.removeAttribute("data-dragging");
-    drag.frames.forEach(({ element, label, labelOrigin, lanes = [], outline, outlineOrigin }) => {
+    drag.frames.forEach(({ element, interactParts = [], label, labelOrigin, lanes = [], outline, outlineOrigin }) => {
       element.style.removeProperty("transform");
       element.removeAttribute("data-dragging");
+      interactParts.forEach((part) => {
+        part.element.style.setProperty(`${part.prefix}x`, `${part.origin.x}px`);
+        part.element.style.setProperty(`${part.prefix}y`, `${part.origin.y}px`);
+      });
       if (label && labelOrigin) {
         label.style.setProperty("--prototype-flow-label-wx", `${labelOrigin.x}px`);
         label.style.setProperty("--prototype-flow-label-wy", `${labelOrigin.y}px`);
@@ -4301,6 +4421,10 @@ export function PrototypeFlow({ initialSelection = null, initialTiers = null, pr
 
     if (event.button !== 0 || isPanModifierActiveRef.current) {
       return;
+    }
+    // A press on another frame ends interact mode.
+    if (latestRef.current.interactingKey && latestRef.current.interactingKey !== id) {
+      latestRef.current.exitInteract();
     }
 
     // A read-only view never starts a frame drag; pans and clicks (which
@@ -4639,6 +4763,7 @@ export function PrototypeFlow({ initialSelection = null, initialTiers = null, pr
   // their own steps (clearing a selection, ending interact mode).
   const beforeJourneySwitchRef = useRef([]);
   beforeJourneySwitchRef.current = [
+    () => exitInteract(),
     cancelDrag,
     () => flushPendingNudge(),
     () => {
@@ -4779,6 +4904,7 @@ export function PrototypeFlow({ initialSelection = null, initialTiers = null, pr
       // discards what could have been redone.
       canRedo: historyRef.current.canRedo() && !nudgeRef.current,
       canUndo: historyRef.current.canUndo() || Boolean(nudgeRef.current),
+      interacting: Boolean(interaction),
       journeyFocus: Boolean(activeJourney),
       marqueeActive: Boolean(marqueeRef.current),
       selectedRouteCount: [...selection].filter((key) => routeInstanceKeys.has(key)).length,
@@ -4832,6 +4958,10 @@ export function PrototypeFlow({ initialSelection = null, initialTiers = null, pr
       setSelection(new Set());
     } else if (command === "select-all") {
       setSelection(new Set(displayedFrameKeys));
+    } else if (command === "enter-interact") {
+      enterInteract([...selection][0]);
+    } else if (command === "exit-interact") {
+      exitInteract();
     } else if (command === "zoom-to-selection") {
       fitFrames(selection);
     } else if (command === "next-frame" || command === "previous-frame") {
@@ -5122,6 +5252,174 @@ export function PrototypeFlow({ initialSelection = null, initialTiers = null, pr
     setSelection(next);
     fitFrames(next);
   };
+  // Interact mode (flow-frame-interaction). Entering selects the frame alone,
+  // ends fit tracking, suspends its measurement, marks it interacted, pins it
+  // live and loads its route with prototypeFlowInteractive=true (the source
+  // change takes the load slot, the pinned frame first); a frame narrower
+  // than 300 screen pixels or partly outside the canvas is fitted. Comment
+  // capture and the flow export story keep frames non-interactive.
+  const enterInteract = (key) => {
+    const frame = frameBoxes.find((candidate) => candidate.key === key);
+
+    if (!interactAllowed || !frame || interactionRef.current?.key === key || !getRoutePreviewSource(frame.routeId)) {
+      return;
+    }
+    if (document.documentElement.dataset.sbfxCaptureMode === "true") {
+      return;
+    }
+
+    exitInteract();
+    flushPendingNudge();
+    measurementSuspendedFrameIdsRef.current.add(key);
+    interactedFrameIdsRef.current.add(key);
+    interactionRef.current = { key };
+    setInteraction({ key });
+    setPinnedFrameId(key);
+    setSelection(new Set([key]));
+    setFitTracking(false);
+    setIsFitTracking(false);
+
+    const viewport = viewportRef.current;
+    const visible = frameVisibleRectsRef.current.find((rect) => rect.key === key);
+
+    if (viewport && visible) {
+      const canvasSize = { height: viewport.clientHeight, width: viewport.clientWidth };
+
+      if (needsInteractFit(visible, cameraRef.current, canvasSize)) {
+        setCamera(fitCamera(visible, canvasSize), { immediate: true });
+      }
+    }
+  };
+  // Leaving: focus inside the frame moves to the viewport first, the window
+  // is released and the frame unpinned; while still live it reloads its
+  // plain route preview (the source change), a demoted frame drops its
+  // iframe. Measurement stays suspended until that plain load renders.
+  const exitInteract = () => {
+    const current = interactionRef.current;
+
+    if (!current) {
+      return;
+    }
+
+    const iframe = worldRef.current?.querySelector(`[data-frame-id="${CSS.escape(current.key)}"] iframe`);
+
+    if (iframe && document.activeElement === iframe) {
+      viewportRef.current?.focus({ preventScroll: true });
+    }
+    frameCleanupRef.current?.();
+    frameCleanupRef.current = null;
+    exitReloadIdsRef.current.add(current.key);
+    interactionRef.current = null;
+    setInteraction(null);
+    setPinnedFrameId(null);
+  };
+  // Binds the interacting frame's window on every load: the iframe takes
+  // focus; Escape (outside IME composition) ends interact mode; zoom wheels
+  // and Safari gestures zoom the canvas around the pointer; overscroll stays
+  // in the frame; the data-route observer feeds the chip. Capture-phase
+  // listeners, so prototype components that stop propagation cannot hide
+  // these keys. Everything is released on exit, reload or removal.
+  const attachInteractFrame = (key, iframe) => {
+    frameCleanupRef.current?.();
+    frameCleanupRef.current = null;
+
+    let frameWindow = null;
+    let frameDocument = null;
+
+    try {
+      frameWindow = iframe.contentWindow;
+      frameDocument = iframe.contentDocument;
+    } catch (error) {
+      frameWindow = null;
+    }
+    if (!frameWindow || !frameDocument?.documentElement) {
+      console.warn("[prototype-inspector] interact mode: the frame window is not accessible.");
+      latestRef.current.exitInteract();
+      return;
+    }
+
+    const root = frameDocument.documentElement;
+    const previousOverscroll = root.style.overscrollBehavior;
+    const ownRouteId = frameBoxes.find((frame) => frame.key === key)?.routeId ?? key;
+    const toHost = (event) =>
+      frameClientToHostClient(iframe.getBoundingClientRect(), iframe.offsetWidth, { x: event.clientX, y: event.clientY });
+    const handleKeyDown = (event) => {
+      if (event.key !== "Escape" || event.isComposing || event.keyCode === 229) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      latestRef.current.exitInteract();
+    };
+    const handleWheel = (event) => {
+      if (!(event.ctrlKey || event.metaKey || event.altKey)) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      canvasZoomInputRef.current?.wheel(event, toHost(event));
+    };
+    const handleGesture = (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      canvasZoomInputRef.current?.gesture(event, toHost(event));
+    };
+    const showRoute = () => {
+      const value = frameDocument.querySelector("[data-prototype-root]")?.getAttribute("data-route") ?? null;
+      const title = resolveInteractRouteTitle(value, ownRouteId, routes);
+
+      if (interactChipRouteRef.current) {
+        interactChipRouteRef.current.textContent = title ? ` · ${title}` : "";
+      }
+    };
+    const observer = new frameWindow.MutationObserver(showRoute);
+    const gestureTypes = ["gesturestart", "gesturechange", "gestureend"];
+
+    root.style.overscrollBehavior = "contain";
+    observer.observe(frameDocument, { attributeFilter: ["data-route"], attributes: true, childList: true, subtree: true });
+    showRoute();
+    frameWindow.addEventListener("keydown", handleKeyDown, true);
+    frameWindow.addEventListener("wheel", handleWheel, { capture: true, passive: false });
+    gestureTypes.forEach((type) => frameWindow.addEventListener(type, handleGesture, { capture: true, passive: false }));
+    frameCleanupRef.current = () => {
+      observer.disconnect();
+      frameWindow.removeEventListener("keydown", handleKeyDown, true);
+      frameWindow.removeEventListener("wheel", handleWheel, true);
+      gestureTypes.forEach((type) => frameWindow.removeEventListener(type, handleGesture, true));
+      try {
+        root.style.overscrollBehavior = previousOverscroll;
+      } catch (error) {
+        // The document is gone with its frame.
+      }
+      if (interactChipRouteRef.current) {
+        interactChipRouteRef.current.textContent = "";
+      }
+    };
+    if (document.activeElement !== iframe) {
+      iframe.focus({ preventScroll: true });
+    }
+  };
+  latestRef.current.enterInteract = enterInteract;
+  latestRef.current.exitInteract = exitInteract;
+  latestRef.current.attachInteractFrame = attachInteractFrame;
+  const handleFrameDoubleClick = useCallback((event) => {
+    latestRef.current.enterInteract?.(event.currentTarget.getAttribute("data-frame-id"));
+  }, []);
+  // Another prototype, or an interacting instance that is no longer
+  // displayed (a journey switch, a flow edit), ends interact mode; unmount
+  // releases the frame window.
+  const interactPrototypeRef = useRef(prototype.id);
+  useEffect(() => {
+    if (interactPrototypeRef.current !== prototype.id) {
+      interactPrototypeRef.current = prototype.id;
+      latestRef.current.exitInteract?.();
+    } else if (interactionRef.current && !displayedFrameKeys.includes(interactionRef.current.key)) {
+      latestRef.current.exitInteract?.();
+    }
+  });
+  useEffect(() => () => frameCleanupRef.current?.(), []);
   // Every displayed frame by instance key (Mod+A, outlines, route counts).
   const routeInstanceKeys = new Set(routeInstances.map((instance) => instance.key));
   frameVisibleRectsRef.current = [
@@ -5135,6 +5433,15 @@ export function PrototypeFlow({ initialSelection = null, initialTiers = null, pr
     ),
   }));
   const displayedFrameKeys = [...routeInstances, ...nodeInstances].map((instance) => instance.key);
+  // The interacting frame's visible rect and title (interact outline and chip).
+  const interactRect = interaction ? frameVisibleRectsRef.current.find((rect) => rect.key === interaction.key) : null;
+  const interactTitle = interaction
+    ? (() => {
+        const routeId = frameBoxes.find((frame) => frame.key === interaction.key)?.routeId ?? interaction.key;
+
+        return routes.find((route) => route.id === routeId)?.title ?? routeId;
+      })()
+    : "";
   const minimapContent = frameVisibleRectsRef.current.length ? getFlowBounds(frameVisibleRectsRef.current) : null;
 
   minimapStateRef.current.content = minimapContent;
@@ -5263,6 +5570,8 @@ export function PrototypeFlow({ initialSelection = null, initialTiers = null, pr
         },
         onPointerUp: endPan,
         ref: viewportRef,
+        // Interact mode returns focus here; it never joins the tab order.
+        tabIndex: -1,
       },
       createElement(
         "div",
@@ -5434,11 +5743,13 @@ export function PrototypeFlow({ initialSelection = null, initialTiers = null, pr
             height: position.height ?? defaultNodeHeight,
             instanceKey: key,
             isAnchor,
+            isInteracting: interaction?.key === key,
             isRendered,
             isSelected: selection.has(key),
             isSnapshotStale: tier !== "live" && Boolean(snapshotUrl) && staleRoutes.has(route.id),
             key,
             mountIframe: tier === "live" && (isRendered || loadingFrameRef.current === key),
+            onDoubleClick: handleFrameDoubleClick,
             onFrameHotUpdated: handleFrameHotUpdated,
             onFrameLoaded: handleFrameLoaded,
             onFrameRendered: handleFrameRendered,
@@ -5450,7 +5761,7 @@ export function PrototypeFlow({ initialSelection = null, initialTiers = null, pr
             onPointerUp: handleFramePointerUp,
             onPreviewSizeChange: handlePreviewSizeChange,
             previewHeight: position.previewHeight ?? defaultPreviewHeight,
-            previewSource: getRoutePreviewSource(route.id),
+            previewSource: frameSourceFor(key, route.id),
             previewWidth: position.previewWidth ?? defaultPreviewWidth,
             route,
             snapshotUrl,
@@ -5584,6 +5895,7 @@ export function PrototypeFlow({ initialSelection = null, initialTiers = null, pr
             isUpdating:
               frameTiers.get(key) !== "live" && snapshotUrls.has(route.id) && staleRoutes.has(route.id),
             key,
+            onDoubleClick: handleFrameDoubleClick,
             onPointerCancel: handleFramePointerUp,
             onPointerDown: handleFramePointerDown,
             onPointerEnter: handleFramePointerEnter,
@@ -5629,6 +5941,42 @@ export function PrototypeFlow({ initialSelection = null, initialTiers = null, pr
             }),
           ),
         ),
+        // Interact mode: an outline around the interacting frame's visible
+        // rect and a chip above its top-right corner; no pointer input, left
+        // out of comment screenshots, moved with the frame by drags.
+        interactRect
+          ? [
+              createElement("div", {
+                className: "prototype-inspector__flow-interact-outline",
+                "data-interact-frame": interaction.key,
+                "data-sbfx-capture-ignore": "true",
+                key: "interact-outline",
+                style: {
+                  "--prototype-flow-outline-wx": `${interactRect.x}px`,
+                  "--prototype-flow-outline-wy": `${interactRect.y}px`,
+                  "--prototype-flow-outline-ww": `${interactRect.width}px`,
+                  "--prototype-flow-outline-wh": `${interactRect.height}px`,
+                },
+              }),
+              createElement(
+                "div",
+                {
+                  "aria-label": `Interacting with ${interactTitle}; press Escape to exit`,
+                  className: "prototype-inspector__flow-interact-chip",
+                  "data-interact-frame": interaction.key,
+                  "data-sbfx-capture-ignore": "true",
+                  key: "interact-chip",
+                  role: "status",
+                  style: {
+                    "--prototype-flow-label-wx": `${interactRect.x + interactRect.width}px`,
+                    "--prototype-flow-label-wy": `${interactRect.y}px`,
+                  },
+                },
+                createElement("span", null, "互動中 · Esc 結束"),
+                createElement("span", { className: "prototype-inspector__flow-interact-route", ref: interactChipRouteRef }),
+              ),
+            ]
+          : null,
         // Auto layout feature names: right edge left of the anchor frame's
         // visible rect, top on its top; no pointer input, no comment anchor.
         shownLaneLabels.map((label) => {
@@ -5832,6 +6180,7 @@ export function PrototypeFlow({ initialSelection = null, initialTiers = null, pr
               ["Fit / 100%", "Shift+1 / Shift+0"],
               ["Zoom to selection", "Shift+2"],
               ["Next / previous frame", "N / Shift+N"],
+              ["Interact with a frame", "Double-click or Enter, Esc to leave"],
               ...(hasJourneyList ? [["切換功能流程", "[ / ]"]] : []),
             ].map(([term, detail]) =>
               createElement(

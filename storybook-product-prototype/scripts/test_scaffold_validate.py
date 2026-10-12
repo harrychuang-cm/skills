@@ -1199,6 +1199,7 @@ def main() -> int:
                     )
 
         failures.extend(check_flow_journeys(base_dir))
+        failures.extend(check_interactive_preview(base_dir, react_exit))
 
     failures.extend(check_flow_parsing())
     failures.extend(check_handoff_contracts())
@@ -1221,6 +1222,10 @@ def main() -> int:
         print(summary)
     print("flow parsing: nested objects and both id layers resolve")
     print("flow journeys: spec example table, comments inside the array, empty scaffold export")
+    print(
+        "interactive preview: react and vue scaffolds carry prototypeFlowInteractive "
+        "without a warning; a copy without it warns, exit code unchanged"
+    )
     print(
         "handoff contracts: manifest roundtrip, drift, acceptance ids, dual scope, "
         "blocking decisions, flow carrier"
@@ -2090,6 +2095,75 @@ JOURNEY_CASES = [
     ),
     (None, [], []),
 ]
+
+
+INTERACTIVE_PREVIEW_WARNING = (
+    "prototype does not support prototypeFlowInteractive; "
+    "UI Flow interact mode will stay on the pinned route"
+)
+
+
+def check_interactive_preview(base_dir: Path, react_exit: int) -> list[str]:
+    """UI Flow interact mode (flow-frame-interaction): both scaffolds carry the
+    prototypeFlowInteractive contract and draw no warning, the Vue component
+    follows the React behaviour, and a copy without the parameter warns while
+    the exit code (without --strict-style) stays the same."""
+    failures: list[str] = []
+    components = {}
+    for framework, suffix in (("react", ".tsx"), ("vue", ".vue")):
+        prototype_dir = base_dir / framework / "src" / "pages" / "prototypes" / PROTOTYPE_DIR_NAME
+        found = sorted(prototype_dir.glob(f"*Prototype{suffix}"))
+        if not found:
+            failures.append(f"interactive preview: no {framework} prototype component")
+            continue
+        text = found[0].read_text()
+        components[framework] = (prototype_dir, found[0], text)
+        for needle in ("prototypeFlowInteractive", "data-prototype-interactive"):
+            if needle not in text:
+                failures.append(f"interactive preview: {framework} component lacks {needle}")
+        validate = subprocess.run(
+            [sys.executable, str(SCRIPTS_DIR / "validate_prototype.py"), str(prototype_dir)],
+            capture_output=True,
+            text=True,
+        )
+        if INTERACTIVE_PREVIEW_WARNING in validate.stdout + validate.stderr:
+            failures.append(f"interactive preview: validator warns for the {framework} scaffold")
+
+    if "vue" in components:
+        vue_text = components["vue"][2]
+        vue_rules = {
+            "the rendered route comes from component state in the interactive mode": r"isInteractivePreview\s*\?\s*routeId\.value\s*:",
+            "goTo navigates while prototypeRoute is set in the interactive mode": r"if\s*\(!previewRoute\s*\|\|\s*isInteractivePreview\)\s*\{\s*routeId\.value\s*=\s*nextRoute",
+            "data-route is bound to the rendered route": r':data-route="visibleRoute"',
+            "data-prototype-interactive is rendered only in the interactive mode": (
+                r":data-prototype-interactive=\"isInteractivePreview \? 'true' : undefined\""
+            ),
+        }
+        for label, pattern in vue_rules.items():
+            if not re.search(pattern, vue_text):
+                failures.append(f"interactive preview: vue component — {label}")
+
+    if "react" in components:
+        prototype_dir, component, text = components["react"]
+        with tempfile.TemporaryDirectory(prefix="interactive-") as temp_dir:
+            # The whole project tree: the validator also checks files shared
+            # by every prototype (the flow layout helper).
+            project_copy = Path(temp_dir) / "react"
+            subprocess.run(["cp", "-R", str(base_dir / "react"), str(project_copy)], check=True)
+            copy_dir = project_copy / prototype_dir.relative_to(base_dir / "react")
+            (copy_dir / component.name).write_text(text.replace("prototypeFlowInteractive", "prototypeFlowLocked"))
+            validate = subprocess.run(
+                [sys.executable, str(SCRIPTS_DIR / "validate_prototype.py"), str(copy_dir)],
+                capture_output=True,
+                text=True,
+            )
+            if INTERACTIVE_PREVIEW_WARNING not in validate.stdout + validate.stderr:
+                failures.append("interactive preview: no warning for a component without prototypeFlowInteractive")
+            if validate.returncode != react_exit:
+                failures.append(
+                    f"interactive preview: the warning changed the exit code ({react_exit} -> {validate.returncode})"
+                )
+    return failures
 
 
 def check_flow_journeys(base_dir: Path | None = None) -> list[str]:

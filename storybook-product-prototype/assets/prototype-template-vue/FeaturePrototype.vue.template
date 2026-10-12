@@ -55,9 +55,20 @@ function getFlowPreviewFromLocation() {
   return new URLSearchParams(window.location.search).get("prototypeFlowPreview") === "true";
 }
 
+// UI Flow interact mode: with prototypeRoute, the preview starts on that
+// route and in-preview navigation may leave it.
+function getInteractivePreviewFromLocation() {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  return new URLSearchParams(window.location.search).get("prototypeFlowInteractive") === "true";
+}
+
 const previewRoute = getRouteFromLocation();
+const isInteractivePreview = Boolean(previewRoute) && getInteractivePreviewFromLocation();
 const routeId = ref<__FEATURE_PASCAL__RouteId>(previewRoute ?? props.initialRouteId);
-const visibleRoute = computed(() => previewRoute ?? routeId.value);
+const visibleRoute = computed(() => (isInteractivePreview ? routeId.value : previewRoute ?? routeId.value));
 const activeRoute = computed(() => get__FEATURE_PASCAL__Route(visibleRoute.value));
 const routeContent = computed<__FEATURE_PASCAL__RouteContent>(
   () =>
@@ -71,7 +82,7 @@ const isEmbeddedFlowPreview = computed(
 const routes = __FEATURE_CAMEL__RouteIds.map((id) => get__FEATURE_PASCAL__Route(id));
 
 function goTo(nextRoute: __FEATURE_PASCAL__RouteId) {
-  if (!previewRoute) {
+  if (!previewRoute || isInteractivePreview) {
     routeId.value = nextRoute;
   }
 }
@@ -85,6 +96,7 @@ function goTo(nextRoute: __FEATURE_PASCAL__RouteId) {
     ]"
     data-prototype-root="true"
     :data-route="visibleRoute"
+    :data-prototype-interactive="isInteractivePreview ? 'true' : undefined"
     aria-label="__FEATURE_TITLE__"
     role="region"
   >

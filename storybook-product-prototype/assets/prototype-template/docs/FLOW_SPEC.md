@@ -85,7 +85,8 @@ One row per route id; write `Not in scope` in the cells of platforms the product
 ## Local State Rules
 
 - `routeId` owns the active route.
-- `prototypeRoute=<route-id>` renders a route-specific preview and should not let preview clicks mutate the selected route.
+- `prototypeRoute=<route-id>` renders a route-specific preview and should not let preview clicks mutate the selected route, unless `prototypeFlowInteractive=true` is also present.
+- `prototypeFlowInteractive=true` (with `prototypeRoute`) is the UI Flow interact mode: the preview starts on `prototypeRoute`, in-preview navigation may change the route, `[data-prototype-root]` keeps `data-route` equal to the rendered route and carries `data-prototype-interactive="true"`.
 - `prototypeFlowPreview=true` renders the compact route shell used by UI Flow and Static Flow route cards.
 
 ## Static Flow Export

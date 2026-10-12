@@ -1273,10 +1273,15 @@ html[data-sbfx-workspace-open="true"][data-sbfx-workspace-orientation="bottom"]:
   user-select: none;
 }
 
-/* World z-order: frames 3, selected 4, dragged 6 (frames and nodes alike). */
+/* World z-order: frames 3, selected 4, interacting 5, dragged 6 (frames and
+   nodes alike). */
 .prototype-inspector__flow-frame[data-selected="true"],
 .prototype-inspector__flow-node[data-selected="true"] {
   z-index: 4;
+}
+
+.prototype-inspector__flow-frame[data-interacting="true"] {
+  z-index: 5;
 }
 
 .prototype-inspector__flow-frame[data-dragging="true"] {
@@ -1368,6 +1373,64 @@ html[data-sbfx-workspace-open="true"][data-sbfx-workspace-orientation="bottom"]:
 
 .prototype-inspector__flow-selection-outline[data-selected="true"] {
   display: block;
+}
+
+/* Interact mode: an outline in the success color around the interacting
+   frame's visible rect and a chip above its top-right corner, constant on
+   screen, following the camera variables; no pointer input. */
+.prototype-inspector__flow-interact-outline {
+  position: absolute;
+  inset-block-start: var(--pi-sys-spacing-none);
+  inset-inline-start: var(--pi-sys-spacing-none);
+  z-index: 3;
+  box-sizing: border-box;
+  inline-size: calc(var(--prototype-flow-outline-ww) * var(--prototype-flow-camera-zoom));
+  block-size: calc(var(--prototype-flow-outline-wh) * var(--prototype-flow-camera-zoom));
+  box-shadow: 0 0 0 var(--pi-sys-size-control-border-width-strong) var(--pi-sys-color-success);
+  pointer-events: none;
+  transform: translate(
+    calc(var(--prototype-flow-outline-wx) * var(--prototype-flow-camera-zoom) + var(--prototype-flow-camera-x)),
+    calc(var(--prototype-flow-outline-wy) * var(--prototype-flow-camera-zoom) + var(--prototype-flow-camera-y))
+  );
+}
+
+.prototype-inspector__flow-interact-chip {
+  position: absolute;
+  inset-block-start: var(--pi-sys-spacing-none);
+  inset-inline-start: var(--pi-sys-spacing-none);
+  z-index: 4;
+  box-sizing: border-box;
+  max-inline-size: calc(var(--pi-ref-size-80) * 4);
+  overflow: hidden;
+  padding: var(--pi-sys-spacing-none) var(--pi-sys-spacing-xs);
+  margin-block-end: var(--pi-sys-spacing-xxs);
+  color: var(--pi-sys-color-success);
+  background: var(--pi-sys-color-surface-raised);
+  border: var(--pi-sys-size-control-border-width-strong) solid var(--pi-sys-color-success);
+  border-radius: var(--pi-sys-shape-corner-pill);
+  font-size: var(--pi-sys-typescale-caption-sm-size);
+  font-weight: var(--pi-sys-weight-semibold);
+  line-height: var(--pi-sys-typescale-caption-sm-line-height);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
+  transform: translate(
+      calc(
+        var(--prototype-flow-label-wx) * var(--prototype-flow-camera-zoom) +
+          var(--prototype-flow-camera-x)
+      ),
+      calc(
+        var(--prototype-flow-label-wy) * var(--prototype-flow-camera-zoom) +
+          var(--prototype-flow-camera-y) - var(--pi-sys-spacing-xxs)
+      )
+    )
+    translate(-100%, -100%);
+}
+
+/* The viewport takes focus when interact mode ends; it is not in the tab
+   order, so a focus ring would only frame the whole canvas. */
+.prototype-inspector__flow-viewport:focus {
+  outline: none;
 }
 
 /* Snapping guides: 1 px lines in the guide color through the aligned edges
@@ -1567,6 +1630,14 @@ html[data-sbfx-workspace-open="true"] .prototype-inspector__flow-minimap {
   background: var(--pi-sys-color-background);
   border: var(--pi-sys-spacing-none) solid var(--pi-sys-color-transparent);
   pointer-events: none;
+}
+
+/* Interact mode (flow-frame-interaction): the interacting frame's iframe
+   takes pointer input. Specificity (0,3,1): above the rule before, below the
+   comment capture rule (0,3,2) further down, so armed comment capture still
+   receives presses on the frame. */
+.prototype-inspector__flow-frame[data-interacting="true"] .prototype-inspector__flow-frame-preview iframe {
+  pointer-events: auto;
 }
 
 /* The snapshot renderer: laid out (never display: none, or its document has

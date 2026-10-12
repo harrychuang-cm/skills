@@ -1,0 +1,564 @@
+{
+  "schema": "prototype-flow-canvas-bench-set/1",
+  "createdAt": "2026-10-08T10:19:18.498Z",
+  "updatedAt": "2026-10-08T10:19:18.498Z",
+  "storybookMode": "dev",
+  "headless": true,
+  "chromeVersion": "Chrome/154.0.8037.98",
+  "machineModel": "Mac16,1",
+  "prototypeInspectorBuildTag": "flow-interact-2026-10-08",
+  "runs": {
+    "growth-fund": {
+      "schema": "prototype-flow-canvas-bench/1",
+      "label": "growth-fund",
+      "journey": null,
+      "layout": null,
+      "measuredAt": "2026-10-08T10:19:18.190Z",
+      "url": "http://localhost:6170/iframe.html?id=pages-prototypes-bench-growth-fund--default&viewMode=story&globals=prototypeMode:flow",
+      "storyUrl": "http://localhost:6170/iframe.html?id=pages-prototypes-bench-growth-fund--default&viewMode=story&globals=prototypeMode:story",
+      "environment": {
+        "chromeVersion": "Chrome/154.0.8037.98",
+        "chromeUserAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/154.0.0.0 Safari/537.36",
+        "chromePath": "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+        "headless": true,
+        "storybookMode": "dev",
+        "storybookModeEvidence": "/@vite/client is loaded",
+        "machineModel": "Mac16,1",
+        "machine": {
+          "cpu": "Apple M4",
+          "logicalCpus": 10,
+          "memoryGb": 16,
+          "model": "Mac16,1",
+          "node": "v26.8.2",
+          "os": "darwin 27.0.0"
+        },
+        "viewport": {
+          "width": 1600,
+          "height": 1000,
+          "deviceScaleFactor": 1
+        },
+        "projectRoot": "/private/tmp/claude-501/-Users-a04-0214-0320-Public-works-cm-skills/85b42748-e122-4667-ab5e-7cf897caebfe/scratchpad/journey-fixture",
+        "prototypeInspectorBuildTag": "flow-interact-2026-10-08",
+        "inspectorPreviewFile": "/private/tmp/claude-501/-Users-a04-0214-0320-Public-works-cm-skills/85b42748-e122-4667-ab5e-7cf897caebfe/scratchpad/journey-fixture/.storybook/prototype-inspector/preview.js",
+        "inspectorDeclares": {
+          "commitMark": true,
+          "labelPlacementMark": true,
+          "strokeZoomVariable": true
+        }
+      },
+      "prototype": {
+        "id": "bench-growth-fund",
+        "storyId": "pages-prototypes-bench-growth-fund--default",
+        "title": "Bench Growth Fund",
+        "routes": 30,
+        "flowNodes": 2,
+        "transitions": 56,
+        "keyEdges": 32,
+        "declaredViewport": null
+      },
+      "method": {
+        "input": "synthetic DOM events dispatched in the page (WheelEvent, PointerEvent pointerId 1)",
+        "warmup": "one unmeasured UI Flow visit before measuring",
+        "readiness": "Story: #storybook-root rendered; UI Flow: when route frames carry data-tier, every route frame has data-tier and none is data-live-loading (the snapshot renderer does not count); otherwise every iframe in the canvas shows [data-prototype-route-preview] or #storybook-root content",
+        "zoom100": "after settling: Shift+0 (keydown on document.body), camera idle, no commit for the quiet period and no loading live frame (bounded), count iframes, then Shift+1 back to fit before the gestures",
+        "settleBeforeGestures": "no pi:flow:commit for 1000 ms when the build emits it, otherwise a fixed 1500 ms",
+        "cameraIdleMs": 120,
+        "wheelWindows": "duringGesture = [first event, last event + 120 ms); afterIdle100ms = the next 100 ms",
+        "dragWindows": "duringGesture = [first pointermove, pointerup); afterRelease100ms = [pointerup, pointerup + 100 ms]",
+        "pinch": {
+          "events": 30,
+          "ctrlKey": true,
+          "deltaY": -2.9559,
+          "cadence": "one event per animation frame",
+          "anchor": "centre of the on-screen route frames (canvas centre when none is on screen)"
+        },
+        "pan": {
+          "events": 30,
+          "deltaX": 6,
+          "deltaY": 8,
+          "cadence": "one event per animation frame",
+          "anchor": "centre of the on-screen route frames (canvas centre when none is on screen)"
+        },
+        "drag": {
+          "moves": 20,
+          "stepPx": {
+            "x": 5,
+            "y": 3
+          },
+          "target": "route frame whose preview shows the largest on-screen area (ties: nearest the canvas centre), pressed at the centre of the visible part of its preview",
+          "syncCost": "pointermove dispatch until both a setTimeout(0) and a MessageChannel round trip have run (includes the React render the move scheduled); next move after requestAnimationFrame",
+          "msPerMove": "(pointerup - first pointermove) / moves; 16.7 means one move per frame at 60 Hz",
+          "localStorageWindow": "[pointerdown, pointerup + 1000 ms]"
+        },
+        "memory": "after HeapProfiler.collectGarbage; rendererRssMb sums the RSS of the --type=renderer processes that appeared after the page's target was created (spare renderer disabled); instanceRenderer* covers every renderer of this Chrome; UI Flow samples at fit (after the snapshot queue is idle) and at 100% (live frames loaded)",
+        "snapshots": "cold: IndexedDB of the Storybook origin cleared (Storage.clearDataForOrigin), allSnapshotsMs = the last pi:flow:snapshot mark after navigation start once the queue stays idle for 500 ms; cached: the next navigation, visibleSnapshotsMs = first animation frame with the canvas shown and every on-screen snapshot-tier frame's image loaded; dragWhileCapturing: IndexedDB cleared again, the drag starts once the queue is busy and one snapshot exists",
+        "percentiles": "median interpolated; p95 nearest-rank"
+      },
+      "storyMode": {
+        "readyMs": 544.7,
+        "documents": 1,
+        "domNodes": 367,
+        "jsEventListeners": 172,
+        "jsHeapTotalMb": 12.2,
+        "jsHeapUsedMb": 11.5,
+        "rendererProcesses": 1,
+        "rendererRssMb": 165.9,
+        "instanceRendererProcesses": 3,
+        "instanceRendererRssMb": 371.3,
+        "pageErrors": []
+      },
+      "idleRenderer": {
+        "rendererProcesses": 2,
+        "rendererRssMb": 260.5,
+        "instanceRendererProcesses": 2,
+        "instanceRendererRssMb": 260.5
+      },
+      "uiFlow": {
+        "selectorSet": "camera",
+        "selectors": {
+          "name": "camera",
+          "description": "camera canvas: viewport, world and overlay layers",
+          "root": ".prototype-inspector--flow",
+          "viewport": ".prototype-inspector__flow-viewport",
+          "world": ".prototype-inspector__flow-world",
+          "overlay": ".prototype-inspector__flow-overlay",
+          "routeFrame": ".prototype-inspector__flow-frame, .prototype-inspector__flow-card",
+          "flowNode": ".prototype-inspector__flow-node"
+        },
+        "readyMs": 433.1,
+        "readyTimedOut": false,
+        "routeFrames": 30,
+        "flowNodes": 2,
+        "iframes": 0,
+        "iframeErrors": 0,
+        "tiered": true,
+        "journeyFocus": null,
+        "routeIframes": {
+          "fit": 0,
+          "zoom100": 2
+        },
+        "rendererIframes": {
+          "fit": 1,
+          "zoom100": 1
+        },
+        "rendererSrcResetFallbacks": 0,
+        "documents": 4,
+        "domNodes": 2143,
+        "jsEventListeners": 488,
+        "jsHeapTotalMb": 22,
+        "jsHeapUsedMb": 20.9,
+        "rendererProcesses": 1,
+        "rendererRssMb": 227.1,
+        "instanceRendererProcesses": 3,
+        "instanceRendererRssMb": 352,
+        "memoryZoom100": {
+          "documents": 6,
+          "domNodes": 3018,
+          "jsEventListeners": 806,
+          "jsHeapTotalMb": 30.3,
+          "jsHeapUsedMb": 28.7,
+          "rendererProcesses": 1,
+          "rendererRssMb": 241.3,
+          "instanceRendererProcesses": 3,
+          "instanceRendererRssMb": 361.8
+        },
+        "rendererMemoryOverStoryMb": {
+          "fit": 61.2,
+          "zoom100": 75.4
+        },
+        "settle": {
+          "rule": "no pi:flow:commit for 1000 ms",
+          "timedOut": false,
+          "waitedMs": 1167
+        },
+        "openLayoutStorage": {
+          "key": "prototype-inspector:flow-layout:bench-growth-fund",
+          "seededPositions": [
+            "touch-checkout",
+            "__flow-bench-unknown-node__"
+          ],
+          "seeded": true,
+          "setItem": 0,
+          "removeItem": 0,
+          "untilGestureStart": {
+            "setItem": 0,
+            "removeItem": 0
+          },
+          "seedPreservedAtReady": true
+        },
+        "mainFrameNavigations": 1,
+        "pageErrors": [],
+        "instrumentationErrors": []
+      },
+      "marks": {
+        "commit": true,
+        "labelPlacement": true,
+        "strokeZoomVariable": true
+      },
+      "gestures": {
+        "marquee": {
+          "selectedFrames": 2,
+          "commitMarks": {
+            "duringGesture": 0,
+            "afterRelease100ms": 1
+          }
+        },
+        "groupDrag": {
+          "selectedBeforeDrag": 3,
+          "commitMarks": {
+            "duringGesture": 0,
+            "afterRelease100ms": 1
+          },
+          "layoutWrites": 1,
+          "frameOffsetsPx": [
+            {
+              "x": 105.46,
+              "y": 60.09
+            },
+            {
+              "x": 105.46,
+              "y": 60.09
+            },
+            {
+              "x": 105.46,
+              "y": 60.09
+            }
+          ],
+          "equalOffsets": true
+        },
+        "selectionWithMinimap": {
+          "selectedFrames": 2,
+          "minimapShown": true,
+          "pinchCommitMarks": {
+            "duringGesture": 0,
+            "afterIdle100ms": 1
+          },
+          "panCommitMarks": {
+            "duringGesture": 0,
+            "afterIdle100ms": 1
+          }
+        },
+        "pinch": {
+          "events": 30,
+          "commitMarks": {
+            "duringGesture": 0,
+            "afterIdle100ms": 1,
+            "firstAfterLastEventMs": 182.3
+          },
+          "labelPlacementMarks": {
+            "duringGesture": 0,
+            "afterIdle100ms": 1
+          },
+          "durationMs": 462.3,
+          "longAnimationFrames": {
+            "count": 0,
+            "maxDurationMs": 0,
+            "totalBlockingMs": 0
+          },
+          "target": "div.prototype-inspector__flow-viewport",
+          "anchor": {
+            "source": "on-screen frames centre",
+            "x": 920,
+            "y": 500
+          },
+          "cameraBefore": {
+            "x": 365.34,
+            "y": 96,
+            "zoom": 0.1684
+          },
+          "cameraAfter": {
+            "x": -83.77,
+            "y": -480.61,
+            "zoom": 0.4088
+          },
+          "zoomLabelBefore": "17%",
+          "zoomLabelAfter": "41%",
+          "zoomSamples": [
+            0.1684,
+            0.1735,
+            0.1787,
+            0.184,
+            0.1895,
+            0.1952,
+            0.2011,
+            0.2071,
+            0.2133,
+            0.2197,
+            0.2263,
+            0.2331,
+            0.2401,
+            0.2473,
+            0.2547,
+            0.2624,
+            0.2702,
+            0.2783,
+            0.2867,
+            0.2953,
+            0.3042,
+            0.3133,
+            0.3227,
+            0.3324,
+            0.3423,
+            0.3526,
+            0.3632,
+            0.3741,
+            0.3853,
+            0.3969,
+            0.4088
+          ],
+          "strokeZoom": {
+            "writes": 3,
+            "writesDuringGesture": 2,
+            "writesAfterIdle": 1,
+            "valueChanges": 2,
+            "bucketsCrossed": 2,
+            "valueBefore": "0.1767766952966369",
+            "valueAfter": "0.3535533905932738"
+          },
+          "settleAfter": {
+            "rule": "no pi:flow:commit for 1000 ms",
+            "timedOut": false,
+            "waitedMs": 827
+          }
+        },
+        "pan": {
+          "events": 30,
+          "commitMarks": {
+            "duringGesture": 0,
+            "afterIdle100ms": 1,
+            "firstAfterLastEventMs": 154.9
+          },
+          "labelPlacementMarks": {
+            "duringGesture": 0,
+            "afterIdle100ms": 0
+          },
+          "durationMs": 478.6,
+          "longAnimationFrames": {
+            "count": 0,
+            "maxDurationMs": 0,
+            "totalBlockingMs": 0
+          },
+          "target": "div.prototype-inspector__flow-viewport",
+          "anchor": {
+            "source": "on-screen frames centre",
+            "x": 920,
+            "y": 500
+          },
+          "cameraBefore": {
+            "x": -83.77,
+            "y": -480.61,
+            "zoom": 0.4088
+          },
+          "cameraAfter": {
+            "x": -263.77,
+            "y": -720.61,
+            "zoom": 0.4088
+          },
+          "zoomLabelBefore": "41%",
+          "zoomLabelAfter": "41%",
+          "settleAfter": {
+            "rule": "no pi:flow:commit for 1000 ms",
+            "timedOut": false,
+            "waitedMs": 825
+          }
+        },
+        "drag": {
+          "pointerMoves": 20,
+          "stepPx": {
+            "x": 5,
+            "y": 3
+          },
+          "frame": "Wallet overview",
+          "dispatchTarget": "div.prototype-inspector__flow-frame-preview",
+          "syncCostMs": {
+            "count": 20,
+            "median": 1.25,
+            "p95": 2.2,
+            "max": 3.5,
+            "mean": 1.49,
+            "samples": [
+              3.5,
+              2.2,
+              1.2,
+              1.3,
+              1,
+              1.7,
+              2,
+              1,
+              1,
+              0.9,
+              1.9,
+              1,
+              1.4,
+              1.9,
+              2.1,
+              1.1,
+              1.2,
+              1.7,
+              0.9,
+              0.9
+            ]
+          },
+          "msPerMove": 16.54,
+          "commitMarks": {
+            "duringGesture": 0,
+            "afterRelease100ms": 1,
+            "firstAfterReleaseMs": 30.8
+          },
+          "labelPlacementMarks": {
+            "duringGesture": 0,
+            "afterRelease100ms": 1
+          },
+          "localStorageSetItem": 1,
+          "localStorageSetItemByKey": {
+            "prototype-inspector:flow-layout:bench-growth-fund": 1
+          },
+          "frameDeltaPx": {
+            "x": 105.46,
+            "y": 60.09
+          },
+          "longAnimationFrames": {
+            "count": 0,
+            "maxDurationMs": 0,
+            "totalBlockingMs": 0
+          },
+          "settleAfter": {
+            "rule": "no pi:flow:commit for 1000 ms",
+            "timedOut": false,
+            "waitedMs": 308
+          }
+        }
+      },
+      "snapshots": {
+        "cold": {
+          "readyMs": 421.3,
+          "snapshots": 30,
+          "allSnapshotsMs": 7349.7,
+          "visibleSnapshotsMs": 7373.9,
+          "queueTimedOut": false,
+          "snapshotTier": 30,
+          "snapshotTierShown": 30
+        },
+        "cached": {
+          "readyMs": 470.7,
+          "visibleSnapshotsMs": 473.6,
+          "visibleSnapshotFrames": 30,
+          "revalidationTiles": 0,
+          "revalidationMs": 5369
+        },
+        "dragWhileCapturing": {
+          "queueAtStart": "busy",
+          "snapshotsBeforeDrag": 1,
+          "syncCostMs": {
+            "count": 20,
+            "median": 1.25,
+            "p95": 2.7,
+            "max": 4.1,
+            "mean": 1.4,
+            "samples": [
+              4.1,
+              0.2,
+              1,
+              1.9,
+              1.4,
+              0.8,
+              1.4,
+              1.9,
+              1.1,
+              2.7,
+              1.4,
+              1.6,
+              0.8,
+              0.7,
+              1,
+              0.8,
+              0.9,
+              1.8,
+              1.6,
+              1
+            ]
+          }
+        }
+      },
+      "targets": {
+        "fitRouteIframes": {
+          "limit": 0,
+          "met": true,
+          "value": 0
+        },
+        "fitRendererIframes": {
+          "limit": 1,
+          "met": true,
+          "value": 1
+        },
+        "zoom100Iframes": {
+          "limit": 8,
+          "met": true,
+          "value": 3
+        },
+        "openLayoutWrites": {
+          "limit": 0,
+          "met": true,
+          "value": 0
+        },
+        "oneCommitAfterIdle": {
+          "drag": 1,
+          "met": true,
+          "pan": 1,
+          "pinch": 1
+        },
+        "fitRendererMemoryOverStoryMb": {
+          "limit": 100,
+          "met": true,
+          "value": 61.2
+        },
+        "cachedVisibleSnapshotsMs": {
+          "limit": 1000,
+          "met": true,
+          "value": 473.6
+        },
+        "coldAllSnapshotsMs": {
+          "limit": 10000,
+          "met": true,
+          "value": 7349.7
+        },
+        "dragDuringCaptureP95Ms": {
+          "limit": 8,
+          "met": true,
+          "value": 2.7
+        }
+      },
+      "labelPlacement": {
+        "count": 10,
+        "durationsMs": [
+          5.9,
+          4.9,
+          3.6,
+          14.6,
+          7,
+          6.9,
+          26.4,
+          6.8,
+          9.2,
+          3.3
+        ],
+        "durationSummaryMs": {
+          "count": 10,
+          "median": 6.85,
+          "p95": 26.4,
+          "max": 26.4,
+          "mean": 8.86
+        }
+      },
+      "traceFile": null,
+      "diagnostics": {
+        "cdpMessages": 1947,
+        "cdpMegabytes": 1.4,
+        "largestCdpMessageChars": 9827,
+        "largestCdpMessage": "Page.frameAttached"
+      },
+      "notes": [],
+      "attempts": 1
+    }
+  }
+}

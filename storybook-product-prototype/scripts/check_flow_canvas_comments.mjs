@@ -432,6 +432,48 @@ function installCheckLibrary(config) {
     style.remove();
     return { afterCapture, capturing, interacting };
   };
+  // Interact mode (flow-frame-interaction): the interacting frame's iframe
+  // takes pointer events, and comment capture mode takes them away again.
+  lib.interactingPointerEvents = () => {
+    const iframe = document.querySelector('.prototype-inspector__flow-frame[data-interacting="true"] .prototype-inspector__flow-frame-preview iframe');
+    if (!iframe) return { error: "no interacting frame" };
+    const interacting = getComputedStyle(iframe).pointerEvents;
+    document.documentElement.dataset.sbfxCaptureMode = "true";
+    const capturing = getComputedStyle(iframe).pointerEvents;
+    delete document.documentElement.dataset.sbfxCaptureMode;
+    const afterCapture = getComputedStyle(iframe).pointerEvents;
+    return { afterCapture, capturing, interacting };
+  };
+  lib.waitForInteracting = (timeoutMs = 30_000) =>
+    waitFor(() => {
+      const frame = document.querySelector('.prototype-inspector__flow-frame[data-interacting="true"]:not([data-live-loading])');
+      return frame?.querySelector("iframe")?.getAttribute("src")?.includes("prototypeFlowInteractive=true") ? frame.getAttribute("data-frame-id") : null;
+    }, timeoutMs, "an interacting frame");
+  // Records the route the interacting frame's document shows each time
+  // figma-export calls its capture hook (a frame comment's screenshot).
+  lib.watchInteractingHook = () => {
+    const iframe = document.querySelector('.prototype-inspector__flow-frame[data-interacting="true"] iframe');
+    const frameWindow = iframe?.contentWindow;
+    const original = frameWindow?.[captureHookKey];
+    if (typeof original !== "function") return { error: "no capture hook in the interacting frame" };
+    window.__piInteractHookRoutes = [];
+    frameWindow[captureHookKey] = (...args) => {
+      window.__piInteractHookRoutes.push(frameWindow.document.querySelector("[data-prototype-root]")?.getAttribute("data-route") ?? null);
+      return original(...args);
+    };
+    return { route: frameWindow.document.querySelector("[data-prototype-root]")?.getAttribute("data-route") ?? null };
+  };
+  lib.interactingHookRoutes = () => window.__piInteractHookRoutes ?? null;
+  // A point on a frame's visible rect away from its centre (where a pin may sit).
+  lib.pointOnFrameCorner = (anchorId) => {
+    const box = document.querySelector(`[data-sbfx-anchor="${CSS.escape(anchorId)}"]`)?.getBoundingClientRect();
+    return box ? { x: box.left + box.width * 0.25, y: box.top + Math.min(box.height * 0.25, 120) } : null;
+  };
+  lib.exitInteract = async () => {
+    document.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, code: "Escape", key: "Escape" }));
+    await waitFor(() => !document.querySelector('[data-interacting="true"]'), 5_000, "interact mode to end");
+    return true;
+  };
   // ----- figma-export review panel (end to end) -----
   const waitFor = async (test, timeoutMs = 20_000, label = "condition") => {
     const started = performance.now();
@@ -596,10 +638,11 @@ function installCheckLibrary(config) {
     await wait(600);
     const pendingPins = document.querySelectorAll("[data-pending-comment-pin]").length;
     const composers = document.querySelectorAll(".sbfx-comment-composer textarea").length;
+    const interacting = Boolean(document.querySelector('[data-interacting="true"]'));
     root().removeEventListener("dblclick", countDoubleClick);
     button("Cancel")?.click();
     await waitFor(() => !document.querySelector(".sbfx-comment-composer textarea"), 10_000, "the composer to close");
-    return { composers, pageDoubleClicks, pendingPins };
+    return { composers, interacting, pageDoubleClicks, pendingPins };
   };
   // Drags a frame while sampling its saved pin's offset from the frame's
   // visible rect at the start of every animation frame.
@@ -1021,6 +1064,25 @@ async function caseKeysAndCapture(page, args) {
     !pointerEvents.error && pointerEvents.interacting === "auto" && pointerEvents.capturing === "none" && pointerEvents.afterCapture === "auto",
     pointerEvents.error ?? JSON.stringify(pointerEvents),
   );
+  // The same with a frame in interact mode (flow-frame-interaction).
+  const anchorId = await page.evaluate(`document.querySelector('.prototype-inspector__flow-frame[data-tier="live"] [data-sbfx-anchor^="route:"]')?.getAttribute("data-sbfx-anchor") ?? null`);
+  const point = anchorId ? await page.evaluate(`window.__piCommentsCheck.pointOnFrame(${JSON.stringify(anchorId)})`) : null;
+  let interacting = { error: "no live frame on screen" };
+  if (point) {
+    await page.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: point.x, y: point.y });
+    for (const clickCount of [1, 2]) {
+      await page.send("Input.dispatchMouseEvent", { button: "left", clickCount, type: "mousePressed", x: point.x, y: point.y });
+      await page.send("Input.dispatchMouseEvent", { button: "left", clickCount, type: "mouseReleased", x: point.x, y: point.y });
+    }
+    await page.evaluate("window.__piCommentsCheck.waitForInteracting()");
+    interacting = await page.evaluate("window.__piCommentsCheck.interactingPointerEvents()");
+    await page.evaluate("window.__piCommentsCheck.exitInteract()").catch(() => undefined);
+  }
+  check(
+    "capture: a frame in interact mode takes pointer events, and comment capture mode takes them away",
+    !interacting.error && interacting.interacting === "auto" && interacting.capturing === "none" && interacting.afterCapture === "auto",
+    interacting.error ?? JSON.stringify(interacting),
+  );
 }
 
 // The figma-export dock floats over the UI Flow canvas: the canvas keeps the
@@ -1343,10 +1405,78 @@ async function caseCommentsEndToEnd(page, args) {
 
   const doubleClick = await lib(`doubleClickInCapture(${JSON.stringify(args.frameAnchor)})`);
   check(
-    "capture: double-clicking a frame places one pin and the page gets no dblclick",
-    !doubleClick.error && doubleClick.pendingPins === 1 && doubleClick.composers === 1 && doubleClick.pageDoubleClicks === 0,
+    "capture: double-clicking a frame places one pin, the page gets no dblclick and no frame enters interact mode",
+    !doubleClick.error && doubleClick.pendingPins === 1 && doubleClick.composers === 1 && doubleClick.pageDoubleClicks === 0 && !doubleClick.interacting,
     JSON.stringify(doubleClick),
   );
+  // A comment on a frame in interact mode: capture takes the press and the
+  // pin anchors to the frame's route. The double-click lands away from the
+  // frame's existing pin (its centre), after the addon's post-pin click guard.
+  await sleep(700);
+  const interactPoint = await page.evaluate(`(() => {
+    const box = document.querySelector('[data-sbfx-anchor=${JSON.stringify(args.frameAnchor)}]').getBoundingClientRect();
+    return { x: box.left + box.width * 0.25, y: box.top + Math.min(box.height * 0.25, 120) };
+  })()`);
+  await page.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: interactPoint.x, y: interactPoint.y });
+  for (const clickCount of [1, 2]) {
+    await page.send("Input.dispatchMouseEvent", { button: "left", clickCount, type: "mousePressed", x: interactPoint.x, y: interactPoint.y });
+    await page.send("Input.dispatchMouseEvent", { button: "left", clickCount, type: "mouseReleased", x: interactPoint.x, y: interactPoint.y });
+  }
+  const interactingFrame = await lib("waitForInteracting()");
+  const onInteracting = await lib(`placeComment(${JSON.stringify({ text: `Interacting frame comment ${stamp}`, ...(await lib(`pointOnFrame(${JSON.stringify(args.frameAnchor)})`)) })})`);
+  check(
+    "capture: a comment placed on a frame in interact mode anchors to that frame's route",
+    `route:${interactingFrame}` === args.frameAnchor && onInteracting.body.anchor?.type === "element" && onInteracting.body.anchor.id === args.frameAnchor,
+    JSON.stringify({ anchor: onInteracting.body.anchor, interactingFrame }),
+  );
+  await lib("exitInteract()");
+  // The addon swallows the click sequence for 500 ms after placing a pin.
+  await sleep(700);
+
+  // After in-frame navigation (intake -> review), a comment on the frame keeps
+  // route:intake while its screenshot is taken from the review page. The
+  // previous step fitted the camera on review: fit the flow first.
+  await page.evaluate(`document.body.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, code: "Digit1", key: "!", shiftKey: true }))`);
+  await sleep(700);
+  const intakePoint = await lib(`pointOnFrameCorner("route:intake")`);
+  if (intakePoint) {
+    await page.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: intakePoint.x, y: intakePoint.y });
+    for (const clickCount of [1, 2]) {
+      await page.send("Input.dispatchMouseEvent", { button: "left", clickCount, type: "mousePressed", x: intakePoint.x, y: intakePoint.y });
+      await page.send("Input.dispatchMouseEvent", { button: "left", clickCount, type: "mouseReleased", x: intakePoint.x, y: intakePoint.y });
+    }
+    await lib("waitForInteracting()");
+    const submit = await page.evaluate(`(() => {
+      const iframe = document.querySelector('.prototype-inspector__flow-frame[data-interacting="true"] iframe');
+      const button = [...iframe.contentDocument.querySelectorAll("button")].find((candidate) => candidate.textContent.trim() === "Submit intake");
+      if (!button) return null;
+      const frameRect = iframe.getBoundingClientRect();
+      const scale = frameRect.width / iframe.offsetWidth;
+      const box = button.getBoundingClientRect();
+      return { x: frameRect.left + (box.left + box.width / 2) * scale, y: frameRect.top + (box.top + box.height / 2) * scale };
+    })()`);
+    if (submit) {
+      await page.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: submit.x, y: submit.y });
+      await page.send("Input.dispatchMouseEvent", { button: "left", clickCount: 1, type: "mousePressed", x: submit.x, y: submit.y });
+      await page.send("Input.dispatchMouseEvent", { button: "left", clickCount: 1, type: "mouseReleased", x: submit.x, y: submit.y });
+      await sleep(500);
+    }
+    const watched = await lib("watchInteractingHook()");
+    const navigated = await lib(`placeComment(${JSON.stringify({ text: `In-frame navigation comment ${stamp}`, ...(await lib(`pointOnFrameCorner("route:intake")`)) })})`);
+    const hookRoutes = await lib("interactingHookRoutes()");
+    check(
+      "capture: after in-frame navigation a frame comment keeps route:intake while its screenshot comes from the review page",
+      watched.route === "review" && navigated.body.anchor?.id === "route:intake" && Array.isArray(hookRoutes) && hookRoutes.length > 0 && hookRoutes.every((route) => route === "review"),
+      JSON.stringify({ anchor: navigated.body.anchor?.id, hookRoutes, watched }),
+    );
+    await lib("exitInteract()");
+    // Entering fitted the camera on intake: fit the whole flow again for the
+    // drags that follow.
+    await page.evaluate(`document.body.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, code: "Digit1", key: "!", shiftKey: true }))`);
+    await sleep(700);
+  } else {
+    check("capture: after in-frame navigation a frame comment keeps route:intake", false, "no route:intake frame on screen");
+  }
 
   const follow = await lib(`pinFollowsDrag(${JSON.stringify({ anchorId: args.frameAnchor, commentId: frame.id, ...DRAG })})`);
   check(

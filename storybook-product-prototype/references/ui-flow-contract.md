@@ -145,6 +145,17 @@ When preparing frontend handoff, map route ids and transitions to the target pla
 
 Keep route ids stable across prototype docs and handoff docs so engineers and AI agents can trace behavior without relying on visible labels.
 
+## Interactive Preview
+
+UI Flow interact mode lets a reviewer operate one frame (double-click it, or select it and press Enter; Escape leaves). The Inspector then loads the route preview URL with `prototypeFlowInteractive=true` added to `prototypeRoute=<route-id>` (and `prototypeFlowPreview=true`):
+
+- The prototype renders `prototypeRoute` first, then lets its own navigation change the rendered route: the rendered route comes from component state, and `goTo` (or the equivalent) is not blocked by `prototypeRoute` in this mode.
+- `prototypeFlowPreview=true` still hides the prototype chrome.
+- `[data-prototype-root]` keeps `data-route` equal to the flow route id currently rendered, and adds `data-prototype-interactive="true"` while this mode is active. The Inspector shows the title of a different flow route in its interaction chip; a `data-route` value that is not a route id of the flow is ignored.
+- Without `prototypeFlowInteractive=true`, a `prototypeRoute` preview stays pinned to its route.
+
+Prototypes that do not read `prototypeFlowInteractive` still scroll and take clicks in interact mode, but a prototype that pins `prototypeRoute` cannot navigate; `validate_prototype.py` warns about it (an error only under `--strict-style`).
+
 ## Acceptance
 
 - Every visible route appears in route metadata.
@@ -154,6 +165,7 @@ Keep route ids stable across prototype docs and handoff docs so engineers and AI
 - The full UI Flow canvas uses key transitions; journey focus views use all transitions between consecutive steps; Transition Index uses the full transition list.
 - The prototype supports `prototypeRoute=<route-id>` for route-specific iframe previews.
 - The prototype supports `prototypeFlowPreview=true` for compact embedded rendering.
+- The prototype supports `prototypeFlowInteractive=true` with `prototypeRoute=<route-id>`: it renders that route first, lets in-preview navigation change the rendered route, keeps `data-route` on `[data-prototype-root]` equal to the rendered route and adds `data-prototype-interactive="true"` (see Interactive Preview).
 - In flow preview mode (`isFlowPreview` prop or `prototypeFlowPreview=true`), the prototype hides its own chrome — the prototype header and the route navigation — so flow cards and iframe previews show only what the real page shows.
 - The route preview shell exposes `data-prototype-route-preview="true"` for template-compatible iframe measurement.
 - The prototype root keeps `data-prototype-root="true"` for backward-compatible iframe height measurement.

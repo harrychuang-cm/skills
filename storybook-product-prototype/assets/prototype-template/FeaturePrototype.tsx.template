@@ -48,6 +48,16 @@ function getFlowPreviewFromLocation() {
   return new URLSearchParams(window.location.search).get("prototypeFlowPreview") === "true";
 }
 
+// UI Flow interact mode: with prototypeRoute, the preview starts on that
+// route and in-preview navigation may leave it.
+function getInteractivePreviewFromLocation() {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  return new URLSearchParams(window.location.search).get("prototypeFlowInteractive") === "true";
+}
+
 function RoutePanel({
   route,
 }: {
@@ -95,10 +105,11 @@ export function __FEATURE_PASCAL__({
   isFlowPreview = false,
 }: __FEATURE_PASCAL__Props) {
   const previewRoute = getRouteFromLocation();
+  const isInteractivePreview = Boolean(previewRoute) && getInteractivePreviewFromLocation();
   const [routeId, setRouteId] = useState<__FEATURE_PASCAL__RouteId>(
     previewRoute ?? initialRouteId,
   );
-  const visibleRoute = previewRoute ?? routeId;
+  const visibleRoute = isInteractivePreview ? routeId : previewRoute ?? routeId;
   const activeRoute = get__FEATURE_PASCAL__Route(visibleRoute);
   const routeContent = useMemo(
     () =>
@@ -109,7 +120,7 @@ export function __FEATURE_PASCAL__({
   const isEmbeddedFlowPreview = isFlowPreview || getFlowPreviewFromLocation();
 
   const goTo = (nextRoute: __FEATURE_PASCAL__RouteId) => {
-    if (!previewRoute) {
+    if (!previewRoute || isInteractivePreview) {
       setRouteId(nextRoute);
     }
   };
@@ -124,6 +135,7 @@ export function __FEATURE_PASCAL__({
         .join(" ")}
       data-prototype-root="true"
       data-route={visibleRoute}
+      data-prototype-interactive={isInteractivePreview ? "true" : undefined}
       aria-label="__FEATURE_TITLE__"
       role="region"
     >

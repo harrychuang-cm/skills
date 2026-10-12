@@ -179,7 +179,8 @@ Keyboard shortcuts (Cmd on macOS, Ctrl elsewhere):
 | `=` / `+` / keypad plus, or Cmd/Ctrl+`=` | Zoom in one step (5%, 10%, 25%, 50%, 100%, 200%, 400%) |
 | `-` / keypad minus, or Cmd/Ctrl+`-` | Zoom out one step |
 | Space (hold) | Pan mode while held |
-| Escape | Close the zoom menu, the Reset dialog or the Auto Layout dialog; otherwise cancel an active drag, then an active marquee, then clear the selection |
+| Escape | Close the zoom menu, the Reset dialog or the Auto Layout dialog; otherwise cancel an active drag, then an active marquee, then end interact mode, then clear the selection |
+| Double-click a route frame, or Enter with one route frame selected | Interact with that frame (Escape leaves; Shift, Cmd/Ctrl and auto-repeated Enter do nothing) |
 | Shift+2 | Zoom to the selection (at most 100%) |
 | N / Shift+N | Select and fit the next / previous frame (route order; step order in a journey view), wrapping |
 | Arrow keys / Shift+arrow keys | Move the selection 20 / 100 world pixels |
@@ -203,6 +204,14 @@ Editing: the canvas arranges frames like a design tool. Frames and groups themse
 - Journey views: only selecting and finding frames remain. Selection, the marquee, Cmd/Ctrl+A, the minimap and Shift+2 act on step occurrences (selecting one occurrence of a repeated screen leaves the other unselected), and N / Shift+N move by step index and wrap. Group drags, arrow-key moves, snapping, undo, redo and sections are off, and their keys reach Storybook. Opening a journey, switching journeys and returning to 全部 clear the selection but keep the undo history.
 
 Comment screenshots keep sections but leave out selection outlines, the marquee, guides and the minimap.
+
+Interact mode: double-click a route frame, or select one route frame and press Enter, to operate it in place. The frame stays live whatever the zoom (it holds the level of detail's pinned slot), reloads its route with `prototypeFlowInteractive=true`, takes focus, and shows a green outline with a 互動中 · Esc 結束 chip (plus the current route's title when the prototype navigates in-frame). A frame narrower than 300 screen pixels or partly off screen is fitted first, and entering always ends the opening fit tracking. Only one frame interacts at a time; flow-only nodes, the Static Flow story and armed comment capture never enter it.
+
+- Inside the frame, clicks, typing and plain scrolling reach the prototype; every key except Escape belongs to it, so canvas shortcuts wait until focus is back on the canvas. Pinch or Cmd/Ctrl/Alt + wheel over the frame still zooms the canvas, scrolling past the frame's edges does not move Storybook back a page, and outside the frame the canvas pans and zooms as usual. An Escape that cancels IME composition does not leave.
+- The frame keeps its box while interacting: content taller than it (for example after navigating to a longer route) scrolls inside, and its measured size is not saved until it has reloaded its own route.
+- Interact mode ends on Escape, a press on blank canvas or on another frame, a double-click on another frame, selecting another journey list entry (including 全部), or leaving UI Flow. Space or middle-button pans, the zoom and layout groups, the zoom menu and the minimap leave it running. Leaving moves focus from the frame to the canvas, and a frame that is still live reloads its own route, so no scroll position or prototype state carries over; snapshots resume after that reload.
+- In a journey view only the double-clicked step instance interacts; switching journeys ends interact mode first.
+- Prototypes need to support `prototypeFlowInteractive` (see `references/ui-flow-contract.md`) to navigate inside the frame; others still scroll and take clicks, and a prototype that pins `prototypeRoute` stays on its route.
 
 Camera memory: the UI Flow opens fitted to all frames, and Fit canvas stays pressed while the fit keeps tracking resizes and measured preview sizes; the first pan, zoom or frame move ends tracking. The camera of the complete flow is stored per prototype in sessionStorage under `prototype-inspector:flow-camera:<prototypeId>` whenever it comes to rest, and is restored when the UI Flow remounts in the same browser tab (for example after visiting Components). A missing or malformed value falls back to the fit. The camera is never written into the flow layout payload.
 
@@ -246,6 +255,7 @@ Comments on the UI Flow canvas: with figma-export addon 0.14.0 or later, the add
 - Zoomed out: frames that are not live show cached snapshots. A comment on such a frame still sticks to its route; screenshots of line and canvas comments draw the pages of live frames only, and the other frames appear as their snapshots or skeletons.
 - Separate from Story comments: UI Flow comments are recorded in the `ui-flow` view; the comments panel lists the current view's comments (the **Comment views** switch shows the others), and reports filter by view. **Show location** on a comment whose pin is off screen moves the camera to its frame, line or point.
 - Journey views: only the first instance of a repeated route or node, and the first occurrence of a transition, carries a comment anchor; a comment on blank canvas gets no canvas point there, and existing canvas-point comments hide their pins in that view. Right after a switch, the screenshot of a line or canvas comment can show frames that are still loading as blank.
+- Interact mode: armed comment capture takes presses on an interacting frame too, so the pin lands on that frame's route. A comment placed after the frame navigated in-frame (for example from intake to review) still sticks to the frame's own route, while its screenshot shows the page the frame displays.
 - Figma export: UI Flow does not export a Figma payload. The export panel says **Open Static Flow to export this flow.** and links the Static Flow story when the prototype declares `figmaExport.flowStoryId`. Docs, Components and Data modes offer neither comments nor export.
 
 The canvas talks to the addon only through DOM attributes (`data-sbfx-view`, `data-sbfx-anchor`, `data-sbfx-canvas`, `data-sbfx-export`, `data-sbfx-comments`) and DOM events (`sbfx:anchors-moved`, `sbfx:reveal-anchor`); the Inspector imports nothing from the addon, so without it the canvas behaves exactly as before.

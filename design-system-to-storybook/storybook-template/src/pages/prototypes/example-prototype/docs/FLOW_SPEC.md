@@ -35,6 +35,13 @@
 
 When a Core Journey changes in the PRD, update its journey in the same edit. UI Flow lists the journeys; selecting one shows only its steps in one line.
 
+## Local State Rules
+
+- `prototypeRoute=<route-id>` pins the preview to that route (preview clicks do not change it), unless `prototypeFlowInteractive=true` is also present.
+- `prototypeFlowPreview=true` hides the prototype chrome (header and route tabs).
+- `prototypeFlowInteractive=true` (with `prototypeRoute`) lets in-preview navigation change the route, as in UI Flow interact mode: Submit intake moves an `intake` preview to `review`.
+- `[data-prototype-root]` carries `data-route` with the route currently rendered, and `data-prototype-interactive="true"` in the interactive preview.
+
 ## UI Flow Rules
 
 On the full UI Flow canvas, only transitions with `flowLine: "key"` are drawn as canvas edges; reference transitions remain in metadata and Data mode for reviewers. A journey view draws the transitions between consecutive steps whatever their `flowLine`, so `request-changes` shows the reference transition "Needs changes".

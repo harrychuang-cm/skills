@@ -2254,6 +2254,38 @@ export function getAdjacentStepIndex(stepCount, currentIndex, direction) {
   return (currentIndex + direction + stepCount) % stepCount;
 }
 
+// Interact mode (flow-frame-interaction): whether entering should fit the
+// frame, because it is narrower than 300 screen pixels or not fully inside
+// the canvas.
+export function needsInteractFit(visibleRect, camera, canvasSize) {
+  const left = visibleRect.x * camera.z + camera.x;
+  const top = visibleRect.y * camera.z + camera.y;
+  const width = visibleRect.width * camera.z;
+  const height = visibleRect.height * camera.z;
+
+  return width < 300 || left < 0 || top < 0 || left + width > canvasSize.width || top + height > canvasSize.height;
+}
+
+// A client point inside an interacting frame's document as a client point of
+// the host document: the frame's on-screen rect plus the point scaled by the
+// rendered-to-layout width ratio (camera zoom and Storybook toolbar zoom).
+export function frameClientToHostClient(frameRect, offsetWidth, point) {
+  const scale = offsetWidth ? frameRect.width / offsetWidth : 1;
+
+  return { x: frameRect.left + point.x * scale, y: frameRect.top + point.y * scale };
+}
+
+// The interact chip's current route: the title of a flow route other than the
+// frame's own; any other data-route value (a flow-only node id, a value the
+// flow does not know) shows nothing.
+export function resolveInteractRouteTitle(value, ownRouteId, routes) {
+  if (!value || value === ownRouteId) {
+    return null;
+  }
+
+  return routes.find((route) => route.id === value)?.title ?? null;
+}
+
 const controlKeyCodes = new Set(["Space", "Enter", "NumpadEnter", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"]);
 
 // Canvas command for a keydown/keyup, or null when the key must reach
@@ -2313,12 +2345,29 @@ export function resolveCanvasShortcut(eventLike, context) {
     if (context.marqueeActive) {
       return "cancel-marquee";
     }
+    if (context.interacting) {
+      return "exit-interact";
+    }
     return (context.selectionSize ?? 0) > 0 ? "clear-selection" : null;
   }
 
   // Editing keys (flow-canvas-editing): only with something to act on, and
   // never while a drag or a marquee is under way.
   const gestureActive = Boolean(context.dragActive || context.marqueeActive);
+
+  // Enter interacts with the one selected route frame (or route step
+  // instance); a focused control keeps Enter (handled above).
+  if (code === "Enter" || code === "NumpadEnter") {
+    return !mod &&
+      !eventLike.shiftKey &&
+      !eventLike.repeat &&
+      !gestureActive &&
+      !context.interacting &&
+      context.selectionSize === 1 &&
+      context.selectedRouteCount === 1
+      ? "enter-interact"
+      : null;
+  }
 
   if (nudgeDirections[code]) {
     return !mod && !gestureActive && !context.journeyFocus && (context.selectionSize ?? 0) > 0 ? "nudge" : null;

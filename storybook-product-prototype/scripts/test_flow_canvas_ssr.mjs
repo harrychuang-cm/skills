@@ -156,6 +156,7 @@ assert.match(zoomGroup, /<span>Zoom to fit<\/span><kbd>Shift\+1<\/kbd>/, "menu l
 assert.match(zoomGroup, /<span>100%<\/span><kbd>Shift\+0<\/kbd>/, "menu lists the 100% shortcut");
 assert.match(zoomGroup, /<dt>Zoom to selection<\/dt><dd>Shift\+2<\/dd>/, "menu help lists Shift+2 (flow-canvas-editing)");
 assert.match(zoomGroup, /<dt>Next \/ previous frame<\/dt><dd>N \/ Shift\+N<\/dd>/, "menu help lists N / Shift+N (flow-canvas-editing)");
+assert.match(zoomGroup, /<dt>Interact with a frame<\/dt><dd>Double-click or Enter, Esc to leave<\/dd>/, "menu help lists entering and leaving interact mode (flow-frame-interaction)");
 
 // Reset confirm text uses on-primary over primary; both fallback themes reach 4.5:1.
 const css = fs.readFileSync(`${root}/storybook-product-prototype/assets/prototype-inspector/prototype-inspector.css`, "utf8");
@@ -183,7 +184,7 @@ const browserContext = vm.createContext({
   ...React, ...geometry, ...helper, ...snapshotModules, console, URL, URLSearchParams, Date, JSON, Set, Map, UPDATE_GLOBALS: "UPDATE_GLOBALS", addons,
   window: { location: new URL("http://localhost:6006/iframe.html?id=pages-prototypes-ssr-flow--default&viewMode=story") },
 });
-vm.runInContext(`${code}\nglobalThis.testApi = { PrototypeFlow };`, browserContext);
+vm.runInContext(`${code}\nglobalThis.testApi = { PrototypeFlow, pickLoadingFrame };`, browserContext);
 const browserRoot = flowRoot(renderToStaticMarkup(React.createElement(browserContext.testApi.PrototypeFlow, { prototype })));
 assert.match(browserRoot, attr("data-sbfx-view", "ui-flow"), "the UI Flow root declares the ui-flow comment view");
 assert.match(browserRoot, attr("data-sbfx-export", "unavailable"), "the UI Flow root declines Figma export");
@@ -223,6 +224,44 @@ assert.match(
   /<iframe[^>]*><\/iframe><div aria-hidden="true" class="prototype-inspector__flow-frame-skeleton"/,
   "the loading live frame keeps its skeleton after (above) the iframe",
 );
+// Interact mode (flow-frame-interaction): the interacting frame loads its
+// route with prototypeFlowInteractive=true and its iframe takes input (the
+// non-interacting live iframe above is inert, out of the tab order and
+// hidden); a chip that screenshots ignore names it; the viewport can take
+// focus without joining the tab order; the frame keeps its comment anchor.
+{
+  const interacting = browserRender({ initialTiers: { intake: "live", review: "live" }, interactingFrameId: "intake" });
+  const frameOf = (html, id) => html.match(new RegExp(`<article[^>]*data-frame-id="${id}"[^>]*>[\\s\\S]*?</article>`))?.[0] ?? "";
+  const intakeFrame = frameOf(interacting, "intake");
+  const intakeIframe = intakeFrame.match(/<iframe[^>]*>/)?.[0] ?? "";
+
+  assert.match(intakeFrame, /^<article[^>]*data-interacting="true"/, "the interacting frame is marked");
+  assert.doesNotMatch(frameOf(interacting, "review"), /data-interacting/, "only one frame interacts");
+  assert.match(intakeIframe, /src="[^"]*prototypeRoute=intake[^"]*&amp;prototypeFlowInteractive=true"/, "the interacting frame loads the interactive preview URL");
+  assert.doesNotMatch(intakeIframe, /inert=|aria-hidden=|tabindex=/, "the interacting iframe takes pointer input and focus");
+  assert.match(intakeFrame, /data-sbfx-anchor="route:intake"/, "the interacting frame keeps its comment anchor");
+  assert.match(
+    interacting,
+    /<div aria-label="Interacting with Intake; press Escape to exit" class="prototype-inspector__flow-interact-chip" data-interact-frame="intake" data-sbfx-capture-ignore="true" role="status"[^>]*><span>互動中 · Esc 結束<\/span>/,
+    "the chip reads 互動中 · Esc 結束, has an English name and is left out of comment screenshots",
+  );
+  assert.match(interacting, /class="prototype-inspector__flow-interact-outline" data-interact-frame="intake" data-sbfx-capture-ignore="true"/, "the interaction outline is left out of comment screenshots");
+  assert.match(interacting, /<div[^>]*class="prototype-inspector__flow-viewport"[^>]*tabindex="-1"/, "the viewport takes focus outside the tab order");
+  assert.doesNotMatch(browserRender({ initialTiers: { intake: "live" } }), /prototype-inspector__flow-interact-chip/, "no chip without an interacting frame");
+  const interactRule = css.indexOf('.prototype-inspector__flow-frame[data-interacting="true"] .prototype-inspector__flow-frame-preview iframe {\n  pointer-events: auto;');
+  const captureRule = css.indexOf('html[data-sbfx-capture-mode="true"] .prototype-inspector--flow .prototype-inspector__flow-frame-preview iframe');
+
+  assert.ok(interactRule > 0 && interactRule < captureRule, "the interacting iframe takes pointer events, ahead of the comment capture rule");
+  // The load slot: a frame reloading its plain route after interact mode
+  // loads first, like the pinned frame, ahead of promoted and hovered frames.
+  const { pickLoadingFrame } = browserContext.testApi;
+  const waiting = ["near", "hovered", "selected", "left"].map((key, index) => ({ height: 878, key, width: 377, x: index * 480, y: 0 }));
+  const tiers = new Map(waiting.map((frame) => [frame.key, "live"]));
+  const options = { camera: { x: 0, y: 0, z: 1 }, canvasSize: { height: 1000, width: 400 }, hoveredKey: "hovered", pinnedId: null, promotedIds: new Set(["selected"]) };
+
+  assert.equal(pickLoadingFrame(tiers, waiting, new Set(), options), "selected", "without a reload, the selected frame loads first");
+  assert.equal(pickLoadingFrame(tiers, waiting, new Set(), { ...options, reloadIds: new Set(["left"]) }), "left", "a frame leaving interact mode loads first");
+}
 // Snapshots only for the current story: opening the UI Flow from the flow
 // export story (Static Flow) neither waits for nor makes snapshots.
 assert.match(browserRoot, attr("data-snapshot-preload", "pending"), "a regular story waits briefly for the cached snapshots");
@@ -234,6 +273,11 @@ vm.runInContext(`${code}\nglobalThis.testApi = { PrototypeFlow };`, exportStoryC
 const exportStoryRoot = flowRoot(renderToStaticMarkup(React.createElement(exportStoryContext.testApi.PrototypeFlow, { prototype })));
 assert.ok(exportStoryRoot, "the flow export story renders the UI Flow");
 assert.doesNotMatch(exportStoryRoot, /data-snapshot-preload/, "the flow export story does not wait for snapshots");
+assert.doesNotMatch(
+  renderToStaticMarkup(React.createElement(exportStoryContext.testApi.PrototypeFlow, { initialTiers: { intake: "live" }, interactingFrameId: "intake", prototype })),
+  /data-interacting/,
+  "the flow export story has no interact mode",
+);
 // Measured preview sizes stay out of the layout payload: positions only.
 assert.deepEqual(
   JSON.parse(JSON.stringify(getFlowLayoutPositions(new Map([["review", { height: 1105, previewHeight: 1040, previewWidth: 375, width: 377, x: 10.4, y: 20.6 }]])))),

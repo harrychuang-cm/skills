@@ -1843,6 +1843,21 @@ def validate_static_flow_export(path: Path | None, errors: list[str]) -> None:
     check("data-figma-text-auto-width" in text, "static flow export should mark edge labels for Figma text auto-width", errors)
 
 
+def validate_interactive_preview(files: dict[str, Path | None], warnings: list[str]) -> None:
+    """UI Flow interact mode (flow-frame-interaction): a prototype component
+    that never reads prototypeFlowInteractive keeps its prototypeRoute preview
+    pinned, so in-frame navigation cannot leave the route. A review aid, so a
+    warning (an error only under --strict-style)."""
+    component_path = files.get("component")
+    if component_path is None or not component_path.is_file():
+        return
+    if "prototypeFlowInteractive" not in read(component_path):
+        warnings.append(
+            "prototype does not support prototypeFlowInteractive; "
+            "UI Flow interact mode will stay on the pinned route"
+        )
+
+
 def validate_viewer_compatibility(files: dict[str, Path | None], errors: list[str]) -> None:
     component_path = files.get("component")
     story_path = files.get("story")
@@ -2365,6 +2380,7 @@ def main() -> int:
             validate_static_flow_story(files["static flow story"], errors)
             validate_static_flow_export(files["static flow export"], errors)
             validate_viewer_compatibility(files, errors)
+            validate_interactive_preview(files, warnings)
             validate_meta(files["meta"], errors)
             validate_flow(files["flow"], errors)
             validate_flow_viewport(files, errors, warnings, args.handoff_ready)

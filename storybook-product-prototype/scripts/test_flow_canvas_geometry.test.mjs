@@ -1553,3 +1553,64 @@ test("editing keys: Escape order and key routing (spec examples)", () => {
     assert.equal(geometry.resolveCanvasShortcut(eventLike, context), expected, label);
   }
 });
+
+test("interact keys: Enter routing and the Escape order (spec examples)", () => {
+  const key = (code, extra = {}) => ({ type: "keydown", code, shiftKey: false, ctrlKey: false, metaKey: false, altKey: false, repeat: false, ...extra });
+  const canvas = { dragActive: false, isMac: true, isTextEntry: false, overlayOpen: false, targetIsControl: false };
+  const oneRoute = { ...canvas, selectionSize: 1, selectedRouteCount: 1 };
+  const rows = [
+    ["Enter, one route frame", key("Enter"), oneRoute, "enter-interact"],
+    ["NumpadEnter, one route frame", key("NumpadEnter"), oneRoute, "enter-interact"],
+    ["Enter, one route step instance", key("Enter"), { ...oneRoute, journeyFocus: true }, "enter-interact"],
+    ["Enter, Reset confirm focused", key("Enter"), { ...oneRoute, targetIsControl: true }, null],
+    ["Enter, Reset dialog open", key("Enter"), { ...oneRoute, overlayOpen: true }, null],
+    ["Enter, one flow-only node", key("Enter"), { ...canvas, selectionSize: 1, selectedRouteCount: 0 }, null],
+    ["Enter, two route frames", key("Enter"), { ...canvas, selectionSize: 2, selectedRouteCount: 2 }, null],
+    ["Enter, a route and a node", key("Enter"), { ...canvas, selectionSize: 2, selectedRouteCount: 1 }, null],
+    ["Enter, nothing selected", key("Enter"), canvas, null],
+    ["Enter, IME composition", key("Enter", { isComposing: true }), oneRoute, null],
+    ["Enter, keyCode 229", key("Enter", { keyCode: 229 }), oneRoute, null],
+    ["Shift+Enter", key("Enter", { shiftKey: true }), oneRoute, null],
+    ["Cmd+Enter", key("Enter", { metaKey: true }), oneRoute, null],
+    ["Enter, auto-repeat", key("Enter", { repeat: true }), oneRoute, null],
+    ["Enter, already interacting", key("Enter"), { ...oneRoute, interacting: true }, null],
+    ["Enter, frame drag", key("Enter"), { ...oneRoute, dragActive: true }, null],
+    ["Escape, menu open while interacting", key("Escape"), { ...oneRoute, interacting: true, overlayOpen: true }, "close-overlay"],
+    ["Escape, drag while interacting", key("Escape"), { ...oneRoute, dragActive: true, interacting: true }, "cancel-drag"],
+    ["Escape, marquee while interacting", key("Escape"), { ...oneRoute, interacting: true, marqueeActive: true }, "cancel-marquee"],
+    ["Escape, interacting with a selection", key("Escape"), { ...oneRoute, interacting: true }, "exit-interact"],
+    ["Escape, interacting, nothing selected", key("Escape"), { ...canvas, interacting: true }, "exit-interact"],
+    ["Escape, selection only", key("Escape"), oneRoute, "clear-selection"],
+    ["Escape, nothing", key("Escape"), canvas, null],
+    ["Escape, IME composition while interacting", key("Escape", { isComposing: true }), { ...oneRoute, interacting: true }, null],
+  ];
+
+  for (const [label, eventLike, context, expected] of rows) {
+    assert.equal(geometry.resolveCanvasShortcut(eventLike, context), expected, label);
+  }
+});
+
+test("interact mode: the fit rule, frame coordinates and the current route title", () => {
+  const canvasSize = { height: 1000, width: 1600 };
+  // A 375-wide visible rect: 120 px on screen, 375 px inside, 375 px partly outside.
+  assert.equal(geometry.needsInteractFit({ height: 812, width: 375, x: 0, y: 0 }, { x: 100, y: 100, z: 0.32 }, canvasSize), true);
+  assert.equal(geometry.needsInteractFit({ height: 812, width: 375, x: 0, y: 0 }, { x: 100, y: 100, z: 1 }, canvasSize), false);
+  assert.equal(geometry.needsInteractFit({ height: 812, width: 375, x: 0, y: 0 }, { x: 1400, y: 100, z: 1 }, canvasSize), true);
+  assert.equal(geometry.needsInteractFit({ height: 812, width: 375, x: 0, y: 0 }, { x: 100, y: 300, z: 1 }, canvasSize), true);
+
+  // client point inside the frame -> client point in the host document
+  for (const [rect, offsetWidth, point, expected] of [
+    [{ height: 812, left: 0, top: 150, width: 375 }, 375, { x: 200, y: 100 }, { x: 200, y: 250 }],
+    [{ height: 406, left: 100, top: 50, width: 187.5 }, 375, { x: 200, y: 100 }, { x: 200, y: 100 }],
+    [{ height: 1218, left: 10, top: 20, width: 562.5 }, 375, { x: 100, y: 40 }, { x: 160, y: 80 }],
+  ]) {
+    assert.deepEqual(geometry.frameClientToHostClient(rect, offsetWidth, point), expected);
+  }
+
+  const routes = [{ id: "intake", title: "Intake" }, { id: "review", title: "Review Request" }];
+  assert.equal(geometry.resolveInteractRouteTitle("review", "intake", routes), "Review Request");
+  assert.equal(geometry.resolveInteractRouteTitle("intake", "intake", routes), null);
+  assert.equal(geometry.resolveInteractRouteTitle("approval-decision", "intake", routes), null, "a flow-only node id");
+  assert.equal(geometry.resolveInteractRouteTitle("font-size-step-2", "intake", routes), null, "an unknown value");
+  assert.equal(geometry.resolveInteractRouteTitle(null, "intake", routes), null);
+});

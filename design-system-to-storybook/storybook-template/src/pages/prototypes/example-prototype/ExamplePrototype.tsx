@@ -34,6 +34,20 @@ function getFlowPreviewFromLocation() {
   );
 }
 
+// UI Flow interact mode: with prototypeRoute, the preview starts on that
+// route and in-preview navigation may leave it.
+function getInteractivePreviewFromLocation() {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  return (
+    new URLSearchParams(window.location.search).get(
+      "prototypeFlowInteractive",
+    ) === "true"
+  );
+}
+
 function getRouteTitle(routeId: ExamplePrototypeRouteId) {
   return (
     examplePrototypeRoutes.find((route) => route.id === routeId)?.title ??
@@ -46,10 +60,14 @@ export function ExamplePrototype({
   isFlowPreview = false,
 }: ExamplePrototypeProps) {
   const previewRoute = getRouteFromLocation();
+  const isInteractivePreview =
+    Boolean(previewRoute) && getInteractivePreviewFromLocation();
   const [routeId, setRouteId] = useState<ExamplePrototypeRouteId>(
     previewRoute ?? initialRouteId,
   );
-  const visibleRoute = previewRoute ?? routeId;
+  const visibleRoute = isInteractivePreview
+    ? routeId
+    : (previewRoute ?? routeId);
   const routeTitle = getRouteTitle(visibleRoute);
   const statusLabel = useMemo(() => {
     if (visibleRoute === "handoff") return "Approved";
@@ -60,7 +78,7 @@ export function ExamplePrototype({
   const isEmbeddedFlowPreview = isFlowPreview || getFlowPreviewFromLocation();
 
   const goTo = (nextRoute: ExamplePrototypeRouteId) => {
-    if (!previewRoute) {
+    if (!previewRoute || isInteractivePreview) {
       setRouteId(nextRoute);
     }
   };
@@ -75,6 +93,7 @@ export function ExamplePrototype({
         .join(" ")}
       data-prototype-root="true"
       data-route={visibleRoute}
+      data-prototype-interactive={isInteractivePreview ? "true" : undefined}
     >
       <section
         className="sbt-example-prototype__shell"
