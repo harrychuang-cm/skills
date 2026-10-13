@@ -158,10 +158,16 @@ assert.match(zoomGroup, /<dt>Zoom to selection<\/dt><dd>Shift\+2<\/dd>/, "menu h
 assert.match(zoomGroup, /<dt>Next \/ previous frame<\/dt><dd>N \/ Shift\+N<\/dd>/, "menu help lists N / Shift+N (flow-canvas-editing)");
 assert.match(zoomGroup, /<dt>Interact with a frame<\/dt><dd>Double-click or Enter, Esc to leave<\/dd>/, "menu help lists entering and leaving interact mode (flow-frame-interaction)");
 
+// UI Flow rules live in flow-canvas.css, which flow-canvas.js loads after the
+// shared stylesheet holding the --pi-* token layer.
+const css = fs.readFileSync(`${root}/storybook-product-prototype/assets/prototype-inspector/flow-canvas.css`, "utf8");
+const tokenCss = fs.readFileSync(`${root}/storybook-product-prototype/assets/prototype-inspector/prototype-inspector.css`, "utf8");
+const sharedCssImport = original.indexOf('\nimport "./prototype-inspector.css";\n');
+assert.ok(sharedCssImport > 0, "flow-canvas.js imports the shared stylesheet");
+assert.ok(original.indexOf('\nimport "./flow-canvas.css";\n') > sharedCssImport, "flow-canvas.js imports flow-canvas.css after the shared stylesheet");
 // Reset confirm text uses on-primary over primary; both fallback themes reach 4.5:1.
-const css = fs.readFileSync(`${root}/storybook-product-prototype/assets/prototype-inspector/prototype-inspector.css`, "utf8");
 assert.match(css, /\.prototype-inspector__flow-reset-dialog-confirm \{\n  color: var\(--pi-sys-color-on-primary\);/, "Reset confirm text uses --pi-sys-color-on-primary");
-const fallbacks = (name) => [...css.matchAll(new RegExp(`${name}: var\\(--sbt-sys-color-[a-z-]+, (#[0-9a-f]{6})\\)`, "g"))].map((match) => match[1]);
+const fallbacks = (name) => [...tokenCss.matchAll(new RegExp(`${name}: var\\(--sbt-sys-color-[a-z-]+, (#[0-9a-f]{6})\\)`, "g"))].map((match) => match[1]);
 const luminance = (hex) => {
   const [r, g, b] = [1, 3, 5].map((index) => parseInt(hex.slice(index, index + 2), 16) / 255).map((value) => (value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4));
   return 0.2126 * r + 0.7152 * g + 0.0722 * b;
@@ -192,6 +198,16 @@ assert.match(browserRoot, attr("data-sbfx-export-label", "Open Static Flow to ex
 const exportHref = browserRoot.match(/data-sbfx-export-href="([^"]+)"/)?.[1]?.replaceAll("&amp;", "&");
 assert.ok(exportHref, "the UI Flow root links the Static Flow story");
 assert.equal(new URL(exportHref).searchParams.get("path"), "/story/pages-prototypes-ssr-flow--static-flow", "the export href opens the Static Flow story");
+// UI Flow module set: flow-canvas.js exports its module version and the
+// measurement helpers other modes reuse, and the root names that version.
+const flowCanvasVersion = vm.runInContext('typeof flowCanvasVersion === "string" ? flowCanvasVersion : ""', browserContext);
+assert.match(flowCanvasVersion, /^flow-canvas-\d{4}-\d{2}-\d{2}$/, "flowCanvasVersion reads flow-canvas-YYYY-MM-DD");
+assert.match(original, /^export const flowCanvasVersion = /m, "flow-canvas.js exports flowCanvasVersion");
+assert.match(browserRoot, attr("data-flow-canvas-version", flowCanvasVersion || "missing"), "the UI Flow root carries flowCanvasVersion");
+assert.match(original, /^export function getMeasuredFramePreviewSize\(/m, "flow-canvas.js exports getMeasuredFramePreviewSize");
+assert.equal(vm.runInContext("typeof getMeasuredFramePreviewSize", browserContext), "function", "getMeasuredFramePreviewSize is a function");
+assert.match(original, /^export const routePreviewMeasurementSelector = /m, "flow-canvas.js exports routePreviewMeasurementSelector");
+assert.equal(vm.runInContext("routePreviewMeasurementSelector", browserContext), '[data-prototype-route-preview="true"]', "routePreviewMeasurementSelector names the route preview");
 // Level of detail, with a browser-like window so route preview URLs exist
 // (before tiers, every route frame rendered its iframe here).
 const browserRender = (props = {}) =>
@@ -321,6 +337,7 @@ assert.match(element(html, /<div class="prototype-inspector__flow-world"[^>]*>/)
 const empty = render({ id: "empty-flow", flow: { routes: [] } });
 assert.match(empty, /prototype-inspector__empty/, "a flow without routes renders the empty state");
 assert.match(empty, /data-sbfx-comments="unavailable"/, "an empty UI Flow offers no comments");
+assert.match(empty, attr("data-flow-canvas-version", flowCanvasVersion || "missing"), "the empty UI Flow carries flowCanvasVersion");
 
 // Journey focus (flow-journey-focus): the journey list and the simplified
 // view. The selection comes from a window.sessionStorage stub.
@@ -573,8 +590,8 @@ const undeclaredExample = { id: "example-prototype", flow: exampleFlowWithoutJou
   assert.equal(count(selected, /flow-selection-outline" data-frame-outline="[^"]+" data-selected="true"/g), 1, "one outline shown");
   // Snapping guides: the approved token with its light and dark fallbacks,
   // and two guide lines rendered hidden in a layer screenshots ignore.
-  assert.match(css, /--pi-sys-color-annotation-touch-target: var\(--sbt-sys-color-annotation-touch-target, #db2777\);/, "guide token, light fallback");
-  assert.match(css, /--pi-sys-color-annotation-touch-target: var\(--sbt-sys-color-annotation-touch-target, #f472b6\);/, "guide token, dark fallback");
+  assert.match(tokenCss, /--pi-sys-color-annotation-touch-target: var\(--sbt-sys-color-annotation-touch-target, #db2777\);/, "guide token, light fallback");
+  assert.match(tokenCss, /--pi-sys-color-annotation-touch-target: var\(--sbt-sys-color-annotation-touch-target, #f472b6\);/, "guide token, dark fallback");
   assert.match(
     selected,
     /<div class="prototype-inspector__flow-guides" data-sbfx-capture-ignore="true"><div class="prototype-inspector__flow-guide" data-axis="x" hidden=""><\/div><div class="prototype-inspector__flow-guide" data-axis="y" hidden=""><\/div><\/div>/,
@@ -673,4 +690,4 @@ const undeclaredExample = { id: "example-prototype", flow: exampleFlowWithoutJou
   assert.doesNotMatch(journeySelected, /prototype-inspector__flow-section/, "no sections in the journey view");
 }
 
-console.log("PASS UI Flow server render: frames, flow node, control names, camera layers, fit tracking, frame labels, zoom menu, contrast, comment declarations, comment anchors, empty state, frame size cache, level of detail, journey list, journey focus view, read-only journey view, auto layout button and feature names, selection, snapping guides, minimap, flow group sections, journey view editing");
+console.log("PASS UI Flow server render: frames, flow node, control names, camera layers, fit tracking, frame labels, zoom menu, contrast, comment declarations, module version and exports, comment anchors, empty state, frame size cache, level of detail, journey list, journey focus view, read-only journey view, auto layout button and feature names, selection, snapping guides, minimap, flow group sections, journey view editing");

@@ -93,8 +93,23 @@ import {
 import { getCodeUpdateCount, subscribeToCodeUpdates } from "./flow-canvas-hmr.js";
 import { captureFrameSnapshot, SNAPSHOT_FORMAT_VERSION } from "./flow-snapshot.js";
 import { createIndexedDbAdapter, createSnapshotCache, getSnapshotKey } from "./flow-snapshot-cache.js";
+// The shared inspector styles (the --pi-* token layer) first, then the UI Flow
+// rules: preview.js imports this module before its own stylesheet, so this
+// keeps the shared rules ahead of the flow rules.
+import "./prototype-inspector.css";
+import "./flow-canvas.css";
 
-const routePreviewMeasurementSelector = '[data-prototype-route-preview="true"]';
+// The UI Flow module set's own version, separate from the project-owned
+// prototypeInspectorBuildTag in preview.js. Change it in the same edit as any
+// file of the set (flow-canvas.js, flow-canvas-geometry.js, flow-canvas-hmr.js,
+// flow-snapshot.js, flow-snapshot-cache.js, flow-canvas.css): the root's
+// data-flow-canvas-version shows it, and install_prototype_inspector.mjs
+// --ui-flow-only reports it before and after an update.
+export const flowCanvasVersion = "flow-canvas-2026-10-12";
+
+// Exported with getMeasuredFramePreviewSize for the other inspector modes
+// (and project modes) that measure a route preview the same way.
+export const routePreviewMeasurementSelector = '[data-prototype-route-preview="true"]';
 
 const canvasPadding = 96;
 
@@ -372,7 +387,7 @@ function openPrototypeComponentsMode() {
   }
 }
 
-function getMeasuredFramePreviewSize(iframe) {
+export function getMeasuredFramePreviewSize(iframe) {
   const doc = iframe.contentDocument;
 
   if (!doc?.body) {
@@ -5506,6 +5521,7 @@ export function PrototypeFlow({ initialSelection = null, initialTiers = null, in
     "div",
     {
       className: "prototype-inspector prototype-inspector--flow",
+      "data-flow-canvas-version": flowCanvasVersion,
       // figma-export review reads these: comments here belong to the ui-flow
       // view, and Figma export points to the Static Flow story instead.
       "data-sbfx-export": "unavailable",
@@ -6403,7 +6419,7 @@ export function PrototypeFlow({ initialSelection = null, initialTiers = null, in
 function FlowEmpty({ declarations, message }) {
   return createElement(
     "div",
-    { className: "prototype-inspector prototype-inspector--empty", ...declarations },
+    { className: "prototype-inspector prototype-inspector--empty", "data-flow-canvas-version": flowCanvasVersion, ...declarations },
     createElement("p", { className: "prototype-inspector__empty" }, message),
   );
 }

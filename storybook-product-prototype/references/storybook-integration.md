@@ -132,10 +132,107 @@ If the target project has no prototype inspector:
 2. Install the bundled runtime only when the user asks for Storybook UI Flow review:
    `node <skill-root>/scripts/install_prototype_inspector.mjs --project-root <repo-root>`.
    The runtime depends on two files outside its folder, and the installer writes both: `preview.js` imports the flow layout helper from `../../src/pages/prototypes/prototypeFlowLayout` and the fingerprint module from `../../scripts/prototype-review/fingerprint.mjs`. Do not copy `.storybook/prototype-inspector/` into a project without them; a missing import breaks every story's preview.
-3. Do not replace an existing `.storybook/prototype-inspector` folder, `src/pages/prototypes/prototypeFlowLayout.ts`, or `scripts/prototype-review/fingerprint.mjs` unless the user approves `--force`. Re-running with `--force` is also how an existing install picks up bundled addon updates; repeat `--token-prefix <prefix>` on that rerun when the project uses one, because `--force` re-copies the stylesheet. When an existing helper lacks an export the Inspector imports, the installer names the missing exports and exits without writing anything; replacing that helper also needs the user's approval for `--force`.
+3. Do not replace an existing `.storybook/prototype-inspector` folder, `src/pages/prototypes/prototypeFlowLayout.ts`, or `scripts/prototype-review/fingerprint.mjs` unless the user approves `--force`. Re-running with `--force` is also how an existing install picks up bundled addon updates; repeat `--token-prefix <prefix>` on that rerun when the project uses one, because `--force` re-copies the stylesheet. When an existing helper lacks an export the Inspector imports, the installer names the missing exports and exits without writing anything; replacing that helper also needs the user's approval for `--force`. A project that customized the Inspector outside the UI Flow takes UI Flow updates with `--ui-flow-only` instead of `--force`; see Update Only the UI Flow in a Customized Project below.
 4. The inspector CSS defines a `--pi-*` token layer: each token reads the `--sbt-*` design token when the project defines it and otherwise falls back to built-in neutral values (with a `prefers-color-scheme: dark` fallback set), so the panels render correctly in any React Storybook project. When the project uses another token prefix, pass `--token-prefix <prefix>` (for example `--token-prefix md`) to bind the layer to the project's tokens, or redefine `--pi-*` tokens on `.prototype-inspector` in a stylesheet loaded after the addon CSS.
 
 If the target project already has a prototype inspector, match its parameter name, preview-mode query conventions, route preview selector, and saved layout helper. For repos created from `design-system-to-storybook/storybook-template`, keep the existing `prototypeFlowLayout.ts` schema and Static Flow pattern.
+
+## Update Only the UI Flow in a Customized Project
+
+A project that changed the Inspector outside the UI Flow, for example with its own Story, Docs, Components or Data code in `preview.js` and `prototype-inspector.css`, must not take bundled updates with `--force`: it copies every bundled file over `.storybook/prototype-inspector/` and the project's code is lost. Such a project updates only the UI Flow module set, the six files the skill owns:
+
+- `flow-canvas.js`, `flow-canvas-geometry.js`, `flow-canvas-hmr.js`, `flow-snapshot.js` and `flow-snapshot-cache.js`: the canvas code.
+- `flow-canvas.css`: every UI Flow rule (a rule whose selectors all name the `.prototype-inspector--flow` class or a `.prototype-inspector__flow-*` class outside parentheses, brackets and strings). It reads design tokens only through `--pi-*` properties.
+
+Every other file in the folder belongs to the project: `preview.js`, `prototype-inspector.css` (the `--pi-*` token layer and the rules of the other modes), `manager.js` and `preset.js`. `flow-canvas.js` imports `./prototype-inspector.css` and then `./flow-canvas.css`, so the UI Flow rules always come after the shared ones. It also exports `flowCanvasVersion` (`flow-canvas-YYYY-MM-DD`, shown on the UI Flow root as `data-flow-canvas-version`) and, for modes that measure a route preview, `getMeasuredFramePreviewSize` and `routePreviewMeasurementSelector`.
+
+### 1. Check whether the one-time extraction is needed
+
+A dry run runs every check and writes nothing:
+
+```sh
+node <skill-root>/scripts/install_prototype_inspector.mjs --project-root <repo-root> --ui-flow-only --dry-run
+```
+
+| Output | Meaning and next step |
+| --- | --- |
+| `Would update UI Flow module set (<before> -> <after>)` and a report | Ready: go to step 3. |
+| `ui-flow-only: … does not import PrototypeFlow from ./flow-canvas.js, so it still embeds an older UI Flow. …` | `preview.js` was forked before the UI Flow moved into `flow-canvas.js`. Do the one-time extraction in step 2. |
+| `ui-flow-only: the bundled UI Flow modules no longer export these imported names: <name> (<module>), …` | A project module imports or re-exports a name the current modules dropped or renamed (` in <file>` names the importer when it is not `preview.js`). Move that code to the current exports (step 2, item 3), then rerun. |
+| `ui-flow-only: the flow layout helper … is older than the runtime (…) and has been edited, …` | The project's `prototypeFlowLayout.ts` is older than the runtime and differs from every helper the skill shipped, so replacing it would lose the project's code. Merge by hand: start from the skill's `assets/prototype-flow-layout/prototypeFlowLayout.ts` and re-add the project's own code (copying only the missing exports into the old helper is not enough: it would keep saving version-1 layouts). Then rerun. |
+| `ui-flow-only: cannot read the import statement at <file>:<line>, …` | The scanner could not read that import. Rewrite it as a plain `import { … } from "…";` statement, then rerun. |
+| `ui-flow-only: … does not exist. …` | No Inspector is installed: run the installer without `--ui-flow-only`. |
+| `ui-flow-only: cannot read the rules of … prototype-inspector.css: Unbalanced …` | Fix the brace at the reported line first. |
+
+### 2. One-time extraction
+
+Only a `preview.js` that still embeds the UI Flow needs this; afterwards every update is step 3 alone. Work in its own commit or branch so the change stays reviewable, and compare with the bundled `assets/prototype-inspector/preview.js`, which is the reference shape.
+
+1. Remove the embedded UI Flow from `preview.js`: the `PrototypeFlow` component and the code only it uses (camera, frames, edges, journey list, snapshots, layout import and export, flow geometry). Keep the code the project's own modes use.
+2. Import the UI Flow the way the bundled `preview.js` does, keeping only the names the project uses (any name these modules export may be imported):
+
+   ```js
+   import {
+     createStorybookGlobals,
+     getPrototypeViewport,
+     getRoutePreviewSource,
+     openPrototypeExternalUrl,
+     PrototypeFlow,
+   } from "./flow-canvas.js";
+   import {
+     defaultPrototypeModeGlobalName,
+     isRecord,
+     normalizeComponentRoutes,
+     normalizeRouteComponents,
+     normalizeRoutes,
+   } from "./flow-canvas-geometry.js";
+   ```
+
+3. Replace the project's copies of shared helpers with the module exports: `getMeasuredFramePreviewSize` and `routePreviewMeasurementSelector` from `./flow-canvas.js` for a mode that measures a route preview, and the route, viewport and globals helpers above. A copy that deliberately behaves differently can stay under a name the modules do not export.
+4. Keep `import "./prototype-inspector.css";` in `preview.js`. Leave the old UI Flow rules in `prototype-inspector.css` for step 3 to remove with `--strip-flow-css`; do not keep them, because `flow-canvas.js` loads `prototype-inspector.css` before `flow-canvas.css`, so they still apply wherever they are more specific than the new rules or the new rules leave a property unset. A mixed rule (one selector list holding UI Flow and other selectors, or a UI Flow class only inside `:not()`, `:is()` or an attribute value) is listed but never removed: the UI Flow is styled only by `flow-canvas.css`, so drop a UI Flow selector from such a list by hand, and keep a UI Flow class that is only there to exclude the canvas.
+
+Rerun the dry run until it prints `Would update UI Flow module set`.
+
+### 3. Update
+
+```sh
+node <skill-root>/scripts/install_prototype_inspector.mjs --project-root <repo-root> --ui-flow-only --strip-flow-css
+```
+
+Run it with `--strip-flow-css` unless you want to look at the leftover UI Flow rules first (the dry run lists them): rules left in `prototype-inspector.css` load before `flow-canvas.css` and override the new canvas wherever they are more specific or it leaves a property unset.
+
+It copies the six files over the project's copies, replaces `src/pages/prototypes/prototypeFlowLayout.ts` only when it is older than the runtime (it lacks an export the runtime imports or has an older `prototypeFlowLayoutSchemaVersion`) and is a helper version the skill shipped, unedited; an edited older helper stops the run instead, and installs `scripts/prototype-review/fingerprint.mjs` only when it is missing. It never writes `preview.js`, `manager.js`, `preset.js` or `.storybook/main.*`, and writes `prototype-inspector.css` only to remove UI Flow rules with `--strip-flow-css`. It reports, in order:
+
+- `Updated UI Flow module set (<before> -> <after>)` and the six paths; `none` before means the project's `flow-canvas.js` predates `flowCanvasVersion`.
+- The helper and fingerprint result (`Installed`, `Replaced (missing exports: …)` or `Reused`).
+- `Missing --pi tokens: <names>` or `Missing --pi tokens: none`: the `--pi-*` tokens `flow-canvas.css` and the module scripts' inline styles read that the project does not define (step 4).
+- `Missing shared rules in prototype-inspector.css: <classes>` or `… none`: classes the UI Flow renders whose rules live in the shared stylesheet (for example `.prototype-inspector__components-count` on frame labels and `.prototype-inspector__empty` for a flow without routes) that the project's file has no rule for (step 4). Rules the canvas cannot do without, such as `.prototype-inspector__visually-hidden`, ship in `flow-canvas.css` itself.
+- `Stale UI Flow rules in prototype-inspector.css: <count>` with up to 10 selectors and their lines. `--strip-flow-css` removes exactly those rules, each together with the comments directly above it, the blank lines before it and the rest of its last line; comments a blank line separates from a removed rule (a section heading, say) and every other rule stay, and no two kept lines are joined. Without it they are kept, and the report warns that they still override the new canvas. Mixed rules follow in their own list and are never removed.
+
+`--dry-run` and `--strip-flow-css` work only with `--ui-flow-only`, and `--ui-flow-only` refuses `--force` and `--token-prefix`; each of these combinations, and `--project-root` or `--token-prefix` without a value, exits 1 before any check. `--token-prefix` does not apply because `flow-canvas.css` reads only `--pi-*` tokens and this mode never rewrites the token layer.
+
+### 4. Add missing tokens and shared rules
+
+Copy each listed shared rule from the bundled `assets/prototype-inspector/prototype-inspector.css` into the project's file, adapted to the project's styling if it restyled that class elsewhere.
+
+Define each listed token in the project's `prototype-inspector.css` the same way it wraps its other `--pi-*` tokens, with the light fallback from the bundled `assets/prototype-inspector/prototype-inspector.css` and, when the bundled layer also sets it in its `prefers-color-scheme: dark` block, the dark one there. For a project bridged with `--token-prefix acme`:
+
+```css
+.prototype-inspector {
+  --pi-sys-color-annotation-touch-target: var(--acme-sys-color-annotation-touch-target, #db2777);
+}
+```
+
+The installer never writes tokens or shared rules: the project's stylesheet is the project's.
+
+### 5. Verify
+
+- Rerun the dry run: `Would update UI Flow module set (<after> -> <after>)`, `Missing --pi tokens: none`, `Missing shared rules in prototype-inspector.css: none` and `Stale UI Flow rules in prototype-inspector.css: 0`.
+- `git status --short` lists only the six files, plus `prototype-inspector.css` when rules were removed or tokens and shared rules added, and the helper or fingerprint when the report said so. `flow-canvas.css` (and a fingerprint or helper the report says it installed) shows up as a new, untracked file on the first update.
+- In Storybook, open a prototype's UI Flow. In the browser console of the Storybook page, `document.querySelector("#storybook-preview-iframe").contentDocument.querySelector(".prototype-inspector--flow").dataset.flowCanvasVersion` equals the new version (the canvas renders inside the preview iframe). Pan, zoom, drag a frame and open the zoom menu. Then open the project's own modes (Components, Data) and confirm they still work.
+- Run the project's own checks, such as its typecheck and any checks of its Inspector copy.
+
+Never run the installer with `--force` on a customized project; files it overwrites come back only from version control.
 
 ## Bundled Prototype Inspector
 
