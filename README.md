@@ -323,6 +323,22 @@ Invocation examples (run from the workspace that contains both platform repos, w
 | Claude Code | `/platform-parity-handoff profile 在 docs/handoff/parity-profile.json，對既有交接包 docs/features/<feature>/handoff/<date>/ 在 Android 端做 audit pre（實作前定位）` |
 | Cursor | `/platform-parity-handoff 對 docs/features/<feature>/handoff/<date>/ 做 audit post，對凍結 SHA 逐項判定並列出一次回寫清單` |
 
+### `iphone-duo-adaptation`
+
+Adapt any iOS app to Apple's foldable iPhone Duo and verify it with automated fold/unfold screenshot QC. The prototype is SaraStock (a CMoney Lego production-line app, six design-review rounds in 2026-10); three non-Lego apps did their own rounds with different choices, so the skill never assumes one layout is right — it makes sure every decision is asked, recorded, implemented behind large-screen-only switches, and shown to the designer as before/after screenshots:
+
+1. **Inventory** (`scripts/inventory_screen_deps.py`): find and remove screen-size-dependent layout (`UIScreen.main`, cached `screenWidth`, orientation/model checks), rules r1–r5 with P1/P2 priorities.
+2. **Questionnaire** (`references/questionnaire.md`): ten display-style questions the designer answers (system vertical bar, button placement and grouping, header, column colour, list+detail split, underline tabs, orientation, tab bar); "follow the system" is the only default.
+3. **Layout rulebook** (`references/layout-rules.md`) backed by measured iOS 27.1 behaviour and limits (`references/device-and-system.md`) and the Apple HIG (`references/hig-summary.md`).
+4. **Two implementation tracks**: `references/track-lego.md` (opt-in switches already in the shared framework) and `references/track-uikit.md` (`axisBehavior`, `toolbarItems`, `sharesBackground`, split containers, system tab bar — with the pitfalls three apps hit).
+5. **QC harness** (`scripts/run_qc.py`, `assets/DuoQCHarness.swift` + a JSON walk plan): folds/unfolds the simulator via Device Hub HID events, walks screens, dumps the accessibility tree, screenshots the lit panel, applies rules (`scripts/analyze.py`) and builds an HTML report (`scripts/report.py`).
+6. **Report and handoff** (`references/report-and-handoff.md`): before/after blocks where every "after" is the current build, verification table, known limits, open questions for the designer.
+
+Use this whenever an iOS app must be checked or optimized for iPhone Duo, or someone mentions 摺疊、直欄、開合、內／外螢幕. Not for Android, iPad multitasking or general responsive layout.
+
+One-page navigation guide (zh-TW): `iphone-duo-adaptation/README.md`. Visual guide (zh-TW, single HTML file): `iphone-duo-adaptation/guide.html`.
+
+
 ## Usage
 
 Install or reference these folders as agent skills in Claude Code, Codex, or Cursor. Each skill lives in its own directory and exposes a `SKILL.md` with frontmatter metadata and workflow instructions.
@@ -493,6 +509,14 @@ The generated report is a static HTML + CSS artifact, usually under `reports/des
 │   │   └── openai.yaml
 │   ├── assets/
 │   │   └── profile.example.json
+│   ├── references/
+│   ├── scripts/
+│   └── templates/
+├── iphone-duo-adaptation/
+│   ├── SKILL.md
+│   ├── README.md
+│   ├── guide.html
+│   ├── assets/
 │   ├── references/
 │   ├── scripts/
 │   └── templates/

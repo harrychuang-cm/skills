@@ -1,0 +1,516 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>iPhone Duo 適配指南</title>
+<style>
+/* 版面概念：Apple 產品頁的節奏。白／淺灰交替的滿版區塊、大標題、簡單示意圖，一種強調色；文字只講重點。 */
+:root {
+  --bg: #ffffff;
+  --bg-alt: #f5f5f7;
+  --tile: #ffffff;
+  --fg: #1d1d1f;
+  --fg-2: #6e6e73;
+  --fg-3: #86868b;
+  --accent: #0066cc;
+  --accent-soft: rgba(0, 102, 204, .12);
+  --hairline: #d2d2d7;
+  --code-bg: #f5f5f7;
+  --nav-bg: rgba(255, 255, 255, .78);
+  --sev-critical: #d70015;
+  --sev-high: #c93400;
+  --font-display: "SF Pro Display", "SF Pro TC", -apple-system, BlinkMacSystemFont, "PingFang TC", "Helvetica Neue", "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+  --font-text: "SF Pro Text", "SF Pro TC", -apple-system, BlinkMacSystemFont, "PingFang TC", "Helvetica Neue", "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+  --font-mono: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+  --band: clamp(72px, 10vw, 128px);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #000000; --bg-alt: #101012; --tile: #1d1d1f; --fg: #f5f5f7; --fg-2: #a1a1a6; --fg-3: #86868b;
+    --accent: #2997ff; --accent-soft: rgba(41, 151, 255, .18); --hairline: #424245; --code-bg: #1d1d1f;
+    --nav-bg: rgba(22, 22, 23, .78); --sev-critical: #ff453a; --sev-high: #ff9f0a;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #000000; --bg-alt: #101012; --tile: #1d1d1f; --fg: #f5f5f7; --fg-2: #a1a1a6; --fg-3: #86868b;
+  --accent: #2997ff; --accent-soft: rgba(41, 151, 255, .18); --hairline: #424245; --code-bg: #1d1d1f;
+  --nav-bg: rgba(22, 22, 23, .78); --sev-critical: #ff453a; --sev-high: #ff9f0a;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; scroll-padding-top: 60px; }
+body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--font-text); font-size: 17px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 6px; }
+code { font-family: var(--font-mono); font-size: .88em; }
+
+.wrap { max-width: 1040px; margin-inline: auto; padding-inline: max(20px, env(safe-area-inset-left, 0px)); }
+.band { padding-block: var(--band); }
+.band.alt { background: var(--bg-alt); }
+
+/* 子導覽列 */
+.subnav { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 10; background: var(--nav-bg);
+  -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px); border-bottom: 1px solid var(--hairline); }
+.subnav .wrap { display: flex; align-items: center; gap: 24px; height: 52px; }
+.subnav .name { font-family: var(--font-display); font-size: 19px; font-weight: 600; white-space: nowrap; }
+.subnav nav { margin-left: auto; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.subnav nav::-webkit-scrollbar { display: none; }
+.subnav ul { display: flex; gap: 22px; list-style: none; margin: 0; padding: 0; }
+.subnav a { color: var(--fg); font-size: 13px; white-space: nowrap; opacity: .85; }
+.subnav a:hover { color: var(--accent); text-decoration: none; opacity: 1; }
+
+/* 標題 */
+h1, h2, h3 { font-family: var(--font-display); margin: 0; text-wrap: balance; }
+.eyebrow { font-size: clamp(17px, 1.6vw, 21px); font-weight: 600; color: var(--accent); margin: 0; }
+h1 { font-size: clamp(42px, 7.4vw, 80px); font-weight: 700; line-height: 1.08; }
+h2 { font-size: clamp(32px, 5vw, 52px); font-weight: 700; line-height: 1.12; }
+h3 { font-size: 21px; font-weight: 700; line-height: 1.25; }
+.lede { margin: 0; max-width: 38em; font-size: clamp(17px, 1.7vw, 21px); line-height: 1.55; font-weight: 600; color: var(--fg-3); }
+.lede strong { color: var(--fg); font-weight: 600; }
+.head { display: grid; gap: 16px; margin-bottom: clamp(40px, 6vw, 64px); }
+
+/* 開頭 */
+.hero { padding-block: clamp(56px, 8vw, 104px) clamp(64px, 9vw, 112px); text-align: center; }
+.hero .head { justify-items: center; }
+.hero .lede { max-width: 30em; }
+.devices { display: flex; align-items: flex-end; justify-content: center; gap: clamp(16px, 3.4vw, 44px); text-align: left; }
+.devices figure { margin: 0; display: grid; gap: 14px; min-width: 0; }
+.devices .d-outer { flex: 466 1 0; max-width: 233px; }
+.devices .d-port { flex: 669 1 0; max-width: 334px; }
+.devices .d-land { flex: 951 1 0; max-width: 476px; }
+.devices figcaption { display: grid; gap: 2px; padding-left: 2px; }
+.devices figcaption b { font-size: 15px; font-weight: 600; }
+.devices figcaption span { font-size: 13px; color: var(--fg-3); font-variant-numeric: tabular-nums; }
+
+/* 裝置示意：比例照 pt 尺寸，圓角 59 pt，直欄 84 pt */
+.dev { position: relative; width: 100%; border: 3px solid var(--fg); background: var(--bg); overflow: hidden; }
+.d-outer .dev { aspect-ratio: 466 / 678; border-radius: 12.7% / 8.7%; }
+.d-port .dev { aspect-ratio: 669 / 951; border-radius: 8.8% / 6.2%; }
+.d-land .dev { aspect-ratio: 951 / 669; border-radius: 6.2% / 8.8%; }
+.dev .col { position: absolute; top: 0; bottom: 0; right: 0; background: var(--bg-alt); border-left: 1px solid var(--hairline); }
+.d-outer .dev .col { width: 18%; }
+.d-land .dev .col { width: 8.8%; }
+.dev .dot { position: absolute; left: 50%; width: 9px; height: 9px; margin-left: -4.5px; border-radius: 50%; background: var(--accent); }
+.dev .t1 { top: 16%; } .dev .b1 { bottom: 16%; } .dev .b2 { bottom: 9%; }
+.dev .hdr { position: absolute; left: 8%; top: 7%; height: 5px; border-radius: 3px; background: var(--fg-3); opacity: .5; }
+.d-outer .dev .hdr { width: 34%; left: 24%; }
+.d-land .dev .hdr { width: 22%; left: 40%; }
+.dev .side { position: absolute; left: 0; top: 0; bottom: 0; width: 12.6%; border-right: 1px solid var(--hairline); }
+.dev .side i { position: absolute; left: 22%; width: 56%; height: 4px; border-radius: 2px; background: var(--fg-3); opacity: .45; }
+.dev .side i:first-child { background: var(--accent); opacity: 1; }
+.dev .topbar { position: absolute; left: 0; right: 0; top: 0; height: 10%; border-bottom: 1px solid var(--hairline); background: var(--bg-alt); }
+.dev .topbar .dot { top: 50%; margin-top: -4.5px; }
+.dev .content { position: absolute; border-radius: 6px; background: var(--accent-soft); }
+
+/* 五個階段 */
+.stages { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; list-style: none; margin: 0; padding: 0; counter-reset: st -1; }
+.stages li { position: relative; display: grid; align-content: start; gap: 8px; padding: 22px 20px 20px; border-radius: 20px; background: var(--tile); }
+.stages li::before { counter-increment: st; content: counter(st); font-family: var(--font-display); font-size: 40px; font-weight: 700; line-height: 1; color: var(--accent); }
+.stages b { font-family: var(--font-display); font-size: 21px; }
+.stages p { margin: 0; font-size: 15px; color: var(--fg-2); line-height: 1.45; }
+.stages .who { font-size: 13px; color: var(--fg-3); }
+.stages code { font-size: 12.5px; color: var(--fg-2); word-break: break-all; }
+
+/* 問卷 */
+.split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: clamp(28px, 5vw, 64px); align-items: start; }
+.qlist { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--hairline); }
+.qlist li { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; gap: 12px; align-items: baseline; padding: 12px 2px; border-bottom: 1px solid var(--hairline); }
+.qlist .q { font-family: var(--font-mono); font-size: 13px; color: var(--fg-3); }
+.qlist .t { font-weight: 600; }
+.qlist .d { font-size: 14px; color: var(--fg-3); text-align: right; }
+.callout { padding: 26px 26px 24px; border-radius: 22px; background: var(--tile); display: grid; gap: 12px; }
+.callout p { margin: 0; color: var(--fg-2); font-size: 15px; }
+.tbl { overflow-x: auto; margin-top: 4px; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { text-align: left; padding: 9px 8px; border-bottom: 1px solid var(--hairline); vertical-align: top; }
+th { font-size: 12px; font-weight: 600; color: var(--fg-3); letter-spacing: .02em; }
+td:first-child { font-weight: 600; white-space: nowrap; }
+
+/* 規則 */
+.tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px; }
+.tile { display: grid; align-content: start; gap: 10px; padding: 26px 24px 24px; border-radius: 22px; background: var(--bg-alt); }
+.tile svg { width: 72px; height: 50px; margin-bottom: 6px; }
+.tile p { margin: 0; font-size: 15px; color: var(--fg-2); }
+.tile .ref { font-family: var(--font-mono); font-size: 12.5px; color: var(--fg-3); margin-top: 2px; }
+.sv-frame { fill: none; stroke: var(--fg-3); stroke-width: 1.5; }
+.sv-faint { fill: var(--fg-3); opacity: .22; }
+.sv-line { fill: var(--fg-3); opacity: .55; }
+.sv-accent { fill: var(--accent); }
+.sv-accent-stroke { fill: none; stroke: var(--accent); stroke-width: 2.5; stroke-linecap: round; }
+.limits { margin-top: clamp(40px, 6vw, 64px); display: grid; gap: 16px; }
+.limits h3 { font-size: 19px; }
+.limit-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 36px; list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--hairline); }
+.limit-list li { padding: 12px 0; border-bottom: 1px solid var(--hairline); font-size: 15px; color: var(--fg-2); }
+.limit-list b { color: var(--fg); font-weight: 600; }
+
+/* 兩條軌道 */
+.tracks { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.track { display: grid; align-content: start; gap: 12px; padding: 30px 28px 28px; border-radius: 24px; background: var(--tile); min-width: 0; }
+.track .tag { font-size: 13px; font-weight: 600; color: var(--accent); }
+.track p { margin: 0; font-size: 15px; color: var(--fg-2); }
+pre { margin: 0; padding: 16px 18px; border-radius: 14px; background: var(--code-bg); overflow-x: auto; font-family: var(--font-mono); font-size: 13px; line-height: 1.6; color: var(--fg); }
+.band.alt pre { background: var(--bg); }
+.track pre { background: var(--bg-alt); }
+.band.alt .track pre { background: var(--bg-alt); }
+pre .c { color: var(--fg-3); }
+.track .file { font-family: var(--font-mono); font-size: 12.5px; color: var(--fg-3); }
+
+/* QC 管線 */
+.pipe { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0; list-style: none; margin: 0 0 clamp(36px, 5vw, 56px); padding: 0; }
+.pipe li { position: relative; display: grid; gap: 4px; justify-items: center; text-align: center; padding: 0 8px; }
+.pipe li:not(:last-child)::after { content: ""; position: absolute; top: 27px; right: -6px; width: 12px; height: 12px; border-top: 2px solid var(--fg-3); border-right: 2px solid var(--fg-3); transform: rotate(45deg); opacity: .6; }
+.pipe .ic { width: 56px; height: 56px; border-radius: 16px; display: grid; place-items: center; background: var(--tile); margin-bottom: 8px; }
+.pipe .ic svg { width: 28px; height: 28px; fill: none; stroke: var(--accent); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.pipe b { font-size: 16px; }
+.pipe span { font-family: var(--font-mono); font-size: 12px; color: var(--fg-3); }
+.qc-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 18px; align-items: start; }
+.catch { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; border-top: 1px solid var(--hairline); }
+.catch li { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 12px; padding: 12px 0; border-bottom: 1px solid var(--hairline); align-items: baseline; }
+.catch code { font-size: 13px; }
+.catch p { grid-column: 2; margin: 0; font-size: 14px; color: var(--fg-2); }
+.sev { font-size: 11px; font-weight: 700; padding: 3px 7px; border-radius: 999px; color: #fff; }
+.sev.c { background: var(--sev-critical); } .sev.h { background: var(--sev-high); }
+.panel { display: grid; gap: 12px; padding: 24px; border-radius: 22px; background: var(--tile); min-width: 0; }
+.panel h3 { font-size: 17px; }
+.panel p { margin: 0; font-size: 14px; color: var(--fg-2); }
+
+/* 開始 */
+.prompts { display: grid; gap: 12px; }
+.prompt { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 16px; align-items: center; padding: 16px 16px 16px 22px; border-radius: 16px; background: var(--tile); }
+.prompt code { font-family: var(--font-text); font-size: 16px; line-height: 1.5; color: var(--fg); }
+.prompt code em { font-style: normal; color: var(--accent); }
+.copy { font: inherit; font-size: 14px; font-weight: 600; color: var(--accent); background: var(--accent-soft); border: 0; border-radius: 999px; padding: 8px 14px; cursor: pointer; white-space: nowrap; }
+.copy:hover { filter: brightness(1.05); }
+.needs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; margin-top: clamp(36px, 5vw, 56px); }
+.needs div { display: grid; gap: 6px; }
+.needs b { font-size: 15px; }
+.needs p { margin: 0; font-size: 14px; color: var(--fg-2); }
+
+footer { padding-block: 36px 52px; border-top: 1px solid var(--hairline); background: var(--bg-alt); }
+footer p { margin: 0 0 6px; font-size: 13px; color: var(--fg-3); }
+
+@media (max-width: 960px) {
+  .stages { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pipe { grid-template-columns: repeat(3, minmax(0, 1fr)); row-gap: 28px; }
+  .pipe li:nth-child(3)::after { display: none; }
+}
+@media (max-width: 760px) {
+  .split, .tracks, .qc-grid, .limit-list, .needs { grid-template-columns: minmax(0, 1fr); }
+  .devices { display: grid; grid-template-columns: 466fr 669fr; grid-template-areas: "land land" "outer port"; gap: 28px 18px; }
+  .devices .d-land { grid-area: land; max-width: none; }
+  .devices .d-outer { grid-area: outer; max-width: none; }
+  .devices .d-port { grid-area: port; max-width: none; }
+  .prompt { grid-template-columns: minmax(0, 1fr); }
+  .copy { justify-self: start; }
+  .subnav .name { font-size: 17px; }
+}
+@media (max-width: 520px) {
+  .stages, .tiles { grid-template-columns: minmax(0, 1fr); }
+  .pipe { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pipe li::after { display: none; }
+  .qlist li { grid-template-columns: 40px minmax(0, 1fr); }
+  .qlist .d { grid-column: 2; text-align: left; }
+}
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+</style>
+</head>
+<body>
+
+<header class="subnav">
+  <div class="wrap">
+    <span class="name">iPhone Duo 適配</span>
+    <nav aria-label="章節">
+      <ul>
+        <li><a href="#stages">流程</a></li>
+        <li><a href="#questions">問卷</a></li>
+        <li><a href="#rules">規則</a></li>
+        <li><a href="#tracks">實作</a></li>
+        <li><a href="#qc">QC</a></li>
+        <li><a href="#start">開始</a></li>
+      </ul>
+    </nav>
+  </div>
+</header>
+
+<main>
+
+<section class="hero">
+  <div class="wrap">
+    <div class="head">
+      <p class="eyebrow">cm-skills · iphone-duo-adaptation</p>
+      <h1>一套流程，<br>讓每個 App 都摺得好。</h1>
+      <p class="lede">從盤點、設計決策、實作到<strong>自動化截圖驗證</strong>。<strong>Lego 與非 Lego 的 iOS App</strong> 都能用。</p>
+    </div>
+    <div class="devices" aria-label="iPhone Duo 的三種姿態示意">
+      <figure class="d-outer">
+        <div class="dev" aria-hidden="true">
+          <span class="hdr"></span>
+          <span class="content" style="left:7%;right:24%;top:16%;bottom:6%"></span>
+          <span class="col"><span class="dot t1"></span><span class="dot b1"></span><span class="dot b2"></span></span>
+        </div>
+        <figcaption><b>外螢幕</b><span>466 × 678 pt・有直欄</span></figcaption>
+      </figure>
+      <figure class="d-port">
+        <div class="dev" aria-hidden="true">
+          <span class="topbar"><span class="dot" style="left:10%"></span><span class="dot" style="left:84%"></span><span class="dot" style="left:91%"></span></span>
+          <span class="content" style="left:6%;right:6%;top:14%;bottom:5%"></span>
+        </div>
+        <figcaption><b>內螢幕直向</b><span>669 × 951 pt・水平列</span></figcaption>
+      </figure>
+      <figure class="d-land">
+        <div class="dev" aria-hidden="true">
+          <span class="side"><i style="top:18%"></i><i style="top:30%"></i><i style="top:42%"></i><i style="top:54%"></i></span>
+          <span class="hdr"></span>
+          <span class="content" style="left:16%;right:12%;top:18%;bottom:8%"></span>
+          <span class="col"><span class="dot t1"></span><span class="dot b1"></span><span class="dot b2"></span></span>
+        </div>
+        <figcaption><b>內螢幕橫向</b><span>951 × 669 pt・有直欄</span></figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<section class="band alt" id="stages">
+  <div class="wrap">
+    <div class="head">
+      <p class="eyebrow">流程</p>
+      <h2>五個階段，每一步都有產出。</h2>
+      <p class="lede">先讓畫面<strong>開合後會重新排版</strong>，再談版面。每個決定都<strong>記下來、拍成截圖</strong>給設計師看。</p>
+    </div>
+    <ol class="stages">
+      <li><b>盤點</b><p>掃出寫死螢幕尺寸的程式碼，修掉或列例外。</p><span class="who">工程</span><code>docs/duo/inventory.md</code></li>
+      <li><b>問卷</b><p>設計師回答 10 題，決定這個 App 的版面。</p><span class="who">設計師</span><code>docs/duo/decisions.md</code></li>
+      <li><b>實作</b><p>依答案開開關或照 UIKit 做；只在大螢幕生效。</p><span class="who">工程</span><code>程式碼＋測試</code></li>
+      <li><b>QC</b><p>模擬器自動摺疊、展開，逐頁截圖並套規則判定。</p><span class="who">工程跑、設計師看</span><code>shots/、report.html</code></li>
+      <li><b>審閱</b><p>每項修改的前後對照與待決清單，進下一輪。</p><span class="who">設計師</span><code>Before／After</code></li>
+    </ol>
+  </div>
+</section>
+
+<section class="band" id="questions">
+  <div class="wrap">
+    <div class="head">
+      <p class="eyebrow">問卷</p>
+      <h2>設計師只要回答 10 題。</h2>
+      <p class="lede">每題的預設都是<strong>照系統</strong>。只有截圖看得出問題，才往下改。</p>
+    </div>
+    <div class="split">
+      <ol class="qlist">
+        <li><span class="q">Q1</span><span class="t">系統直欄</span><span class="d">用</span></li>
+        <li><span class="q">Q2</span><span class="t">按鈕怎麼進直欄</span><span class="d">有直欄就進</span></li>
+        <li><span class="q">Q3</span><span class="t">直欄上下怎麼分</span><span class="d">系統預設</span></li>
+        <li><span class="q">Q4</span><span class="t">按鈕要不要各自一顆</span><span class="d">系統預設</span></li>
+        <li><span class="q">Q5</span><span class="t">標題列留什麼</span><span class="d">系統預設</span></li>
+        <li><span class="q">Q6</span><span class="t">直欄與視窗底色</span><span class="d">系統預設</span></li>
+        <li><span class="q">Q7</span><span class="t">哪些頁改清單＋內容兩欄</span><span class="d">全部單欄</span></li>
+        <li><span class="q">Q8</span><span class="t">底線頁籤在橫向</span><span class="d">維持橫排</span></li>
+        <li><span class="q">Q9</span><span class="t">開放哪些方向</span><span class="d">直向＋landscapeLeft</span></li>
+        <li><span class="q">Q10</span><span class="t">Tab 列</span><span class="d">系統 Tab</span></li>
+      </ol>
+      <div class="callout">
+        <h3>為什麼用問卷，不給標準答案</h3>
+        <p>2026 年 10 月有四個 App 各自做了 Duo 適配，選擇都不一樣。</p>
+        <div class="tbl">
+          <table>
+            <tr><th>App</th><th>按鈕</th><th>兩欄</th><th>頁籤</th></tr>
+            <tr><td>莎拉</td><td>全進直欄，上導覽下動作</td><td>更多頁、語音回放</td><td>改左側</td></tr>
+            <tr><td>不魯</td><td>展開留上方，合起進直欄</td><td>單欄</td><td>維持</td></tr>
+            <tr><td>老簡</td><td>標準按鈕，照系統</td><td>單欄</td><td>維持</td></tr>
+            <tr><td>當沖</td><td>標準按鈕＋溢位順序</td><td>單欄</td><td>維持</td></tr>
+          </table>
+        </div>
+        <p>答案寫進 <code>templates/duo-decisions.md</code>，沒決定的題目一律用預設，不猜。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="band alt" id="rules">
+  <div class="wrap">
+    <div class="head">
+      <p class="eyebrow">規則</p>
+      <h2>33 條規則，四個核心。</h2>
+      <p class="lede">每條規則寫成<strong>條件 → 做法 → 為什麼</strong>，附實測數值，並對應問卷題號。</p>
+    </div>
+    <div class="tiles">
+      <div class="tile">
+        <svg viewBox="0 0 72 50" aria-hidden="true"><rect class="sv-frame" x="1" y="1" width="70" height="48" rx="7"/><rect class="sv-faint" x="58" y="1.75" width="12.25" height="46.5" rx="5"/><rect class="sv-line" x="22" y="7" width="24" height="3" rx="1.5"/><circle class="sv-accent" cx="64" cy="11" r="3.2"/><circle class="sv-accent" cx="64" cy="33" r="2.6"/><circle class="sv-accent" cx="64" cy="41" r="2.6"/></svg>
+        <h3>上導覽，下動作</h3>
+        <p>返回在直欄頂端，分享、收藏在底部，標題列只留標題。</p>
+        <span class="ref">L1–L15・Q2–Q5</span>
+      </div>
+      <div class="tile">
+        <svg viewBox="0 0 72 50" aria-hidden="true"><rect class="sv-frame" x="1" y="1" width="70" height="48" rx="7"/><rect class="sv-faint" x="58" y="1.75" width="12.25" height="46.5" rx="5"/><rect class="sv-accent" x="6" y="10" width="11" height="3" rx="1.5"/><rect class="sv-line" x="6" y="17" width="11" height="3" rx="1.5"/><rect class="sv-line" x="6" y="24" width="11" height="3" rx="1.5"/><rect class="sv-line" x="6" y="31" width="11" height="3" rx="1.5"/><rect class="sv-faint" x="21" y="1.75" width="1.2" height="46.5"/></svg>
+        <h3>橫向頁籤靠左</h3>
+        <p>變寬時底線頁籤改左側直排，從導覽列下方開始。</p>
+        <span class="ref">L16–L19・Q8</span>
+      </div>
+      <div class="tile">
+        <svg viewBox="0 0 72 50" aria-hidden="true"><rect class="sv-frame" x="1" y="1" width="70" height="48" rx="7"/><rect class="sv-faint" x="58" y="1.75" width="12.25" height="46.5" rx="5"/><rect class="sv-line" x="6" y="10" width="14" height="3" rx="1.5"/><rect class="sv-line" x="6" y="18" width="14" height="3" rx="1.5"/><rect class="sv-line" x="6" y="26" width="14" height="3" rx="1.5"/><rect class="sv-faint" x="25" y="1.75" width="1.2" height="46.5"/><rect class="sv-accent" x="30" y="9" width="23" height="15" rx="3"/><rect class="sv-line" x="30" y="29" width="23" height="3" rx="1.5"/></svg>
+        <h3>大螢幕分兩欄</h3>
+        <p>清單與內容並排；轉直向或摺起就收回單欄。</p>
+        <span class="ref">L20–L25・Q7</span>
+      </div>
+      <div class="tile">
+        <svg viewBox="0 0 72 50" aria-hidden="true"><rect class="sv-frame" x="1" y="1" width="70" height="48" rx="7"/><path class="sv-accent-stroke" d="M2.5 17 V9 a6.5 6.5 0 0 1 6.5 -6.5 H17"/><rect class="sv-line" x="58" y="1.75" width="12.25" height="46.5" rx="5"/><circle class="sv-accent" cx="64" cy="11" r="3.2"/><circle class="sv-accent" cx="64" cy="38" r="3.2"/></svg>
+        <h3>開合不搬家</h3>
+        <p>選取狀態不變、內容只建一份；一般 iPhone 一行都不變。</p>
+        <span class="ref">L26–L33・必做</span>
+      </div>
+    </div>
+    <div class="limits">
+      <h3>系統做不到的事，先知道再設計</h3>
+      <ul class="limit-list">
+        <li><b>有 Tab 的頁面</b>：直欄底部留給 Tab 圖示，動作鈕排不到底部。</li>
+        <li><b>寬按鈕</b>：超過 84 pt 的自訂按鈕進直欄會變成一塊白色。</li>
+        <li><b>巢狀導覽控制器</b>：直欄只顯示一條導覽列的按鈕，外層的會消失。</li>
+        <li><b>直欄的左右</b>：由硬體決定；只開 landscapeLeft 才固定在右側。</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="band" id="tracks">
+  <div class="wrap">
+    <div class="head">
+      <p class="eyebrow">實作</p>
+      <h2>兩條軌道，同一套規則。</h2>
+      <p class="lede">所有改動都放在<strong>預設關閉、只在大螢幕（短邊 &gt; 440 pt）生效</strong>的開關後面。</p>
+    </div>
+    <div class="tracks">
+      <div class="track">
+        <span class="tag">Lego 生產線 App</span>
+        <h3>打開共用層的開關。</h3>
+        <p>直欄按鈕、左側欄、兩欄、影音內頁都已做進共用框架；App 依問卷答案設定，主 Tab 建立前完成。</p>
+<pre><span class="c">// didFinishLaunching，主 Tab 建立前</span>
+let isLarge = { isCurrentSceneLargeScreen() }
+LegoVerticalBar.isEnabled = true
+LegoVerticalBar.placesAllItemsInColumn = true
+LegoSegmentSideMenu.isEnabledProvider = isLarge
+LegoMoreSplitLayout.isEnabledProvider = isLarge</pre>
+        <span class="file">references/track-lego.md</span>
+      </div>
+      <div class="track">
+        <span class="tag">非 Lego App（UIKit／SwiftUI）</span>
+        <h3>用系統 API 照做。</h3>
+        <p>每條規則都對到 UIKit 的做法，附不魯、老簡、當沖三個 App 踩過的坑。</p>
+<pre><span class="c">#if compiler(&gt;=6.4)  // iOS 27.1+</span>
+item.axisBehavior = .verticalPreferred
+item.sharesBackground = false
+<span class="c">// 已顯示的按鈕要先清空再指定才會移動</span>
+navigationItem.rightBarButtonItems = nil
+navigationItem.rightBarButtonItems = items</pre>
+        <span class="file">references/track-uikit.md</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="band alt" id="qc">
+  <div class="wrap">
+    <div class="head">
+      <p class="eyebrow">自動化 QC</p>
+      <h2>模擬器自己摺，自己拍。</h2>
+      <p class="lede">工具與 App 無關；分頁名稱、彈窗、要走哪些頁，<strong>全部寫在一份 JSON</strong>。</p>
+    </div>
+    <ol class="pipe">
+      <li><span class="ic"><svg viewBox="0 0 28 28" aria-hidden="true"><rect x="3" y="6" width="9" height="16" rx="2"/><rect x="16" y="6" width="9" height="16" rx="2"/><path d="M12 14h4"/></svg></span><b>摺疊／展開</b><span>duo_hinge</span></li>
+      <li><span class="ic"><svg viewBox="0 0 28 28" aria-hidden="true"><path d="M6 6h16M6 12h16M6 18h10"/><circle cx="21" cy="20" r="3"/></svg></span><b>依計畫走訪</b><span>walk-plan.json</span></li>
+      <li><span class="ic"><svg viewBox="0 0 28 28" aria-hidden="true"><rect x="4" y="7" width="20" height="15" rx="3"/><circle cx="14" cy="14.5" r="4"/><path d="M10 7l1.5-2.5h5L18 7"/></svg></span><b>截圖＋階層</b><span>shots/、xchg/</span></li>
+      <li><span class="ic"><svg viewBox="0 0 28 28" aria-hidden="true"><path d="M5 15l5 5L23 7"/></svg></span><b>規則判定</b><span>analyze.py</span></li>
+      <li><span class="ic"><svg viewBox="0 0 28 28" aria-hidden="true"><rect x="6" y="3" width="16" height="22" rx="2"/><path d="M10 9h8M10 13h8M10 17h5"/></svg></span><b>報告</b><span>report.py</span></li>
+    </ol>
+    <div class="qc-grid">
+      <div class="panel">
+        <h3>走訪計畫長這樣</h3>
+<pre>{
+  "app": { "readyElement": {"button": "首頁"},
+           "launchDismiss": [{"label": "我明白了"}] },
+  "scenarios": [{
+    "id": "A", "mode": "matrix",
+    "postures": ["folded", "unfolded",
+                 "unfolded-portrait", "refolded"],
+    "screens": [
+      {"id": "01-首頁", "steps": [{"tab": "首頁"}]},
+      {"id": "02-內頁", "steps": [{"tab": "首頁"},
+                                 {"firstCell": true}],
+       "leaveAfter": true }]
+  }]
+}</pre>
+        <p>導航都在摺疊時做（展開時的點擊會落到外螢幕），之後只切姿態、不碰畫面。</p>
+      </div>
+      <div class="panel">
+        <h3>會自動抓到</h3>
+        <ul class="catch">
+          <li><span class="sev c">嚴重</span><code>content-missing</code><p>開合後內容整個不在畫面上。</p></li>
+          <li><span class="sev c">嚴重</span><code>window-size</code><p>視窗沒跟著螢幕變，畫面不會重排。</p></li>
+          <li><span class="sev h">高</span><code>cached-screen-size</code><p>元件寬高等於另一塊螢幕：啟動時快取的尺寸。</p></li>
+          <li><span class="sev h">高</span><code>restore-mismatch</code><p>摺回後位置與原本不同。</p></li>
+        </ul>
+        <p>規則判定只是候選；每張截圖都要人看過。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="band" id="start">
+  <div class="wrap">
+    <div class="head">
+      <p class="eyebrow">開始</p>
+      <h2>說一句話就能開始。</h2>
+      <p class="lede">把 App 路徑和設計師的名字告訴 agent，說清楚這次做到哪個階段。</p>
+    </div>
+    <div class="prompts">
+      <div class="prompt"><code id="p1">用 $iphone-duo-adaptation 幫 <em>&lt;App 路徑&gt;</em> 做 iPhone Duo 適配，設計師是 <em>&lt;名字&gt;</em>，這次先做盤點和問卷。</code><button class="copy" type="button" data-target="p1">複製</button></div>
+      <div class="prompt"><code id="p2">用 $iphone-duo-adaptation 對 <em>&lt;App 路徑&gt;</em> 跑 Duo QC 情境 A 和 L，報告放 <em>&lt;目錄&gt;</em>。</code><button class="copy" type="button" data-target="p2">複製</button></div>
+      <div class="prompt"><code id="p3">用 $iphone-duo-adaptation：依 docs/duo/decisions.md 的答案改 <em>&lt;頁面&gt;</em>，做完補 Before／After。</code><button class="copy" type="button" data-target="p3">複製</button></div>
+    </div>
+    <div class="needs">
+      <div><b>環境</b><p>Xcode 27.1、iOS 27.1 iPhone Duo 模擬器、Python 3＋numpy。</p></div>
+      <div><b>設計師</b><p>回答問卷、審閱每輪的前後對照、決定待決事項。</p></div>
+      <div><b>找不到 skill 時</b><p>請 agent 先讀 <code>iphone-duo-adaptation/SKILL.md</code> 再照流程做。</p></div>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <p>原型：莎拉王的型態學教室，2026 年 10 月 8–14 日六輪設計審閱；另參考不魯、老簡、當沖飆股神手的適配。</p>
+    <p>依據 Apple Human Interface Guidelines〈<a href="https://developer.apple.com/design/human-interface-guidelines/designing-for-iphone-duo">Designing for iPhone Duo</a>〉與 iOS 27.1 模擬器實測。檔案：<code>SKILL.md</code>、<code>references/</code>、<code>scripts/</code>、<code>assets/</code>、<code>templates/</code>。</p>
+  </div>
+</footer>
+
+<script>
+(() => {
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('.copy');
+    if (!btn) return;
+    const el = document.getElementById(btn.dataset.target);
+    const text = el.textContent.trim();
+    const done = () => { btn.textContent = '已複製'; setTimeout(() => { btn.textContent = '複製'; }, 1600); };
+    const fallback = () => {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+      btn.textContent = '已選取';
+      setTimeout(() => { btn.textContent = '複製'; }, 1600);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done, fallback);
+    } else {
+      fallback();
+    }
+  });
+})();
+</script>
+</body>
+</html>

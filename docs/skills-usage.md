@@ -49,6 +49,7 @@ Read <cm-skills path>/frontend-product-implementation/SKILL.md and follow that w
 | 把重複性流程變成自動化 | `$agent-automation-orchestrate` | 自動化的起始點：建立專案契約，之後用它執行、續跑、查狀態。 |
 | 在 Storybook 專案安裝通用工具頁（覆蓋率、元件時間軸） | `$storybook-tools-install` | 帶入「UI 圖片/PRD → 覆蓋率報告 → 審查 → 實作」工具、Component Timeline 頁面和配套 skills。 |
 | 在其他專案安裝 Figma 清理自動化 | `$design-automation-hub-install` | 安裝 Figma plugin、本機 coordinator 和 figma-cleanup task。 |
+| 讓 iOS App 適配 iPhone Duo（摺疊機）並自動化截圖驗證 | `$iphone-duo-adaptation` | 盤點寫死螢幕尺寸 → 設計師答 10 題問卷 → 版面規則 → Lego 開關或 UIKit 做法 → 模擬器自動開合截圖 → Before／After 報告。Lego 與非 Lego App 都能用。 |
 
 ## 每個 Skill 怎麼用
 
@@ -786,3 +787,27 @@ Use $agent-automation-orchestrate to run the <task id> task in <repo path>, with
 - 跨平台交接以先端合入整合分支的 diff 與原始碼為準，不用敘述文件；審計裡沒有證據的項目是「未驗」，不是「一致」。
 - 如果同一件事要重複做，用 `$agent-automation-orchestrate` 收成契約，不要每次重寫一次流程。
 - 自動化的完成判定要分開看：契約驗證、agent 結束、專案驗證、commit、push 是五件事，不能互相代表。
+
+### `$iphone-duo-adaptation`
+
+用途：讓 iOS App 適配 iPhone Duo（摺疊機），並用模擬器自動開合、截圖、出報告驗證。
+
+適合情境：
+
+- 某個 App 要上 iPhone Duo，不知道從哪裡開始。
+- 已經做了一輪，要重跑 QC 或補 Before／After 給設計師看。
+- 非 Lego 的 App（純 UIKit／SwiftUI）也適用。
+
+會產出：
+
+- `docs/duo/inventory.md`（寫死螢幕尺寸的盤點）
+- `docs/duo/decisions.md`（設計師的 10 題問卷答案）
+- 程式碼修改（預設關閉、只在大螢幕生效）＋測試
+- QC 截圖與 `report.html`（含 Before／After、待決清單）
+
+範例：
+
+```text
+用 $iphone-duo-adaptation 幫 Customer/185_DaXia 做 iPhone Duo 適配，設計師是 labai，這次先做盤點和問卷。
+用 $iphone-duo-adaptation 對 OriginalAuthors/30_LaoChien 跑 Duo QC 情境 A 與 L，報告放 /tmp/duoqc。
+```
