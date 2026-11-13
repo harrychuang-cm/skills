@@ -39,12 +39,15 @@ Use numeric palette steps from light to dark:
 
 ## Near Token Decisions
 
-Use this table when candidate reference tokens are visually or numerically close. Stop and confirm with the developer before finalizing unresolved rows.
+Use this table when reference tokens are visually or numerically close. Write one row per group of close values, and one row per outcome when a group mixes keeps and merges.
 
-Provenance is `authored` (Figma Variable/style, design-system export, source-code token — no measurement error) or `measured` (screenshot sampling, pixel measurement). `measured` vs `measured` may merge through normal review; when either side is `authored`, default to keep distinct and never round the authored value away; `authored` vs `authored` always requires an explicit developer decision.
+- **Candidates**: two or more backtick-quoted reference tokens. For a value that is not a token, write the raw value instead. When the row's action is a merge, put each token's value in parentheses after it, so the merged value stays on record once its token is removed.
+- **Provenance**: `authored` (Figma Variable/style, design-system export, source-code token — no measurement error) or `measured` (screenshot sampling, pixel measurement), for each candidate.
+- **Suggested action**: written during extraction. Either `keep distinct`, or `merge into` followed by the surviving token. `measured` vs `measured` may suggest a merge; when either side is `authored`, suggest `keep distinct` and never suggest rounding the authored value away; `authored` vs `authored` always suggests `keep distinct`.
+- **Decision** and **Confirmed by**: left empty during extraction. A suggestion is not a decision. Fill both only after a designer confirms — on the review page (`docs/design-system/review.html`) or in the conversation — using the wording of the suggested action for the decision, and who confirmed it, how, and when (for example `designer via review.html 2026-11-13`). Until then the close values stay separate tokens and the strict token audit reports the row as awaiting confirmation.
 
-| Candidate A | Provenance A | Candidate B | Provenance B | Difference | Decision (`merge` / `keep distinct`) | Rationale | Confirmed by |
-|---|---|---|---|---|---|---|---|
+| Candidates | Provenance | Difference | Suggested action | Decision | Rationale | Confirmed by |
+|---|---|---|---|---|---|---|
 
 ## Accessibility Remap Decisions
 
@@ -73,7 +76,7 @@ Use this table for native iOS/Android projects when source values use platform u
 - No system token name includes component anatomy.
 - No reference token name includes semantic roles.
 - Reference color steps follow `100` lightest to `0` darkest.
-- Near reference colors and numbers have a documented merge or keep-distinct decision that records both provenances; pairs involving an `authored` value default to keep distinct.
+- Near reference colors and numbers have a designer-confirmed merge or keep-distinct decision (`Decision` and `Confirmed by` filled) that records the provenances; a suggested action alone does not pass, and pairs involving an `authored` value default to keep distinct.
 - Accessibility remaps keep the authored value as a `ref` token and carry an `a11y-remap` record; the shipped `sys` mapping points at the accessible value.
 - Every background-like system color has a matching foreground pair.
 - For vibe-coded projects, values found only in unused CSS, demo-only components, dead code, or blocked captures are not promoted to tokens unless a keep decision is recorded in `DESIGN_EVIDENCE_MAP.md`.

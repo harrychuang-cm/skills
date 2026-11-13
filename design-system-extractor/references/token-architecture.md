@@ -51,7 +51,7 @@ Use `100 -> 0` as the default light-to-dark order unless the user explicitly ask
 
 ## Near Token Review
 
-Before finalizing tokens, build a candidate list from all observed raw values and review near duplicates.
+Before finalizing tokens, build a candidate list from all observed raw values and find near duplicates. Near duplicates are reviewed in two stages: during extraction you record a **suggested action**; a designer then **confirms** it, on the review page or in the conversation. Nothing is merged between the two.
 
 ### Value provenance
 
@@ -64,21 +64,36 @@ Near-value thresholds exist because **measurement has error**. An `authored` val
 
 ### Merge rules by provenance
 
-- `measured` vs `measured`: the normal near-token review below applies; merging is a legitimate cleanup of measurement noise.
-- `authored` vs `measured`: default **keep distinct**. Merging is allowed only *into* the authored value — when the evidence shows the measured value is an imprecise observation of the same element the authored value defines — and the rationale must be recorded. Never round an authored value toward a measured one.
-- `authored` vs `authored`: always stop and ask the developer. Never auto-merge, regardless of how close the values are.
+These rules decide what you suggest; they never decide the outcome on their own:
 
-Stop and ask the developer when either condition appears:
+- `measured` vs `measured`: suggesting a merge is a legitimate cleanup of measurement noise.
+- `authored` vs `measured`: suggest **keep distinct**. Suggest a merge only *into* the authored value — when the evidence shows the measured value is an imprecise observation of the same element the authored value defines — and record the rationale. Never suggest rounding an authored value toward a measured one.
+- `authored` vs `authored`: always suggest **keep distinct**, regardless of how close the values are. Only an explicit confirmation can merge two authored values.
+
+Record a suggestion when either condition appears:
 
 - two reference colors are visually very close, including exact duplicates
 - two reference numbers in the same value family and unit group are very close, such as `15px` and `16px`, `6px` and `8px`, `0.10` and `0.12`, or `180ms` and `200ms`
 
-The decision must be one of:
+The suggested action, and later the decision, is one of:
 
-- `merge`: use one reference token and map all roles to it; when one side is `authored`, the surviving value must be the authored one
-- `keep distinct`: keep both tokens because they have different source evidence, provenance, semantic intent, or component behavior
+- `merge into` followed by the surviving token: use one reference token and map all roles to it; when one side is `authored`, the surviving value must be the authored one
+- `keep distinct`: keep the tokens because they have different source evidence, provenance, semantic intent, or component behavior
 
-Record the decision — including both provenances — in `design-system/TOKEN_ARCHITECTURE.md` under `Near Token Decisions`. The audit also accepts an adjacent CSS comment when the decision needs to travel with the token:
+### Recording
+
+Write one row per group of close values in `design-system/TOKEN_ARCHITECTURE.md` under `Near Token Decisions`, with these columns: `Candidates`, `Provenance`, `Difference`, `Suggested action`, `Decision`, `Rationale`, `Confirmed by`.
+
+- During extraction fill everything except `Decision` and `Confirmed by`, and keep every close value as its own reference token.
+- A row holds one action. When a group mixes outcomes, write one row per outcome.
+- When the action is a merge, write each token's value in parentheses after it. Once the merge is applied the token is gone, and the row is the only place its value still exists — the review page uses it to show the merged value and to offer restoring it.
+- After a designer confirms, fill `Decision` with the action and `Confirmed by` with who confirmed, how, and when, then apply any merge (see the Review Decision Apply Pass in `SKILL.md`).
+
+A row with only a suggested action is **awaiting confirmation**: the strict token audit fails on it and reports how many pairs are waiting. That is the intended state between extraction and review, not a defect.
+
+A token name counts only when it appears whole, and a decision is read only from the `Decision` column; a cell that is empty or says `pending`, `待確認` or similar is not a decision. A row needs a confirmer only in a table that has both the `Suggested action` and the `Confirmed by` column. Tables from earlier layouts keep working: one with only `Confirmed by` (the previous template) or only `Suggested action` resolves from its decision column alone, and a line outside a table still resolves a pair when it names both tokens and a decision. When you record a decision in such a table, write into the columns it already has; adding the missing column would make every decided row in it need a confirmer.
+
+The audit also accepts an adjacent CSS comment when a confirmed decision needs to travel with the token:
 
 ```css
 :root {
@@ -204,8 +219,9 @@ At minimum, extract:
 - `sys` names must not include component names.
 - `ref` names must not include semantic role names.
 - `ref` color tokens must use numeric palette steps from `100` lightest to `0` darkest.
-- Near color and numeric reference tokens must be merged or documented with a developer-confirmed keep-distinct decision.
-- Near token decisions must record the provenance (`authored` / `measured`) of both sides; `authored` vs `authored` pairs require an explicit developer decision, never an automatic merge.
+- Near color and numeric reference tokens need a designer-confirmed decision: `Decision` and `Confirmed by` filled in the `Near Token Decisions` row. A suggested action alone leaves the pair awaiting confirmation, and the strict audit fails.
+- Near values are never merged before that confirmation.
+- Near token rows record the provenance (`authored` / `measured`) of the candidates; `authored` vs `authored` pairs are merged only on an explicit confirmation.
 - An `a11y-remap` comment or an `Accessibility Remap Decisions` row counts as the documented decision for the authored/accessible pair it names.
 - Run strict audit mode after extraction; empty starter templates may use non-strict mode.
 - Background-like system colors need matching `on-*` foreground tokens.

@@ -3,6 +3,8 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 
+import { parseVisualReference } from "./review_core.mjs";
+
 const args = process.argv.slice(2);
 const strict = args.includes("--strict");
 const targetArg = args.find((arg) => !arg.startsWith("--"));
@@ -183,6 +185,7 @@ let documentedSimilarityRows = 0;
 let sourcePreviewRows = 0;
 let fallbackVisualRows = 0;
 let missingVisualRows = 0;
+let unmarkedSimilarityRows = 0;
 let inventoryComponentRows = 0;
 
 if (inventory === null) {
@@ -243,6 +246,21 @@ if (inventory === null) {
         if (strict) issues.push(message);
         else warnings.push(message);
       }
+      const sides = parseVisualReference(visual);
+      const sideNotes = [
+        ["candidate", candidate || "candidate", sides[0]],
+        ["existing", similar || "similar component", sides[1]],
+      ]
+        .map(([side, name, image]) =>
+          !image ? `the ${side} side (${name}) has no screenshot` : !image.region ? `the ${side} side (${name}) has no region` : "",
+        )
+        .filter(Boolean);
+      if (sideNotes.length) {
+        unmarkedSimilarityRows += 1;
+        warnings.push(
+          `Similarity review row ${entry.line}: ${sideNotes.join(" and ")}. Give the Visual reference one image per side, each with an xywh region (for example image.png#xywh=percent:10,20,30,15), so the compared parts can be marked.`,
+        );
+      }
       if (isUnresolvedDecision(decision)) {
         unresolvedSimilarityRows += 1;
         const message = `Unresolved component similarity review at row ${entry.line}: ${candidate || "candidate"} vs ${similar || "similar component"}. Record merge, make variant, keep distinct, or blocked.`;
@@ -278,6 +296,7 @@ console.log(`Documented similarity decisions: ${documentedSimilarityRows}`);
 console.log(`Source preview visual rows: ${sourcePreviewRows}`);
 console.log(`Fallback visual rows: ${fallbackVisualRows}`);
 console.log(`Missing visual rows: ${missingVisualRows}`);
+console.log(`Similarity rows without both marked screenshots: ${unmarkedSimilarityRows}`);
 console.log(`Specs missing fingerprint: ${specsMissingFingerprint}`);
 console.log(`Strict mode: ${strict ? "on" : "off"}`);
 

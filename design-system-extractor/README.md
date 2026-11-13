@@ -2,7 +2,7 @@
 
 `design-system-extractor` is a reusable skill for extracting and collaboratively reviewing a token-backed design-system package from screenshots, graphic/brand/editorial references, Figma references, branch diffs, an existing web or native iOS/Android project folder, or an AI-generated/vibe-coded prototype project.
 
-It does not implement product screens by default. It produces design-system documentation, token files, component inventory, component token specs, anti-AI style rules, static HTML documentation, and a checkpoint for the next step.
+It does not implement product screens by default. It produces design-system documentation, token files, component inventory, component token specs, anti-AI style rules, static HTML documentation, a review page where a designer confirms the AI's suggested decisions, and a checkpoint for the next step.
 
 ## Extract Flow Guide
 
@@ -99,11 +99,11 @@ For CSS custom properties, the default prefixes are:
 - `--md-sys-*`: shared semantic roles only
 - `--md-comp-*`: component slots only
 
-Reference color scales use `100 -> 0` from light to dark. Near duplicate reference colors or numbers must be confirmed with the developer as either `merge` or `keep distinct` before the token set is finalized.
+Reference color scales use `100 -> 0` from light to dark. Near duplicate reference colors or numbers are kept as separate tokens, each group with a suggested `merge` or `keep distinct` action. Nothing is merged until a designer confirms the suggestion on the review page or in the conversation.
 
-Input sources also go through duplicate review. Screenshots, image exports, Figma URLs/nodes, rendered routes, and prototype references should be recorded with a source fingerprint in `DESIGN_EVIDENCE_MAP.md`. Exact or likely duplicate sources must be confirmed as `reuse existing source`, `ignore duplicate`, or `keep distinct` before both are counted as separate evidence.
+Input sources also go through duplicate review. Screenshots, image exports, Figma URLs/nodes, rendered routes, and prototype references should be recorded with a source fingerprint in `DESIGN_EVIDENCE_MAP.md`. Exact or likely duplicate sources get a suggested `reuse existing source`, `ignore duplicate`, or `keep distinct` action, and are not counted as separate evidence until a designer confirms it.
 
-Component candidates also go through a similarity review. When a new Figma or screenshot component resembles an existing component, the extractor records a fingerprint and asks whether to merge it, make it a variant, keep it distinct, or block it pending more evidence. Component candidates include interactive UI elements, layout/display patterns, graphic motifs, and reusable typographic compositions. Visual comparison assets should come from actual Figma node previews/screenshots or screenshot crops, stored under `design-system/assets/component-review/`, and linked from `COMPONENT_INVENTORY.md`. Schematic SVGs are only a labeled last-resort fallback when source previews cannot be captured.
+Component candidates also go through a similarity review. When a new Figma or screenshot component resembles an existing component, the extractor records a fingerprint and a suggested action — merge it, make it a variant, keep it distinct, or block it pending more evidence — and the designer confirms it. Component candidates include interactive UI elements, layout/display patterns, graphic motifs, and reusable typographic compositions. Visual comparison assets should come from actual Figma node previews/screenshots or product screenshots, stored under `design-system/assets/component-review/` and linked from `COMPONENT_INVENTORY.md` — one image per side, with the compared part marked as a region in the image link (`route-stock.png#xywh=percent:9.2,20.5,30.4,4.4`). Prefer the full screenshot plus a region over a pre-cropped image: a region drawn on the full screenshot is visibly right or wrong, a crop taken at the wrong place is not. Schematic SVGs are only a labeled last-resort fallback when source previews cannot be captured.
 
 Typographic components, also called text lockups, sit between typography foundations and full layout components. Extract them when a repeated text grouping has stable slots and reusable hierarchy, such as kicker + headline, headline + subhead, number + unit + caption, quote + attribution, or label + value. Do not promote one-off lettering or decorative art text into a component unless the references show it is reused or brand-critical enough to constrain future work.
 
@@ -161,13 +161,15 @@ Native component names, composable names, view names, asset names, and XML style
 2. Build `DESIGN_EVIDENCE_MAP.md` so design decisions trace back to source evidence.
 3. Extract 5-7 design principles with evidence and implementation rules.
 4. Define design elements: color, type, typographic composition, spacing, density, shape, elevation, iconography, imagery.
-5. Define token architecture, review near token candidates, and fill `tokens/`.
-6. Build `COMPONENT_INVENTORY.md` from repeated UI, layout, graphic, and typographic patterns and review similar component candidates.
+5. Define token architecture, record a suggested action for each group of near tokens, and fill `tokens/` with the near values kept apart.
+6. Build `COMPONENT_INVENTORY.md` from repeated UI, layout, graphic, and typographic patterns and record a suggested action for each similar component candidate.
 7. Extract initial component token specs under `design-system/components/`, usually a primary action/core navigation component for UI-heavy references or a high-value typographic lockup for graphic/editorial-heavy references.
 8. Document page composition, interaction states, and anti-AI style rules.
-9. Generate developer-facing HTML documentation and the visual review queue.
+9. Generate the HTML documentation and the review page.
 10. Run strict source, token, and component audits.
-11. Update `SESSION_STATE.md`, stop, and ask the user for the next step.
+11. Update `SESSION_STATE.md`, stop, say how many review items wait for the designer, and ask the user for the next step.
+
+After the checkpoint the designer opens `docs/design-system/review.html`, confirms or adjusts the suggestions, and pastes the exported prompt back. The skill then applies the decisions (see Review Page below).
 
 For teams working on separate branches, use the collaboration review pass before merging extracted sources, tokens, and component specs into the shared design-system package.
 
@@ -196,7 +198,7 @@ Developer PR checklist:
 
 - The PR targets `main`, but it is treated as review input for the integration round.
 - The branch includes evidence, component inventory updates, component spec, required tokens, regenerated docs, and `SESSION_STATE.md`.
-- Duplicate source, near-token, or similar-component decisions are recorded when relevant.
+- Duplicate source, near-token, and similar-component rows carry a suggested action; rows a designer has confirmed carry the decision, and the PR says how many still wait.
 - Strict source, token, and component audits pass, or blockers are written clearly.
 
 ### Integrator Flow
@@ -232,12 +234,12 @@ Expansion workflow:
 1. Pick one or more `planned` components from `COMPONENT_INVENTORY.md`.
 2. Confirm source evidence in `DESIGN_EVIDENCE_MAP.md`.
 3. Compare the candidate fingerprint against existing component specs.
-4. Record any merge/variant/keep-distinct/blocked decision in `COMPONENT_INVENTORY.md`.
+4. Record a suggested merge/variant/keep-distinct/blocked action in `COMPONENT_INVENTORY.md`, and write the spec once the designer has confirmed it.
 5. Create or update the component spec in `design-system/components/<component-name>.md` from `COMPONENT_SPEC_TEMPLATE.md`.
 6. Add only reusable product-wide system tokens.
 7. Add component slots to `tokens/tokens-comp.css`.
 8. Update inventory, interaction states, and page composition rules.
-9. Regenerate HTML docs and review queue.
+9. Regenerate the HTML docs and the review page.
 10. Run strict source, token, and component audits.
 11. Update session state and stop.
 
@@ -298,16 +300,43 @@ The generated HTML includes:
 - color swatches for resolved colors
 - component similarity review images linked from `design-system/assets/`
 
-The generated review queue includes:
+Both scripts open in the package's recorded report language (Chinese → `zh-Hant`, Japanese → `ja`, anything else → `en`, no record → `en`) and offer a 繁中 / EN / 日本語 switch. Pass `--locale zh-Hant|en|ja` to choose the default explicitly.
 
-- duplicate source review rows with fingerprint or normalized source keys
-- color scale issues with swatches
-- near color token pairs with swatches and deltaE
-- near numeric token pairs with differences
-- component similarity review rows with visual references
-- documented versus needs-review status
+Use `index.html` as the reading layer. The Markdown files and CSS token files remain the source of truth.
 
-Use this HTML file as the developer-friendly reading layer. The Markdown files and CSS token files remain the source of truth.
+## Review Page
+
+`docs/design-system/review.html` is where a designer decides the things the extraction could not decide alone. It is one static file: open it from disk, no server needed.
+
+What is on it:
+
+- **Near tokens.** Values that are very close are grouped — nine near pairs can be three decisions — and each value shows its swatch or specimen, the system roles and components that use it, and whether nothing uses it. A group of more than 12 values is listed compactly and can be expanded.
+- **Similar components.** One screenshot per side, with the compared part outlined and lettered A and B. Click a screenshot to enlarge it in place (fit, 100%, 200%).
+- **Duplicate sources**, and **color scale issues** the AI can be asked to fix.
+- On every card: the AI's suggested action and its reason.
+
+How a designer uses it:
+
+1. Read the suggestion on each card.
+2. Agree, or change it: a checked value is kept, an unchecked value merges into the nearest kept one (the target can be changed); components and sources are a single choice. "Agree with all AI suggestions" confirms everything left untouched.
+3. Copy the prompt and paste it to the AI.
+
+The prompt lists each decision with complete token names and values, marks which ones differ from the AI's suggestion, and ends with how to apply them. Pasting it runs the skill's **Review Decision Apply Pass**: merges and restores are applied, each decision is recorded with who confirmed it, the strict audits are re-run and both pages are regenerated. Answering in the conversation instead of using the page works the same way.
+
+What "waiting" means:
+
+- A suggestion is not a decision. Until a designer confirms it, the near values stay separate tokens and the row's `Decision` and `Confirmed by` stay empty.
+- `audit_tokens.mjs --strict` fails while a near pair only has a suggestion, and prints `Awaiting designer confirmation: N`. That is the expected state between extraction and review.
+- `node skills/design-system-extractor/scripts/generate_review_html.mjs . --json` prints the review items and counts without writing a file. `counts.needsReview` is the number of items waiting for the designer — the number the page shows, and the number pipeline-board displays.
+
+Selections are kept in the browser, per package. The page never writes to the project.
+
+### Upgrading an existing package
+
+- Nothing has to change. A row needs a named confirmer only in a `Near Token Decisions` table that has both the `Suggested action` and the `Confirmed by` column. A table from an earlier layout — only `Confirmed by` (the previous template), only `Suggested action`, or neither — keeps resolving from its decision column, as before.
+- The strict token audit can report pairs it used to pass. Earlier versions matched token names as substrings (a decision about `size-18` and `size-20` also covered `size-1` and `size-2`), accepted a decision cell that said `待確認`, and accepted a row whose only "decision" was a suggestion. Those pairs were never decided; record the decision and the audit passes.
+- A package without a `Report Language` record now opens its HTML in English rather than Traditional Chinese when `--locale` is not given. Add `Report Language: zh-Hant (繁體中文)` to `SESSION_STATE.md`, or pass `--locale zh-Hant`.
+- To adopt the review flow in an existing package, use the new `Near Token Decisions` columns from the starter template, and give each row that already holds a decision a `Confirmed by` value saying who decided it. Do not add only the missing column to an old table: once a table has both columns, every decided row in it needs a confirmer.
 
 ## Audits
 
@@ -335,13 +364,21 @@ The audit checks for:
 - system token names that include component vocabulary
 - reference token names that include semantic roles
 - reference color scale direction: `100` lightest to `0` darkest
-- near duplicate reference colors or numbers that need a documented merge/keep-distinct decision
+- near duplicate reference colors or numbers without a designer-confirmed merge/keep-distinct decision (a suggested action alone is reported as awaiting confirmation)
 - raw values in system/component layers
 - missing token files or empty token layers in strict mode
 - `tokens.css` import order in strict mode
 - background-like system colors missing `on-*` foreground pairs
 - unresolved component similarity review rows
+- similar-component rows without a screenshot or a compared region for either side (warning only)
 - component specs missing a `Component Fingerprint` section
+
+The review logic has its own tests:
+
+```sh
+node --test skills/design-system-extractor/scripts/test_review_core.test.mjs
+node --test skills/design-system-extractor/scripts/test_review_page.test.mjs
+```
 
 ## Cross-Agent Use
 
@@ -386,9 +423,9 @@ Use `design-system/` and `tokens/` as source of truth before product UI code.
 For native iOS/Android projects, read `skills/design-system-extractor/references/native-mobile-projects.md`, record native screen/state coverage, and verify source-only Swift/Kotlin/XML through screenshots, previews, screenshot tests, captures, navigation reachability, or user confirmation.
 Maintain token inheritance: ref -> sys -> comp.
 Keep reference color scales ordered as 100 lightest to 0 darkest.
-Document duplicate source reuse/ignore/keep-distinct decisions in `DESIGN_EVIDENCE_MAP.md`.
-Document near-token merge/keep-distinct decisions in `TOKEN_ARCHITECTURE.md`.
-Review similar component candidates before creating new specs; record merge/variant/keep-distinct/blocked decisions in `COMPONENT_INVENTORY.md`.
+Record suggested duplicate source reuse/ignore/keep-distinct actions in `DESIGN_EVIDENCE_MAP.md`; count duplicates as separate evidence only after the designer confirms.
+Record suggested near-token merge/keep-distinct actions in `TOKEN_ARCHITECTURE.md`; merge only after a designer confirms on `docs/design-system/review.html` or in the conversation, then apply the decisions with the Review Decision Apply Pass.
+Review similar component candidates before creating new specs; record a suggested merge/variant/keep-distinct/blocked action in `COMPONENT_INVENTORY.md` and write the spec after the designer confirms it.
 Run `node skills/design-system-extractor/scripts/audit_sources.mjs . --strict`, `node skills/design-system-extractor/scripts/audit_tokens.mjs . --strict`, and `node skills/design-system-extractor/scripts/audit_components.mjs . --strict` after extraction, token, or component changes.
 Run `node skills/design-system-extractor/scripts/generate_docs_html.mjs .` and `node skills/design-system-extractor/scripts/generate_review_html.mjs .` after design-system documentation or review changes.
 Apply `design-system/ANTI_AI_STYLE_RULES.md` before UI recommendations.
@@ -445,9 +482,9 @@ Fill or update `design-system/` and `tokens/` before product UI code.
 For native iOS/Android projects, read `skills/design-system-extractor/references/native-mobile-projects.md`, record native screen/state coverage, and verify source-only Swift/Kotlin/XML through screenshots, previews, screenshot tests, captures, navigation reachability, or user confirmation.
 Maintain token inheritance: ref -> sys -> comp.
 Keep reference color scales ordered as 100 lightest to 0 darkest.
-Document duplicate source reuse/ignore/keep-distinct decisions in `DESIGN_EVIDENCE_MAP.md`.
-Document near-token merge/keep-distinct decisions in `TOKEN_ARCHITECTURE.md`.
-Review similar component candidates before creating new specs; record merge/variant/keep-distinct/blocked decisions in `COMPONENT_INVENTORY.md`.
+Record suggested duplicate source reuse/ignore/keep-distinct actions in `DESIGN_EVIDENCE_MAP.md`; count duplicates as separate evidence only after the designer confirms.
+Record suggested near-token merge/keep-distinct actions in `TOKEN_ARCHITECTURE.md`; merge only after a designer confirms on `docs/design-system/review.html` or in the conversation, then apply the decisions with the Review Decision Apply Pass.
+Review similar component candidates before creating new specs; record a suggested merge/variant/keep-distinct/blocked action in `COMPONENT_INVENTORY.md` and write the spec after the designer confirms it.
 Component tokens may reference only system tokens.
 Do not hardcode color, spacing, radius, typography, opacity, shadow, or motion values when tokens exist.
 Apply `design-system/ANTI_AI_STYLE_RULES.md` before UI generation.
@@ -501,9 +538,9 @@ Start with `design-system/SESSION_STATE.md`.
 Use `design-system/INTEGRATION_REVIEW.md` when reviewing or integrating parallel extraction branches.
 Keep token inheritance strict: ref -> sys -> comp.
 Keep reference color scales ordered as 100 lightest to 0 darkest.
-Document duplicate source reuse/ignore/keep-distinct decisions in `DESIGN_EVIDENCE_MAP.md`.
-Document near-token merge/keep-distinct decisions in `TOKEN_ARCHITECTURE.md`.
-Review similar component candidates before creating new specs; record merge/variant/keep-distinct/blocked decisions in `COMPONENT_INVENTORY.md`.
+Record suggested duplicate source reuse/ignore/keep-distinct actions in `DESIGN_EVIDENCE_MAP.md`; count duplicates as separate evidence only after the designer confirms.
+Record suggested near-token merge/keep-distinct actions in `TOKEN_ARCHITECTURE.md`; merge only after a designer confirms on `docs/design-system/review.html` or in the conversation, then apply the decisions with the Review Decision Apply Pass.
+Review similar component candidates before creating new specs; record a suggested merge/variant/keep-distinct/blocked action in `COMPONENT_INVENTORY.md` and write the spec after the designer confirms it.
 Fill or update design-system docs and tokens before product UI code.
 Apply `design-system/ANTI_AI_STYLE_RULES.md` before interface work.
 Run `node skills/design-system-extractor/scripts/audit_sources.mjs . --strict`, `node skills/design-system-extractor/scripts/audit_tokens.mjs . --strict`, and `node skills/design-system-extractor/scripts/audit_components.mjs . --strict` after extraction, token, or component changes.
@@ -547,6 +584,7 @@ Use $design-system-extractor to analyze this Figma URL and create design-system 
 - Do not copy prototype code into production by default.
 - Do not invent design rules without evidence; mark uncertain decisions as Low confidence.
 - Do not bypass token layers to make UI match faster.
+- Do not merge near tokens, or fill in a decision, before a designer confirms the suggested action.
 - Do not silently accept duplicate components, duplicate source evidence, or near-identical tokens during branch integration.
 - Do not hand-edit generated HTML docs to resolve merge conflicts; regenerate them from source Markdown and tokens.
 - Do not add generic gradients, glassmorphism, outline-card stacks, inflated whitespace, or SaaS landing-page patterns unless the references clearly show them.

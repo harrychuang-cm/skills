@@ -81,11 +81,13 @@ Resolve the report language after First Actions and before Input Discovery:
 
 1. Look for a `Report Language:` record in `design-system/SESSION_STATE.md`. The record format is `<language-tag> (<human-readable name>)`, for example `Report Language: zh-Hant (繁體中文)`.
 2. If a recognizable record exists, write all new report content in that language and do not ask again.
-3. If `SESSION_STATE.md` is missing the record, or the record line is present but unrecognizable, treat the package as first-run: ask the user once which language to use for the extraction report. Offer exactly these options, with the first as the default recommendation:
-   - the user's current conversation language (default, recommended)
-   - English
+3. If `SESSION_STATE.md` is missing the record, or the record line is present but unrecognizable, treat the package as first-run: ask the user once which language to generate the documents in. Offer exactly these options, in this order, with the first as the default recommendation:
+   - English (default, recommended)
+   - 繁體中文 (Traditional Chinese)
    - 日本語 (Japanese)
    - a custom language named by the user
+
+   When no user is available to answer (a non-interactive run), use English and record it.
 4. Do not guess or silently reuse an unrecognizable record. Record the confirmed answer in `design-system/SESSION_STATE.md` as `Report Language: <language-tag> (<human-readable name>)` before Input Discovery begins.
 5. All post-checkpoint passes (Component Expansion, Late-Arriving Authoritative Source, Collaboration Review And Integration) reuse the recorded report language without asking again.
 6. When the user explicitly asks to switch the report language, update the `Report Language:` record, log the switch in the `Key Design Decisions` table in `SESSION_STATE.md`, and write subsequently updated sections in the new language. Do not rewrite existing sections unless the user explicitly requests a full rewrite.
@@ -121,8 +123,8 @@ Before using sources as evidence, run a source duplicate review:
 2. For local screenshots or exports, prefer `sha256:<hash>` for exact matches and add `phash:<hash>` or a screenshot crop note when perceptual comparison is available.
 3. For Figma inputs, normalize to `figma:<file-key>#<node-id>` when a node is known, or `figma:<file-key>#page:<page-name>` when only a page is known.
 4. For rendered routes or project screenshots, include the route, viewport, state, and source file or command in the fingerprint.
-5. If two sources are exact duplicates or likely duplicates, stop and ask the developer whether to `reuse existing source`, `ignore duplicate`, or `keep distinct`.
-6. Record every decision in `design-system/DESIGN_EVIDENCE_MAP.md` under `Source Duplicate Review` before using duplicate inputs to support separate design decisions.
+5. If two sources are exact duplicates or likely duplicates, add a row to `design-system/DESIGN_EVIDENCE_MAP.md` under `Source Duplicate Review` with a **Suggested action** (`reuse existing source`, `ignore duplicate`, or `keep distinct`) and the rationale, and leave `Developer decision` empty. The designer confirms it on the review page or in the conversation.
+6. Until a row is confirmed, do not use the duplicate inputs to support separate design decisions.
 
 Record every source's evidence tier in the `Source Inventory` table. When a newly added source has a **higher** tier than the tiers backing existing token or component decisions — for example a production Figma file with Variables arrives after the token system was built from screenshots — do not treat it as one more candidate input. Run the Late-Arriving Authoritative Source Pass instead.
 
@@ -172,11 +174,11 @@ Before finalizing token files, run a token candidate review:
 2. Record each candidate value's provenance: `authored` (Figma Variable/style, design-system export, source-code token) or `measured` (screenshot sampling, pixel measurement). See `references/token-architecture.md`.
 3. Normalize reference colors into palette families with numeric steps where `100` is lightest and `0` is darkest.
 4. Check each palette family so higher numbers are visually lighter than lower numbers.
-5. Cluster very close reference colors and very close reference numbers in the same value family.
-6. If close candidates appear, apply the provenance merge rules: `measured` vs `measured` may go through the normal merge review; when either side is `authored`, default to `keep distinct` and never round the authored value away; `authored` vs `authored` always stops for a developer decision. Then ask the developer whether to `merge` or `keep distinct`.
-7. If an authored value must be replaced for accessibility (for example WCAG AA contrast), record it as an accessibility remap — keep the authored value as its own `ref` token, map the `sys` role to the accessible value, and add the `a11y-remap` comment plus an `Accessibility Remap Decisions` row per `references/token-architecture.md`. Do not silently substitute the token value.
-8. Record every decision — with both provenances — in `design-system/TOKEN_ARCHITECTURE.md` under `Near Token Decisions`, or add an adjacent `token-review:` CSS comment when the decision must stay next to the token.
-9. Only then write final `ref`, `sys`, and `comp` tokens.
+5. Find very close reference colors and very close reference numbers in the same value family. Keep every close value as its own reference token: do not merge, round, or drop any of them yourself.
+6. For each group of close values, add a row to `design-system/TOKEN_ARCHITECTURE.md` under `Near Token Decisions` with the candidates, their provenance, the difference, a **Suggested action** (`keep distinct`, or `merge into` followed by the surviving token) and the rationale. Leave `Decision` and `Confirmed by` empty. Choose the suggestion by provenance: `measured` vs `measured` may suggest a merge; when either side is `authored`, suggest `keep distinct` unless the evidence shows the measured value is an imprecise reading of the authored one, and never suggest rounding an authored value away; `authored` vs `authored` always suggests `keep distinct`. Run `node <skill-root>/scripts/generate_review_html.mjs <target-root> --json` to see how the close values group into review items, and write one row per item — one row per outcome when an item mixes keeps and merges. When a row's action is a merge, write each token's value in parentheses after it, so the merged value stays on record once its token is removed.
+7. A suggestion is not a decision. It becomes one only when a designer confirms it, through the prompt the review page exports or by answering in the conversation. Only then fill `Decision` and `Confirmed by` and apply any merge, following the Review Decision Apply Pass.
+8. If an authored value must be replaced for accessibility (for example WCAG AA contrast), record it as an accessibility remap — keep the authored value as its own `ref` token, map the `sys` role to the accessible value, and add the `a11y-remap` comment plus an `Accessibility Remap Decisions` row per `references/token-architecture.md`. Do not silently substitute the token value.
+9. Write the `ref`, `sys`, and `comp` tokens with the close values kept apart. Rows that are still waiting for confirmation make the strict token audit fail by design; report them at the checkpoint as items waiting for the designer, not as defects.
 
 ### 5. Component Inventory
 
@@ -191,10 +193,11 @@ Before finalizing inventory or adding a new component spec, run a component simi
 1. Read existing `COMPONENT_INVENTORY.md`, `design-system/components/*.md`, and relevant component tokens.
 2. Create a component fingerprint for each new candidate: purpose, behavior or composition role, anatomy/slots, variants/states or modes, token contract, layout/density, source evidence, and visual reference.
 3. Compare the candidate with existing extracted or planned components. Weight purpose and behavior first, then anatomy, states, token usage, and layout.
-4. If a candidate is similar to an existing component, stop and ask the developer whether to `merge`, `make variant`, `keep distinct`, or `block pending more evidence`.
-5. Record the decision in `COMPONENT_INVENTORY.md` under `Component Similarity Review` before creating or updating component specs.
-6. Use source-based visual references: for Figma, capture the actual node preview/screenshot or a crop of the design frame; for screenshot inputs, crop the relevant component region. Store review images under `design-system/assets/component-review/` and link them from the similarity table.
-7. Do not use an AI-drawn schematic as the review image when a Figma preview or screenshot crop is available. A schematic SVG is allowed only as a last-resort fallback when source previews cannot be captured, and it must be labeled `schematic fallback - source preview unavailable`; it is not design evidence.
+4. If a candidate is similar to an existing component, add a row to `COMPONENT_INVENTORY.md` under `Component Similarity Review` with a **Suggested action** (`merge`, `make variant`, `keep distinct`, or `blocked` pending more evidence), the similarity reason and the rationale, and leave `Developer decision` empty. The designer confirms it on the review page or in the conversation.
+5. Do not create or update a component spec for a candidate whose row is still waiting for a decision; report it at the checkpoint instead.
+6. Give the `Visual reference` cell one image per side: first the new candidate, then the similar existing component. Use source-based references — the actual Figma node preview or screenshot, or the product screenshot — stored under `design-system/assets/component-review/`, and mark the compared part with a region written in the image link: `![Candidate](assets/component-review/route-stock.png#xywh=percent:9.2,20.5,30.4,4.4)`. Write the region as a percent of the image (`xywh=percent:x,y,width,height`), which is unaffected by device pixel ratio; pixels of the image's natural size (`xywh=x,y,width,height`) are also accepted. Take the region from the element's bounds for rendered UI, from the node bounds for Figma, and estimate it by eye only for plain screenshots.
+7. Prefer the full capture plus a region over a pre-cropped image. A crop hides where it came from, so a crop taken at the wrong place goes unnoticed; a region drawn on the full screenshot is visibly right or wrong. Use a pre-cropped image only when no full capture exists.
+8. Do not use an AI-drawn schematic as the review image when a Figma preview or screenshot is available. A schematic SVG is allowed only as a last-resort fallback when source previews cannot be captured, and it must be labeled `schematic fallback - source preview unavailable`; it is not design evidence.
 
 ### 6. Component Token Specs
 
@@ -221,11 +224,11 @@ The output must protect the observed product character. Do not add generic SaaS 
 Generate developer-facing static HTML docs after design-system Markdown and token files are updated:
 
 ```sh
-node <skill-root>/scripts/generate_docs_html.mjs <target-root> --locale <ui-locale>
+node <skill-root>/scripts/generate_docs_html.mjs <target-root>
 node <skill-root>/scripts/generate_review_html.mjs <target-root>
 ```
 
-Derive `<ui-locale>` from the recorded `Report Language`: Traditional or Simplified Chinese maps to `zh-Hant`, Japanese maps to `ja`, English and every other language map to `en`. The flag accepts only `zh-Hant`, `en`, and `ja`; when omitted the docs default to `zh-Hant`. Record the locale used in `SESSION_STATE.md` under `HTML docs UI locale`.
+Both scripts choose their default UI locale the same way: a `--locale <zh-Hant|en|ja>` flag when given; otherwise the `Report Language` recorded in `SESSION_STATE.md` (Traditional or Simplified Chinese maps to `zh-Hant`, Japanese to `ja`, English and every other language to `en`); otherwise `en`. An unsupported flag value prints a warning and falls back to the recorded language. Record the locale used in `SESSION_STATE.md` under `HTML docs UI locale`.
 
 Default outputs:
 
@@ -234,7 +237,9 @@ docs/design-system/index.html
 docs/design-system/review.html
 ```
 
-The HTML shell supports `zh-Hant` (default), `en`, and `ja` UI locales with a sidebar language switcher; `--locale` sets which one is the page default. Markdown body content remains in the report language.
+Both pages offer `zh-Hant`, `en`, and `ja` UI locales with a language switcher. Markdown body content, and every reason or rationale you wrote, remains in the report language.
+
+`review.html` is where the designer decides. Each review item is a card showing your suggested action and reason; the designer agrees or adjusts and copies a prompt that lists the decisions. When that prompt (or an explicit answer in the conversation) comes back, run the Review Decision Apply Pass.
 
 Use `references/html-documentation.md` when changing the HTML documentation behavior.
 
@@ -259,8 +264,9 @@ Update `design-system/SESSION_STATE.md` with:
 - token layers changed
 - generated HTML docs path
 - HTML docs UI locale
-- generated review queue path
-- audit result
+- generated review page path
+- number of review items waiting for the designer (the `needsReview` count of `generate_review_html.mjs --json`)
+- audit result, separating real defects from rows that only wait for the designer's confirmation
 - source duplicate review result
 - vibe project intake result when applicable
 - rendered UI capture result when applicable
@@ -270,8 +276,9 @@ Update `design-system/SESSION_STATE.md` with:
 - integration review result when collaborating across branches or PRs
 - recommended next prompt
 
-Then stop and ask the user what to do next. Suggested choices:
+Then stop and ask the user what to do next. When review items are waiting, say how many and point to `docs/design-system/review.html`. Suggested choices:
 
+- confirm the suggestions on the review page and paste the exported prompt back
 - review and refine the extraction
 - expand component tokens
 - review and integrate collaborator extraction branches
@@ -281,6 +288,24 @@ Then stop and ask the user what to do next. Suggested choices:
 - start a separate product implementation workspace
 
 ## Post-Checkpoint Workflows
+
+### Review Decision Apply Pass
+
+Use this pass when the user pastes the prompt exported by `docs/design-system/review.html`, or answers review decisions explicitly in the conversation. Either one is the designer's confirmation. Reuse the `Report Language` recorded in `SESSION_STATE.md`; do not ask again.
+
+1. Check every reference token the decisions name against `tokens/tokens-ref.css`. A decision about a token that no longer exists cannot be applied: set it aside with the reason and continue with the rest.
+2. Apply each token decision:
+   - `merge`: repoint every system-token reference from the merged token to the surviving token, then remove the merged reference token.
+   - restore: re-create the value as its own reference token from the source evidence, and correct the system and component mappings that use it.
+   - `keep distinct`: change no token.
+   - scale order: correct the step or the value of the reference colors so that within the family a higher step is lighter, and update the system tokens that reference them.
+3. Record each decision where its review table lives:
+   - near tokens: fill `Decision` (`keep distinct`, or `merge into` followed by the surviving token) and `Confirmed by` (who, how, and the date — for example `designer via review.html 2026-11-13` or `user in the conversation 2026-11-13`) in `TOKEN_ARCHITECTURE.md` under `Near Token Decisions`. A merge row keeps the merged token's value in parentheses. If the table is in an earlier layout — it lacks the `Suggested action` or the `Confirmed by` column — write into the columns it already has and do not add the missing one, because a table with both columns needs a confirmer on every decided row; with no `Confirmed by` column, name the confirmer at the end of the rationale.
+   - similar components: fill `Developer decision` in `COMPONENT_INVENTORY.md` under `Component Similarity Review`, then create or update the component specs the decision calls for.
+   - duplicate sources: fill `Developer decision` in `DESIGN_EVIDENCE_MAP.md` under `Source Duplicate Review`.
+4. Never fill `Decision`, `Confirmed by`, or `Developer decision` for an item the designer did not decide.
+5. Re-run the three strict audits, regenerate `docs/design-system/index.html` and `docs/design-system/review.html`, and update `SESSION_STATE.md`.
+6. Report what was applied and every decision that was not applied, with the reason, then stop and ask for the next step.
 
 ### Component Expansion Pass
 
@@ -332,13 +357,13 @@ Use this pass when multiple contributors extracted separate Figma sources, compo
 
 If an important design rule has no source evidence, mark it Low confidence or ask the user before making it normative.
 
-Do not count duplicate screenshots, duplicate Figma nodes, or duplicate rendered routes as independent evidence until the duplicate source decision is recorded. If a source fingerprint matches or appears very close to another source, ask the developer for a reuse/ignore/keep-distinct decision before it changes confidence.
+Do not count duplicate screenshots, duplicate Figma nodes, or duplicate rendered routes as independent evidence until the duplicate source decision is recorded. If a source fingerprint matches or appears very close to another source, record a suggested reuse/ignore/keep-distinct action and get the designer's confirmation before it changes confidence.
 
 ### Token Gate
 
 If a component needs a semantic or component token that does not exist, create or propose the token at the correct layer. Never use hardcoded fallback values in implementation guidance.
 
-Do not silently merge or split close token values. When near duplicate colors or numbers are found, ask the developer for a merge/keep-distinct decision and document it — including each side's provenance — before the checkpoint. When either side is `authored`, default to keep distinct and never round the authored value away; `authored` vs `authored` pairs must never be auto-merged.
+Do not silently merge or split close token values. When near duplicate colors or numbers are found, keep them as separate tokens and record a suggested merge/keep-distinct action with each side's provenance. A suggestion is never a decision: do not fill `Decision` or `Confirmed by`, and do not merge anything, until a designer confirms it on the review page or in the conversation. When either side is `authored`, suggest keep distinct and never suggest rounding the authored value away; `authored` vs `authored` pairs must never be merged without an explicit confirmation.
 
 Do not silently replace an authored value with an accessibility-compliant substitute. Record it as an `a11y-remap` (authored value preserved as a `ref` token, accessible value mapped at the `sys` layer) per `references/token-architecture.md`.
 
@@ -350,7 +375,7 @@ When a source whose evidence tier outranks the evidence behind existing token or
 
 Before adding a new component spec, check `COMPONENT_INVENTORY.md` and existing component docs. Reuse or extend a known component when intent, anatomy, slots, and states match.
 
-Do not create a new component only because the Figma layer name is new. If a candidate resembles an existing component, present the visual comparison and fingerprint difference, then ask for a merge/variant/keep-distinct/block decision.
+Do not create a new component only because the Figma layer name is new. If a candidate resembles an existing component, record a suggested merge/variant/keep-distinct/block action with a marked screenshot of each side and the fingerprint difference, and wait for the designer's confirmation before writing its spec.
 
 ### Implementation Boundary Gate
 
@@ -384,4 +409,6 @@ If the user wants to use the extraction package with Claude Code, Cursor, or Cod
 - `scripts/audit_tokens.mjs`: token layer audit; pass `--strict` after real extraction work.
 - `scripts/audit_components.mjs`: component similarity review audit; pass `--strict` after inventory or component spec changes.
 - `scripts/generate_docs_html.mjs`: generated developer-facing HTML docs, including `design-system/components/*.md`.
-- `scripts/generate_review_html.mjs`: generated visual review queue for duplicate sources, near tokens, color scale issues, and similar components.
+- `scripts/generate_review_html.mjs`: generated review page where the designer confirms or adjusts suggested decisions for duplicate sources, near tokens, color scale issues, and similar components, and copies a prompt of the decisions; `--json` prints the same review items and counts.
+- `scripts/review_core.mjs`: the shared rules for what needs review and whether it is decided, used by the token audit and the review page.
+- `assets/review-page/review.template.html`: the review page template.
