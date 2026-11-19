@@ -1,6 +1,13 @@
 {
   "schemaVersion": 1,
   "skills": {
+    "design-system-extractor": [
+      {
+        "name": "anti-ai-style",
+        "role": "support",
+        "reason": "Tell catalog and rule-writing guidance for design-system/ANTI_AI_STYLE_RULES.md; the extractor falls back to its own baseline reference when the skill is absent."
+      }
+    ],
     "frontend-product-implementation": [
       {
         "name": "ds-governance",

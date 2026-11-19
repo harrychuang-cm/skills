@@ -217,6 +217,8 @@ Fill or update:
 
 Use `references/page-composition-rules.md` and `references/anti-ai-style-rules.md`.
 
+When the standalone `anti-ai-style` skill is available, write `ANTI_AI_STYLE_RULES.md` by following its `rules` mode: it holds the tell catalog with stable IDs and the rule-writing guidance, and `references/anti-ai-style-rules.md` is the baseline for when it is not installed. Either way, keep the template's `Evidenced Exceptions` table: record there every pattern that resembles a generic tell but is evidenced for this product, with its scope and source.
+
 The output must protect the observed product character. Do not add generic SaaS hero layouts, decorative gradients, glassmorphism, outline-card overuse, inflated whitespace, or unsupported illustration styles unless the references prove those patterns exist.
 
 ### 8. HTML Documentation
@@ -400,7 +402,7 @@ If the user wants to use the extraction package with Claude Code, Cursor, or Cod
 - `references/token-architecture.md`: token naming and inheritance rules.
 - `references/component-spec-rules.md`: component anatomy, state, accessibility, and token spec rules.
 - `references/page-composition-rules.md`: layout, density, page shell, and composition rules.
-- `references/anti-ai-style-rules.md`: constraints that prevent generic AI-looking UI.
+- `references/anti-ai-style-rules.md`: baseline constraints that prevent generic AI-looking UI; the full catalog, scanner, and rule-writing guidance live in the standalone `anti-ai-style` skill.
 - `references/agent-integration.md`: Claude Code, Cursor, and Codex handoff guidance.
 - `references/collaboration-review.md`: branch/PR review and integration workflow for teams.
 - `references/html-documentation.md`: static HTML documentation output rules.

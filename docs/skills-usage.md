@@ -43,6 +43,7 @@ Read <cm-skills path>/frontend-product-implementation/SKILL.md and follow that w
 | 把 mock 資料換成真的 API、auth、cache | `$production-data-integration` | prototype → production 的第三棒：接上真實資料並用 contract test 證明，不動 UI。 |
 | 確保 UI 開發遵循設計系統規則 | `$ds-governance` | 搭配實作類 skill 使用，先檢查 tokens、元件庫、i18n，缺 token/元件要先問。（本 repo 維護；已授權的同範圍變更不重問） |
 | 把畫面修成跟參考來源一致 | `$ui-compare-to-reference` | 參考來源可以是 Figma、設計圖，或另一個平台的原始碼（網頁 ↔ App 互為標準）。修在 token 或共用元件上，不是修在單一畫面。 |
+| 畫面看起來很 AI、很罐頭，想找出原因並修掉 | `$anti-ai-style` | 把「AI 味」當成沒人做過的決定：逐項找出來、判斷有沒有設計依據、說清楚要換成什麼。沒有參考稿也能用。 |
 | 產出設計落差稽核報告 | `$ui-pixel-align-report` | 兩邊都抽成同一份規格再比對，產出截圖證據、嚴重度、歸屬層級的離線 HTML 報告與 `findings.json`。 |
 | 一個平台做完了，把功能交接給另一個平台並對齊 | `$platform-parity-handoff` | 先端合入整合分支後，從合併 diff 與原始碼產出九章交接包；次端實作前定位、實作後逐項對齊，只讀不改。 |
 | 判斷 Figma 端修改要不要同步回 Storybook | `$figma-sync-back` | 三方比對分辨 Figma 改了／程式碼改了／兩邊都改，產出分流報告；只判斷、不動程式碼。 |
@@ -77,6 +78,52 @@ Read <cm-skills path>/frontend-product-implementation/SKILL.md and follow that w
 ```text
 Use $design-system-extractor to extract a reusable design system from ./references/screenshots and ./figma-export.
 ```
+
+### `$anti-ai-style`
+
+用途：找出畫面裡「看起來像 AI 做的」地方，並把每一處換成屬於這個產品的決定。
+
+它的判斷方式：AI 味不是某種樣式，而是「沒有人做過決定、所以被預設值填滿」。同一個漸層，設計稿裡有就是證據，為了填空白才加上去就是預設值。所以每個可疑的地方都要回答「它的依據是什麼」，而不是看到漸層就刪。
+
+適合情境：
+
+- 生成 UI 之前，先把該做的決定講清楚，避免預設值偷跑進來。
+- prototype、Storybook story、靜態 HTML 報告或既有畫面看起來很模板、很罐頭。
+- 要替一個專案寫 `design-system/ANTI_AI_STYLE_RULES.md`。
+- 沒有任何參考稿的從零設計（會先寫一份很短的 Design Direction 再動手）。
+
+四種模式：
+
+- `review`（預設）：只看不改，產出報告。
+- `fix`：審查之後動手修，修完重新驗證。
+- `prevent`：生成 UI 前先陳述決定，生成後自我審查。
+- `rules`：替專案寫或更新 `ANTI_AI_STYLE_RULES.md`。
+
+會產出：
+
+- 逐項清單：tell 編號、位置（`file:line`、story 或 Figma node）、判定、要換成什麼、該修在哪一層
+- 保留清單：長得像 AI 味但有設計依據、所以不動的項目
+- 待確認清單：主色、字型這類品牌層級的選擇，沒有依據時不擅自更換
+
+修正順序固定：畫面類型 → 內容 → 主從層次 → 密度 → 字 → 色 → 表面 → 裝飾 → 動態。內容還是假資料時先修內容，不先修陰影。
+
+原始碼掃描（只列出候選項，不是判決）：
+
+```bash
+node <cm-skills path>/anti-ai-style/scripts/scan_ai_tells.mjs <UI 原始碼路徑> --rules design-system/ANTI_AI_STYLE_RULES.md
+```
+
+專案規則檔的 `Evidenced Exceptions` 表格列出的 tell 編號會被標成「允許」，不算問題。
+
+範例：
+
+```text
+用 $anti-ai-style 審查 src/pages/Dashboard.tsx，這次只做 review，列出每一項的位置、有沒有設計依據、建議換成什麼。
+用 $anti-ai-style 把 ./prototype 的首頁去 AI 味，設計依據在 design-system/，修完給我前後對照。
+用 $anti-ai-style 的 rules 模式，依 design-system/ 的萃取結果寫出這個專案的 ANTI_AI_STYLE_RULES.md。
+```
+
+完整說明：`anti-ai-style/README.md`（中文）、`anti-ai-style/README.en.md`（English）。
 
 ### `$design-system-to-storybook`
 
@@ -669,6 +716,8 @@ $agent-automation-orchestrate
 | 上游 skill | 下游 skill | 為什麼搭配 |
 |---|---|---|
 | `$design-system-extractor` | `$design-system-to-storybook` | 先有設計系統文件，再落地成元件庫。 |
+| `$design-system-extractor` | `$anti-ai-style` | 萃取時用它的規則目錄與寫法產出專案的 `ANTI_AI_STYLE_RULES.md`；沒裝時 extractor 用自己的基本版。 |
+| `$anti-ai-style` | `$ds-governance` | 去 AI 味的修正若動到 token 或共用元件，照設計系統的核准流程走。 |
 | `$design-system-to-storybook` | `$storybook-product-prototype` | 有元件庫後，prototype 可以重用 shared components。 |
 | `$storybook-product-prototype` | `$frontend-product-implementation` | prototype docs 會成為 web production frontend 的實作輸入。 |
 | `$storybook-product-prototype` | `$native-product-implementation` | 同一份 prototype docs 也能交給原生目標，交接定版之前不必為平台分岔。 |
@@ -693,6 +742,12 @@ $agent-automation-orchestrate
 
 ```text
 用 $ds-governance 檢查 <目標 app/package 路徑> 的 <畫面或變更範圍>，參考 <設計規範路徑>。這次只做 review，列出重用情況、缺口與建議，不修改檔案。
+```
+
+### 檢查畫面有沒有 AI 味
+
+```text
+用 $anti-ai-style 審查 <畫面、story 或檔案路徑>，設計依據在 <設計系統或參考稿路徑>。這次只做 review：列出每一項的 tell 編號、位置、有沒有依據、建議換成什麼，不修改檔案。
 ```
 
 ### 建立設計系統

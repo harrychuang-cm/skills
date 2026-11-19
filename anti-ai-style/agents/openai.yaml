@@ -1,0 +1,7 @@
+interface:
+  display_name: "Anti-AI Style"
+  short_description: "Find the generic AI-made look in UI and replace it with evidence-backed decisions"
+  default_prompt: "Use $anti-ai-style to review this UI for AI tells. Report each one with its location, whether design evidence supports it, and what should replace it: "
+
+policy:
+  allow_implicit_invocation: true

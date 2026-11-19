@@ -2,6 +2,14 @@
 
 Use this reference when writing `design-system/ANTI_AI_STYLE_RULES.md`.
 
+The maintained source for this topic is the standalone `anti-ai-style` skill. When it is available (a sibling skill folder, or the host's skill catalog), follow its `rules` mode: read `anti-ai-style/references/project-rules.md` for how to write each rule and `anti-ai-style/references/tells.md` for the tell IDs. This file is the baseline to use when that skill is not installed. Do not extend the baseline here; new generic rules go into the `anti-ai-style` catalog.
+
+## What The Project File Must Contain
+
+- **Evidenced Exceptions**: patterns that resemble a generic tell and are part of this product, each with its allowed scope and its evidence. Keep the heading and the table from the template; `anti-ai-style`'s scanner reads the first column.
+- **Domain Semantics**: meanings a generic reading would get wrong, such as what red and green mean in this product.
+- **Component Restraints**: rules that name a component, the generic version it must not become, the measured specifics to preserve, and the evidence. A rule that would be equally true in another product's file is too generic to keep.
+
 ## Decorative Restraints
 
 - Do not add background gradients unless references clearly use them.

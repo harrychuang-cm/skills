@@ -1,6 +1,21 @@
 # Anti-AI Style Rules
 
-Use these project-specific constraints before recommending or implementing UI.
+Read these project-specific constraints before recommending or implementing UI. They override the generic tell catalog.
+
+## Product Character
+
+Describe in two or three sentences what kind of product this is, what its screens are for, and how dense they are. Take it from the references.
+
+## Evidenced Exceptions
+
+Patterns that match a generic tell and belong to this product. Keep each scope narrow.
+
+| Tell | Pattern | Allowed where | Evidence |
+| --- | --- | --- | --- |
+
+## Domain Semantics
+
+Meanings a generic reading would get wrong: color meanings, reserved colors, symbols.
 
 ## Do Not Add Unless Evidenced
 
@@ -14,7 +29,10 @@ Use these project-specific constraints before recommending or implementing UI.
 - Extra whitespace beyond observed density
 - Extra radius, shadow, blur, or saturation
 - Generic heading/subheading stacks replacing evidenced typographic lockups
+- Emoji as icons or bullets
+- Placeholder names and symmetrical sample data
+- Hover lift, entrance animation, or ambient motion
 
-## Project-Specific Constraints
+## Component Restraints
 
-Add constraints tied to the references.
+Add constraints tied to the references. Name the component, the generic version it must not become, the specifics to preserve, and the evidence.

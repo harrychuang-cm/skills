@@ -52,6 +52,29 @@ Extract a reusable design-system package from screenshots, Figma references, exp
 
 Use this before implementation when the design system needs to be documented and reviewed as a source of truth.
 
+The package's `ANTI_AI_STYLE_RULES.md` is written with `anti-ai-style` when that skill is installed; the extractor carries a baseline for when it is not.
+
+### `anti-ai-style`
+
+Find the places where a UI looks AI-generated and replace each one with a decision that belongs to the product. The skill treats the AI look as unmade decisions that a default filled in, so a pattern is judged by whether anything supports it, not by what it is: a gradient the product's own design uses stays, the same gradient added to fill an empty area goes. Removal alone is not a fix either; every finding names what replaces it.
+
+1. Resolve the authority: the project's `design-system/ANTI_AI_STYLE_RULES.md`, then design evidence, then a stated direction, then the generic catalog. With none of the first three, write a short Design Direction before building or judging.
+2. Collect candidates from the source (`scripts/scan_ai_tells.mjs`, 18 mechanical tells with `file:line`), from the rendered result, and from the copy and data.
+3. Give each candidate a verdict (`evidenced`, `chosen`, `default`, `wrong genre`, `open`) and plan fixes in decision order: genre, content, hierarchy, density, type, color, surface, decoration, motion.
+4. In `fix` mode, apply at the right layer (token, shared component, composition, page) under the project's design-system approval gates, then re-scan and re-check the rendered result.
+
+Four modes: `review` (default, read-only report), `fix`, `prevent` (state the decisions before generating UI, self-review after), and `rules` (write a project's `ANTI_AI_STYLE_RULES.md`). The tell catalog lives in [`anti-ai-style/references/tells.md`](anti-ai-style/references/tells.md) with stable IDs across content, layout, type, color, surface, decoration, and motion; when you name a new tell, only that file and the scanner change. `design-system-extractor` uses this skill to write its project rules file and keeps a baseline reference for when it is not installed.
+
+```bash
+node anti-ai-style/scripts/scan_ai_tells.mjs <ui source path> --rules design-system/ANTI_AI_STYLE_RULES.md
+```
+
+Scanner hits are candidates, not verdicts. Tell IDs listed in the project file's `Evidenced Exceptions` table are reported as allowed instead of as findings.
+
+Use this before generating UI, when a screen or prototype looks templated or vibe-coded, or when someone says 去 AI 味、很 AI、罐頭感. Not for pixel comparison against a reference; that is `ui-pixel-align-report` and `ui-compare-to-reference`.
+
+Guide for people: [`anti-ai-style/README.md`](anti-ai-style/README.md) (zh-TW) and [`anti-ai-style/README.en.md`](anti-ai-style/README.en.md) (English).
+
 ### `ui-compare-to-reference`
 
 Compare an implemented UI against a reference, then apply the visual fixes. The reference can be a Figma frame, a design export or screenshot, or **another platform's source code** — a web implementation used as the truth for an app, or an app implementation used as the truth for web. Project-agnostic: it discovers the target repo's references, routes, components, Storybook stories, styling system, and design tokens before editing.
@@ -535,6 +558,17 @@ The generated report is a static HTML + CSS artifact, usually under `reports/des
 │   ├── SKILL.md
 │   ├── principles.md
 │   └── agents/openai.yaml
+├── anti-ai-style/
+│   ├── SKILL.md
+│   ├── README.md
+│   ├── README.en.md
+│   ├── agents/
+│   ├── assets/
+│   │   └── ANTI_AI_STYLE_RULES.template.md
+│   ├── references/
+│   │   └── tells.md
+│   └── scripts/
+│       └── scan_ai_tells.mjs
 ├── design-system-extractor/
 │   ├── SKILL.md
 │   ├── agents/

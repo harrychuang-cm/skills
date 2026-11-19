@@ -164,7 +164,7 @@ Native component names, composable names, view names, asset names, and XML style
 5. Define token architecture, record a suggested action for each group of near tokens, and fill `tokens/` with the near values kept apart.
 6. Build `COMPONENT_INVENTORY.md` from repeated UI, layout, graphic, and typographic patterns and record a suggested action for each similar component candidate.
 7. Extract initial component token specs under `design-system/components/`, usually a primary action/core navigation component for UI-heavy references or a high-value typographic lockup for graphic/editorial-heavy references.
-8. Document page composition, interaction states, and anti-AI style rules.
+8. Document page composition, interaction states, and anti-AI style rules. The project file is written from the evidence; the generic tell catalog, the source scanner, and the review workflow are the standalone `anti-ai-style` skill.
 9. Generate the HTML documentation and the review page.
 10. Run strict source, token, and component audits.
 11. Update `SESSION_STATE.md`, stop, say how many review items wait for the designer, and ask the user for the next step.

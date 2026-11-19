@@ -1,0 +1,22 @@
+/* Fixture: product CSS with decided values. */
+:root {
+  --color-market-up: #e5484d;
+  --color-market-down: #30a46c;
+  --color-action: #f76808;
+  --color-surface: #16181c;
+  --color-divider: #2a2d33;
+  --radius-control: 4px;
+  --font-sans: "PingFang TC", "Noto Sans TC", system-ui, sans-serif;
+}
+
+.sheet {
+  border-radius: 12px 12px 0 0;
+  background: var(--color-surface);
+  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.32);
+  transition: transform 240ms ease-out;
+}
+
+.row {
+  border-bottom: 1px solid var(--color-divider);
+  transition: background-color 120ms linear;
+}
