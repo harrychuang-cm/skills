@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["DOM", "DOM.Iterable", "ES2023"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "allowImportingTsExtensions": true,
+    "jsx": "react",
+    "types": ["vite/client"]
+  },
+  "include": ["annotations.ts", "manager.tsx", "manager/**/*.ts", "manager/**/*.tsx", "runtime/**/*.ts", "shared/**/*.ts", "shared/**/*.d.mts"]
+}

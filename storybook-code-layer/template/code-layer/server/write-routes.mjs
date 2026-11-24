@@ -1,0 +1,49 @@
+// Write endpoints, added to the app by the preset when this file exists.
+// Every POST has already passed the guard (loopback, Host, Origin,
+// Sec-Fetch-Site, JSON content type, session header) before reaching here.
+import { ApiError, ID_PATTERN } from "../shared/api-contract.mjs";
+import { createEngine } from "./transaction.mjs";
+
+function applyIdBody(body) {
+  if (!body || typeof body !== "object" || Array.isArray(body)) throw new ApiError("schema-invalid", "body must be an object");
+  const keys = Object.keys(body);
+  if (keys.length !== 1 || keys[0] !== "applyId" || typeof body.applyId !== "string" || !ID_PATTERN.test(body.applyId)) {
+    throw new ApiError("schema-invalid", "body must be { applyId }");
+  }
+  return body;
+}
+
+export async function extendWithWrites(app) {
+  if (!app.config || !app.postcss || app.readOnlyReasons.length > 0) return;
+  const engine = createEngine({ config: app.config, postcss: app.postcss, log: app.log, notifyChanged: app.notifyChanged });
+  app.engine = engine;
+  app.capabilities.write = engine.readOnly.length === 0;
+  app.stateExtras = () => engine.state();
+  if (engine.readOnly.length > 0) {
+    app.log.warn(`writes disabled: ${engine.readOnly.map((r) => r.code).join(", ")}`);
+  } else {
+    // Run the baseline checks early so the first token apply is fast and /state can show them.
+    engine.ensureBaseline().catch((error) => app.log.warn(`baseline checks could not run: ${error.message}`));
+  }
+
+  const applyLimit = app.config.limits.maxApplyBodyBytes;
+  app.routes.set("POST /validate", {
+    bodyLimit: applyLimit,
+    handler: ({ body }) => engine.apply(body, { dryRun: true }),
+  });
+  app.routes.set("POST /apply", {
+    bodyLimit: applyLimit,
+    handler: ({ body }) => {
+      if (body?.dryRun === true) throw new ApiError("schema-invalid", "use /validate for a dry run");
+      return engine.apply(body);
+    },
+  });
+  app.routes.set("POST /undo", { handler: ({ body }) => engine.undo(applyIdBody(body)) });
+  app.routes.set("POST /undo/skip", { handler: ({ body }) => engine.skip(applyIdBody(body)) });
+  app.routes.set("POST /applies/:id/verification", {
+    handler: ({ body, params }) => {
+      if (!ID_PATTERN.test(params.id)) throw new ApiError("schema-invalid", "invalid apply id");
+      return engine.recordVerification(params.id, body);
+    },
+  });
+}
