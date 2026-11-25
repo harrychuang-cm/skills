@@ -86,6 +86,31 @@ export function appendElement(source, openIndex, entry) {
     : `${source.slice(0, last.end)},\n${indent}${entry}${source.slice(last.end)}`;
 }
 
+/**
+ * Source with the element at `elementIndex` of the array whose "[" is at
+ * openIndex removed, together with its separator and the whitespace that
+ * `appendElement` put before it. Removing an element that `appendElement`
+ * added gives back the text from before (except for an array that was empty
+ * and spread over several lines).
+ */
+export function removeElement(source, openIndex, elementIndex) {
+  const array = readArrayElements(source, openIndex);
+  if (!array) throw new Error("array literal is not closed");
+  const element = array.elements[elementIndex];
+  if (!element) throw new Error(`array has no element ${elementIndex}`);
+  const next = array.elements[elementIndex + 1];
+  if (next) return source.slice(0, element.start) + source.slice(next.start);
+  const previous = array.elements[elementIndex - 1];
+  const trailingComma = /^\s*,/.exec(source.slice(element.end));
+  if (trailingComma) {
+    // `prev,\n  entry,` -> `prev,`: drop from just after the previous comma.
+    const from = previous ? previous.end + /^\s*,/.exec(source.slice(previous.end))[0].length : openIndex + 1;
+    return source.slice(0, from) + source.slice(element.end + trailingComma[0].length);
+  }
+  // `prev,\n  entry` -> `prev`: drop the comma that was added after the previous element too.
+  return source.slice(0, previous ? previous.end : openIndex + 1) + source.slice(element.end);
+}
+
 /** Index of the "[" of the first `<key>: [` (or `"key": [`) outside strings and comments, or -1. */
 export function findArrayOpen(source, key) {
   const masked = maskStringsAndComments(source);

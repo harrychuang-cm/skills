@@ -1,0 +1,27 @@
+/* component tier — 元件 token */
+:root {
+  /* seal */
+  --fx-comp-seal-container-color: var(--fx-sys-color-primary);   /* voice */
+  --fx-comp-seal-text-color: var(--fx-sys-color-on-primary);
+  --fx-comp-seal-shape: var(--fx-sys-shape-corner-sm);
+  --fx-comp-seal-padding-block: var(--fx-sys-spacing-sm);
+  --fx-comp-seal-padding-inline: var(--fx-sys-spacing-md);
+  --fx-comp-seal-rule-width: var(--fx-sys-stroke-thin);
+  --fx-comp-seal-rule-color: var(--fx-sys-color-ink-strong);
+  --fx-comp-seal-label-size: var(--fx-sys-typescale-label-size);
+  --fx-comp-seal-stamp-container-color: var(--fx-sys-color-ink-strong);
+  --fx-comp-seal-stamp-text-color: var(--fx-sys-color-knockout);
+  --fx-comp-seal-ribbon-container-color: var(--fx-sys-color-secondary);
+
+  /* title */
+  --fx-comp-title-text-color: var(--fx-sys-color-ink-strong);
+  --fx-comp-title-size: var(--fx-sys-typescale-display-size);
+  --fx-comp-title-family: var(--fx-sys-typescale-display-family);
+  --fx-comp-title-weight: var(--fx-sys-typescale-display-weight);
+  --fx-comp-title-gap: var(--fx-sys-spacing-xs);
+  --fx-comp-title-glyph-color-1: var(--fx-sys-color-festival-1);
+  --fx-comp-title-glyph-color-2: var(--fx-sys-color-festival-2);
+  --fx-comp-title-glyph-color-3: var(--fx-sys-color-festival-3);
+  --fx-comp-title-plate-container-color: var(--fx-sys-color-primary);
+  --fx-comp-title-plate-text-color: var(--fx-sys-color-on-primary);
+}

@@ -1,0 +1,26 @@
+{
+  "note": "Hand-counted from the files under workspace/. Change a fixture file and this file together. schema2 moves the six multi-reference shorthands from expression to var-list and counts identifier literals (inline-flex, center, vertical-rl, grid) as keywords.",
+  "tokens": { "ref": 29, "sys": 33, "comp": 21, "readonlyNames": 1, "shadowed": 1 },
+  "css": { "files": 2, "rules": 12, "declarations": 44, "refs": 43, "important": 1, "duplicateInRule": 2, "insideMedia": 1 },
+  "shapes": {
+    "schema1": { "single-var": 25, "var-with-fallback": 1, "expression": 9, "raw": 7, "keyword": 2 },
+    "schema2": { "single-var": 25, "var-list": 6, "var-with-fallback": 1, "expression": 3, "raw": 3, "keyword": 6 }
+  },
+  "varLists": [
+    ["src/components/seal/Seal.css", ".fx-seal", "border"],
+    ["src/components/seal/Seal.css", ".fx-seal--stamp", "margin"],
+    ["src/components/seal/Seal.css", ".fx-seal--ribbon", "padding"],
+    ["src/components/seal/Seal.css", ".fx-seal--ribbon", "padding"],
+    ["src/components/title/Title.css", ".fx-title", "gap"],
+    ["src/components/title/Title.css", ".fx-title__plate", "border-block-start"]
+  ],
+  "specs": {
+    "seal.md": { "rows": 11, "duplicateFirstCell": ["--fx-comp-seal-shape"], "missing": ["--fx-comp-seal-ribbon-container-color"] },
+    "title.md": { "rows": 8, "rangeRows": ["--fx-comp-title-glyph-color-1..3"], "drifting": ["--fx-comp-title-plate-container-color"] }
+  },
+  "pairs": {
+    "withPartner": ["--fx-comp-seal-container-color", "--fx-comp-title-plate-container-color"],
+    "roleWithoutPartner": ["--fx-comp-seal-stamp-container-color"],
+    "noSiblingContentToken": ["--fx-comp-seal-ribbon-container-color"]
+  }
+}

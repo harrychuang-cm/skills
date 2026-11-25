@@ -15,11 +15,20 @@ const MOVE = ["pointermove", "mousemove", "pointerover", "pointerout", "mouseove
 const KEYS = ["keydown", "keyup", "keypress"];
 const PREVENT_DEFAULT_KEYS = new Set(["Escape", " ", "Enter", "Tab", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"]);
 
+/** A primary-button click: where, which click of a multi-click, and whether the platform's primary modifier was held. */
+export type ClickInfo = { x: number; y: number; detail: number; primaryModifier: boolean };
+
 export type GuardHandlers = {
   onMove(x: number, y: number): void;
-  onClick(x: number, y: number): void;
+  onClick(info: ClickInfo): void;
   onKeyDown(event: KeyboardEvent): void;
 };
+
+/** Command on macOS, Control elsewhere. */
+function isMac(): boolean {
+  const platform = (navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData?.platform ?? navigator.platform ?? "";
+  return /mac|iphone|ipad/i.test(platform);
+}
 
 function fromOwnUi(event: Event): boolean {
   return event.composedPath().some((node) => node instanceof Element && node.hasAttribute(UI_ATTRIBUTE));
@@ -56,7 +65,9 @@ export class Guards {
       return;
     }
     if (event.type === "pointerdown") window.focus();
-    if (event.type === "click" && pointer.button === 0) this.handlers.onClick(pointer.clientX, pointer.clientY);
+    if (event.type === "click" && pointer.button === 0) {
+      this.handlers.onClick({ x: pointer.clientX, y: pointer.clientY, detail: pointer.detail, primaryModifier: isMac() ? pointer.metaKey : pointer.ctrlKey });
+    }
     if (event.cancelable) event.preventDefault();
     event.stopImmediatePropagation();
   }

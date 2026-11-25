@@ -25,12 +25,13 @@ export type VerifyItem = {
   status: "verified" | "written-not-observable" | "mismatch" | "timeout";
   expected: string | null;
   actual: string | null;
+  /** A catalog key, translated by the panel. */
   reason: string | null;
 };
 
 export type VerifyRequest = { applyId: string; armId: string; mode: "apply" | "undo"; expect: Expect; draftIds: string[]; drafts: Draft[] };
 
-const ARMED_KEY = "code-layer/v1/armed";
+const ARMED_KEY = "code-layer/v2/armed";
 const SOFT_TIMEOUT = 2000;
 const HARD_TIMEOUT = 6000;
 
@@ -122,21 +123,21 @@ export async function runVerification(
   const armed = loadArmed(request.armId);
   const items: VerifyItem[] = drafts.map((draft) => {
     const state = level1State.get(draft.id);
-    if (state === "pending") return { draftId: draft.id, status: "timeout", expected: null, actual: null, reason: "頁面上的樣式沒有在時限內更新" };
-    if (state === "not-loaded") return { draftId: draft.id, status: "written-not-observable", expected: null, actual: null, reason: "此頁未載入該樣式表" };
+    if (state === "pending") return { draftId: draft.id, status: "timeout", expected: null, actual: null, reason: "verify.reason.notUpdated" };
+    if (state === "not-loaded") return { draftId: draft.id, status: "written-not-observable", expected: null, actual: null, reason: "verify.reason.sheetNotLoaded" };
     const witness = draft.witness;
     if (!witness || draft.storyId !== context.storyId()) {
-      return { draftId: draft.id, status: "written-not-observable", expected: null, actual: null, reason: "見證元素不在這個 story" };
+      return { draftId: draft.id, status: "written-not-observable", expected: null, actual: null, reason: "verify.reason.witnessElsewhere" };
     }
     const element = resolve(witness.descriptor);
-    if (!element) return { draftId: draft.id, status: "written-not-observable", expected: null, actual: null, reason: "第一層通過，第二層無法執行：找不到見證元素" };
+    if (!element) return { draftId: draft.id, status: "written-not-observable", expected: null, actual: null, reason: "verify.reason.witnessMissing" };
     const measured = armed?.witnesses.find((w) => w.draftId === draft.id) ?? null;
     const A = measured?.A ?? witness.beforeComputed;
     const expected = request.mode === "apply" ? measured?.B ?? expectedFromTokens(draft, "apply") : A;
     const actual = measure(element, witness.property);
     if (!sameValue(actual, expected)) return { draftId: draft.id, status: "mismatch", expected, actual, reason: null };
     const changed = request.mode === "apply" ? !sameValue(A, expected) : !sameValue(measured?.B ?? expectedFromTokens(draft, "apply"), A);
-    return { draftId: draft.id, status: changed ? "verified" : "written-not-observable", expected, actual, reason: changed ? null : "預覽開與關的值相同" };
+    return { draftId: draft.id, status: changed ? "verified" : "written-not-observable", expected, actual, reason: changed ? null : "verify.reason.noChange" };
   });
   const rank = { mismatch: 3, timeout: 2, "written-not-observable": 1, verified: 0 } as const;
   const status = items.reduce<VerifyItem["status"]>((worst, item) => (rank[item.status] > rank[worst] ? item.status : worst), "verified");

@@ -3,6 +3,8 @@
 import fs from "node:fs";
 import path from "node:path";
 
+import { inferKind, isKeywordValue } from "../shared/kinds.mjs";
+import { SUPPORTED_FLOWS, affectedSlots, mayOverlap, sidesOf } from "../shared/sides.mjs";
 import { classifyValue, findVarRefs, normalizeValue } from "../shared/value-refs.mjs";
 import { readCssSource, servedTextMayDiffer } from "./css-source.mjs";
 import { listCssFiles, relativePosix } from "./paths.mjs";
@@ -25,48 +27,54 @@ export function walkStyleRules(container, visit, atRules = []) {
   }
 }
 
-// Longhands each shorthand sets (for "a later declaration in the same group overrides").
-const GROUPS = [
-  ["background", ["background-color", "background-image"]],
-  ["border-radius", ["border-top-left-radius", "border-top-right-radius", "border-bottom-right-radius", "border-bottom-left-radius", "border-start-start-radius", "border-start-end-radius", "border-end-start-radius", "border-end-end-radius"]],
-  ["padding", ["padding-top", "padding-right", "padding-bottom", "padding-left", "padding-block", "padding-inline", "padding-block-start", "padding-block-end", "padding-inline-start", "padding-inline-end"]],
-  ["border", ["border-color", "border-width", "border-style", "border-top", "border-right", "border-bottom", "border-left"]],
-  ["font", ["font-family", "font-size", "font-weight", "line-height", "font-style"]],
-];
-
-const SUB_SHORTHANDS = {
-  "padding-block": ["padding-top", "padding-bottom", "padding-block-start", "padding-block-end"],
-  "padding-inline": ["padding-left", "padding-right", "padding-inline-start", "padding-inline-end"],
-};
-
-function propertyFamily(property) {
-  for (const [shorthand, longhands] of GROUPS) {
-    if (property === shorthand || longhands.includes(property)) return shorthand;
-  }
-  return property;
-}
-
-const isLogical = (property) => /-(block|inline)(-|$)|-(start|end)(-|$)/.test(property);
-
 /**
- * Whether a later declaration of `b` can override (part of) `a`: the same
- * property, a shorthand containing the other, or logical and physical
- * longhands of padding / corner radius (which may map to the same side
- * depending on writing mode). Distinct longhands such as font-family and
- * font-size do not overlap.
+ * Whether a later declaration of `b` can override (part of) `a` inside one
+ * rule: the same property, or two properties that may set the same side under
+ * some writing mode (a shorthand and its longhand, a logical and a physical
+ * longhand). Distinct longhands such as font-family and font-size do not.
  */
 export function overlaps(a, b) {
-  if (a === b) return true;
-  for (const [shorthand, longhands] of [...GROUPS, ...Object.entries(SUB_SHORTHANDS)]) {
-    if ((a === shorthand && longhands.includes(b)) || (b === shorthand && longhands.includes(a))) return true;
-  }
-  const family = propertyFamily(a);
-  if (family !== propertyFamily(b) || family === a || family === b) return false;
-  return (family === "padding" || family === "border-radius") && (isLogical(a) || isLogical(b));
+  return mayOverlap(a, b);
 }
 
-function sameGroup(a, b) {
-  return overlaps(a, b);
+/**
+ * Which components of a declaration are overridden by later declarations of
+ * the same rule. The server does not know the element's writing mode, so a
+ * component counts as overridden only when, under every supported writing
+ * mode and direction, each side it sets is set again later in the rule.
+ * Returns { components: boolean[], declaration: boolean }.
+ */
+export function overriddenByLater(property, components, laterProperties) {
+  const sameLater = laterProperties.includes(property);
+  if (laterProperties.length === 0) return { components: components.map(() => false), declaration: false };
+  const survives = components.map(() => false);
+  let wholeSurvives = false;
+  let known = false;
+  for (const { writingMode, direction } of SUPPORTED_FLOWS) {
+    const laterSlots = new Set(laterProperties.flatMap((p) => affectedSlots(p, writingMode, direction) ?? []));
+    const result = sidesOf(property, components, writingMode, direction);
+    if (!result.ok) {
+      if (result.reason === "unknown-property") break;
+      known = true;
+      if (result.affected.some((slot) => !laterSlots.has(slot))) wholeSurvives = true;
+      continue;
+    }
+    known = true;
+    const seen = components.map(() => false);
+    for (const { slot, component } of result.slots) {
+      if (component === null) continue;
+      seen[component] = true;
+      if (!laterSlots.has(slot)) survives[component] = true;
+    }
+    // A component that sets no tracked side (an image in `background`) is not judged.
+    seen.forEach((has, i) => {
+      if (!has && components[i].shape !== "separator") survives[i] = true;
+    });
+  }
+  if (!known) return { components: components.map(() => sameLater), declaration: sameLater };
+  const flags = survives.map((alive, i) => (components[i].shape === "separator" ? false : !alive && !wholeSurvives));
+  const judged = flags.filter((_, i) => components[i].shape !== "separator");
+  return { components: flags, declaration: judged.length > 0 && judged.every(Boolean) };
 }
 
 export function buildCssIndex({ config, postcss, tokens }) {
@@ -100,13 +108,31 @@ export function buildCssIndex({ config, postcss, tokens }) {
         const decls = (rule.nodes ?? []).filter((n) => n.type === "decl");
         const declarations = decls.map((decl, index) => {
           const rawValue = decl.raws.value?.raw ?? decl.value;
+          // refIndex counts every var() of the value, the way replaceVarName addresses them.
           const refs = findVarRefs(rawValue)
-            .filter((r) => r.name)
-            .map((r, refIndex) => {
+            .map((r, refIndex) => ({ r, refIndex }))
+            .filter(({ r }) => r.name)
+            .map(({ r, refIndex }) => {
               const token = tokens.get(r.name);
               return { name: r.name, refIndex, known: Boolean(token && !token.rootless), tier: token?.tier ?? null, source: token?.source ?? null };
             });
+          const classified = classifyValue(rawValue);
+          const shape = classified.kind === "raw" && isKeywordValue(rawValue) ? "keyword" : classified.kind;
+          const components = classified.components.map((c) => ({
+            text: normalizeValue(c.text),
+            shape: c.shape === "raw" && inferKind(c.text) === "keyword" ? "keyword" : c.shape,
+            refIndex: c.refIndex,
+          }));
           const later = decls.slice(index + 1);
+          const refKind = new Map(refs.map((r) => [r.refIndex, tokens.get(r.name)?.kind ?? "unknown"]));
+          const overridden = overriddenByLater(
+            decl.prop,
+            components.map((c) => ({ text: c.text, shape: c.shape, kind: c.refIndex === null ? undefined : refKind.get(c.refIndex) })),
+            later.map((other) => other.prop),
+          );
+          overridden.components.forEach((flag, i) => {
+            components[i].overridden = flag;
+          });
           return {
             index,
             property: decl.prop,
@@ -114,10 +140,12 @@ export function buildCssIndex({ config, postcss, tokens }) {
             value: normalizeValue(rawValue),
             important: decl.important === true,
             line: decl.source.start.line,
-            shape: classifyValue(rawValue).kind,
+            shape,
+            shapeDetail: classified.kind === "expression" ? classified.detail : null,
+            components,
             refs,
             duplicateInRule: decls.some((other, i) => i !== index && other.prop === decl.prop),
-            overriddenInRule: later.some((other) => sameGroup(other.prop, decl.prop)),
+            overriddenInRule: overridden.declaration,
           };
         });
         info.rules.push({

@@ -1,13 +1,15 @@
 // Apply, verify, undo. Only the manager sends POSTs, and only after a click
 // in the panel. The preview measures and verifies; the server writes.
+import type { PairingEntry } from "../shared/pairing.mjs";
 import { EVENTS, type Draft, type Envelope, type IndexJson } from "../shared/protocol";
-import { settle } from "./actions";
-import { postJson } from "./api";
+import { normalizeValue, replaceVarName } from "../shared/value-refs.mjs";
+import { refreshServer, settle } from "./actions";
+import { getJson, postJson } from "./api";
 import { emitToPreview, onPreview } from "./channel";
-import { IDLE_APPLY, store, type ApplyState, type VerifyItemView } from "./store";
+import { IDLE_APPLY, store, type ApplyState, type DocumentEdit, type PostApplyReport, type VerifyItemView } from "./store";
 
-const PENDING_KEY = "code-layer/v1/pending-verification";
-const LAST_KEY = "code-layer/v1/last-apply";
+const PENDING_KEY = "code-layer/v2/pending-verification";
+const LAST_KEY = "code-layer/v2/last-apply";
 
 type Expect = { css: Array<{ file: string; devId: string; servedTextHashAfter: string | null }>; tokens: Array<{ token: string; value: string }> };
 export type PendingVerification = {
@@ -76,6 +78,11 @@ function waitForPreview<T>(event: string, match: (payload: Envelope<T>) => boole
   });
 }
 
+/**
+ * The batch for the server. Values are taken from the index, not from the
+ * drafts: two staged references of one declaration both state the value the
+ * file holds now, each with only its own reference replaced.
+ */
 export function buildApplyBatch(drafts: Draft[], index: IndexJson) {
   const operations = drafts.map((draft, i) => {
     const id = `op-${i + 1}`;
@@ -85,27 +92,72 @@ export function buildApplyBatch(drafts: Draft[], index: IndexJson) {
       cssProperty: (draft.witness?.property ?? draft.rowId).slice(0, 100),
     };
     if (draft.op.type === "rebind-token") {
-      return { id, type: draft.op.type, token: draft.op.token, fromToken: draft.op.fromToken, toToken: draft.op.toToken, before: { value: draft.before }, after: { value: draft.after }, reason };
+      const op = draft.op;
+      const declared = index.tokens.items.find((t) => t.name === op.token)?.declaredValue;
+      const values = currentValues(declared ? normalizeValue(declared) : null, 0, draft);
+      return { id, type: op.type, token: op.token, fromToken: op.fromToken, toToken: op.toToken, before: { value: values.before }, after: { value: values.after }, reason };
     }
     const op = draft.op;
     const rule = index.css.files.find((f) => f.file === op.file)?.rules[op.ordinal];
+    const declared = rule?.declarations.filter((d) => d.property === op.property).at(-1)?.value;
+    const values = currentValues(declared ?? null, op.refIndex, draft);
     return {
       id,
       type: op.type,
       file: op.file,
       rule: { ordinal: op.ordinal, selector: rule?.selector ?? op.selector, atRules: rule?.atRules ?? [], occurrence: rule?.occurrence ?? 0 },
       declaration: { property: op.property },
-      replacements: [{ refIndex: 0, fromToken: op.fromToken, toToken: op.toToken }],
+      replacements: [{ refIndex: op.refIndex, fromToken: op.fromToken, toToken: op.toToken }],
       fromToken: op.fromToken,
       toToken: op.toToken,
-      before: { value: draft.before },
-      after: { value: draft.after },
+      before: { value: values.before },
+      after: { value: values.after },
       reason,
     };
   });
   const batchId = `b-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
   return { schemaVersion: 1, batchId, indexRevision: index.revision, operations };
 }
+
+/**
+ * What the batch states as the value before and after. Normally the value the
+ * index holds now, with the staged reference re-bound. When that reference no
+ * longer holds the token the change was staged on, the source has moved on:
+ * the values the change was staged with are sent, and the server answers that
+ * the source changed.
+ */
+function currentValues(declared: string | null, refIndex: number, draft: Draft): { before: string; after: string } {
+  if (declared !== null) {
+    try {
+      return { before: declared, after: replaceVarName(declared, refIndex, draft.op.fromToken, draft.op.toToken) };
+    } catch {
+      // fall through to the staged values
+    }
+  }
+  return { before: draft.before, after: draft.after };
+}
+
+/** Ask for the post-apply round of a transaction until it has finished. */
+async function followPostApply(applyId: string, initial: { status: string; commands: string[] } | undefined): Promise<void> {
+  if (!initial || initial.status === "none") return;
+  setApplyFor(applyId, { postApply: { status: "queued", commands: initial.commands, results: [], stale: false } });
+  for (let attempt = 0; attempt < 600; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, attempt < 10 ? 300 : 1000));
+    const report = await getJson<{ postApply: PostApplyReport }>(`/applies/${applyId}`);
+    if (!report.ok) return;
+    setApplyFor(applyId, { postApply: report.data.postApply });
+    if (report.data.postApply.status === "done" || report.data.postApply.status === "none") return;
+  }
+}
+
+/** Patch the apply state only while it still shows that transaction (or the undo of it). */
+function setApplyFor(applyId: string, patch: Partial<ApplyState>): void {
+  const state = store.get().applyState;
+  if (state.applyId === applyId || followed === applyId) setApply(patch);
+}
+
+/** The transaction whose post-apply round is being followed (an undo has its own id). */
+let followed: string | null = null;
 
 async function requestVerification(pending: PendingVerification): Promise<void> {
   lastPending = pending;
@@ -118,7 +170,7 @@ async function requestVerification(pending: PendingVerification): Promise<void> 
   emitToPreview(EVENTS.applyWritten, pending);
   const result = await resultPromise;
   if (!result) {
-    setApply({ phase: "done", result: { status: "timeout", items: [] }, progress: "preview 沒有回覆驗證結果（可按「重新驗證」）" });
+    setApply({ phase: "done", result: { status: "timeout", items: [] }, progress: "report.noReply" });
     return;
   }
   savePending(null);
@@ -135,7 +187,7 @@ export async function applyDrafts(): Promise<void> {
   const statuses = s.previewState;
   const conflicts = s.drafts.filter((d) => statuses[d.id]?.status === "conflict");
   if (conflicts.length > 0) {
-    store.set({ applyState: { ...IDLE_APPLY, phase: "error", error: { code: "conflict", message: "有變更與目前的原始碼不一致，請先移除或重新選擇。" } } });
+    store.set({ applyState: { ...IDLE_APPLY, phase: "error", error: { code: "conflict", message: "staged changes conflict with the source" } } });
     return;
   }
   const inSource = s.drafts.filter((d) => statuses[d.id]?.status === "in-source");
@@ -149,16 +201,47 @@ export async function applyDrafts(): Promise<void> {
   emitToPreview(EVENTS.applyArm, { armId, draftIds });
   await armed;
   setApply({ phase: "writing" });
-  const response = await postJson<{ applyId: string; expect: Expect }>("/apply", buildApplyBatch(drafts, s.index));
+  const response = await postJson<ApplyResponse>("/apply", buildApplyBatch(drafts, s.index));
   if (!response.ok) {
     emitToPreview(EVENTS.applyCancel, { armId, draftIds });
     setApply({ phase: "error", error: response.error });
+    void refreshServer();
     return;
   }
   settle(draftIds);
   const pending: PendingVerification = { applyId: response.data.applyId, originalApplyId: response.data.applyId, armId, mode: "apply", expect: response.data.expect, draftIds, drafts };
   savePending(pending);
-  setApply({ applyId: response.data.applyId });
+  setApply({ applyId: response.data.applyId, documents: response.data.documents ?? [], pairing: response.data.pairing ?? [] });
+  followed = response.data.applyId;
+  void followPostApply(response.data.applyId, response.data.postApply);
+  void refreshServer();
+  await requestVerification(pending);
+}
+
+type ApplyResponse = {
+  applyId: string;
+  expect: Expect;
+  documents?: DocumentEdit[];
+  pairing?: PairingEntry[];
+  postApply?: { status: string; commands: string[] };
+};
+type UndoResponse = { undoId: string; expect: Expect; postApply?: { status: string; commands: string[] } };
+
+async function verifyUndo(state: ApplyState, response: UndoResponse, undoMode: "exact" | "reverse"): Promise<void> {
+  const pending: PendingVerification = {
+    applyId: response.undoId,
+    originalApplyId: state.applyId!,
+    armId: state.armId!,
+    mode: "undo",
+    expect: response.expect,
+    draftIds: state.drafts.map((d) => d.id),
+    drafts: state.drafts,
+  };
+  savePending(pending);
+  setApply({ undone: true, undoMode, result: null, error: null });
+  followed = response.undoId;
+  void followPostApply(response.undoId, response.postApply);
+  void refreshServer();
   await requestVerification(pending);
 }
 
@@ -166,23 +249,25 @@ export async function undoApplied(): Promise<void> {
   const state = store.get().applyState;
   if (!state.applyId || !state.armId) return;
   setApply({ phase: "undoing", error: null });
-  const response = await postJson<{ undoId: string; expect: Expect }>("/undo", { applyId: state.applyId });
+  const response = await postJson<UndoResponse>("/undo", { applyId: state.applyId });
   if (!response.ok) {
     setApply({ phase: "done", error: response.error });
     return;
   }
-  const pending: PendingVerification = {
-    applyId: response.data.undoId,
-    originalApplyId: state.applyId,
-    armId: state.armId,
-    mode: "undo",
-    expect: response.data.expect,
-    draftIds: state.drafts.map((d) => d.id),
-    drafts: state.drafts,
-  };
-  savePending(pending);
-  setApply({ undone: true, result: null });
-  await requestVerification(pending);
+  await verifyUndo(state, response.data, "exact");
+}
+
+/** After a whole-file undo was refused: put back only the references this apply changed. */
+export async function reverseApplied(): Promise<void> {
+  const state = store.get().applyState;
+  if (!state.applyId || !state.armId) return;
+  setApply({ phase: "undoing", error: null });
+  const response = await postJson<UndoResponse>("/undo/reverse", { applyId: state.applyId });
+  if (!response.ok) {
+    setApply({ phase: "done", error: response.error });
+    return;
+  }
+  await verifyUndo(state, response.data, "reverse");
 }
 
 export async function skipApplied(): Promise<void> {
@@ -191,6 +276,7 @@ export async function skipApplied(): Promise<void> {
   const response = await postJson<{ skipped: string }>("/undo/skip", { applyId: state.applyId });
   if (!response.ok) setApply({ error: response.error });
   else setApply({ skipped: true, error: null });
+  void refreshServer();
 }
 
 /** The last verification request (apply or undo), for "re-verify". */

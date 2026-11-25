@@ -1,0 +1,36 @@
+.fx-title {
+  display: grid;
+  gap: var(--fx-comp-title-gap) var(--fx-sys-spacing-md);
+  color: var(--fx-comp-title-text-color);
+  font-family: var(--fx-comp-title-family);
+  font-size: var(--fx-comp-title-size);
+  font-weight: var(--fx-comp-title-weight);
+  line-height: var(--fx-sys-typescale-display-line-height);
+  margin-block-end: var(--fx-sys-spacing-lg, 16px);
+}
+
+.fx-title__glyph:nth-child(3n + 1) {
+  color: var(--fx-comp-title-glyph-color-1);
+}
+
+.fx-title__glyph:nth-child(3n + 2) {
+  color: var(--fx-comp-title-glyph-color-2);
+}
+
+.fx-title__glyph:nth-child(3n) {
+  color: var(--fx-comp-title-glyph-color-3);
+}
+
+.fx-title__plate {
+  background: var(--fx-comp-title-plate-container-color);
+  color: var(--fx-comp-title-plate-text-color);
+  border-block-start: var(--fx-sys-stroke-thick) solid var(--fx-sys-color-ink-strong);
+  border-radius: var(--fx-sys-shape-corner-sm) var(--fx-sys-shape-corner-md) / var(--fx-sys-shape-corner-lg);
+  font-family: var(--fx-comp-title-family), var(--fx-sys-typescale-display-family), sans-serif;
+  outline: 1px solid currentcolor;
+}
+
+/* The title hosts a seal: an outer component styling a part of the inner one. */
+.fx-title__slot .fx-seal__label {
+  color: currentcolor;
+}

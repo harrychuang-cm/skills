@@ -17,6 +17,30 @@ export const ADDON_VERSION = JSON.parse(
   fs.readFileSync(fileURLToPath(new URL("../package.json", import.meta.url)), "utf8"),
 ).version;
 
+/**
+ * A fingerprint of the code the manager page runs (manager entry, manager/,
+ * shared/). A page that loaded an older build keeps running it until it is
+ * reloaded; with this it can tell.
+ */
+function managerBuild() {
+  const root = fileURLToPath(new URL("../", import.meta.url));
+  const hash = crypto.createHash("sha256");
+  const walk = (dir) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))) {
+      const full = `${dir}/${entry.name}`;
+      if (entry.isDirectory()) walk(full);
+      else if (entry.isFile()) hash.update(`${full.slice(root.length)}\0`).update(fs.readFileSync(full)).update("\0");
+    }
+  };
+  try {
+    for (const part of ["manager", "shared"]) walk(`${root}${part}`);
+    hash.update(fs.readFileSync(`${root}manager.tsx`));
+    return hash.digest("hex").slice(0, 16);
+  } catch {
+    return null;
+  }
+}
+
 const defaultLog = {
   info: (message) => console.log(`[code-layer] ${message}`),
   warn: (message) => console.warn(`[code-layer] ${message}`),
@@ -31,6 +55,9 @@ const defaultLog = {
  */
 export async function createApp({ projectRoot, configFile, servedRoots = [projectRoot], log = defaultLog, notifyChanged = () => {}, extend = null, postcss: injectedPostcss = null }) {
   const session = crypto.randomBytes(32).toString("base64url");
+  // Not a secret: lets a page notice that the dev server it talks to is no longer the one it loaded from.
+  const instance = crypto.randomBytes(6).toString("base64url");
+  const build = managerBuild();
   const readOnlyReasons = [];
   let config = null;
   let postcss = injectedPostcss;
@@ -83,7 +110,7 @@ export async function createApp({ projectRoot, configFile, servedRoots = [projec
     },
     routes,
     capabilities: { write: false },
-    stateExtras: () => ({}),
+    stateExtras: (_index) => ({}),
     requireIndex() {
       if (!indexCache) throw new ApiError("read-only", "Code Layer is not configured.", { reasons: readOnlyReasons });
       return indexCache.get();
@@ -112,6 +139,8 @@ export async function createApp({ projectRoot, configFile, servedRoots = [projec
       projectId: config?.projectId ?? null,
       version: ADDON_VERSION,
       session,
+      instance,
+      build,
       capabilities: app.capabilities,
       limits: config?.limits ?? null,
       readOnly: app.allReadOnly().length > 0,
@@ -125,11 +154,12 @@ export async function createApp({ projectRoot, configFile, servedRoots = [projec
       const index = indexCache ? indexCache.get() : null;
       return {
         ok: true,
+        instance,
         readOnly: { active: app.allReadOnly().length > 0, reasons: app.allReadOnly() },
         revision: index?.revision ?? null,
         tokenEditing: index?.tokenIndex.tokenEditing ?? null,
         mirrors: index?.tokenIndex.mirrors ?? [],
-        ...app.stateExtras(),
+        ...app.stateExtras(index),
       };
     },
   });

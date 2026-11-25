@@ -48,15 +48,20 @@ function onlyDiff(oldBytes, newBytes, fromName, toName) {
 }
 
 test("value-refs: classify value shapes", () => {
-  assert.deepEqual(classifyValue("var(--a)"), { kind: "single-var", name: "--a" });
-  assert.deepEqual(classifyValue("  var( /*x*/ --a ) "), { kind: "single-var", name: "--a" });
+  const brief = (value) => {
+    const { components, ...shape } = classifyValue(value);
+    return shape;
+  };
+  assert.deepEqual(brief("var(--a)"), { kind: "single-var", name: "--a" });
+  assert.deepEqual(brief("  var( /*x*/ --a ) "), { kind: "single-var", name: "--a" });
   assert.equal(classifyValue("var(--a, 4px)").kind, "var-with-fallback");
   assert.equal(classifyValue("var(--a, var(--b))").kind, "var-with-fallback");
   assert.equal(classifyValue("calc(var(--a) * 3)").kind, "expression");
-  assert.equal(classifyValue("var(--a) var(--b)").kind, "expression");
-  assert.equal(classifyValue("var(--a) 2px").kind, "expression");
+  assert.equal(classifyValue("var(--a) var(--b)").kind, "var-list", "a var() list is re-bindable per reference since schema 2");
+  assert.equal(classifyValue("var(--a) 2px").kind, "var-list");
+  assert.equal(classifyValue("var(--a)2px").kind, "expression", "a reference glued to other text is not a component of its own");
   assert.equal(classifyValue("#fff").kind, "raw");
-  assert.deepEqual(classifyValue("currentColor"), { kind: "keyword", keyword: "currentcolor" });
+  assert.deepEqual(brief("currentColor"), { kind: "keyword", keyword: "currentcolor" });
   assert.equal(classifyValue('"var(--a)"').kind, "raw", "var inside a string is not a reference");
   assert.equal(classifyValue("/* var(--a) */ red").kind, "raw", "var inside a comment is not a reference");
 });
@@ -84,6 +89,22 @@ test("value-refs: scanDeclarations reads :root blocks from text", () => {
   assert.equal(findRootDeclaration(text, "--a").value, "var(--b)");
   assert.equal(findRootDeclaration(text, "--missing"), null);
   assert.equal(findRootDeclaration(":root{--a:1}:root{--a:2}", "--a"), "ambiguous");
+});
+
+test("value-refs: a declaration right after a comment is still found", () => {
+  const text = [
+    "/* header; with { braces } and a colon: here */",
+    ":root {",
+    "  /* --- section: one (E01) --- */",
+    "  --a: var(--b); /* trailing note: about a */",
+    "  --c: 4px;",
+    "  /* a note */ --d: var(--a) /* inside */;",
+    "}",
+  ].join("\n");
+  assert.deepEqual(scanDeclarations(text).map((d) => [d.prelude, d.property]), [[":root", "--a"], [":root", "--c"], [":root", "--d"]]);
+  assert.equal(findRootDeclaration(text, "--a").value, "var(--b)");
+  assert.equal(findRootDeclaration(text, "--c").value, "4px");
+  assert.equal(normalizeValue(findRootDeclaration(text, "--d").value), "var(--a)");
 });
 
 test("patch: BOM and non-ASCII text before the target", () => {

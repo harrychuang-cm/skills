@@ -1,83 +1,110 @@
-// Panel rows of the core-loop proof. Only "fill" and "radius" are editable;
-// the rest are traced and shown read-only.
+// The panel's property table. A group lists the logical longhands ("slots",
+// see sides.mjs) it covers; the tracer finds, per slot, the declaration
+// component that sets it, and reports one row per set of slots that share a
+// winner. Structural layout groups are shown for context and never edited.
 
-export type RowDef = {
+export type SectionId = "layout" | "spacing" | "size" | "appearance" | "fill" | "stroke" | "typography";
+
+export const SECTIONS: SectionId[] = ["layout", "spacing", "size", "appearance", "fill", "stroke", "typography"];
+
+export type GroupDef = {
+  /** Stable id; also the row id when one row covers every slot of the group. */
   id: string;
-  label: string;
-  section: "填色" | "外觀" | "文字" | "間距與尺寸";
-  /** Computed longhand read for display and verification. */
-  computed: string;
-  /** Authored properties that can set this row, shorthand first. */
-  family: string[];
-  /** Additional longhands that must agree (e.g. the four corners). */
-  uniformWith?: string[];
-  editableInProof: boolean;
-  inherited: boolean;
+  section: SectionId;
+  /** Logical longhands, in display order. */
+  slots: string[];
+  /** Token kinds a reference of this group may be re-bound to. */
   kinds: string[];
+  /** False for structural layout: values are shown, never re-bound. */
+  editable: boolean;
+  /** The property inherits: an undeclared value is traced to the declaring ancestor. */
+  inherited: boolean;
+  /** What the slots of the group are, for naming a row that covers only some of them. */
+  split: "single" | "sides" | "corners" | "axes";
+  /** Slots to use instead on SVG graphics, where the property means something else (fill). */
+  svgSlots?: string[];
 };
 
-export const ROWS: RowDef[] = [
-  {
-    id: "fill",
-    label: "填色",
-    section: "填色",
-    computed: "background-color",
-    family: ["background", "background-color"],
-    editableInProof: true,
-    inherited: false,
-    kinds: ["color"],
-  },
+const SIDES = ["block-start", "inline-end", "block-end", "inline-start"];
+const sides = (prefix: string, suffix = "") => SIDES.map((side) => `${prefix}-${side}${suffix}`);
+const LENGTH = ["dimension", "zero", "percentage"];
+
+export const GROUPS: GroupDef[] = [
+  // Layout
+  { id: "display", section: "layout", slots: ["display"], kinds: [], editable: false, inherited: false, split: "single" },
+  { id: "direction", section: "layout", slots: ["flex-direction"], kinds: [], editable: false, inherited: false, split: "single" },
+  { id: "alignItems", section: "layout", slots: ["align-items"], kinds: [], editable: false, inherited: false, split: "single" },
+  { id: "justifyContent", section: "layout", slots: ["justify-content"], kinds: [], editable: false, inherited: false, split: "single" },
+  { id: "wrap", section: "layout", slots: ["flex-wrap"], kinds: [], editable: false, inherited: false, split: "single" },
+  { id: "gap", section: "layout", slots: ["row-gap", "column-gap"], kinds: LENGTH, editable: true, inherited: false, split: "axes" },
+  // Spacing
+  { id: "padding", section: "spacing", slots: sides("padding"), kinds: LENGTH, editable: true, inherited: false, split: "sides" },
+  { id: "margin", section: "spacing", slots: sides("margin"), kinds: LENGTH, editable: true, inherited: false, split: "sides" },
+  // Size
+  { id: "inlineSize", section: "size", slots: ["inline-size"], kinds: LENGTH, editable: true, inherited: false, split: "single" },
+  { id: "blockSize", section: "size", slots: ["block-size"], kinds: LENGTH, editable: true, inherited: false, split: "single" },
+  { id: "minInlineSize", section: "size", slots: ["min-inline-size"], kinds: LENGTH, editable: true, inherited: false, split: "single" },
+  { id: "minBlockSize", section: "size", slots: ["min-block-size"], kinds: LENGTH, editable: true, inherited: false, split: "single" },
+  { id: "maxInlineSize", section: "size", slots: ["max-inline-size"], kinds: LENGTH, editable: true, inherited: false, split: "single" },
+  { id: "maxBlockSize", section: "size", slots: ["max-block-size"], kinds: LENGTH, editable: true, inherited: false, split: "single" },
+  // Appearance
+  { id: "opacity", section: "appearance", slots: ["opacity"], kinds: ["number", "zero", "percentage"], editable: true, inherited: false, split: "single" },
   {
     id: "radius",
-    label: "圓角",
-    section: "外觀",
-    computed: "border-top-left-radius",
-    uniformWith: ["border-top-right-radius", "border-bottom-right-radius", "border-bottom-left-radius"],
-    family: ["border-radius", "border-top-left-radius", "border-top-right-radius", "border-bottom-right-radius", "border-bottom-left-radius", "border-start-start-radius", "border-start-end-radius", "border-end-start-radius", "border-end-end-radius"],
-    editableInProof: true,
+    section: "appearance",
+    slots: ["border-start-start-radius", "border-start-end-radius", "border-end-end-radius", "border-end-start-radius"],
+    kinds: LENGTH,
+    editable: true,
     inherited: false,
-    kinds: ["dimension", "zero", "percentage"],
+    split: "corners",
   },
-  { id: "color", label: "文字色", section: "文字", computed: "color", family: ["color"], editableInProof: false, inherited: true, kinds: ["color"] },
-  { id: "fontFamily", label: "字體", section: "文字", computed: "font-family", family: ["font", "font-family"], editableInProof: false, inherited: true, kinds: ["font-family"] },
-  { id: "fontSize", label: "字級", section: "文字", computed: "font-size", family: ["font", "font-size"], editableInProof: false, inherited: true, kinds: ["dimension"] },
-  { id: "fontWeight", label: "字重", section: "文字", computed: "font-weight", family: ["font", "font-weight"], editableInProof: false, inherited: true, kinds: ["number"] },
-  {
-    id: "padding",
-    label: "內距",
-    section: "間距與尺寸",
-    computed: "padding-top",
-    uniformWith: ["padding-right", "padding-bottom", "padding-left"],
-    family: ["padding", "padding-top", "padding-right", "padding-bottom", "padding-left", "padding-block", "padding-inline", "padding-block-start", "padding-block-end", "padding-inline-start", "padding-inline-end"],
-    editableInProof: false,
-    inherited: false,
-    kinds: ["dimension", "zero"],
-  },
-  { id: "minInlineSize", label: "最小寬度", section: "間距與尺寸", computed: "min-inline-size", family: ["min-inline-size"], editableInProof: false, inherited: false, kinds: ["dimension", "zero"] },
-  { id: "minBlockSize", label: "最小高度", section: "間距與尺寸", computed: "min-block-size", family: ["min-block-size"], editableInProof: false, inherited: false, kinds: ["dimension", "zero"] },
+  // Fill
+  { id: "fill", section: "fill", slots: ["background-color"], svgSlots: ["fill"], kinds: ["color"], editable: true, inherited: false, split: "single" },
+  // Stroke
+  { id: "borderColor", section: "stroke", slots: sides("border", "-color"), kinds: ["color"], editable: true, inherited: false, split: "sides" },
+  { id: "borderWidth", section: "stroke", slots: sides("border", "-width"), kinds: ["dimension", "zero"], editable: true, inherited: false, split: "sides" },
+  { id: "outlineColor", section: "stroke", slots: ["outline-color"], kinds: ["color"], editable: true, inherited: false, split: "single" },
+  { id: "outlineWidth", section: "stroke", slots: ["outline-width"], kinds: ["dimension", "zero"], editable: true, inherited: false, split: "single" },
+  { id: "stroke", section: "stroke", slots: ["stroke"], kinds: ["color"], editable: true, inherited: false, split: "single" },
+  { id: "strokeWidth", section: "stroke", slots: ["stroke-width"], kinds: ["dimension", "zero", "number"], editable: true, inherited: false, split: "single" },
+  // Typography
+  { id: "fontFamily", section: "typography", slots: ["font-family"], kinds: ["font-family"], editable: true, inherited: true, split: "single" },
+  { id: "fontSize", section: "typography", slots: ["font-size"], kinds: LENGTH, editable: true, inherited: true, split: "single" },
+  { id: "fontWeight", section: "typography", slots: ["font-weight"], kinds: ["number"], editable: true, inherited: true, split: "single" },
+  { id: "lineHeight", section: "typography", slots: ["line-height"], kinds: ["number", "dimension", "percentage", "zero"], editable: true, inherited: true, split: "single" },
+  { id: "letterSpacing", section: "typography", slots: ["letter-spacing"], kinds: ["dimension", "zero"], editable: true, inherited: true, split: "single" },
+  { id: "color", section: "typography", slots: ["color"], kinds: ["color"], editable: true, inherited: true, split: "single" },
 ];
 
-export const READ_ONLY_TEXT: Record<string, string> = {
-  "not-in-proof": "尚不可編輯（下一階段開放）",
-  "inline-style": "行內樣式（來自元件程式碼或 story），無法直接修改",
-  "unknown-source": "來自未納入索引的樣式表",
-  "identity-mismatch": "頁面上的 CSS 與檔案內容不一致，請重新整理預覽",
-  "no-declaration": "沒有直接宣告：繼承自上層或瀏覽器預設，驗證階段不追蹤",
-  "expression": "由運算式計算（calc() 等），驗證階段不可直接修改",
-  "raw-value": "寫死的數值（未綁定 token）",
-  "keyword": "關鍵字（例如 currentcolor、inherit）",
-  "var-with-fallback": "var() 帶有 fallback，驗證階段不可直接修改",
-  "comp-token-not-alias": "comp token 不是單一 alias",
-  "token-shadowed": "這個 token 在目前主題下被其他樣式表覆寫",
-  "scoped-override": "這個 token 在元件或上層元素上被重新宣告",
-  "duplicate-declaration": "同一條規則內有重複或後續覆寫的宣告",
-  "longhand": "個別角或邊的宣告，驗證階段只支援整體簡寫",
-  "not-uniform": "各角或各邊的值不同",
-  "background-not-color": "background 簡寫不是單一顏色",
-  "uncertain-condition": "規則位於驗證階段不支援的條件區塊（@layer、@container 等）",
-  "important": "!important 宣告，驗證階段不支援",
-  "token-editing-disabled": "token 檔目前不能編輯（見伺服器狀態）",
-  "unconfirmed-cascade": "無法確認這條宣告驅動此元素",
-  "animated": "動畫中，無法證明",
-  "not-indexed-token": "引用的名稱不在 token 索引中",
-};
+export const GROUP_BY_ID: Record<string, GroupDef> = Object.fromEntries(GROUPS.map((group) => [group.id, group]));
+
+/** Every slot of the table, and the group that owns it. */
+export const GROUP_OF_SLOT: Record<string, GroupDef> = Object.fromEntries(GROUPS.flatMap((group) => [...group.slots, ...(group.svgSlots ?? [])].map((slot) => [slot, group])));
+
+/**
+ * Id of the row that covers `slots` of a group: the group id when it covers
+ * all of them, otherwise the group id and the part of each slot name that
+ * tells it apart (`padding/block-start+block-end`).
+ */
+export function rowIdFor(group: GroupDef, slots: string[]): string {
+  if (slots.length === group.slots.length) return group.id;
+  return `${group.id}/${slots.map((slot) => slotPart(group, slot)).join("+")}`;
+}
+
+/** The distinguishing part of a slot inside its group: `block-start`, `start-end`, `row`. */
+export function slotPart(group: GroupDef, slot: string): string {
+  if (group.split === "sides") return /(block-start|block-end|inline-start|inline-end)/.exec(slot)?.[1] ?? slot;
+  if (group.split === "corners") return /border-((?:start|end)-(?:start|end))-radius/.exec(slot)?.[1] ?? slot;
+  if (group.split === "axes") return slot.replace(/-gap$/, "");
+  return slot;
+}
+
+/** A value that probes a slot: any computed value changes when it is applied. */
+export function sentinelFor(group: GroupDef): string {
+  if (group.kinds.includes("color")) return "rgb(1, 2, 3)";
+  if (group.kinds.includes("font-family")) return '"code-layer-probe"';
+  if (group.id === "opacity") return "0.137";
+  if (group.id === "fontWeight") return "137";
+  if (group.id === "lineHeight") return "1.337";
+  return "13.37px";
+}

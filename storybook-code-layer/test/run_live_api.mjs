@@ -111,12 +111,22 @@ function diffLines(a, b) {
   return out;
 }
 
+const withoutStamp = (html) => html.replace(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z/g, "<generated>");
+
 async function main() {
+  // With a component specification directory in the binding, a token re-bind also rewrites the Token Contract row.
+  const governed = (await request({ route: "/state" })).json.governance?.componentSpecsDir ?? null;
+  const specFile = governed ? path.join(lab, governed, "badge-seal.md") : null;
+  if (specFile && fs.existsSync(specFile)) files.spec = specFile;
+  // Documents the binding's post-apply commands regenerate (timestamped): put back at the end.
+  const generated = ["docs/design-system/index.html", "docs/design-system/review.html"].map((relative) => path.join(lab, relative)).filter((file) => fs.existsSync(file)).map((file) => ({ file, bytes: fs.readFileSync(file) }));
   const start = hashes();
   const originals = Object.fromEntries(Object.entries(files).map(([k, f]) => [k, fs.readFileSync(f, "utf8")]));
   const logStart = logFile ? fs.statSync(logFile).size : 0;
   const session = (await request({ route: "/session" })).json;
   const index = (await request({ route: "/index" })).json;
+  // What the project already has applied stays where it is: the run only compares against it.
+  const stackBefore = (await request({ route: "/state" })).json.undoStack.map((entry) => entry.applyId);
 
   await check("10.1 session reports writes enabled; baseline checks pass", async () => {
     assert.equal(session.capabilities.write, true);
@@ -130,6 +140,7 @@ async function main() {
     assert.equal(plan.status, 200, JSON.stringify(plan.json));
     assert.deepEqual(plan.json.files.map((f) => [f.file, f.role, f.edits.map((e) => e.line)]), [
       ["tokens/tokens-comp.css", "token-source", [54]],
+      ...(files.spec ? [[`${governed}/badge-seal.md`, "spec", [54]]] : []),
       ["storybook/tokens/tokens-comp.css", "token-mirror", [54]],
       ["storybook/src/components/badge-seal/BadgeSeal.css", "component-css", [60]],
     ]);
@@ -196,18 +207,26 @@ async function main() {
     return "no full reload logged";
   });
 
-  await check("10.8 undo restores the exact bytes of all three files", async () => {
+  await check("10.8 undo restores the exact bytes of every written file", async () => {
     const undone = await post("/undo", { applyId }, session.session);
     assert.equal(undone.status, 200, JSON.stringify(undone.json));
     assert.deepEqual(hashes(), start);
     const state = (await request({ route: "/state" })).json;
-    assert.deepEqual(state.undoStack, []);
+    assert.deepEqual(state.undoStack.map((entry) => entry.applyId), stackBefore, "the undo stack is what it was before the run");
   });
 
   const failed = results.filter((r) => !r.ok);
   if (JSON.stringify(hashes()) !== JSON.stringify(start)) {
     process.stdout.write("!! files differ from the start of this run; restoring from the in-memory originals\n");
     for (const [key, file] of Object.entries(files)) fs.writeFileSync(file, originals[key]);
+  }
+  // Regenerated documents differ from the start only in their timestamp: put the exact bytes back.
+  for (let i = 0; i < 120 && (await request({ route: "/state" })).json.postApply?.running; i += 1) await new Promise((resolve) => setTimeout(resolve, 250));
+  for (const { file, bytes } of generated) {
+    const now = fs.readFileSync(file);
+    if (now.equals(bytes)) continue;
+    if (withoutStamp(now.toString("utf8")) === withoutStamp(bytes.toString("utf8"))) fs.writeFileSync(file, bytes);
+    else process.stdout.write(`!! ${path.relative(lab, file)} differs from the start of this run in more than its timestamp; left as it is\n`);
   }
   process.stdout.write(`\n${results.length - failed.length}/${results.length} passed\n`);
   process.exit(failed.length ? 1 : 0);

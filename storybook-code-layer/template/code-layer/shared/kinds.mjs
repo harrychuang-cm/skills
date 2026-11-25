@@ -1,7 +1,7 @@
 // Kind of a resolved token value, used for "same type" checks and picker
 // filtering. Kinds: color, dimension, percentage, angle, time, number, zero,
 // font-family, keyword, unknown.
-import { normalizeValue } from "./value-refs.mjs";
+import { normalizeValue, splitTopLevel } from "./value-refs.mjs";
 
 const NAMED_COLORS = new Set([
   "transparent", "black", "white", "red", "green", "blue", "yellow", "orange", "purple",
@@ -50,4 +50,33 @@ export function kindsCompatible(a, b) {
 export function tokenCategory(name, prefix) {
   const match = new RegExp(`^--${prefix}-(?:ref|sys|comp)-([a-z0-9]+)`).exec(name);
   return match ? match[1] : null;
+}
+
+/** A literal made only of keyword identifiers (`inline-flex`, `row wrap`), as opposed to a number, length or color. */
+export function isKeywordValue(value) {
+  const parts = splitTopLevel(String(value ?? ""));
+  return parts.length > 0 && parts.every((part) => !part.separator && /^-?[A-Za-z_][A-Za-z0-9_-]*$/.test(part.text) && inferKind(part.text) === "keyword");
+}
+
+/**
+ * A resolved value that can be ordered on a scale: a length, a percentage or
+ * a plain number. Returns { value, unit } (unit "" for numbers, lower case
+ * otherwise) or null. Zero has no unit and fits every scale.
+ */
+export function parseScalar(value) {
+  if (value == null) return null;
+  const match = new RegExp(`^(${NUMBER})([A-Za-z%]*)$`).exec(normalizeValue(value));
+  if (!match) return null;
+  const number = Number(match[1]);
+  if (!Number.isFinite(number)) return null;
+  const unit = match[2].toLowerCase();
+  if (unit !== "" && unit !== "%" && !new RegExp(`^(?:${LENGTH_UNITS})$`, "i").test(unit)) return null;
+  return { value: number, unit: number === 0 ? "" : unit };
+}
+
+/** Two scale entries can be ordered against each other. */
+export function sameScale(a, b) {
+  if (!a || !b) return false;
+  if (a.category !== b.category || a.family !== b.family) return false;
+  return a.unit === b.unit || a.value === 0 || b.value === 0;
 }

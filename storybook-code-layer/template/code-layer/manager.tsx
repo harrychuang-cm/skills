@@ -7,17 +7,19 @@ import { addons, types } from "storybook/manager-api";
 import {
   ADDON_ID,
   EVENTS,
-  PANEL_ID,
+  INSPECTOR_ID,
   TOOL_ID,
+  type ChildrenPayload,
+  type LayoutPayload,
   type PreviewStatePayload,
   type SelectionPayload,
   type StatusPayload,
 } from "./shared/protocol";
-import { hydrate, syncPreview } from "./manager/actions";
+import { hydrate, refreshServer, syncPreview } from "./manager/actions";
 import { restoreLastApply, resumePending } from "./manager/apply";
-import { fetchIndex, fetchSession } from "./manager/api";
+import { fetchIndex, fetchSession, fetchState } from "./manager/api";
 import { emitToPreview, onPreview } from "./manager/channel";
-import { PanelHost } from "./manager/PanelHost";
+import { CanvasInspector } from "./manager/Inspector";
 import { recallSelection, rememberSelection } from "./manager/persist";
 import { store } from "./manager/store";
 import { Tool } from "./manager/Tool";
@@ -27,8 +29,9 @@ const scope = globalThis as unknown as Record<string, boolean | undefined>;
 
 async function boot(): Promise<void> {
   const session = await fetchSession();
-  store.set({ session });
+  store.set({ session, booted: true });
   await fetchIndex();
+  void fetchState();
   if (session?.projectId) hydrate(session.projectId);
   restoreLastApply();
 }
@@ -53,7 +56,8 @@ if (!scope[FLAG]) {
     onPreview<StatusPayload>(EVENTS.status, (payload) => {
       const previous = store.get().status;
       store.set({ status: payload });
-      if (payload.indexRevision && payload.indexRevision !== store.get().index?.revision) void fetchIndex();
+      // The source changed (an apply, an external edit, a mirror out of step): refresh what the server knows.
+      if (payload.indexRevision && payload.indexRevision !== store.get().index?.revision) void refreshServer();
       const becameActive = payload.effective.state === "active" && previous?.effective.state !== "active";
       const storyChanged = payload.storyId !== (previous?.storyId ?? null);
       if (payload.effective.state === "active" && (becameActive || storyChanged)) {
@@ -63,7 +67,13 @@ if (!scope[FLAG]) {
     });
     onPreview<SelectionPayload>(EVENTS.selection, (payload) => {
       const storyId = payload.trace?.storyId ?? store.get().status?.storyId ?? null;
-      store.set({ selection: payload.trace, pickerRow: payload.trace ? store.get().pickerRow : null });
+      const previous = store.get().selection;
+      store.set({
+        selection: payload.trace,
+        // The element left the page: say so instead of silently emptying the panel.
+        lostSelection: payload.reason === "lost" ? previous?.label ?? "" : null,
+        ...(payload.trace ? {} : { openRow: null, relatives: null }),
+      });
       if (storyId && payload.reason !== "story-change" && payload.reason !== "lost") {
         rememberSelection(storyId, payload.trace?.descriptor ?? null);
       }
@@ -71,11 +81,13 @@ if (!scope[FLAG]) {
     onPreview<{ revision: string; values: Record<string, string> }>(EVENTS.tokenValues, (payload) =>
       store.set({ tokenValues: payload.values }),
     );
+    onPreview<LayoutPayload>(EVENTS.layout, (payload) => store.set({ layout: { obstacles: payload.obstacles, viewport: payload.viewport } }));
+    onPreview<ChildrenPayload>(EVENTS.children, (payload) => store.set({ relatives: payload.traceId ? payload : null }));
     onPreview<PreviewStatePayload>(EVENTS.previewState, (payload) => {
-      store.set({ previewState: Object.fromEntries(payload.items.map((item) => [item.id, { status: item.status, message: item.message }])) });
+      store.set({ previewState: Object.fromEntries(payload.items.map((item) => [item.id, { status: item.status, message: item.message, params: item.params }])) });
     });
-    onPreview<{ rowId: string; traceId: string; result: string }>(EVENTS.probeResult, (payload) => {
-      store.set({ probes: { ...store.get().probes, [`${payload.traceId}:${payload.rowId}`]: payload.result } });
+    onPreview<{ rowId: string; scope: string; traceId: string; result: string }>(EVENTS.probeResult, (payload) => {
+      store.set({ probes: { ...store.get().probes, [`${payload.traceId}:${payload.rowId}:${payload.scope}`]: payload.result } });
     });
     onPreview<{ action: string; text?: string }>(EVENTS.request, (payload) => {
       if (payload.action === "copy" && payload.text) void navigator.clipboard.writeText(payload.text).catch(() => undefined);
@@ -87,11 +99,13 @@ if (!scope[FLAG]) {
       match: ({ viewMode }) => viewMode === "story" || viewMode === "docs",
       render: () => <Tool />,
     });
-    addons.add(PANEL_ID, {
-      type: types.PANEL,
-      title: "設計",
-      render: () => <PanelHost />,
-    });
     void boot();
+  });
+  // The inspector floats over the canvas: a canvas wrapper mounts it, and no addon panel is registered.
+  // Added here, while the entry is evaluated, and not in the register callback: Storybook's canvas keeps
+  // the list of wrappers it saw on its first render, which happens before register callbacks have run.
+  addons.add(INSPECTOR_ID, {
+    type: types.PREVIEW,
+    render: CanvasInspector,
   });
 }

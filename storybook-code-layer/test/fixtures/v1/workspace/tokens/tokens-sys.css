@@ -1,0 +1,36 @@
+/* system tier: roles that alias the reference tier */
+:root {
+  --fx-sys-color-primary: var(--fx-ref-color-red-60);
+  --fx-sys-color-on-primary: var(--fx-ref-color-white);
+  --fx-sys-color-primary-warm: var(--fx-ref-color-red-50);
+  --fx-sys-color-secondary: var(--fx-ref-color-blue-70);
+  --fx-sys-color-on-secondary: var(--fx-ref-color-white);
+  --fx-sys-color-highlight: var(--fx-ref-color-yellow-80);
+  --fx-sys-color-on-highlight: var(--fx-ref-color-ink-10);
+  --fx-sys-color-ink-strong: var(--fx-ref-color-ink-10);
+  --fx-sys-color-knockout: var(--fx-ref-color-paper-98);
+  --fx-sys-color-festival-1: var(--fx-ref-color-red-60);
+  --fx-sys-color-festival-2: var(--fx-ref-color-yellow-80);
+  --fx-sys-color-festival-3: var(--fx-ref-color-green-60);
+  --fx-sys-shape-corner-none: var(--fx-ref-radius-0);
+  --fx-sys-shape-corner-xs: var(--fx-ref-radius-2);
+  --fx-sys-shape-corner-sm: var(--fx-ref-radius-4);
+  --fx-sys-shape-corner-md: var(--fx-ref-radius-8);
+  --fx-sys-shape-corner-lg: var(--fx-ref-radius-16);
+  --fx-sys-spacing-xs: var(--fx-ref-space-4);
+  --fx-sys-spacing-sm: var(--fx-ref-space-8);
+  --fx-sys-spacing-md: var(--fx-ref-space-12);
+  --fx-sys-spacing-lg: var(--fx-ref-space-16);
+  --fx-sys-size-icon: var(--fx-ref-size-24);
+  --fx-sys-size-touch-min: var(--fx-ref-size-48);
+  --fx-sys-stroke-thin: var(--fx-ref-stroke-1);
+  --fx-sys-stroke-thick: var(--fx-ref-stroke-2);
+  --fx-sys-typescale-body-size: var(--fx-ref-font-size-14);
+  --fx-sys-typescale-label-size: var(--fx-ref-font-size-18);
+  --fx-sys-typescale-display-size: var(--fx-ref-font-size-32);
+  --fx-sys-typescale-body-weight: var(--fx-ref-font-weight-400);
+  --fx-sys-typescale-display-weight: var(--fx-ref-font-weight-700);
+  --fx-sys-typescale-display-family: var(--fx-ref-font-family-display);
+  --fx-sys-typescale-display-line-height: var(--fx-ref-line-height-tight);
+  --fx-sys-state-disabled-opacity: var(--fx-ref-opacity-60);
+}

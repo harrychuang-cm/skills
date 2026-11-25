@@ -7,6 +7,9 @@ import { candidatesFor, type SheetEntry } from "./cascade";
 
 export type EffectiveDecl = { entry: SheetEntry | null; selector: string; value: string };
 
+/** Marks a value that comes from an element's style attribute (translated where it is shown). */
+export const STYLE_ATTRIBUTE = "style-attribute";
+
 export class TokenResolver {
   private readonly rootCache = new Map<string, EffectiveDecl | null>();
   private rootCandidates: ReturnType<typeof candidatesFor> | null = null;
@@ -19,7 +22,7 @@ export class TokenResolver {
 
   effectiveOn(element: Element, name: string): EffectiveDecl | null {
     const inline = (element as HTMLElement).style?.getPropertyValue?.(name);
-    if (inline) return { entry: null, selector: "style 屬性", value: inline.trim() };
+    if (inline) return { entry: null, selector: STYLE_ATTRIBUTE, value: inline.trim() };
     const candidates =
       element === document.documentElement
         ? (this.rootCandidates ??= candidatesFor(document.documentElement, this.entries))
@@ -70,7 +73,7 @@ export class TokenResolver {
           const known = token.shadowedBy.find((s) => s.selector === normalizeValue(effective.selector));
           overriddenBy = known
             ? { file: known.file, line: known.line, selector: known.selector }
-            : { file: effective.entry?.label ?? "style 屬性", line: null, selector: effective.selector };
+            : { file: effective.entry?.label ?? STYLE_ATTRIBUTE, line: null, selector: effective.selector };
         }
       }
       links.push({

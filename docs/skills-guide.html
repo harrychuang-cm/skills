@@ -1390,6 +1390,15 @@
           journey: "add-tools",
         },
         {
+          tag: "$storybook-code-layer",
+          group: "工具與自動化",
+          badge: "新",
+          when: "我想在 Storybook 上像用 Figma 一樣選取元件、換 token，而且改到真的原始碼",
+          give: "Storybook 專案路徑（Vite 版；設計 token 分 ref、sys、comp 三層）",
+          get: "工具列多一個 Code Layer 開關：選取元素 → 在畫布上可拖移的檢視器點數值換 token、即時預覽 → 套用後寫回 token 檔、元件樣式與規格表",
+          note: "只改綁既有的 token，不會自己發明數值；每次套用都會驗證畫面與檔案一致，也可以還原。安裝前 AI 會把專案設定逐項給你確認，之後的更新不會覆蓋你改過的檔。",
+        },
+        {
           tag: "$agent-automation-orchestrate",
           group: "工具與自動化",
           when: "同一件事我要重複做很多次",

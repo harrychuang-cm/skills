@@ -150,31 +150,122 @@ export function findVarRefs(text) {
 }
 
 /**
+ * Top-level components of a value: split at whitespace that is outside
+ * parentheses, strings and comments. A comma or a slash at the top level is
+ * returned as its own component with `separator` set, so a caller can tell a
+ * space-separated shorthand from a list or a slash-separated value.
+ * Each entry: { text, start, end, separator: "," | "/" | null }.
+ */
+export function splitTopLevel(text) {
+  const value = String(text);
+  const masked = maskCss(value);
+  const out = [];
+  let depth = 0;
+  let quote = null;
+  let start = -1;
+  const close = (end) => {
+    if (start === -1) return;
+    out.push({ text: value.slice(start, end), start, end, separator: null });
+    start = -1;
+  };
+  for (let i = 0; i < masked.length; i += 1) {
+    const c = masked[i];
+    if (quote) {
+      if (c === quote) quote = null;
+      continue;
+    }
+    if (c === '"' || c === "'") {
+      if (start === -1) start = i;
+      quote = c;
+      continue;
+    }
+    if (c === "(") {
+      if (start === -1) start = i;
+      depth += 1;
+      continue;
+    }
+    if (c === ")") {
+      if (start === -1) start = i;
+      depth = Math.max(0, depth - 1);
+      continue;
+    }
+    if (depth > 0) continue;
+    if (/\s/.test(c)) {
+      close(i);
+      continue;
+    }
+    if (c === "," || c === "/") {
+      close(i);
+      out.push({ text: c, start: i, end: i + 1, separator: c });
+      continue;
+    }
+    if (start === -1) start = i;
+  }
+  close(masked.length);
+  return out;
+}
+
+/**
  * Shape of a declared value:
  * - { kind: "single-var", name }          the whole value is one var() without fallback
+ * - { kind: "var-list", names }           a space-separated shorthand in which every component is
+ *                                         either exactly one var() without fallback or has no var()
  * - { kind: "var-with-fallback", name }   one var() with a fallback
- * - { kind: "expression", names }         var() inside a function, several var(), or var() plus other text
+ * - { kind: "expression", names, detail } any other value with var(): "function" (a reference inside
+ *                                         a function), "fallback", "list" (comma) or "slash"
  * - { kind: "keyword", keyword }          CSS-wide keyword or currentcolor
  * - { kind: "raw" }                       a literal value
+ * Every shape carries `components`: [{ text, start, end, shape, refIndex }] where shape is
+ * "single-var" | "raw" | "expression" | "separator" and refIndex is the position of the
+ * component's reference among all var() references of the value (null without one).
  */
 export function classifyValue(text) {
-  const masked = maskCss(String(text));
-  const refs = findVarRefs(String(text));
+  const value = String(text);
+  const masked = maskCss(value);
+  const refs = findVarRefs(value);
+  const parts = splitTopLevel(value);
+  const plain = (part) => ({ text: part.text, start: part.start, end: part.end, shape: part.separator ? "separator" : "raw", refIndex: null });
   if (refs.length === 0) {
-    const keyword = normalizeValue(text).toLowerCase();
-    if (CSS_WIDE_KEYWORDS.has(keyword)) return { kind: "keyword", keyword };
-    return { kind: "raw" };
+    const keyword = normalizeValue(value).toLowerCase();
+    const components = parts.map(plain);
+    if (CSS_WIDE_KEYWORDS.has(keyword)) return { kind: "keyword", keyword, components };
+    return { kind: "raw", components };
   }
   if (refs.length === 1 || (refs.length > 1 && refs.slice(1).every((r) => r.depth > 0 && r.start < refs[0].end))) {
     const r = refs[0];
     const before = masked.slice(0, r.start).trim();
     const after = masked.slice(r.end).trim();
     if (r.name && r.closed && before === "" && after === "") {
-      if (!r.hasFallback && refs.length === 1) return { kind: "single-var", name: r.name };
-      return { kind: "var-with-fallback", name: r.name };
+      const single = !r.hasFallback && refs.length === 1;
+      const components = [{ text: value.slice(r.start, r.end), start: r.start, end: r.end, shape: single ? "single-var" : "expression", refIndex: 0 }];
+      if (single) return { kind: "single-var", name: r.name, components };
+      return { kind: "var-with-fallback", name: r.name, components };
     }
   }
-  return { kind: "expression", names: refs.map((r) => r.name).filter(Boolean) };
+  let separator = null;
+  let fallback = false;
+  let nested = false;
+  const components = parts.map((part) => {
+    if (part.separator) {
+      separator ??= part.separator;
+      return plain(part);
+    }
+    const inside = [];
+    refs.forEach((ref, index) => {
+      if (ref.start >= part.start && ref.start < part.end) inside.push({ ref, index });
+    });
+    if (inside.length === 0) return plain(part);
+    const { ref, index } = inside[0];
+    const whole = inside.length === 1 && ref.depth === 0 && ref.name && ref.closed && ref.start === part.start && ref.end === part.end;
+    if (whole && !ref.hasFallback) return { text: part.text, start: part.start, end: part.end, shape: "single-var", refIndex: index };
+    if (whole || (ref.depth === 0 && ref.hasFallback && ref.start === part.start && ref.end === part.end)) fallback = true;
+    else nested = true;
+    return { text: part.text, start: part.start, end: part.end, shape: "expression", refIndex: index };
+  });
+  const names = refs.map((r) => r.name).filter(Boolean);
+  if (!separator && !fallback && !nested && refs.every((r) => r.name)) return { kind: "var-list", names, components };
+  const detail = separator === "," ? "list" : separator === "/" ? "slash" : fallback && !nested ? "fallback" : "function";
+  return { kind: "expression", names, detail, components };
 }
 
 /** Replace the custom property name of the refIndex-th var() reference. */
@@ -235,7 +326,9 @@ function readDeclaration(text, masked, start, end) {
     }
   }
   if (colon === -1) return null;
-  const property = text.slice(start, start + colon).trim();
+  // From the masked text: a comment before the declaration (a section heading, or
+  // the trailing note of the previous line) is not part of the property name.
+  const property = masked.slice(start, start + colon).trim();
   if (!property || /[\s{}]/.test(property)) return null;
   let valueStart = start + colon + 1;
   let valueEnd = end;

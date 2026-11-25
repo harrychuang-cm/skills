@@ -6,7 +6,7 @@ import path from "node:path";
 import { classifyValue, normalizeValue } from "../shared/value-refs.mjs";
 import { readCssSource } from "./css-source.mjs";
 import { relativePosix } from "./paths.mjs";
-import { inferKind, tokenCategory } from "./type-infer.mjs";
+import { inferKind, parseScalar, tokenCategory } from "./type-infer.mjs";
 
 function importTargets(root, fromFile) {
   const out = [];
@@ -214,6 +214,12 @@ export function buildTokenIndex({ config, postcss }) {
     token.resolvedValue = resolution === "ok" && current ? current.declaredValue : null;
     token.kind = inferKind(token.resolvedValue);
     token.category = tokenCategory(token.name, prefix);
+    // Scale: tokens of one name category whose chains end in the same reference
+    // family and whose values share a unit can be stepped through in value order.
+    const scalar = resolution === "ok" ? parseScalar(token.resolvedValue) : null;
+    const last = current && current.tier === "ref" ? current.name : null;
+    const family = last ? last.replace(new RegExp(`^--${prefix}-ref-`), "").replace(/-[^-]+$/, "") : null;
+    token.scale = scalar ? { category: token.category, family, value: scalar.value, unit: scalar.unit } : null;
   }
   for (const token of tokens.values()) {
     if (token.alias && tokens.has(token.alias)) tokens.get(token.alias).aliasedBy.push(token.name);
@@ -225,12 +231,21 @@ export function buildTokenIndex({ config, postcss }) {
     if (!pair.mirror) continue;
     const a = fs.readFileSync(pair.source);
     const b = fs.existsSync(pair.mirror) ? fs.readFileSync(pair.mirror) : null;
+    const modified = (file) => {
+      try {
+        return fs.statSync(file).mtime.toISOString();
+      } catch {
+        return null;
+      }
+    };
     mirrors.push({
       id: pair.id,
       source: relW(pair.source),
       mirror: relW(pair.mirror),
       inSync: b !== null && a.equals(b),
       diffLines: b === null ? null : countDiffLines(a, b),
+      sourceModified: modified(pair.source),
+      mirrorModified: modified(pair.mirror),
     });
   }
 

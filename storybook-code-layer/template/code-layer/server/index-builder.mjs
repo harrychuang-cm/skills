@@ -4,14 +4,21 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 
 import { buildCssIndex } from "./css-index.mjs";
-import { listCssFiles } from "./paths.mjs";
+import { listCssFiles, relativePosix } from "./paths.mjs";
+import { contractDrift } from "./pending-docs.mjs";
+import { listSpecFiles } from "./spec-rows.mjs";
 import { buildTokenIndex } from "./token-index.mjs";
+
+/** Version of the JSON served by GET /index. 2 adds declaration components, the var-list shape and token scales. */
+export const INDEX_SCHEMA_VERSION = 2;
 
 function trackedFiles(config) {
   const files = [config.tokens.entry.source, config.tokens.entry.mirror];
   for (const tier of config.tokens.tiers) files.push(tier.source, tier.mirror);
   files.push(...config.tokens.readonlySources);
   for (const root of config.components.roots) files.push(...listCssFiles(root));
+  // Specifications feed the governance summary (documented rows versus token files).
+  files.push(...listSpecFiles(config.governance.componentSpecsDir).map((f) => f.abs));
   return files.filter(Boolean);
 }
 
@@ -68,10 +75,15 @@ export function createIndexCache({ config, postcss }) {
   };
 }
 
+/** Counts only: the rows themselves are listed by the state route. */
+function summarizeDrift(drift) {
+  return drift ? { rows: drift.rows, undocumented: drift.undocumented } : null;
+}
+
 export function serializeIndex(index, config) {
   const { tokenIndex, cssIndex } = index;
   return {
-    schemaVersion: 1,
+    schemaVersion: INDEX_SCHEMA_VERSION,
     projectId: config.projectId,
     revision: index.revision,
     tokens: {
@@ -95,6 +107,7 @@ export function serializeIndex(index, config) {
         resolvedValue: t.resolvedValue,
         kind: t.kind,
         category: t.category,
+        scale: t.scale ?? null,
         duplicate: t.duplicate,
         rootless: Boolean(t.rootless),
         shadowedBy: t.shadowedBy,
@@ -127,6 +140,8 @@ export function serializeIndex(index, config) {
             important: d.important,
             line: d.line,
             shape: d.shape,
+            shapeDetail: d.shapeDetail,
+            components: d.components,
             refs: d.refs,
             duplicateInRule: d.duplicateInRule,
             overriddenInRule: d.overriddenInRule,
@@ -135,6 +150,13 @@ export function serializeIndex(index, config) {
       })),
     },
     components: { classPrefixes: config.components.classPrefixes },
+    governance: {
+      componentSpecsDir: config.governance.componentSpecsDir ? relativePosix(config.workspaceRoot, config.governance.componentSpecsDir) : null,
+      specs: listSpecFiles(config.governance.componentSpecsDir).map((f) => ({ componentId: f.componentId, file: relativePosix(config.workspaceRoot, f.abs) })),
+      pairing: config.governance.pairing,
+      drift: summarizeDrift(contractDrift({ config, index, specFiles: listSpecFiles(config.governance.componentSpecsDir) })),
+    },
+    locale: config.locale,
     diagnostics: tokenIndex.diagnostics,
   };
 }

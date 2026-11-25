@@ -1,0 +1,4 @@
+interface:
+  display_name: "Storybook Code Layer"
+  short_description: "Install and maintain the in-Storybook design panel that writes token re-binds back to source"
+  default_prompt: "Use $storybook-code-layer to inspect the target Storybook project, propose a project binding with its evidence, preview the installation with a dry run, then install, update or remove Code Layer and report exactly what changed."

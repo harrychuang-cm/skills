@@ -1,7 +1,7 @@
 // Cascade emulation for tracing: which rules match an element, ranked by
 // specificity then source order. Heuristic by design; the probe confirms it.
-import { scanDeclarations } from "../shared/value-refs.mjs";
-import type { CssDecl } from "../shared/protocol";
+import { classifyValue, findVarRefs, normalizeValue, scanDeclarations } from "../shared/value-refs.mjs";
+import type { CssComponent, CssDecl } from "../shared/protocol";
 import { conditionsState, flattenStyleRules, type FlatRule, type SheetIdentity } from "./sheets";
 
 export type Specificity = [number, number, number];
@@ -22,7 +22,35 @@ export type Candidate = {
   uncertain: boolean;
 };
 
-export type Decl = { property: string; value: string; important: boolean; indexed: CssDecl | null };
+export type DeclRef = { name: string; refIndex: number };
+
+/**
+ * A declaration of a matching rule. `indexed` is set when it comes from a
+ * verified stylesheet (text and shape from the server index); otherwise the
+ * shape is derived here from the CSSOM text, for display only.
+ */
+export type Decl = {
+  property: string;
+  value: string;
+  important: boolean;
+  indexed: CssDecl | null;
+  index: number;
+  components: CssComponent[];
+  refs: DeclRef[];
+};
+
+function looseDecl(property: string, value: string, important: boolean, index: number): Decl {
+  const classified = classifyValue(value);
+  return {
+    property,
+    value: normalizeValue(value),
+    important,
+    indexed: null,
+    index,
+    components: classified.components.map((c) => ({ text: normalizeValue(c.text), shape: c.shape, refIndex: c.refIndex, overridden: false })),
+    refs: findVarRefs(value).flatMap((r, refIndex) => (r.name ? [{ name: r.name, refIndex }] : [])),
+  };
+}
 
 /** Split a selector list at top-level commas. */
 export function splitSelectorList(text: string): string[] {
@@ -206,13 +234,28 @@ export function declarationsOf(candidate: Candidate): Decl[] {
   if (identity?.ok) {
     const indexed = identity.file.rules[candidate.flat.index];
     if (indexed) {
-      return indexed.declarations.map((d) => ({ property: d.property, value: d.value, important: d.important, indexed: d }));
+      return indexed.declarations.map((d) => ({
+        property: d.property,
+        value: d.value,
+        important: d.important,
+        indexed: d,
+        index: d.index,
+        components: d.components,
+        refs: d.refs.map((r) => ({ name: r.name, refIndex: r.refIndex })),
+      }));
     }
   }
-  return scanDeclarations(`x{${candidate.flat.rule.style.cssText}}`).map((d) => ({
-    property: d.property,
-    value: d.value,
-    important: d.important,
-    indexed: null,
-  }));
+  return scanDeclarations(`x{${candidate.flat.rule.style.cssText}}`).map((d, index) => looseDecl(d.property, d.value, d.important, index));
+}
+
+/** The declarations of an element's style attribute, as the CSSOM lists them (longhands). */
+export function inlineDeclarations(element: Element): Decl[] {
+  const style = (element as HTMLElement).style;
+  if (!style || style.length === 0) return [];
+  const out: Decl[] = [];
+  for (let i = 0; i < style.length; i += 1) {
+    const property = style[i];
+    out.push(looseDecl(property, style.getPropertyValue(property), style.getPropertyPriority(property) === "important", i));
+  }
+  return out;
 }

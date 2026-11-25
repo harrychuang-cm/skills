@@ -1,10 +1,14 @@
 // Operation schema, semantic validation, and resolution to byte edits.
 // Every decision uses an index built fresh from disk inside the transaction.
 import { ApiError, ID_PATTERN, OPERATION_TYPES, TOKEN_NAME_PATTERN } from "../shared/api-contract.mjs";
+import { isRebindTarget } from "../shared/candidates.mjs";
 import { kindsCompatible } from "../shared/kinds.mjs";
 import { normalizeValue, replaceVarName } from "../shared/value-refs.mjs";
 import { walkStyleRules } from "./css-index.mjs";
 import { readCssSource } from "./css-source.mjs";
+
+/** A value has far fewer var() references than this; the bound keeps a hostile index out of the scanner. */
+const MAX_REF_INDEX = 63;
 
 function fail(code, message, details) {
   throw new ApiError(code, message, details);
@@ -85,7 +89,8 @@ export function validateBatch(body, limits) {
         fail("unsupported-value-shape", `${where}: exactly one replacement is supported`);
       }
       exactKeys(op.replacements[0], ["refIndex", "fromToken", "toToken"], [], `${where}.replacements[0]`);
-      if (op.replacements[0].refIndex !== 0) fail("unsupported-value-shape", `${where}: only the first var() can be re-bound`);
+      integer(op.replacements[0].refIndex, `${where}.replacements[0].refIndex`);
+      if (op.replacements[0].refIndex > MAX_REF_INDEX) fail("schema-invalid", `${where}.replacements[0].refIndex is too large`);
       if (op.replacements[0].fromToken !== op.fromToken || op.replacements[0].toToken !== op.toToken) {
         fail("schema-invalid", `${where}.replacements must match fromToken/toToken`);
       }
@@ -94,11 +99,15 @@ export function validateBatch(body, limits) {
   return body;
 }
 
+/** The tier a token of each writable tier may alias. */
+const TARGET_TIER = { comp: "sys", sys: "ref" };
+
 function designToken(index, name, where) {
   const token = index.tokenIndex.tokens.get(name);
   if (!token || token.source !== "tier" || token.rootless) fail("not-a-design-token", `${where}: ${name} is not a design token`, { token: name });
   if (token.duplicate) fail("duplicate-token-declaration", `${where}: ${name} is declared more than once`, { token: name });
   if (token.resolution !== "ok") fail("not-a-design-token", `${where}: ${name} does not resolve`, { token: name });
+  if (!isRebindTarget(token)) fail("not-a-design-token", `${where}: ${name} cannot be a re-bind target`, { token: name });
   return token;
 }
 
@@ -139,12 +148,13 @@ export function resolveOperations(batch, { config, postcss, index }) {
     if (!kindsCompatible(to.kind, fromKind)) {
       fail("type-mismatch", `${where}: ${op.toToken} (${to.kind}) cannot replace ${op.fromToken} (${fromKind})`);
     }
+    const refIndex = op.type === "rebind-declaration" ? op.replacements[0].refIndex : 0;
     const before = normalizeValue(op.before.value);
     let expectedAfter;
     try {
-      expectedAfter = replaceVarName(before, 0, op.fromToken, op.toToken);
+      expectedAfter = replaceVarName(before, refIndex, op.fromToken, op.toToken);
     } catch {
-      fail("schema-invalid", `${where}: before.value does not reference ${op.fromToken}`);
+      fail("schema-invalid", `${where}: reference ${refIndex} of before.value is not ${op.fromToken}`);
     }
     if (normalizeValue(op.after.value) !== expectedAfter) {
       fail("after-value-mismatch", `${where}: after.value should be ${expectedAfter}`);
@@ -154,22 +164,36 @@ export function resolveOperations(batch, { config, postcss, index }) {
       if (!index.tokenIndex.tokenEditing.ok) fail("read-only", `${where}: token files cannot be edited`, { problems: index.tokenIndex.tokenEditing.problems });
       const token = tokens.get(op.token);
       if (!token || token.source !== "tier") fail("not-a-design-token", `${where}: ${op.token} is not a design token`);
-      if (token.tier !== "comp" || !token.writable) fail("tier-not-writable", `${where}: only comp tokens can be re-bound`);
+      // comp aliases sys; sys aliases ref when the binding opens the system tier. ref holds raw values.
+      const targetTier = TARGET_TIER[token.tier];
+      if (!targetTier || !token.writable) fail("tier-not-writable", `${where}: the ${token.tier} tier is not writable in this project`, { tier: token.tier });
       if (token.duplicate) fail("duplicate-token-declaration", `${where}: ${op.token} is declared more than once`);
       if (token.shape !== "single-var" || !token.alias || !token.inRoot) fail("unsupported-value-shape", `${where}: ${op.token} is not a single var() alias`);
-      if (to.tier !== "sys") fail("tier-rule", `${where}: a comp token must point to a sys token`);
+      if (to.tier !== targetTier) fail("tier-rule", `${where}: a ${token.tier} token must point to a ${targetTier} token`, { tier: token.tier, targetTier });
       if (token.alias !== op.fromToken || token.declaredValue !== before) {
         fail("stale-before", `${where}: ${op.token} is now ${token.declaredValue}`, { actual: token.declaredValue });
       }
       const key = `token:${op.token}`;
       if (targets.has(key)) fail("duplicate-target", `${where}: ${op.token} is targeted twice`);
       targets.add(key);
-      const tier = config.tokens.tiers.find((t) => t.tier === "comp");
+      const tier = config.tokens.tiers.find((t) => t.tier === token.tier);
       const entry = sourceFor(tier.source, "token-source");
       const decls = findTokenDecl(entry.root, op.token);
       if (decls.length !== 1) fail("locator-mismatch", `${where}: ${op.token} is not declared exactly once in the source file`);
       entry.edits.push({ decl: decls[0], refIndex: 0, fromName: op.fromToken, toName: to.name, opId: op.id });
-      results.push({ id: op.id, type: op.type, file: tier.source, mirror: tier.mirror, line: decls[0].source.start.line, before, after: expectedAfter, token: op.token });
+      results.push({
+        id: op.id,
+        type: op.type,
+        file: tier.source,
+        mirror: tier.mirror,
+        line: decls[0].source.start.line,
+        before,
+        after: expectedAfter,
+        token: op.token,
+        tier: token.tier,
+        fromToken: op.fromToken,
+        toToken: to.name,
+      });
       continue;
     }
 
@@ -188,18 +212,22 @@ export function resolveOperations(batch, { config, postcss, index }) {
     const matching = rule.declarations.filter((d) => d.property === op.declaration.property);
     const decl = matching[matching.length - 1];
     if (!decl) fail("locator-mismatch", `${where}: ${op.declaration.property} is not declared in ${rule.selector}`);
-    if (decl.duplicateInRule || decl.overriddenInRule) fail("unsupported-value-shape", `${where}: the declaration is overridden inside its rule`);
+    if (decl.duplicateInRule) fail("unsupported-value-shape", `${where}: ${op.declaration.property} is declared more than once in its rule`);
     if (decl.important) fail("unsupported-value-shape", `${where}: !important declarations are not supported`);
-    if (decl.shape !== "single-var" || decl.refs.length !== 1) fail("unsupported-value-shape", `${where}: the value is not a single var()`);
-    if (decl.value !== before || decl.refs[0].name !== op.fromToken) {
+    // Only a reference that is a whole component of a single var() or of a var() list can be re-bound.
+    const component = decl.shape === "single-var" || decl.shape === "var-list" ? decl.components.find((c) => c.refIndex === refIndex && c.shape === "single-var") : null;
+    const ref = decl.refs.find((r) => r.refIndex === refIndex);
+    if (!component || !ref) fail("unsupported-value-shape", `${where}: reference ${refIndex} of ${op.declaration.property} cannot be re-bound (${decl.shape})`, { shape: decl.shape });
+    if (component.overridden || decl.overriddenInRule) fail("unsupported-value-shape", `${where}: the declaration is overridden inside its rule`);
+    if (decl.value !== before || ref.name !== op.fromToken) {
       fail("stale-before", `${where}: the declaration is now ${decl.value}`, { actual: decl.value });
     }
     if (to.tier === "comp" && !to.name.startsWith(`--${prefix}-comp-${file.componentId}-`)) {
       fail("foreign-comp-token", `${where}: ${to.name} belongs to another component`);
     }
     if (to.tier === "ref") fail("tier-rule", `${where}: component CSS must not reference ref tokens`);
-    const key = `decl:${file.file}#${rule.ordinal}#${decl.index}`;
-    if (targets.has(key)) fail("duplicate-target", `${where}: the declaration is targeted twice`);
+    const key = `decl:${file.file}#${rule.ordinal}#${decl.index}#${refIndex}`;
+    if (targets.has(key)) fail("duplicate-target", `${where}: the reference is targeted twice`);
     targets.add(key);
     const entry = sourceFor(absPath, "component-css");
     let ruleNode = null;
@@ -210,8 +238,22 @@ export function resolveOperations(batch, { config, postcss, index }) {
     });
     const declNode = (ruleNode?.nodes ?? []).filter((n) => n.type === "decl")[decl.index];
     if (!declNode || declNode.prop !== op.declaration.property) fail("locator-mismatch", `${where}: the declaration moved`);
-    entry.edits.push({ decl: declNode, refIndex: 0, fromName: op.fromToken, toName: to.name, opId: op.id });
-    results.push({ id: op.id, type: op.type, file: absPath, mirror: null, line: declNode.source.start.line, before, after: expectedAfter, cssFile: file.file });
+    entry.edits.push({ decl: declNode, refIndex, fromName: op.fromToken, toName: to.name, opId: op.id });
+    results.push({
+      id: op.id,
+      type: op.type,
+      file: absPath,
+      mirror: null,
+      line: declNode.source.start.line,
+      before,
+      after: expectedAfter,
+      cssFile: file.file,
+      rule: { ordinal: rule.ordinal, selector: rule.selector, atRules: rule.atRules, occurrence: rule.occurrence },
+      property: decl.property,
+      refIndex,
+      fromToken: op.fromToken,
+      toToken: to.name,
+    });
   }
   return { files, results };
 }

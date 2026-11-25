@@ -2,14 +2,21 @@
 // Classification reads only <style> textContent (never the CSSOM we edit):
 //   before -> apply the preview;  after -> already in source;  else -> conflict.
 // Removing previews from a sheet = re-assigning its own text (rebuilds it).
-import { findRootDeclaration, normalizeValue } from "../shared/value-refs.mjs";
+import { findRootDeclaration, findVarRefs, normalizeValue, replaceVarName } from "../shared/value-refs.mjs";
 import type { Draft, DraftStatus, IndexJson, PreviewStatePayload, SyncPayload } from "../shared/protocol";
 import { resolve } from "./descriptor";
 import { withFreeze } from "./freeze";
 import { flattenStyleRules, resetStyle, ruleAt, styleByDevId, styleTextHash } from "./sheets";
 
-type Located = { style: HTMLStyleElement | null; state: "before" | "after" | "other" | "missing"; message: string | null };
-type StatusEntry = { status: DraftStatus; message: string | null };
+type Params = Record<string, string>;
+/** `message` is a catalog key; the manager translates it. */
+type Located = { style: HTMLStyleElement | null; state: "before" | "after" | "other" | "missing"; message: string | null; params?: Params; base?: string };
+type StatusEntry = { status: DraftStatus; message: string | null; params?: Params };
+
+/** Drafts on one declaration are previewed together: one text with every staged reference replaced. */
+function declarationKey(draft: Draft): string | null {
+  return draft.op.type === "rebind-declaration" ? `${draft.op.file}#${draft.op.ordinal}#${draft.op.property}` : null;
+}
 
 export class LivePreview {
   private drafts: Draft[] = [];
@@ -99,63 +106,87 @@ export class LivePreview {
     const after = normalizeValue(draft.after);
     if (draft.op.type === "rebind-token") {
       const style = index.tokens.entry.devId ? styleByDevId(index.tokens.entry.devId) : null;
-      if (!style) return { style: null, state: "missing", message: "token 樣式表尚未載入" };
+      if (!style) return { style: null, state: "missing", message: "draft.message.tokenSheetMissing" };
       const decl = findRootDeclaration(style.textContent ?? "", draft.op.token);
-      if (!decl || decl === "ambiguous") return { style, state: "other", message: "頁面上的 token 檔找不到唯一的宣告" };
+      if (!decl || decl === "ambiguous") return { style, state: "other", message: "draft.message.tokenNotUnique" };
       const value = normalizeValue(decl.value);
       if (value === before) return { style, state: "before", message: null };
       if (value === after) return { style, state: "after", message: null };
-      return { style, state: "other", message: `目前的值是 ${value}` };
+      return { style, state: "other", message: "draft.message.currentValue", params: { value } };
     }
     const op = draft.op;
     const file = index.css.files.find((f) => f.file === op.file);
-    if (!file) return { style: null, state: "other", message: "索引中沒有這個檔案" };
+    if (!file) return { style: null, state: "other", message: "draft.message.fileNotIndexed" };
     const style = styleByDevId(file.devId);
-    if (!style) return { style: null, state: "missing", message: "這個元件的 CSS 尚未載入到頁面" };
+    if (!style) return { style: null, state: "missing", message: "draft.message.sheetNotLoaded" };
     if ((await styleTextHash(style)) !== file.servedTextHash) {
-      return { style, state: "other", message: "頁面 CSS 與索引不一致（等待更新）" };
+      return { style, state: "other", message: "draft.message.pageDiffers" };
     }
     const rule = file.rules[op.ordinal];
-    if (!rule || rule.selector !== op.selector) return { style, state: "other", message: "規則位置已變更" };
+    if (!rule || rule.selector !== op.selector) return { style, state: "other", message: "draft.message.ruleMoved" };
     const decls = rule.declarations.filter((d) => d.property === op.property);
     const decl = decls[decls.length - 1];
-    if (!decl) return { style, state: "other", message: "宣告已不存在" };
-    const value = normalizeValue(decl.value);
-    if (value === before) return { style, state: "before", message: null };
-    if (value === after) return { style, state: "after", message: null };
-    return { style, state: "other", message: `目前的值是 ${value}` };
+    if (!decl) return { style, state: "other", message: "draft.message.declarationGone" };
+    // Only the staged reference decides: a sibling reference of the same value may change independently.
+    const name = findVarRefs(decl.value)[op.refIndex]?.name ?? null;
+    if (name === op.fromToken) return { style, state: "before", message: null, base: decl.value };
+    if (name === op.toToken) return { style, state: "after", message: null };
+    return { style, state: "other", message: "draft.message.currentValue", params: { value: decl.value } };
   }
 
-  private applyOne(style: HTMLStyleElement, draft: Draft): boolean {
-    if (!style.sheet) return false;
-    if (draft.op.type === "rebind-token") {
-      const token = draft.op.token;
-      const rules = flattenStyleRules(style.sheet.cssRules).filter(
-        (flat) => flat.rule.selectorText === ":root" && flat.rule.style.getPropertyValue(token) !== "",
-      );
-      if (rules.length !== 1) return false;
-      rules[0].rule.style.setProperty(token, draft.after);
-      return true;
+  /** Apply the previews of one stylesheet: tokens one by one, declarations once per declaration. */
+  private applyAll(style: HTMLStyleElement, drafts: Array<{ draft: Draft; base: string | null }>): Set<string> {
+    const failed = new Set<string>();
+    if (!style.sheet) return new Set(drafts.map((d) => d.draft.id));
+    const declarations = new Map<string, Array<{ draft: Draft; base: string | null }>>();
+    for (const entry of drafts) {
+      const { draft } = entry;
+      if (draft.op.type === "rebind-token") {
+        const token = draft.op.token;
+        const rules = flattenStyleRules(style.sheet.cssRules).filter((flat) => flat.rule.selectorText === ":root" && flat.rule.style.getPropertyValue(token) !== "");
+        if (rules.length !== 1) failed.add(draft.id);
+        else rules[0].rule.style.setProperty(token, draft.after);
+        continue;
+      }
+      const key = declarationKey(draft)!;
+      declarations.set(key, [...(declarations.get(key) ?? []), entry]);
     }
-    const rule = ruleAt(style, draft.op.ordinal);
-    if (!rule) return false;
-    rule.style.setProperty(draft.op.property, draft.after, rule.style.getPropertyPriority(draft.op.property));
-    return true;
+    for (const group of declarations.values()) {
+      const op = group[0].draft.op;
+      if (op.type !== "rebind-declaration") continue;
+      const rule = ruleAt(style, op.ordinal);
+      let text = group[0].base;
+      if (!rule || text === null) {
+        for (const { draft } of group) failed.add(draft.id);
+        continue;
+      }
+      // Same replacement as the server: the name of the refIndex-th var(), nothing else.
+      for (const { draft } of group) {
+        if (draft.op.type !== "rebind-declaration") continue;
+        try {
+          text = replaceVarName(text, draft.op.refIndex, draft.op.fromToken, draft.op.toToken);
+        } catch {
+          failed.add(draft.id);
+        }
+      }
+      rule.style.setProperty(op.property, text, rule.style.getPropertyPriority(op.property));
+    }
+    return failed;
   }
 
   private async run(): Promise<void> {
     const index = this.getIndex();
     const statuses = new Map<string, StatusEntry>();
-    const desired = new Map<HTMLStyleElement, Draft[]>();
+    const desired = new Map<HTMLStyleElement, Array<{ draft: Draft; base: string | null }>>();
     const paused = !this.active || this.compare;
     for (const draft of this.effectiveDrafts()) {
       if (!index) {
-        statuses.set(draft.id, { status: "pending-load", message: "索引載入中" });
+        statuses.set(draft.id, { status: "pending-load", message: "draft.message.indexLoading" });
         continue;
       }
       const located = await this.locate(draft, index);
       if (located.state === "missing" || !located.style) {
-        statuses.set(draft.id, { status: "pending-load", message: located.message });
+        statuses.set(draft.id, { status: "pending-load", message: located.message, params: located.params });
         continue;
       }
       if (located.state === "after") {
@@ -163,15 +194,15 @@ export class LivePreview {
         continue;
       }
       if (located.state === "other") {
-        statuses.set(draft.id, { status: "conflict", message: located.message });
+        statuses.set(draft.id, { status: "conflict", message: located.message, params: located.params });
         continue;
       }
       if (paused) {
-        statuses.set(draft.id, { status: "paused", message: this.compare ? "按住對照中" : "Code Layer 未啟用" });
+        statuses.set(draft.id, { status: "paused", message: this.compare ? "draft.message.comparing" : "draft.message.inactive" });
         continue;
       }
       const list = desired.get(located.style) ?? [];
-      list.push(draft);
+      list.push({ draft, base: located.base ?? null });
       desired.set(located.style, list);
       statuses.set(draft.id, { status: "previewing", message: null });
     }
@@ -179,15 +210,13 @@ export class LivePreview {
     const styles = new Set([...this.applied.keys(), ...desired.keys()]);
     for (const style of styles) {
       const want = desired.get(style) ?? [];
-      const signature = want.map((d) => `${d.id}=${d.after}`).sort().join("|");
+      const signature = want.map(({ draft }) => `${draft.id}=${draft.after}`).sort().join("|");
       const current = this.applied.get(style);
       if (current && style.isConnected && current.sheet === style.sheet && current.signature === signature) continue;
       if (current && style.isConnected) resetStyle(style);
       this.applied.delete(style);
       if (!style.isConnected || want.length === 0) continue;
-      for (const draft of want) {
-        if (!this.applyOne(style, draft)) statuses.set(draft.id, { status: "conflict", message: "找不到要預覽的規則" });
-      }
+      for (const id of this.applyAll(style, want)) statuses.set(id, { status: "conflict", message: "draft.message.ruleNotFound" });
       this.applied.set(style, { sheet: style.sheet, signature });
     }
 
@@ -198,7 +227,7 @@ export class LivePreview {
       if (!element) continue;
       const now = withFreeze(element, () => getComputedStyle(element).getPropertyValue(draft.witness!.property).trim());
       if (now === draft.witness.beforeComputed) {
-        statuses.set(draft.id, { status: "no-visible-effect", message: "預覽沒有改變這個元素的計算值" });
+        statuses.set(draft.id, { status: "no-visible-effect", message: "draft.message.noVisibleEffect" });
       }
     }
 

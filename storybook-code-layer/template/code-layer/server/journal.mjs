@@ -68,13 +68,14 @@ export class Journal {
     const map = new Map();
     for (const record of this.records()) {
       if (!record.applyId) continue;
-      const entry = map.get(record.applyId) ?? { applyId: record.applyId, pending: null, committed: null, terminal: null, undoneBy: null, skipped: false, verification: null };
+      const entry = map.get(record.applyId) ?? { applyId: record.applyId, pending: null, committed: null, terminal: null, undoneBy: null, skipped: false, verification: null, postApply: null };
       if (record.type === "pending") entry.pending = record;
       else if (record.type === "committed") entry.committed = record;
       else if (["rolled-back", "rollback-failed", "recovered", "recovery-conflict"].includes(record.type)) entry.terminal = record;
       else if (record.type === "undone") entry.undoneBy = record.by;
       else if (record.type === "skipped") entry.skipped = true;
       else if (record.type === "verification") entry.verification = record.result;
+      else if (record.type === "post-apply") entry.postApply = record;
       map.set(record.applyId, entry);
     }
     return map;

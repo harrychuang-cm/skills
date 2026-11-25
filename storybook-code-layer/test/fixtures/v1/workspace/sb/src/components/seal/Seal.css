@@ -1,0 +1,46 @@
+/* seal — 昭和 */
+.fx-seal {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--fx-sys-spacing-xs);
+  padding-block: var(--fx-comp-seal-padding-block);
+  padding-inline: var(--fx-comp-seal-padding-inline);
+  min-inline-size: var(--fx-sys-size-touch-min);
+  background: var(--fx-comp-seal-container-color); /* primary pop */
+  color: var(--fx-comp-seal-text-color);
+  border: var(--fx-comp-seal-rule-width) solid var(--fx-comp-seal-rule-color);
+  border-radius: var(--fx-comp-seal-shape);
+  font-size: var(--fx-comp-seal-label-size);
+}
+
+.fx-seal--vertical {
+  writing-mode: vertical-rl;
+  padding-block: var(--fx-sys-spacing-md);
+  padding-inline: var(--fx-sys-spacing-xs);
+}
+
+.fx-seal--stamp {
+  background: var(--fx-comp-seal-stamp-container-color);
+  color: var(--fx-comp-seal-stamp-text-color);
+  border-radius: 50%;
+  inline-size: calc(var(--fx-sys-size-touch-min) * 2);
+  margin: 0 0 var(--fx-sys-spacing-sm);
+  opacity: var(--fx-sys-state-disabled-opacity) !important;
+}
+
+.fx-seal--ribbon {
+  background: var(--fx-comp-seal-ribbon-container-color);
+  padding: var(--fx-sys-spacing-xs) var(--fx-sys-spacing-lg);
+  padding: var(--fx-sys-spacing-sm) var(--fx-sys-spacing-lg);
+}
+
+.fx-seal__label {
+  letter-spacing: 0.04em;
+  font-weight: inherit;
+}
+
+@media (min-width: 720px) {
+  .fx-seal {
+    font-size: var(--fx-sys-typescale-display-size);
+  }
+}

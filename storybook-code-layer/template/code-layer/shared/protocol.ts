@@ -2,7 +2,7 @@
 
 export const ADDON_ID = "storybook/code-layer";
 export const TOOL_ID = `${ADDON_ID}/tool`;
-export const PANEL_ID = `${ADDON_ID}/panel`;
+export const INSPECTOR_ID = `${ADDON_ID}/inspector`;
 export const GLOBAL_KEY = "codeLayer";
 export const API_BASE = "/__code-layer";
 export const SESSION_HEADER = "x-code-layer-session";
@@ -28,11 +28,18 @@ export const EVENTS = {
   probeResult: "code-layer/probe-result",
   applyCancel: "code-layer/apply-cancel",
   verifyProgress: "code-layer/verify-progress",
+  navigate: "code-layer/navigate",
+  children: "code-layer/children",
+  /** preview → manager: where the story's components are, so the inspector can keep out of their way. */
+  layout: "code-layer/layout",
 } as const;
+
+/** Version of the channel payloads, of the trace and of stored drafts. */
+export const PROTOCOL_VERSION = 2;
 
 export type Side = "manager" | "preview";
 
-export type Envelope<T> = T & { v: 1; from: Side; seq: number };
+export type Envelope<T> = T & { v: 2; from: Side; seq: number };
 
 /** Payloads travel as one JSON string: telejson would otherwise turn ISO dates into Date objects and drops messages containing U+2028/U+2029. */
 const LINE_SEPARATOR = new RegExp(String.fromCharCode(0x2028), "g");
@@ -60,22 +67,14 @@ export type SuspendReason =
   | "story-error"
   | "index-unavailable"
   | "read-only-server"
-  | "manager-framed";
+  | "manager-framed"
+  | "unsupported-browser";
 
 export type EffectiveState =
   | { state: "off"; reason: null }
   | { state: "active"; reason: null }
-  | { state: "suspended"; reason: SuspendReason };
-
-export const SUSPEND_TEXT: Record<SuspendReason, string> = {
-  "docs": "Docs 頁面不支援 Code Layer，切回 Story 後會自動恢復。",
-  "figma-export": "Figma export 開啟中，Code Layer 已暫停。",
-  "prototype-mode": "Prototype Inspector 不在 Story 模式，Code Layer 已暫停。",
-  "story-error": "這個 story 目前有錯誤畫面，Code Layer 已暫停。",
-  "index-unavailable": "讀不到 Code Layer 的索引（dev server 是否載入了 Code Layer？）。",
-  "read-only-server": "Code Layer 伺服器處於唯讀模式，只能檢視。",
-  "manager-framed": "Storybook 被嵌在其他頁面中，Code Layer 已停用。",
-};
+  /** `detail` names what is missing when the browser lacks a required feature. */
+  | { state: "suspended"; reason: SuspendReason; detail?: string | null };
 
 export type StatusPayload = {
   effective: EffectiveState;
@@ -85,6 +84,8 @@ export type StatusPayload = {
 };
 
 // ---- index (GET /__code-layer/index) ----------------------------------------
+
+export type ScaleInfo = { category: string | null; family: string | null; value: number; unit: string };
 
 export type TokenItem = {
   name: string;
@@ -101,6 +102,7 @@ export type TokenItem = {
   resolvedValue: string | null;
   kind: string;
   category: string | null;
+  scale: ScaleInfo | null;
   duplicate: boolean;
   rootless: boolean;
   shadowedBy: Array<{ file: string; line: number; selector: string | null; declaredValue: string }>;
@@ -109,13 +111,23 @@ export type TokenItem = {
   aliasedBy: string[];
 };
 
+export type CssComponent = {
+  text: string;
+  shape: "single-var" | "raw" | "keyword" | "expression" | "separator";
+  refIndex: number | null;
+  /** Every side this component sets is set again later in the same rule. */
+  overridden: boolean;
+};
+
 export type CssDecl = {
   index: number;
   property: string;
   value: string;
   important: boolean;
   line: number;
-  shape: string;
+  shape: "single-var" | "var-list" | "var-with-fallback" | "expression" | "raw" | "keyword";
+  shapeDetail: "function" | "fallback" | "list" | "slash" | null;
+  components: CssComponent[];
   refs: Array<{ name: string; refIndex: number; known: boolean; tier: string | null; source: string | null }>;
   duplicateInRule: boolean;
   overriddenInRule: boolean;
@@ -143,19 +155,38 @@ export type CssFileInfo = {
   rules: CssRuleInfo[];
 };
 
+export type MirrorInfo = {
+  id: string;
+  source: string;
+  mirror: string;
+  inSync: boolean;
+  diffLines: number | null;
+  sourceModified: string | null;
+  mirrorModified: string | null;
+};
+
 export type IndexJson = {
   ok: true;
+  schemaVersion: number;
   projectId: string;
   revision: string;
   tokens: {
     prefix: string;
     entry: { source: string; mirror: string | null; devId: string | null; blocks: Array<{ tier: string; rootRuleIndex: number }> };
-    mirrors: Array<{ id: string; source: string; mirror: string; inSync: boolean; diffLines: number | null }>;
+    files: Array<{ id: string; role: string; tier?: string; source: string; mirror: string | null; writable?: boolean }>;
+    mirrors: MirrorInfo[];
     editing: { ok: boolean; problems: string[] };
     items: TokenItem[];
   };
   css: { files: CssFileInfo[] };
   components?: { classPrefixes: string[] };
+  governance?: {
+    componentSpecsDir: string | null;
+    specs: Array<{ componentId: string; file: string }>;
+    pairing: { containerSuffix: string; contentSuffix: string };
+    drift: { rows: number; undocumented: number } | null;
+  };
+  locale?: "zh-Hant" | "en" | null;
 };
 
 // ---- trace -----------------------------------------------------------------
@@ -178,24 +209,75 @@ export type ChainLink = {
   overriddenBy: { file: string; line: number | null; selector: string | null } | null;
 };
 
-export type Verdict =
-  | { kind: "rebind-token"; token: string; fromToken: string; file: string; line: number }
-  | { kind: "rebind-declaration"; file: string; ordinal: number; selector: string; property: string; fromToken: string; line: number; warnings: string[] }
-  | { kind: "read-only"; reason: string; detail: string | null };
+/** Where a change can be made: the declaration, the component token it references, the system token on its chain. */
+export type ScopeId = "declaration" | "component-token" | "system-token";
+
+export type ScopeTarget =
+  | { type: "rebind-declaration"; file: string; workspacePath: string; ordinal: number; selector: string; property: string; refIndex: number; line: number }
+  | { type: "rebind-token"; token: string; tier: "comp" | "sys"; file: string; line: number };
+
+export type RowScope = {
+  id: ScopeId;
+  available: boolean;
+  /** Reason code when the scope cannot be used; never silently replaced by another scope. */
+  reason: string | null;
+  detail: string | null;
+  target: ScopeTarget;
+  /** The token bound at this scope now, and the whole text at the target. */
+  fromToken: string;
+  before: string;
+  /** Tier a new token must be in; a declaration may also use its own component's tokens. */
+  targetTier: "sys" | "ref";
+  writes: { files: string[]; line: number };
+  impact: { declarations: number; components: number; excludesInlineStyles: boolean };
+};
+
+export type InheritedFrom = {
+  kind: "same-component" | "other-component" | "outside" | "default";
+  /** Label of the declaring ancestor, and its descriptor when it can be selected. */
+  label: string | null;
+  descriptor: Descriptor | null;
+  /** For "outside": where the value comes from (a stylesheet, a style attribute). */
+  source: string | null;
+};
+
+export type RowSide = { slot: string; part: string; physical: string | null };
 
 export type RowTrace = {
+  /** Group id, or group id plus the covered parts when a group is split (`padding/block-start+block-end`). */
   id: string;
-  label: string;
+  group: string;
+  section: string;
+  /** The logical longhands this row covers, with the physical side each is on now. */
+  sides: RowSide[];
+  /** Computed longhand used as the witness of a change (the first slot). */
   cssProperty: string;
   computed: string;
   computedDisplay: string;
-  editableInProof: boolean;
-  verdict: Verdict;
-  declaration: { file: string; workspacePath: string; ordinal: number; selector: string; property: string; value: string; line: number } | null;
+  source: "declaration" | "inline-style" | "presentation-attribute" | "none";
+  declaration: {
+    file: string | null;
+    workspacePath: string | null;
+    ordinal: number;
+    selector: string;
+    property: string;
+    value: string;
+    line: number | null;
+    /** Line where the rule of the declaration starts (null when the stylesheet is not indexed). */
+    ruleLine: number | null;
+    /** Index of the component of the value that sets this row, and of its reference. */
+    component: number | null;
+    refIndex: number | null;
+  } | null;
   tokenName: string | null;
   tokenKind: string | null;
   chain: ChainLink[];
-  writesTo: { files: string[]; line: number; impact: number } | null;
+  /** Set when nothing about the row can be changed; `scopes` is then empty. */
+  readOnly: { reason: string; detail: string | null } | null;
+  scopes: RowScope[];
+  defaultScope: ScopeId | null;
+  inheritedFrom: InheritedFrom | null;
+  warnings: string[];
 };
 
 export type ElementTrace = {
@@ -210,41 +292,63 @@ export type ElementTrace = {
   variant: string | null;
   size: { width: number; height: number };
   pathText: string;
+  writingMode: string;
+  direction: string;
+  /** The rule that carries the element's own declarations (highest priority indexed rule). */
+  ownRule: { workspacePath: string; selector: string; ordinal: number; line: number } | null;
+  /** How long the trace took, for the README's measurements. */
+  durationMs: number;
   rows: RowTrace[];
 };
 
 export type SelectionPayload = {
   trace: ElementTrace | null;
-  reason: "pointer" | "keyboard" | "restore" | "hmr" | "story-change" | "lost" | "cleared";
+  reason: "pointer" | "keyboard" | "restore" | "hmr" | "story-change" | "lost" | "cleared" | "panel";
 };
+
+/** Breadcrumb and children of the selection, for navigating from the panel. */
+export type ChildrenPayload = {
+  traceId: string | null;
+  breadcrumb: Array<{ label: string; descriptor: Descriptor; componentRoot: boolean }>;
+  children: Array<{ label: string; descriptor: Descriptor }>;
+};
+
+export type NavigatePayload = { action: "parent" | "first-child" | "next" | "previous" } | { descriptor: Descriptor };
 
 // ---- drafts and live preview ---------------------------------------------------
 
 export type DraftOp =
-  | { type: "rebind-token"; token: string; fromToken: string; toToken: string; file: string; line: number }
+  | { type: "rebind-token"; token: string; tier: "comp" | "sys"; fromToken: string; toToken: string; file: string; line: number }
   | {
       type: "rebind-declaration";
       file: string;
       ordinal: number;
       selector: string;
       property: string;
+      /** Position of the reference among the var() references of the value. */
+      refIndex: number;
       fromToken: string;
       toToken: string;
       line: number;
     };
 
 export type Draft = {
+  schema: 2;
   id: string;
   rowId: string;
-  rowLabel: string;
+  group: string;
+  parts: string[];
   elementLabel: string;
   storyId: string | null;
+  scope: ScopeId;
   witness: { descriptor: Descriptor; property: string; beforeComputed: string } | null;
   op: DraftOp;
-  /** Declared value before / after, comment-free and whitespace-collapsed. */
+  /** Text at the target before / after, comment-free and whitespace-collapsed (for display and preview). */
   before: string;
   after: string;
-  writesTo: { files: string[]; line: number; impact: number };
+  writesTo: { files: string[]; line: number; declarations: number; components: number };
+  /** Label of the ancestor the value is inherited from, when the edit is made there. */
+  inheritedFrom: string | null;
   indexRevision: string;
   createdAt: number;
 };
@@ -266,20 +370,20 @@ export type SyncPayload = {
   settled: string[];
 };
 
+/** `message` is a catalog key (with `params`), translated where it is shown. */
 export type PreviewStatePayload = {
   rev: number;
-  items: Array<{ id: string; status: DraftStatus; message: string | null }>;
+  items: Array<{ id: string; status: DraftStatus; message: string | null; params?: Record<string, string> }>;
 };
 
 export function draftId(op: DraftOp): string {
-  return op.type === "rebind-token" ? `token:${op.token}` : `decl:${op.file}#${op.ordinal}#${op.property}`;
+  return op.type === "rebind-token" ? `token:${op.token}` : `decl:${op.file}#${op.ordinal}#${op.property}#${op.refIndex}`;
 }
 
-export const DRAFT_STATUS_TEXT: Record<DraftStatus, string> = {
-  "previewing": "預覽中",
-  "no-visible-effect": "此頁看不到效果",
-  "in-source": "已在原始碼中",
-  "conflict": "來源已變更",
-  "pending-load": "待載入",
-  "paused": "暫停預覽",
-};
+/** Id of the draft a scope would produce. */
+export function scopeDraftId(target: ScopeTarget): string {
+  return target.type === "rebind-token" ? `token:${target.token}` : `decl:${target.file}#${target.ordinal}#${target.property}#${target.refIndex}`;
+}
+
+/** Boxes of the story's outermost components and the size of the preview viewport, in preview pixels. */
+export type LayoutPayload = { obstacles: Array<[number, number, number, number]>; viewport: [number, number] };

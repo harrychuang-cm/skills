@@ -4,6 +4,8 @@
 // "preparing" and freezes while a manager modal makes <body> inert.
 // Nothing is inserted into the story root.
 
+import { t } from "../shared/i18n";
+
 const CHROME_ATTRIBUTE = "data-code-layer-chrome";
 export const UI_ATTRIBUTE = "data-code-layer-ui";
 const ACCENT = "#0D99FF";
@@ -14,6 +16,7 @@ const STYLE = `
 .box { position: fixed; left: 0; top: 0; pointer-events: none; box-sizing: border-box; transform-origin: center center; display: none; }
 .hover { border: 1px solid ${ACCENT}; }
 .select { border: 2px solid ${ACCENT}; }
+.highlight { border: 1px dashed ${ACCENT}; background: rgba(13, 153, 255, .08); }
 .label { position: fixed; left: 0; top: 0; display: none; pointer-events: none; align-items: center; gap: 6px;
   font: 600 11px/16px system-ui, -apple-system, "Segoe UI", sans-serif; color: #fff; background: ${ACCENT};
   padding: 1px 6px; border-radius: 3px; white-space: nowrap; }
@@ -61,6 +64,10 @@ export class Overlay {
   private readonly selectName: HTMLSpanElement;
   private readonly selectSize: HTMLSpanElement;
   private readonly toast: HTMLDivElement;
+  private readonly highlightBox: HTMLDivElement;
+  private readonly highlightLabel: HTMLDivElement;
+  private readonly copyButton: HTMLButtonElement;
+  private highlighted: Element | null = null;
   private hovered: Element | null = null;
   private selected: Element | null = null;
   private frame = 0;
@@ -84,8 +91,11 @@ export class Overlay {
     this.selectLabel.setAttribute(UI_ATTRIBUTE, "");
     this.selectName = document.createElement("span");
     this.selectSize = Object.assign(document.createElement("span"), { className: "size" });
-    const copy = Object.assign(document.createElement("button"), { type: "button", textContent: "複製參照", title: "複製物件參照，貼給 AI 就知道你指的是哪個元件" });
+    const copy = Object.assign(document.createElement("button"), { type: "button" });
+    this.copyButton = copy;
     copy.setAttribute(UI_ATTRIBUTE, "");
+    this.highlightBox = Object.assign(document.createElement("div"), { className: "box highlight" });
+    this.highlightLabel = Object.assign(document.createElement("div"), { className: "label highlight-label" });
     copy.addEventListener("click", (event) => {
       event.stopPropagation();
       event.preventDefault();
@@ -93,7 +103,20 @@ export class Overlay {
     });
     this.selectLabel.append(this.selectName, this.selectSize, copy);
     this.toast = Object.assign(document.createElement("div"), { className: "toast" });
-    root.append(style, this.shield, this.hoverBox, this.selectBox, this.hoverLabel, this.selectLabel, this.toast);
+    root.append(style, this.shield, this.highlightBox, this.hoverBox, this.selectBox, this.highlightLabel, this.hoverLabel, this.selectLabel, this.toast);
+    this.relabel();
+  }
+
+  /** (Re)apply the texts of the chrome in the current interface language. */
+  relabel(): void {
+    this.copyButton.textContent = t("overlay.copy");
+    this.copyButton.title = t("overlay.copyTitle");
+  }
+
+  /** Outline an element the panel points at (a breadcrumb entry, a child). */
+  setHighlight(element: Element | null, label: string): void {
+    this.highlighted = element;
+    this.highlightLabel.textContent = label;
   }
 
   mount(): void {
@@ -166,6 +189,7 @@ export class Overlay {
 
   private render(): void {
     if (!this.host.isConnected) document.body.appendChild(this.host);
+    this.place(this.highlightBox, this.highlightLabel, this.highlighted);
     this.place(this.hoverBox, this.hoverLabel, this.hovered);
     this.place(this.selectBox, this.selectLabel, this.selected);
   }

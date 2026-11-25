@@ -1,0 +1,32 @@
+/* reference tier: raw values only */
+:root {
+  --fx-ref-color-red-60: #FE0B05;
+  --fx-ref-color-red-50: #D80A04;
+  --fx-ref-color-blue-70: #10A0E2;
+  --fx-ref-color-yellow-80: #FFD400;
+  --fx-ref-color-green-60: #1E9E4A;
+  --fx-ref-color-ink-10: #1A1410;
+  --fx-ref-color-paper-98: #FFF9EC;
+  --fx-ref-color-white: #FFFFFF;
+  --fx-ref-radius-0: 0;
+  --fx-ref-radius-2: 2px;
+  --fx-ref-radius-4: 4px;
+  --fx-ref-radius-8: 8px;
+  --fx-ref-radius-16: 16px;
+  --fx-ref-space-4: 4px;
+  --fx-ref-space-8: 8px;
+  --fx-ref-space-12: 12px;
+  --fx-ref-space-16: 16px;
+  --fx-ref-size-24: 24px;
+  --fx-ref-size-48: 48px;
+  --fx-ref-stroke-1: 1px;
+  --fx-ref-stroke-2: 2px;
+  --fx-ref-font-size-14: 14px;
+  --fx-ref-font-size-18: 18px;
+  --fx-ref-font-size-32: 32px;
+  --fx-ref-font-weight-400: 400;
+  --fx-ref-font-weight-700: 700;
+  --fx-ref-font-family-display: "Fixture Display", serif;
+  --fx-ref-line-height-tight: 1.2;
+  --fx-ref-opacity-60: 0.6;
+}

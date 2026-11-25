@@ -21,6 +21,9 @@ const DEFAULT_LIMITS = {
   maxStringLength: 512,
 };
 
+export const LOCALES = ["zh-Hant", "en"];
+export const DEFAULT_PAIRING = { containerSuffix: "-container-color", contentSuffix: "-text-color" };
+
 function requireType(value, type, where) {
   const ok = type === "array" ? Array.isArray(value) : typeof value === type && value !== null;
   if (!ok) throw new ConfigError(`${where} must be ${type}`);
@@ -44,7 +47,7 @@ export function loadConfig({ projectRoot, configFile }) {
 
 export function resolveConfig(raw, { projectRoot, configFile = null }) {
   requireType(raw, "object", "config");
-  onlyKeys(raw, ["schemaVersion", "projectId", "apiPath", "workspaceRoot", "stateDir", "tokens", "components", "checks", "limits"], "config");
+  onlyKeys(raw, ["schemaVersion", "projectId", "apiPath", "workspaceRoot", "stateDir", "locale", "tokens", "components", "checks", "governance", "postApply", "limits"], "config");
   if (raw.schemaVersion !== 1) throw new ConfigError("config.schemaVersion must be 1");
   requireType(raw.projectId, "string", "config.projectId");
   if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(raw.projectId)) throw new ConfigError("config.projectId must be kebab-case");
@@ -67,8 +70,12 @@ export function resolveConfig(raw, { projectRoot, configFile = null }) {
       writable: tier.writable === true,
     };
   });
-  if (tiers.filter((t) => t.writable).some((t) => t.tier !== "comp")) {
-    throw new ConfigError("only the comp tier may be writable");
+  // comp and sys may be opened for re-binding; the reference tier holds raw values and is never written.
+  if (tiers.some((t) => t.writable && t.tier === "ref")) {
+    throw new ConfigError("the ref tier cannot be writable: reference tokens hold raw values");
+  }
+  if (raw.locale !== undefined && !LOCALES.includes(raw.locale)) {
+    throw new ConfigError(`config.locale must be one of ${LOCALES.join(", ")}`);
   }
 
   const components = requireType(raw.components, "object", "config.components");
@@ -93,6 +100,56 @@ export function resolveConfig(raw, { projectRoot, configFile = null }) {
     };
   });
 
+  const governanceRaw = requireType(raw.governance ?? {}, "object", "config.governance");
+  onlyKeys(governanceRaw, ["componentSpecsDir", "pairing", "proseScan"], "config.governance");
+  const pairingRaw = requireType(governanceRaw.pairing ?? {}, "object", "config.governance.pairing");
+  onlyKeys(pairingRaw, ["containerSuffix", "contentSuffix"], "config.governance.pairing");
+  const suffix = (value, fallback, where) => {
+    if (value === undefined) return fallback;
+    requireType(value, "string", where);
+    if (!/^-[a-z0-9-]+$/.test(value)) throw new ConfigError(`${where} must start with "-" and use lower-case letters, digits and "-"`);
+    return value;
+  };
+  if (governanceRaw.proseScan !== undefined && typeof governanceRaw.proseScan !== "boolean") {
+    throw new ConfigError("config.governance.proseScan must be boolean");
+  }
+  const governance = {
+    componentSpecsDir: governanceRaw.componentSpecsDir === undefined ? null : abs(governanceRaw.componentSpecsDir, "config.governance.componentSpecsDir"),
+    pairing: {
+      containerSuffix: suffix(pairingRaw.containerSuffix, DEFAULT_PAIRING.containerSuffix, "config.governance.pairing.containerSuffix"),
+      contentSuffix: suffix(pairingRaw.contentSuffix, DEFAULT_PAIRING.contentSuffix, "config.governance.pairing.contentSuffix"),
+    },
+    proseScan: governanceRaw.proseScan ?? true,
+  };
+
+  const postApplyIds = new Set();
+  const postApply = requireType(raw.postApply ?? [], "array", "config.postApply").map((entry, index) => {
+    const where = `config.postApply[${index}]`;
+    requireType(entry, "object", where);
+    onlyKeys(entry, ["id", "command", "args", "cwd", "timeoutMs", "writes"], where);
+    requireType(entry.id, "string", `${where}.id`);
+    if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(entry.id)) throw new ConfigError(`${where}.id must be kebab-case`);
+    if (postApplyIds.has(entry.id)) throw new ConfigError(`${where}.id is duplicated`);
+    postApplyIds.add(entry.id);
+    requireType(entry.command, "string", `${where}.command`);
+    requireType(entry.args ?? [], "array", `${where}.args`);
+    // Every command says what it writes, so one that would write inside the
+    // Storybook root (and reload the page) can be refused at start.
+    if (entry.writes === undefined) throw new ConfigError(`${where}.writes is required: list the paths this command writes`);
+    requireType(entry.writes, "array", `${where}.writes`);
+    if (entry.timeoutMs !== undefined && (!Number.isInteger(entry.timeoutMs) || entry.timeoutMs <= 0)) {
+      throw new ConfigError(`${where}.timeoutMs must be a positive integer`);
+    }
+    return {
+      id: entry.id,
+      command: entry.command,
+      args: (entry.args ?? []).map(String),
+      cwd: entry.cwd === undefined ? projectRoot : abs(entry.cwd, `${where}.cwd`),
+      timeoutMs: entry.timeoutMs ?? 120000,
+      writes: entry.writes.map((p, i) => abs(p, `${where}.writes[${i}]`)),
+    };
+  });
+
   return {
     configFile,
     projectRoot,
@@ -100,6 +157,7 @@ export function resolveConfig(raw, { projectRoot, configFile = null }) {
     apiPath: API_BASE,
     workspaceRoot: abs(raw.workspaceRoot ?? ".", "config.workspaceRoot"),
     stateDir: abs(requireType(raw.stateDir, "string", "config.stateDir"), "config.stateDir"),
+    locale: raw.locale ?? null,
     tokens: {
       prefix: tokens.prefix,
       entry: {
@@ -116,6 +174,8 @@ export function resolveConfig(raw, { projectRoot, configFile = null }) {
       classPrefixes: requireType(components.classPrefixes ?? [], "array", "config.components.classPrefixes"),
     },
     checks,
+    governance,
+    postApply,
     limits: { ...DEFAULT_LIMITS, ...(raw.limits ?? {}) },
   };
 }

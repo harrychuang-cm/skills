@@ -36,6 +36,7 @@ export const ERROR_CODES = {
   "checks-baseline-failing": { status: 409 },
   "check-failed": { status: 422, lane: "agent" },
   "undo-conflict": { status: 409 },
+  "reverse-not-applicable": { status: 409 },
   "nothing-to-undo": { status: 409 },
   "not-latest": { status: 409 },
   "proof-failed": { status: 500 },

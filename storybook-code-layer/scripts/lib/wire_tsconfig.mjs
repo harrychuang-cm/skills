@@ -2,7 +2,7 @@
 // project tsconfig.json includes files under .storybook/, add
 // ".storybook/code-layer/**" to its `exclude` array (the addon has its own
 // tsconfig.json). Pure function over the source text.
-import { appendElement, findArrayOpen, readArrayElements } from "./array_literal.mjs";
+import { appendElement, findArrayOpen, readArrayElements, removeElement } from "./array_literal.mjs";
 
 /** Parse JSONC (comments, trailing commas) for reading only. */
 export function parseJsonc(source) {
@@ -74,10 +74,23 @@ export function wireTsconfig(source, { fileName = "tsconfig.json", configDirName
   if (open === -1 || !readArrayElements(source, open)) {
     // Adding a new exclude list would drop TypeScript's default excludes;
     // leave that decision to a person.
-    notes.push(`${fileName} 沒有 exclude 陣列；請手動加入 "exclude": [..., "${entry}"]（保留原本需要排除的項目）。`);
+    notes.push(`${fileName} has no exclude array; add "exclude": [..., "${entry}"] by hand (keeping what the project needs excluded), so the project's own type check skips the addon`);
     return { status: "manual", source, entry, notes };
   }
   const next = appendElement(source, open, JSON.stringify(entry));
-  notes.push(`在 ${fileName} 的 exclude 加入 "${entry}"`);
+  notes.push(`adds "${entry}" to exclude in ${fileName}`);
   return { status: "added", source: next, entry, notes };
+}
+
+/**
+ * Remove the exclude entry the installer added.
+ * @returns {{ status: "removed" | "absent", source: string, notes: string[] }}
+ */
+export function unwireTsconfig(source, { fileName = "tsconfig.json", configDirName = ".storybook" } = {}) {
+  const entry = `${configDirName}/code-layer/**`;
+  const open = findArrayOpen(source, "exclude");
+  const array = open === -1 ? null : readArrayElements(source, open);
+  const index = array ? array.elements.findIndex((e) => source.slice(e.start, e.end).replace(/^["'](?:\.\/)?|["']$/g, "") === entry) : -1;
+  if (index === -1) return { status: "absent", source, notes: [] };
+  return { status: "removed", source: removeElement(source, open, index), notes: [`removes "${entry}" from exclude in ${fileName}`] };
 }

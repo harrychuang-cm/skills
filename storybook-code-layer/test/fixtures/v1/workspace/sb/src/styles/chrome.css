@@ -1,0 +1,12 @@
+/* Storybook chrome: not part of the design system, read-only for Code Layer. */
+:root {
+  --fx-sys-chrome-only: 1px;
+}
+
+:root[data-theme="dark"] {
+  --fx-sys-color-primary: #000000;
+}
+
+body {
+  font-family: system-ui, sans-serif;
+}

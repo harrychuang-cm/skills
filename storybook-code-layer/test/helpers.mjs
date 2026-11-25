@@ -83,19 +83,52 @@ export function fixtureConfig(overrides = {}) {
   };
 }
 
+export const FIXTURE_V1_ROOT = path.join(SKILL_ROOT, "test", "fixtures", "v1");
+export const FIXTURE_V1_EXPECTED = JSON.parse(fs.readFileSync(path.join(FIXTURE_V1_ROOT, "EXPECTED.json"), "utf8"));
+
+/** Binding of the v1 fixture, restricted to the keys every template version accepts. */
+export function fixtureV1Config(overrides = {}) {
+  return {
+    ...fixtureConfig(),
+    projectId: "fixture-v1",
+    tokens: {
+      prefix: "fx",
+      entry: { source: "../tokens/tokens.css", mirror: "tokens/tokens.css" },
+      tiers: [
+        { tier: "ref", source: "../tokens/tokens-ref.css", mirror: "tokens/tokens-ref.css", writable: false },
+        { tier: "sys", source: "../tokens/tokens-sys.css", mirror: "tokens/tokens-sys.css", writable: false },
+        { tier: "comp", source: "../tokens/tokens-comp.css", mirror: "tokens/tokens-comp.css", writable: true },
+      ],
+      readonlySources: ["src/styles/chrome.css"],
+    },
+    components: { roots: ["src/components"], classPrefixes: ["fx-"] },
+    ...overrides,
+  };
+}
+
 /**
  * A throwaway workspace: <ws>/tokens (source of truth), <ws>/sb (the
  * "Storybook" project root with mirrors in sb/tokens), <ws>/design-system.
  * Mirrors are copies of the truth files unless `files` overrides them.
+ * `fixture: "v1"` starts from test/fixtures/v1/workspace instead of the
+ * small inline fixture.
  */
-export async function makeWorkspace({ files = {}, config: configOverrides = {} } = {}) {
+export async function makeWorkspace({ files = {}, config: configOverrides = {}, fixture = null } = {}) {
   const ws = tempDir("code-layer-ws-");
-  const all = { ...FIXTURE_FILES };
-  for (const name of ["tokens.css", "tokens-ref.css", "tokens-sys.css", "tokens-comp.css"]) {
-    all[`sb/tokens/${name}`] = all[`tokens/${name}`];
+  const overrides = typeof files === "function" ? files(ws) : files;
+  if (fixture === "v1") {
+    fs.cpSync(path.join(FIXTURE_V1_ROOT, "workspace"), ws, { recursive: true });
+    fs.cpSync(path.join(ws, "tokens"), path.join(ws, "sb", "tokens"), { recursive: true });
+    writeFiles(ws, overrides);
+  } else {
+    const all = { ...FIXTURE_FILES };
+    for (const name of ["tokens.css", "tokens-ref.css", "tokens-sys.css", "tokens-comp.css"]) {
+      all[`sb/tokens/${name}`] = all[`tokens/${name}`];
+    }
+    writeFiles(ws, { ...all, ...overrides });
   }
-  writeFiles(ws, { ...all, ...(typeof files === "function" ? files(ws) : files) });
-  const raw = fixtureConfig(typeof configOverrides === "function" ? configOverrides(ws) : configOverrides);
+  const resolvedOverrides = typeof configOverrides === "function" ? configOverrides(ws) : configOverrides;
+  const raw = fixture === "v1" ? fixtureV1Config(resolvedOverrides) : fixtureConfig(resolvedOverrides);
   const configFile = path.join(ws, "sb", ".storybook", "code-layer", "code-layer.config.json");
   fs.mkdirSync(path.dirname(configFile), { recursive: true });
   fs.writeFileSync(configFile, `${JSON.stringify(raw, null, 2)}\n`);

@@ -1,0 +1,1753 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- artifact:start -->
+<title>Code Layer 使用指南</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<!--
+  維護說明（功能更新時，改這一份檔案，不要另開新文件）
+  1. 版本與日期：搜尋 GUIDE_VERSION、GUIDE_UPDATED（script 最上面）。
+  2. 更新紀錄：#changelog 最上面加一筆。
+  3. 使用者旅程：script 裡的 JOURNEYS（每一步有 do／see／target／done／auto）。
+  4. 介面導覽：script 裡的 FIGURES（每個編號對應 sel 與說明）。
+  5. 模擬器的介面文字：script 裡的 L.zh／L.en，要和工具的 shared/messages.*.ts 一致。
+  6. 其餘章節（範圍、記號、結果、滑鼠與鍵盤、常見問題）是一般 HTML，直接改。
+  視覺：只有亮色。白色與淺灰的區塊交替，強調色只有一個藍色。
+  發佈：artifact:start 與 artifact:end 之間（去掉 </head> 與 <body> 兩行）就是發佈用的內容。
+-->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<style>
+  /* layout: full-width bands that alternate white and soft gray; content sits in a 980px column,
+     the journey band widens to 1280px for the simulator. Light only, one accent (blue). */
+  :root {
+    color-scheme: light;
+    --bg: #FFFFFF;
+    --bg-soft: #F5F5F7;
+    --ink: #1D1D1F;
+    --ink-2: #6E6E73;
+    --ink-3: #86868B;
+    --line: #D2D2D7;
+    --hair: #E8E8ED;
+    --accent: #0071E3;
+    --accent-hover: #0077ED;
+    --accent-soft: #E8F1FC;
+    --on-accent: #FFFFFF;
+    --ok: #248A3D;
+    --ok-soft: #E9F6EC;
+    --warn: #B25000;
+    --warn-soft: #FFF4E5;
+    --danger: #D70015;
+    --ring: #FF9F0A;
+    /* the tool, as it looks with Storybook's light theme */
+    --tool-bg: #FFFFFF;
+    --tool-raise: #F5F5F7;
+    --tool-line: #E5E5EA;
+    --tool-fg: #1D1D1F;
+    --tool-dim: #6E6E73;
+    --tool-accent: #0071E3;
+    --tool-accent-soft: #E8F1FC;
+    --tool-pill: #EFEFF2;
+    --tool-ok: #34C759;
+    --tool-warn: #B25000;
+    --canvas: #FBFBFD;
+    --outline: #0D99FF;
+    --on-outline: #FFFFFF;
+    --shadow-pop: 0 12px 32px rgb(0 0 0 / 0.12), 0 0 0 1px rgb(0 0 0 / 0.05);
+    --shadow-card: 0 0 0 1px rgb(0 0 0 / 0.06), 0 4px 16px rgb(0 0 0 / 0.06);
+    --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+    --mono: "SF Mono", SFMono-Regular, ui-monospace, Menlo, Consolas, monospace;
+    --nav: 52px;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html { scroll-padding-top: calc(var(--nav) + env(safe-area-inset-top, 0px) + 12px); scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 17px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 30; background: var(--bg); }
+  h1, h2, h3, p, ol, ul, dl, dd, figure { margin: 0; }
+  h1 { font-size: clamp(36px, 5.4vw, 56px); font-weight: 700; line-height: 1.12; letter-spacing: -0.012em; text-wrap: balance; }
+  h2 { font-size: clamp(28px, 3.8vw, 40px); font-weight: 700; line-height: 1.2; letter-spacing: -0.01em; text-wrap: balance; }
+  p { max-width: 62ch; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  button:disabled { cursor: not-allowed; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  code, kbd { font-family: var(--mono); font-size: 0.84em; }
+  code { background: rgb(0 0 0 / 0.05); padding: 1px 6px; border-radius: 6px; white-space: nowrap; }
+  kbd {
+    display: inline-block; min-width: 26px; text-align: center; padding: 1px 7px; border-radius: 6px;
+    background: var(--bg); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line), 0 1px 0 var(--line); white-space: nowrap;
+  }
+
+  /* ---------- bands ---------- */
+  .band { padding-block: 96px; }
+  .band.soft { background: var(--bg-soft); }
+  .inner {
+    max-width: 980px; margin: 0 auto;
+    padding-left: max(22px, env(safe-area-inset-left, 0px)); padding-right: max(22px, env(safe-area-inset-right, 0px));
+  }
+  .inner.wide { max-width: 1280px; }
+  .head { display: grid; justify-items: center; gap: 12px; text-align: center; margin-bottom: 44px; }
+  .head p { color: var(--ink-2); font-size: 19px; text-wrap: balance; }
+  /* a phrase that stays on one line where there is room for it */
+  @media (min-width: 735px) { .ph { display: inline-block; } }
+  h1 .w { display: inline-block; }
+  .center { text-align: center; }
+
+  /* ---------- nav ---------- */
+  .nav {
+    position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20;
+    background: rgb(255 255 255 / 0.82); -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px);
+    border-bottom: 1px solid var(--hair);
+  }
+  .nav .inner { max-width: 1280px; height: var(--nav); display: flex; align-items: center; gap: 24px; }
+  .nav-title { flex: none; font-size: 19px; font-weight: 600; color: var(--ink); white-space: nowrap; }
+  .nav-title:hover { text-decoration: none; }
+  .nav-links { display: flex; gap: 22px; margin-left: auto; overflow-x: auto; min-width: 0; scrollbar-width: none; }
+  .nav-links::-webkit-scrollbar { display: none; }
+  .nav-links a { font-size: 13px; color: var(--ink-2); white-space: nowrap; padding-block: 4px; }
+  .nav-links a:hover { color: var(--ink); text-decoration: none; }
+
+  /* ---------- hero ---------- */
+  .hero { padding-block: 88px 96px; text-align: center; }
+  .hero .inner { display: grid; justify-items: center; gap: 18px; }
+  .kicker { font-size: 21px; font-weight: 600; }
+  .sub { font-size: clamp(19px, 2.2vw, 23px); line-height: 1.5; color: var(--ink-2); max-width: 30em; }
+  .ctas { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 14px 28px; margin-top: 10px; }
+  .btn-pill {
+    display: inline-flex; align-items: center; border: 0; border-radius: 980px; padding: 11px 22px;
+    background: var(--accent); color: var(--on-accent); font-size: 17px; font-weight: 500;
+  }
+  .btn-pill:hover { background: var(--accent-hover); text-decoration: none; }
+  .more { font-size: 17px; }
+  .more::after { content: " ›"; }
+  .three { list-style: none; padding: 0; width: 100%; margin-top: 64px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 40px; text-align: left; }
+  .three li { display: grid; align-content: start; gap: 6px; padding-top: 20px; border-top: 1px solid var(--line); }
+  .three .n { font-size: 14px; font-weight: 600; color: var(--accent); }
+  .three strong { font-size: 21px; font-weight: 600; }
+  .three span:last-child { font-size: 15px; color: var(--ink-2); }
+  .note { margin-top: 48px; max-width: none; padding: 16px 24px; border-radius: 18px; background: var(--bg-soft); }
+  .note strong { font-weight: 600; }
+  .meta { font-size: 13px; color: var(--ink-3); }
+
+  /* ---------- journeys ---------- */
+  .chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-bottom: 44px; }
+  .chip {
+    border: 0; border-radius: 980px; padding: 8px 18px; font-size: 15px;
+    background: var(--bg); color: var(--ink); box-shadow: inset 0 0 0 1px var(--hair);
+  }
+  .chip:hover { box-shadow: inset 0 0 0 1px var(--line); }
+  .chip[aria-selected="true"] { background: var(--ink); color: var(--bg); box-shadow: none; }
+  .journey { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 44px; align-items: start; }
+  .scenario { font-size: 15px; color: var(--ink-2); margin-bottom: 20px; }
+  .progress { height: 4px; border-radius: 4px; background: var(--hair); overflow: hidden; }
+  .progress span { display: block; height: 100%; width: 0; background: var(--accent); transition: width 0.3s ease; }
+  .progress-text { margin: 8px 0 14px; font-size: 13px; color: var(--ink-3); }
+  .steps { list-style: none; padding: 0; display: grid; gap: 2px; }
+  .steps li { display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 12px; padding: 8px 0; }
+  .steps .dot {
+    width: 24px; height: 24px; border-radius: 50%; margin-top: 1px; display: grid; place-items: center;
+    font-size: 12px; font-weight: 600; color: var(--ink-3); box-shadow: inset 0 0 0 1.5px var(--line);
+  }
+  .steps li[data-state="current"] .dot { background: var(--accent); color: var(--on-accent); box-shadow: none; }
+  .steps li[data-state="done"] .dot { background: var(--hair); color: var(--ink-2); box-shadow: none; }
+  .steps li[data-state="end"] .dot { background: var(--ok); color: var(--on-accent); box-shadow: none; }
+  .s-do { display: block; font-size: 16px; line-height: 1.5; color: var(--ink-2); }
+  .steps li[data-state="current"] .s-do, .steps li[data-state="end"] .s-do { color: var(--ink); font-weight: 600; }
+  .steps li[data-state="done"] .s-do { color: var(--ink-3); }
+  .s-see { display: block; margin-top: 4px; font-size: 15px; color: var(--ink-2); }
+  .s-btn { margin-top: 12px; border: 0; border-radius: 980px; padding: 6px 16px; background: var(--accent); color: var(--on-accent); font-size: 14px; font-weight: 500; }
+  .s-btn:hover { background: var(--accent-hover); }
+  .link { border: 0; background: none; padding: 0; color: var(--accent); font-size: 15px; margin-top: 14px; }
+  .link:hover { text-decoration: underline; }
+
+  /* ---------- simulator ---------- */
+  .sim { background: var(--bg); border-radius: 18px; overflow: hidden; overflow: clip; box-shadow: var(--shadow-card); }
+  .sim-bar {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-height: 44px; padding: 6px 12px;
+    border-bottom: 1px solid var(--hair); font-size: 13px; color: var(--ink-2);
+  }
+  .sim-bar .ghost { width: 22px; height: 22px; border-radius: 6px; background: var(--bg-soft); flex: none; }
+  .sim-toggle { display: inline-flex; align-items: center; gap: 6px; border: 0; border-radius: 7px; padding: 5px 10px; background: none; color: var(--ink-2); font-size: 13px; font-weight: 600; }
+  .sim-toggle:hover { background: var(--bg-soft); }
+  .sim-toggle[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
+  .spacer { flex: 1; }
+  .sim-lang { display: inline-flex; align-items: center; gap: 8px; }
+  .seg-mini { display: inline-flex; padding: 2px; border-radius: 8px; background: var(--bg-soft); }
+  .seg-mini button { border: 0; background: none; border-radius: 6px; padding: 3px 10px; font-size: 12px; color: var(--ink-2); }
+  .seg-mini button[aria-pressed="true"] { background: var(--bg); color: var(--ink); box-shadow: 0 1px 2px rgb(0 0 0 / 0.12); }
+  .sim-canvas { position: relative; height: 500px; background: var(--canvas); overflow: hidden; outline: none; }
+  .sim-story { position: absolute; left: 0; top: 0; bottom: 0; width: calc(100% - 556px); min-width: 200px; display: grid; place-items: center; }
+  .sim-hint { position: absolute; left: 0; right: 0; bottom: 18px; text-align: center; font-size: 13px; color: var(--ink-3); }
+  .m-badge {
+    display: flex; align-items: center; justify-content: center; min-width: 88px; min-height: 88px;
+    font-weight: 700; letter-spacing: 0.04em; line-height: 1.2; transform: rotate(-6deg); user-select: none;
+  }
+  .sel, .hov { position: absolute; pointer-events: none; border: 2px solid var(--outline); transform-origin: center; }
+  .hov { border-width: 1px; }
+  .sel-label {
+    position: absolute; display: flex; align-items: stretch; white-space: nowrap; overflow: hidden;
+    border-radius: 4px; background: var(--outline); color: var(--on-outline); font-size: 11.5px; font-weight: 600;
+  }
+  .sel-label span { padding: 2px 7px; }
+  .sel-label span + span { font-weight: 400; padding-left: 0; }
+  .sel-label button { border: 0; border-left: 1px solid rgb(255 255 255 / 0.45); background: none; color: inherit; font-size: 11.5px; font-weight: 600; padding: 2px 7px; }
+  .sim-below { background: var(--canvas); padding: 0 12px 12px; }
+  .sim-below:empty { display: none; }
+  .sim.is-narrow .sim-canvas { height: 210px; position: sticky; top: calc(var(--nav) + env(safe-area-inset-top, 0px)); z-index: 5; border-bottom: 1px solid var(--hair); }
+  .sim.is-narrow .sim-story { width: 100%; }
+
+  /* the inspector: a replica of the real one (Storybook light theme) */
+  .insp {
+    position: absolute; width: 272px; display: flex; flex-direction: column; text-align: left;
+    background: var(--tool-bg); color: var(--tool-fg); border-radius: 12px; box-shadow: var(--shadow-pop);
+    font-size: 12px; line-height: 1.4;
+  }
+  .insp.is-static, .sim.is-narrow .insp { position: relative; inset: auto; max-height: none; box-shadow: var(--shadow-card); }
+  .sim.is-narrow .insp { width: 100%; }
+  .i-head { height: 38px; flex: none; display: flex; align-items: center; gap: 2px; padding: 0 6px 0 4px; cursor: grab; touch-action: none; user-select: none; }
+  .insp:not(.is-collapsed) .i-head { border-bottom: 1px solid var(--tool-line); }
+  .insp.is-static .i-head, .sim.is-narrow .i-head { cursor: default; }
+  .i-grip { width: 18px; height: 26px; flex: none; display: grid; place-items: center; color: var(--tool-dim); }
+  .i-title { flex: 1; min-width: 0; font-size: 12.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .i-btn { width: 26px; height: 26px; flex: none; display: grid; place-items: center; border: 0; border-radius: 6px; padding: 0; background: none; color: var(--tool-dim); }
+  .i-btn:hover { background: var(--tool-raise); color: var(--tool-fg); }
+  .i-btn[aria-pressed="true"] { background: var(--tool-accent-soft); color: var(--tool-accent); }
+  .i-btn:disabled { opacity: 0.4; }
+  .i-body { overflow: auto; min-height: 0; flex: 1 1 auto; }
+  .i-guide { padding: 16px 14px; display: grid; grid-template-columns: auto 1fr; gap: 10px 12px; align-items: center; color: var(--tool-dim); }
+  .i-guide b { font-weight: 600; color: var(--tool-fg); background: var(--tool-pill); border-radius: 6px; padding: 2px 8px; text-align: center; }
+  .i-nav { padding: 9px 12px; display: grid; gap: 3px; border-bottom: 1px solid var(--tool-line); color: var(--tool-dim); }
+  .i-nav button { border: 0; background: none; padding: 1px 0; text-align: left; font-size: 12px; color: var(--tool-dim); }
+  .i-nav button:hover { color: var(--tool-accent); }
+  .i-crumb { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+  .i-crumb .here { color: var(--tool-fg); font-weight: 600; }
+  .i-dev { font-family: var(--mono); font-size: 10.5px; color: var(--tool-dim); overflow-wrap: anywhere; }
+  .i-sec { padding: 6px 0; border-bottom: 1px solid var(--tool-line); }
+  .i-sec:last-child { border-bottom: 0; }
+  .i-sec-head { display: flex; align-items: center; justify-content: space-between; padding: 3px 12px; font-weight: 600; }
+  .i-more { border: 0; background: none; border-radius: 4px; padding: 0 2px; font-size: 11.5px; color: var(--tool-dim); }
+  .i-more:hover { color: var(--tool-fg); }
+  .i-row {
+    display: flex; align-items: center; gap: 8px; width: calc(100% - 8px); min-height: 28px; margin: 1px 4px; padding: 4px 8px;
+    border: 1px solid transparent; border-radius: 6px; background: none; text-align: left; font-size: 12px; color: var(--tool-fg);
+  }
+  .i-row:hover { background: var(--tool-raise); }
+  .i-row[data-open="true"] { border-color: var(--tool-accent); background: var(--tool-accent-soft); }
+  .i-row .ic { width: 14px; height: 14px; flex: none; display: grid; place-items: center; color: var(--tool-dim); }
+  .i-row .lb { width: 54px; flex: none; color: var(--tool-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .i-row .val { white-space: nowrap; }
+  .i-row .end { margin-left: auto; flex: none; display: flex; align-items: center; gap: 4px; color: var(--tool-dim); }
+  .pill {
+    display: inline-flex; align-items: center; gap: 5px; min-width: 0; max-width: 132px; padding: 1px 6px;
+    border: 1px solid transparent; border-radius: 5px; background: var(--tool-pill); color: var(--tool-fg); font-size: 11.5px;
+  }
+  .pill > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pill.is-staged { border-color: var(--tool-accent); background: var(--tool-bg); color: var(--tool-accent); }
+  .sw { width: 11px; height: 11px; flex: none; border-radius: 3px; box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.14); }
+  .i-reason { margin: 0 12px 4px 34px; font-size: 11.5px; color: var(--tool-warn); }
+
+  .pop {
+    position: absolute; z-index: 3; width: 252px; display: flex; flex-direction: column; gap: 9px; padding: 11px; text-align: left;
+    background: var(--tool-bg); color: var(--tool-fg); border-radius: 12px; box-shadow: var(--shadow-pop); font-size: 12px; line-height: 1.4;
+  }
+  .pop.is-static { position: relative; inset: auto; box-shadow: var(--shadow-card); }
+  .pop.is-inline { position: relative; inset: auto; width: auto; margin: 4px 8px 8px; box-shadow: none; background: var(--tool-raise); }
+  .pop-head { display: flex; align-items: center; justify-content: space-between; font-size: 12.5px; font-weight: 600; }
+  .pop-note { font-size: 11.5px; color: var(--tool-dim); }
+  .seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; padding: 2px; border-radius: 8px; background: var(--tool-raise); }
+  .pop.is-inline .seg { background: var(--hair); }
+  .seg button { border: 0; background: none; border-radius: 6px; padding: 4px 2px; font-size: 11.5px; color: var(--tool-dim); }
+  .seg button[aria-pressed="true"] { background: var(--tool-bg); color: var(--tool-fg); font-weight: 600; box-shadow: 0 1px 2px rgb(0 0 0 / 0.12); }
+  .seg button:disabled { opacity: 0.45; }
+  .stepper { display: flex; align-items: center; gap: 6px; }
+  .stepper button { width: 28px; height: 26px; padding: 0; border: 0; border-radius: 6px; background: var(--tool-bg); box-shadow: inset 0 0 0 1px var(--tool-line); font-size: 14px; line-height: 1; }
+  .stepper button:hover { background: var(--tool-raise); }
+  .stepper button:disabled { opacity: 0.4; }
+  .stepper .cur { flex: 1; min-width: 0; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pop-search {
+    width: 100%; padding: 5px 9px; border: 0; border-radius: 7px; box-shadow: inset 0 0 0 1px var(--tool-line);
+    background: var(--tool-bg); color: var(--tool-fg); font: inherit; font-size: 12px;
+  }
+  .pop-search::placeholder { color: var(--tool-dim); }
+  .opts { display: grid; gap: 1px; max-height: 190px; overflow: auto; }
+  .opt { width: 100%; display: flex; align-items: center; gap: 8px; border: 0; border-radius: 6px; padding: 5px 6px; background: none; text-align: left; font-size: 12px; color: var(--tool-fg); }
+  .opt:hover { background: var(--tool-raise); }
+  .opt .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .opt .v { font-family: var(--mono); font-size: 11px; color: var(--tool-dim); }
+  .opt[aria-selected="true"] .v { color: var(--tool-accent); }
+
+  .i-changes { flex: none; display: grid; gap: 7px; padding: 9px 8px; border-top: 1px solid var(--tool-line); }
+  .chg { display: grid; grid-template-columns: 8px 1fr auto; gap: 2px 6px; align-items: center; padding: 0 4px; }
+  .chg .dot, .i-state .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--tool-accent); }
+  .chg-main { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--tool-dim); }
+  .chg-main b { margin-right: 4px; font-weight: 600; color: var(--tool-fg); }
+  .chg-main strong { color: var(--tool-fg); }
+  .chg .x { width: 20px; height: 20px; display: grid; place-items: center; border: 0; border-radius: 5px; padding: 0; background: none; color: var(--tool-dim); }
+  .chg .x:hover { background: var(--tool-raise); color: var(--tool-fg); }
+  .chg-sub { grid-column: 2 / 4; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 11.5px; color: var(--tool-dim); }
+  .chg-sub .warn { display: inline-flex; align-items: center; gap: 4px; color: var(--tool-warn); }
+  .chip-btn { margin-left: auto; border: 0; border-radius: 5px; padding: 1px 7px; background: var(--tool-bg); box-shadow: inset 0 0 0 1px var(--tool-line); font-size: 11.5px; }
+  .chip-btn:hover { background: var(--tool-raise); }
+  .i-state { display: flex; align-items: center; gap: 6px; padding: 0 4px; font-size: 11.5px; color: var(--tool-dim); }
+  .i-actions { display: flex; justify-content: flex-end; gap: 6px; }
+  .tbtn { border: 0; border-radius: 7px; padding: 4px 11px; background: var(--tool-bg); box-shadow: inset 0 0 0 1px var(--tool-line); color: var(--tool-fg); font-size: 12px; font-weight: 500; touch-action: none; }
+  .tbtn:hover { background: var(--tool-raise); }
+  .tbtn.primary { background: var(--tool-accent); color: var(--on-accent); box-shadow: none; }
+  .tbtn.primary:hover { background: var(--accent-hover); }
+  .tbtn:disabled { opacity: 0.5; }
+
+  .i-report { flex: none; display: grid; gap: 6px; padding: 9px 8px; border-top: 1px solid var(--tool-line); }
+  .rep-head { display: flex; align-items: center; gap: 8px; padding: 0 4px; }
+  .rep-head strong { flex: 1; font-size: 12.5px; font-weight: 600; }
+  .rep-ic { width: 16px; height: 16px; flex: none; display: grid; place-items: center; border-radius: 50%; background: var(--tool-ok); color: var(--on-accent); }
+  .rep-ic.busy { background: none; border: 2px solid var(--tool-line); border-top-color: var(--tool-accent); animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .part > button { width: 100%; display: flex; align-items: baseline; gap: 6px; border: 0; background: none; padding: 1px 4px; text-align: left; font-size: 12px; color: var(--tool-dim); }
+  .part > button:hover { color: var(--tool-fg); }
+  .part-body { display: grid; gap: 5px; padding: 4px 4px 2px 20px; color: var(--tool-dim); overflow-wrap: anywhere; }
+  .part-body .acts { display: flex; flex-wrap: wrap; gap: 5px; }
+  .part-line { padding: 1px 4px 1px 20px; color: var(--tool-dim); }
+
+  /* files under the canvas */
+  .sim-files { padding: 14px 16px 16px; background: var(--bg-soft); border-top: 1px solid var(--hair); }
+  .files-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; font-size: 13px; color: var(--ink-2); }
+  .files-head strong { font-weight: 600; color: var(--ink); }
+  .fstatus { margin-left: auto; padding: 2px 10px; border-radius: 980px; font-size: 12px; font-weight: 600; background: var(--hair); color: var(--ink-2); }
+  .fstatus[data-kind="preview"] { background: var(--warn-soft); color: var(--warn); }
+  .fstatus[data-kind="written"] { background: var(--ok-soft); color: var(--ok); }
+  .files-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr)); gap: 10px; margin-top: 10px; }
+  .file:last-child:nth-child(odd) { grid-column: 1 / -1; }
+  .file { min-width: 0; padding: 10px 0 8px; border-radius: 12px; background: var(--bg); box-shadow: 0 0 0 1px var(--hair); }
+  .file-name { padding: 0 12px 6px; font-family: var(--mono); font-size: 11.5px; color: var(--ink); overflow-wrap: anywhere; }
+  .file-name small { display: block; font-family: var(--sans); font-size: 11.5px; color: var(--ink-3); }
+  .file-lines { overflow-x: auto; font-family: var(--mono); font-size: 11.5px; line-height: 1.75; color: var(--ink-2); }
+  .fline { display: grid; grid-template-columns: 52px max-content; align-items: baseline; width: max-content; min-width: 100%; padding-right: 12px; border-left: 2px solid transparent; white-space: pre; }
+  .fline .tag { padding-left: 10px; font-family: var(--sans); font-size: 10.5px; font-weight: 600; white-space: nowrap; }
+  .fline.will { border-left-color: var(--ring); color: var(--ink); }
+  .fline.will .tag { color: var(--warn); }
+  .fline.wrote { border-left-color: var(--ok); background: var(--ok-soft); color: var(--ink); }
+  .fline.wrote .tag { color: var(--ok); }
+  .sim-copied { margin-top: 16px; padding: 16px 18px; border-radius: 18px; background: var(--bg); box-shadow: var(--shadow-card); }
+  .sim-copied strong { font-size: 15px; font-weight: 600; }
+  .sim-copied pre { margin: 10px 0 0; padding: 12px 14px; border-radius: 12px; background: var(--bg-soft); font-family: var(--mono); font-size: 12px; line-height: 1.65; color: var(--ink-2); overflow-x: auto; white-space: pre; }
+
+  /* where to press next */
+  .coach-hit { outline: 2px solid var(--ring) !important; outline-offset: 2px; animation: pulse 1.4s ease-in-out infinite; position: relative; z-index: 2; }
+  @keyframes pulse { 50% { outline-offset: 5px; } }
+
+  /* ---------- anatomy ---------- */
+  .segmented { display: inline-flex; max-width: 100%; overflow-x: auto; gap: 2px; padding: 2px; border-radius: 9px; background: var(--hair); scrollbar-width: none; }
+  .segmented::-webkit-scrollbar { display: none; }
+  .segmented button { flex: none; border: 0; border-radius: 7px; padding: 6px 16px; background: none; font-size: 14px; color: var(--ink); white-space: nowrap; }
+  .segmented button[aria-pressed="true"] { background: var(--bg); font-weight: 600; box-shadow: 0 1px 3px rgb(0 0 0 / 0.12), 0 0 0 0.5px rgb(0 0 0 / 0.04); }
+  .fig { margin-top: 36px; display: grid; grid-template-columns: minmax(0, 400px) minmax(0, 1fr); gap: 48px; align-items: start; }
+  .fig-stage { position: relative; display: flex; justify-content: center; padding: 44px 40px; border-radius: 18px; background: var(--bg-soft); }
+  .fig-stage .insp, .fig-stage .pop { width: 272px; max-width: 100%; }
+  .fig-stage .i-body { overflow: visible; }
+  .fig-intro { font-size: 17px; color: var(--ink-2); }
+  .pin {
+    position: absolute; z-index: 4; width: 20px; height: 20px; margin: -10px 0 0 -10px; padding: 0; border: 0; border-radius: 50%;
+    background: var(--bg); color: var(--ink); box-shadow: 0 0 0 1px var(--line), 0 1px 3px rgb(0 0 0 / 0.12);
+    font-family: var(--sans); font-size: 11px; font-weight: 600; line-height: 20px; text-align: center;
+  }
+  .pin[data-on="true"], .pin:hover { background: var(--accent); color: var(--on-accent); box-shadow: none; }
+  .legend { list-style: none; padding: 0; margin-top: 16px; display: grid; gap: 2px; }
+  .legend li { display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 12px; padding: 10px 12px; border-radius: 12px; font-size: 15px; line-height: 1.55; cursor: default; }
+  .legend li[data-on="true"] { background: var(--bg-soft); }
+  .legend .n { width: 22px; height: 22px; margin-top: 1px; display: grid; place-items: center; border-radius: 50%; font-size: 12px; font-weight: 600; color: var(--ink-2); box-shadow: inset 0 0 0 1px var(--line); }
+  .legend li[data-on="true"] .n { background: var(--accent); color: var(--on-accent); box-shadow: none; }
+  .legend strong { display: block; font-size: 16px; font-weight: 600; }
+  .legend span { color: var(--ink-2); }
+  .fig-hit { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+
+  /* ---------- scope ---------- */
+  .panel { padding: 32px; border-radius: 18px; background: var(--bg); display: grid; gap: 24px; }
+  .scope-items { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+  .scope-item { display: grid; justify-items: start; gap: 8px; padding: 20px; border-radius: 14px; box-shadow: inset 0 0 0 1px var(--hair); }
+  .scope-item[data-hit="true"] { box-shadow: inset 0 0 0 2px var(--accent); }
+  .scope-item .shape { width: 56px; height: 56px; display: grid; place-items: center; color: #FFFFFF; font-size: 13px; font-weight: 700; transition: background 0.25s; }
+  .scope-item .state { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink-3); }
+  .scope-item .state::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+  .scope-item[data-hit="true"] .state { color: var(--accent); font-weight: 600; }
+  .scope-item strong { font-size: 17px; font-weight: 600; }
+  .scope-item small { font-size: 14px; color: var(--ink-2); line-height: 1.55; }
+  .scope-out { font-size: 17px; max-width: none; }
+  .notes { margin-top: 28px; padding-left: 20px; display: grid; gap: 8px; font-size: 15px; color: var(--ink-2); }
+
+  /* ---------- lists ---------- */
+  .rows { padding: 4px 28px; border-radius: 18px; background: var(--bg); }
+  .band:not(.soft) .rows { background: var(--bg-soft); }
+  .row { display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr) minmax(0, 1fr); gap: 6px 28px; padding: 18px 0; border-top: 1px solid var(--hair); font-size: 15px; }
+  .rows.two .row { grid-template-columns: minmax(0, 220px) minmax(0, 1fr); }
+  .row:first-child { border-top: 0; }
+  .row > :first-child { font-weight: 600; font-size: 16px; }
+  .row > :not(:first-child) { color: var(--ink-2); }
+  .row.label-row { padding: 14px 0 10px; }
+  .row.label-row > * { font-size: 13px !important; font-weight: 400 !important; color: var(--ink-3) !important; }
+  .row [data-label]::before { content: attr(data-label) "："; color: var(--ink-3); display: none; }
+  .st { display: inline-flex; align-items: baseline; gap: 8px; }
+  .st::before { content: ""; width: 8px; height: 8px; border-radius: 50%; flex: none; transform: translateY(-1px); background: currentColor; }
+  .st.ok { color: var(--ok); }
+  .st.warn { color: var(--warn); }
+  .st.bad { color: var(--danger); }
+  .sub-head { margin: 48px 0 16px; font-size: 21px; font-weight: 600; }
+  .marks { list-style: none; padding: 0; margin-top: 56px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 32px 36px; }
+  .marks li { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 14px; align-items: start; }
+  .glyph { width: 40px; height: 40px; display: grid; place-items: center; border-radius: 12px; background: var(--bg-soft); color: var(--ink); font-size: 12px; }
+  .glyph.blue { color: var(--accent); }
+  .glyph.amber { color: var(--warn); }
+  .marks strong { display: block; font-size: 17px; font-weight: 600; }
+  .marks span { font-size: 15px; color: var(--ink-2); }
+
+  .faq { padding: 0 28px; border-radius: 18px; background: var(--bg); }
+  .faq details { border-top: 1px solid var(--hair); }
+  .faq details:first-child { border-top: 0; }
+  .faq summary { list-style: none; cursor: pointer; display: flex; justify-content: space-between; gap: 16px; padding: 22px 0; font-size: 17px; font-weight: 600; }
+  .faq summary::-webkit-details-marker { display: none; }
+  .faq summary::after { content: "+"; flex: none; font-size: 24px; font-weight: 300; line-height: 1; color: var(--ink-2); transition: transform 0.2s; }
+  .faq details[open] summary::after { transform: rotate(45deg); }
+  .faq .a { display: grid; gap: 10px; padding-bottom: 22px; color: var(--ink-2); }
+  .faq .a ul { padding-left: 20px; display: grid; gap: 4px; }
+
+  .log article { display: grid; grid-template-columns: 160px minmax(0, 1fr); gap: 8px 32px; padding: 28px 0; border-top: 1px solid var(--hair); }
+  .log article:first-child { border-top: 0; padding-top: 0; }
+  .log .v { font-size: 21px; font-weight: 600; }
+  .log .v small { display: block; font-size: 14px; font-weight: 400; color: var(--ink-3); }
+  .log ul { padding-left: 18px; display: grid; gap: 6px; color: var(--ink-2); }
+  footer { padding-block: 28px; background: var(--bg-soft); border-top: 1px solid var(--hair); font-size: 12px; color: var(--ink-3); }
+
+  @media (max-width: 1179px) {
+    .journey { grid-template-columns: minmax(0, 1fr); gap: 24px; }
+    .steps li:not([data-state="current"]):not([data-state="end"]) { display: none; }
+  }
+  @media (max-width: 900px) {
+    .marks { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .fig { grid-template-columns: minmax(0, 1fr); gap: 24px; }
+  }
+  @media (max-width: 734px) {
+    .band { padding-block: 64px; }
+    .hero { padding-block: 56px 64px; }
+    .head p { font-size: 17px; }
+    .three { grid-template-columns: minmax(0, 1fr); gap: 20px; margin-top: 44px; }
+    .scope-items { grid-template-columns: minmax(0, 1fr); }
+    .panel { padding: 22px; }
+    .rows, .faq { padding-inline: 20px; }
+    .row, .rows.two .row { grid-template-columns: minmax(0, 1fr); }
+    .row.label-row { display: none; }
+    .row [data-label]::before { display: inline; }
+    .marks { grid-template-columns: minmax(0, 1fr); }
+    .log article { grid-template-columns: minmax(0, 1fr); }
+    .nav-title { font-size: 17px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .coach-hit, .rep-ic.busy { animation: none; }
+  }
+</style>
+</head>
+<body>
+<nav class="nav" aria-label="章節">
+  <div class="inner">
+    <a class="nav-title" href="#top">Code Layer</a>
+    <div class="nav-links">
+      <a href="#journeys">旅程</a>
+      <a href="#anatomy">介面</a>
+      <a href="#scope">範圍</a>
+      <a href="#locks">記號</a>
+      <a href="#results">結果</a>
+      <a href="#keys">快捷鍵</a>
+      <a href="#faq">常見問題</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero" id="top">
+  <div class="inner">
+    <span class="kicker">Code Layer</span>
+    <h1><span class="w">在 Storybook 上，</span><span class="w">像用 Figma</span> <span class="w">一樣調整樣式。</span></h1>
+    <p class="sub"><span class="ph">選取元件，點一下數值，換成另一個 design token。</span><span class="ph">確定之後按一個按鈕，就寫進真實的程式碼。</span></p>
+    <div class="ctas">
+      <a class="btn-pill" href="#journeys">開始旅程</a>
+      <a class="more" href="#anatomy">認識介面</a>
+    </div>
+    <ol class="three">
+      <li><span class="n">1</span><strong>選取</strong><span>打開工具列的 Code Layer，點一下畫面上的元件。</span></li>
+      <li><span class="n">2</span><strong>換 token</strong><span>在檢視器點數值，挑另一個 token，畫面立刻預覽。</span></li>
+      <li><span class="n">3</span><strong>套用到檔案</strong><span>按下去才寫入。寫完自動檢查，也可以還原。</span></li>
+    </ol>
+    <p class="note">按下「套用到檔案」之前，你看到的都只是<strong>預覽</strong>，檔案不會改變。</p>
+    <p class="meta">對應工具版本 <span data-version></span> · 更新於 <span data-updated></span> · <a href="#changelog">更新紀錄</a></p>
+  </div>
+</header>
+
+<section class="band soft" id="journeys" aria-labelledby="h-journeys">
+  <div class="inner wide">
+    <div class="head">
+      <h2 id="h-journeys">跟著旅程走一遍。</h2>
+      <p>下面的模擬器和真的工具一樣可以操作，但不會動到任何檔案。選一段旅程，照著步驟做；卡住時按「幫我做這一步」。</p>
+    </div>
+    <div class="chips" role="tablist" aria-label="選一段旅程" id="jtabs"></div>
+    <div class="journey">
+      <aside>
+        <p class="scenario" id="jwho"></p>
+        <div class="progress" id="progress"><span></span></div>
+        <p class="progress-text" id="progress-text"></p>
+        <ol class="steps" id="steps" aria-live="polite"></ol>
+        <button class="link" type="button" id="coach-reset">從頭再來</button>
+      </aside>
+      <div>
+        <div class="sim" id="sim">
+          <div class="sim-bar">
+            <span class="ghost" aria-hidden="true"></span><span class="ghost" aria-hidden="true"></span>
+            <button class="sim-toggle" type="button" data-act="toggle" aria-pressed="false" id="sim-toggle"></button>
+            <span class="spacer"></span>
+            <span class="sim-lang">介面語言
+              <span class="seg-mini" role="group" aria-label="模擬器的介面語言">
+                <button type="button" data-lang="zh" aria-pressed="true">中文</button>
+                <button type="button" data-lang="en" aria-pressed="false">English</button>
+              </span>
+            </span>
+          </div>
+          <div class="sim-canvas" id="sim-canvas" tabindex="0" aria-label="模擬的 Storybook 畫布">
+            <div class="sim-story"><div class="m-badge" data-el="root"><span data-el="content">精選</span></div></div>
+            <span class="sim-hint" id="sim-hint"></span>
+          </div>
+          <div class="sim-below" id="sim-below"></div>
+          <div class="sim-files" id="sim-files"></div>
+        </div>
+        <div class="sim-copied" id="sim-copied" hidden>
+          <strong id="sim-copied-title"></strong>
+          <pre id="sim-copied-text"></pre>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="band" id="anatomy" aria-labelledby="h-anatomy">
+  <div class="inner">
+    <div class="head">
+      <h2 id="h-anatomy">認識介面。</h2>
+      <p>預設只有圖示、數值和 token。選一個部分，點編號或說明，看它在哪裡。</p>
+    </div>
+    <div id="figures"></div>
+  </div>
+</section>
+
+<section class="band soft" id="scope" aria-labelledby="h-scope">
+  <div class="inner">
+    <div class="head">
+      <h2 id="h-scope">一次改多大，由你決定。</h2>
+      <p>浮層最上面可以選修改範圍。選一個，看看哪些地方會跟著變。</p>
+    </div>
+    <div class="panel">
+      <div class="center">
+        <div class="segmented scope-seg" role="group" aria-label="套用到">
+          <button type="button" data-scope="declaration" aria-pressed="false">只有這裡</button>
+          <button type="button" data-scope="component" aria-pressed="true">這個元件</button>
+          <button type="button" data-scope="system" aria-pressed="false">整個系統</button>
+        </div>
+      </div>
+      <div class="scope-items">
+        <div class="scope-item" data-reach="declaration component system">
+          <div class="shape" style="border-radius: 10px">底色</div>
+          <span class="state"></span>
+          <strong>印章的底色</strong>
+          <small>你點的那一列。</small>
+        </div>
+        <div class="scope-item" data-reach="component system">
+          <div class="shape" style="border-radius: 50%">外框</div>
+          <span class="state"></span>
+          <strong>印章的外框</strong>
+          <small>同一個元件，用的是同一個元件 token。</small>
+        </div>
+        <div class="scope-item" data-reach="system">
+          <div class="shape" style="border-radius: 980px; width: 96px; height: 36px">按鈕</div>
+          <span class="state"></span>
+          <strong>按鈕的底色</strong>
+          <small>別的元件，用的是同一個全域顏色。</small>
+        </div>
+      </div>
+      <p class="scope-out" id="scope-out"></p>
+    </div>
+    <ul class="notes">
+      <li>改的都是樣式規則。畫面上所有用到這條規則的同款元件會一起變，工具不做「只改這一顆」。</li>
+      <li>預設是「這個元件」。不能用的範圍會變灰，滑鼠停上去會說明原因。</li>
+      <li>「整個系統」要專案有開放才能選，選之前會先告訴你影響幾個元件。</li>
+    </ul>
+  </div>
+</section>
+
+<section class="band" id="locks" aria-labelledby="h-locks">
+  <div class="inner">
+    <div class="head">
+      <h2 id="h-locks">鎖頭與記號。</h2>
+      <p>有鎖頭的列只能看、不能改。滑鼠停在那一列上，會說明原因。</p>
+    </div>
+    <div class="rows">
+      <div class="row label-row"><span>為什麼鎖住</span><span>例子</span><span>想改的話</span></div>
+      <div class="row"><span>版面結構，這一版不開放</span><span data-label="例子">顯示方式、方向、對齊、分布、換行</span><span data-label="想改的話">用「複製參照」貼給 AI，請它改</span></div>
+      <div class="row"><span>沒有綁 token</span><span data-label="例子">寫死的數值（<code>100%</code>、<code>12px</code>）、關鍵字、<code>calc()</code></span><span data-label="想改的話">同上，或請工程師先改成 token</span></div>
+      <div class="row"><span>值來自元件外面</span><span data-label="例子">字體繼承自整個頁面、來自另一個元件</span><span data-label="想改的話">選到來源的元件再改</span></div>
+      <div class="row"><span>無法確認規則在作用</span><span data-label="例子">被別的規則蓋過、行內樣式、<code>!important</code>、動畫中</span><span data-label="想改的話">請工程師看一下</span></div>
+    </div>
+    <ul class="marks">
+      <li><span class="glyph" data-icon="lock"></span><div><strong>鎖頭</strong><span>只供檢視。停上去看原因。</span></div></li>
+      <li><span class="glyph" data-icon="up"></span><div><strong>向上箭頭</strong><span>值從上層繼承來。可以改，改的是上層。</span></div></li>
+      <li><span class="glyph blue" data-icon="pill"></span><div><strong>藍框的 token</strong><span>這一列有暫存的變更，還沒寫入。</span></div></li>
+      <li><span class="glyph" data-icon="plus"></span><div><strong>＋n</strong><span>還有 n 個沒有設定的屬性，點了展開。</span></div></li>
+      <li><span class="glyph amber" data-icon="warn"></span><div><strong>對比提示</strong><span>改了底色但文字色沒跟著改。</span></div></li>
+      <li><span class="glyph" data-icon="diamond"></span><div><strong>◆</strong><span>元件的根。點它回到整個元件。</span></div></li>
+    </ul>
+  </div>
+</section>
+
+<section class="band soft" id="results" aria-labelledby="h-results">
+  <div class="inner">
+    <div class="head">
+      <h2 id="h-results">看懂結果。</h2>
+      <p>按下「套用到檔案」後，工具會寫入檔案，再拿掉預覽重新量一次畫面，確認兩者一致。</p>
+    </div>
+    <div class="rows">
+      <div class="row label-row"><span>你會看到</span><span>意思</span><span>要做什麼</span></div>
+      <div class="row"><span class="st ok">已寫入並驗證</span><span data-label="意思">檔案寫好了，畫面也確認一致。</span><span data-label="要做什麼">不用做什麼。</span></div>
+      <div class="row"><span class="st warn">已寫入，此頁看不到效果</span><span data-label="意思">改的東西不在目前這個 story 上。</span><span data-label="要做什麼">切到看得到的 story，按「重新驗證」。</span></div>
+      <div class="row"><span class="st warn">已寫入，但沒有在時限內更新</span><span data-label="意思">檔案寫好了，畫面還沒跟上。</span><span data-label="要做什麼">按「重新整理預覽並驗證」。</span></div>
+      <div class="row"><span class="st bad">已寫入，但畫面與預覽不符</span><span data-label="意思">寫入後的畫面和預覽時不一樣。</span><span data-label="要做什麼">按「還原」，再告訴工程師。</span></div>
+      <div class="row"><span class="st bad">沒有套用</span><span data-label="意思">沒有寫入任何檔案，變更還在清單裡。</span><span data-label="要做什麼">照畫面上的原因處理，再套用一次。</span></div>
+    </div>
+    <p class="sub-head">結果下面可以展開的幾行</p>
+    <div class="rows two">
+      <div class="row"><span>逐項結果</span><span>每一筆變更各自的檢查，例如「預期 8px，實際 8px」。</span></div>
+      <div class="row"><span>已同步改寫規格文件</span><span>元件規格表裡對應的那一列，已經和 token 一起改好。</span></div>
+      <div class="row"><span>文件待同步</span><span>工具不確定怎麼改的地方。按「複製給 AI」交給 AI，處理完按「標示完成」。<strong>只有這一項需要人或 AI 接手。</strong></span></div>
+      <div class="row"><span>衍生文件已重新產生</span><span>設計系統的文件頁已自動更新。</span></div>
+    </div>
+    <ul class="notes">
+      <li>「還原」會把這次寫過的檔案完整放回去。</li>
+      <li>套用之後檔案又被別人改過時，工具不會整份蓋回去，而是讓你選「只改回這次的變更」或「略過這一筆」。</li>
+    </ul>
+  </div>
+</section>
+
+<section class="band" id="keys" aria-labelledby="h-keys">
+  <div class="inner">
+    <div class="head">
+      <h2 id="h-keys">滑鼠與鍵盤。</h2>
+      <p>Code Layer 開著的時候，story 本身收不到點擊和按鍵，不會誤觸畫面上的按鈕或連結。</p>
+    </div>
+    <div class="rows two">
+      <div class="row"><span>選取元件</span><span>點一下（選到最外層的元件）</span></div>
+      <div class="row"><span>進入內層</span><span>雙擊，或按 <kbd>Enter</kbd></span></div>
+      <div class="row"><span>回到上一層</span><span><kbd>Shift</kbd> <kbd>Enter</kbd>，或點檢視器路徑裡的上層</span></div>
+      <div class="row"><span>同層的下一個／上一個</span><span><kbd>Tab</kbd>／<kbd>Shift</kbd> <kbd>Tab</kbd></span></div>
+      <div class="row"><span>直接選到最深的元素</span><span>按住 <kbd>⌘</kbd>（Windows 是 <kbd>Ctrl</kbd>）再點</span></div>
+      <div class="row"><span>取消選取</span><span><kbd>Esc</kbd>，或點空白處</span></div>
+      <div class="row"><span>沿著刻度調大、調小</span><span>選到那一列後按 <kbd>↑</kbd>／<kbd>↓</kbd>，<kbd>Enter</kbd> 暫存、<kbd>Esc</kbd> 取消；也可以左右拖曳列的名稱</span></div>
+      <div class="row"><span>關掉浮層</span><span><kbd>Esc</kbd></span></div>
+      <div class="row"><span>移動檢視器</span><span>拖曳標題列，位置會記住</span></div>
+    </div>
+  </div>
+</section>
+
+<section class="band soft" id="faq" aria-labelledby="h-faq">
+  <div class="inner">
+    <div class="head"><h2 id="h-faq">常見問題。</h2></div>
+    <div class="faq">
+      <details>
+        <summary>我在檢視器上改了，檔案就改了嗎？</summary>
+        <div class="a"><p>還沒有。挑了 token 之後只是暫存，畫面是預覽。檢視器底部會一直顯示「預覽中 · n 項變更尚未寫入檔案」，直到你按「套用到檔案」或「捨棄」。</p></div>
+      </details>
+      <details>
+        <summary>套用需要經過 AI 嗎？</summary>
+        <div class="a"><p>不需要。工具自己把 token 換好、寫進檔案、檢查畫面。只有兩種情況會用到 AI：報告裡出現「文件待同步」，或你想改有鎖頭的列。</p></div>
+      </details>
+      <details>
+        <summary>會寫到哪些檔案？</summary>
+        <div class="a"><p>依修改範圍而定：token 檔（和它的同步複本）、元件的樣式表、元件規格表裡對應的那一列。寫完會自動重新產生設計系統的文件頁。</p><p>想看確切的檔案和行號，打開標題列的 <code>&lt;&gt;</code> 開發者資訊。</p></div>
+      </details>
+      <details>
+        <summary>改壞了怎麼辦？</summary>
+        <div class="a"><p>還沒套用：按「捨棄」，或按每一筆右邊的 ✕。已經套用：按報告上的「還原」。</p><p>寫入之前工具會先跑專案的檢查，沒通過就不會動任何檔案。每次寫入都有備份和紀錄。</p></div>
+      </details>
+      <details>
+        <summary>可以一次改很多項嗎？</summary>
+        <div class="a"><p>可以。想改的都先挑好，最後按一次「套用到檔案」。這一批會一起成功，或一起不寫入，不會只寫一半。</p></div>
+      </details>
+      <details>
+        <summary>我改了一個元件，別的頁面也會變嗎？</summary>
+        <div class="a"><p>會。你改的是 token 或樣式規則，所有用到它的地方都會跟著變。工具只在目前這一頁檢查畫面，浮層和報告會告訴你影響幾個元件。</p></div>
+      </details>
+      <details>
+        <summary>有哪些事還不能做？</summary>
+        <div class="a"><ul>
+          <li>改版面結構（排列方向、對齊等）。</li>
+          <li>把寫死的數值換成 token，或新增一個原本沒有的 token。</li>
+          <li>選取或修改 <code>::before</code>／<code>::after</code> 這類裝飾，以及滑鼠移上去、聚焦時才出現的樣式。</li>
+          <li>只改畫面上的某一顆元件，而不影響同款的其他顆。</li>
+        </ul><p>這些可以用「複製參照」交給 AI 處理。</p></div>
+      </details>
+      <details>
+        <summary>工具列的 Code Layer 亮著，但選不到東西？</summary>
+        <div class="a"><p>工具暫停了，滑鼠停在按鈕上會顯示原因。常見的是：目前在 Docs 頁、Figma export 開著、Prototype Inspector 不在 Story 模式，或這個 story 正在顯示錯誤畫面。回到一般的 story 就會恢復。</p></div>
+      </details>
+      <details>
+        <summary>出現「請重新整理頁面」是什麼意思？</summary>
+        <div class="a"><p>Storybook 重新啟動過，而且工具更新了。重新整理一次就會用到新版。只是重新啟動、沒有更新的話，頁面會自己恢復連線，不用處理。</p></div>
+      </details>
+      <details>
+        <summary>介面為什麼是英文？</summary>
+        <div class="a"><p>介面跟著瀏覽器的語言走。想固定成中文，請管理專案的人在 Code Layer 的專案設定加上 <code>"locale": "zh-Hant"</code>。</p></div>
+      </details>
+      <details>
+        <summary>檢視器擋到我要看的地方？</summary>
+        <div class="a"><p>拖曳標題列移到別處，或按右上角的箭頭收合成一條。還沒拖過之前，它會自己停在不擋住元件的那一側。</p></div>
+      </details>
+    </div>
+  </div>
+</section>
+
+<section class="band" id="changelog" aria-labelledby="h-changelog">
+  <div class="inner">
+    <div class="head">
+      <h2 id="h-changelog">更新紀錄。</h2>
+      <p>工具有新功能時，這份文件會一起更新。</p>
+    </div>
+    <div class="log">
+      <article>
+        <div class="v">1.1.0<small>2026-11-25</small></div>
+        <ul>
+          <li>檢視器改為浮在畫布上，可以拖到任何位置、可以收合，位置會記住。</li>
+          <li>每一列只留圖示、數值和 token；原因與檔案位置改成停上去才顯示，或打開開發者資訊才顯示。</li>
+          <li>點數值就在旁邊開浮層：範圍、−／＋、搜尋都在同一處。</li>
+          <li>有暫存變更時固定顯示「預覽中 · n 項變更尚未寫入檔案」，按鈕改名為「套用到檔案」。</li>
+          <li>Storybook 重新啟動後，開著的頁面會自己恢復連線。</li>
+        </ul>
+      </article>
+      <article>
+        <div class="v">1.0.0<small>2026-11-24</small></div>
+        <ul>
+          <li>版面、間距、尺寸、外觀、填色、筆畫、文字七區都看得到，綁了 token 的都可以換。</li>
+          <li>可以進入元件內層選取（雙擊、Enter、Tab、⌘ 點）。</li>
+          <li>修改範圍三選一：只有這裡、這個元件、整個系統。</li>
+          <li>沿著刻度調大調小（方向鍵、拖曳、−／＋）。</li>
+          <li>套用時同步改寫規格表，列出文件待同步，提示文字色與底色的對比。</li>
+          <li>中文與英文介面。</li>
+        </ul>
+      </article>
+      <article>
+        <div class="v">0.1.0<small>2026-11-20</small></div>
+        <ul>
+          <li>第一版：填色與圓角可以換 token、即時預覽、套用、檢查、還原、複製參照。</li>
+        </ul>
+      </article>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="inner">Code Layer 是 Storybook 裡的開發期工具，只在本機的 dev 模式啟用，不會出現在發佈出去的 Storybook 裡。</div>
+</footer>
+
+<script>
+(() => {
+  "use strict";
+  const GUIDE_VERSION = "1.1.0";
+  const GUIDE_UPDATED = "2026-11-25";
+
+  const $ = (sel, root = document) => root.querySelector(sel);
+  const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
+  const esc = (value) => String(value).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  $$("[data-version]").forEach((el) => (el.textContent = `v${GUIDE_VERSION}`));
+  $$("[data-updated]").forEach((el) => (el.textContent = GUIDE_UPDATED));
+
+  /* ------------------------------------------------------------------ icons */
+  const svg = (body, size = 14) => `<svg viewBox="0 0 16 16" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
+  const ICON = {
+    grip: svg('<g fill="currentColor" stroke="none"><circle cx="6" cy="4" r="1"/><circle cx="10" cy="4" r="1"/><circle cx="6" cy="8" r="1"/><circle cx="10" cy="8" r="1"/><circle cx="6" cy="12" r="1"/><circle cx="10" cy="12" r="1"/></g>'),
+    code: svg('<path d="M6 4.5 2.5 8 6 11.5M10 4.5 13.5 8 10 11.5"/>'),
+    copy: svg('<rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M10.5 5.5v-1A1.5 1.5 0 0 0 9 3H4A1.5 1.5 0 0 0 2.5 4.5v5A1.5 1.5 0 0 0 4 11h1.5"/>'),
+    up: svg('<path d="m4 10 4-4 4 4"/>'),
+    down: svg('<path d="m4 6 4 4 4-4"/>'),
+    lock: svg('<rect x="3.5" y="7" width="9" height="6.5" rx="1.5"/><path d="M5.5 7V5.2a2.5 2.5 0 0 1 5 0V7"/>', 12),
+    inherit: svg('<path d="M8 13V3.5M4.5 7 8 3.5 11.5 7"/>', 12),
+    close: svg('<path d="m4 4 8 8M12 4l-8 8"/>', 12),
+    check: svg('<path d="m3.5 8.5 3 3 6-7"/>', 12),
+    warn: svg('<path d="M8 2.5 14 13H2L8 2.5Z"/><path d="M8 6.5v3M8 11.3v.2"/>', 12),
+    pointer: svg('<path d="M3.5 2.5 12 8l-4 1-1.5 4-3-10.5Z"/>'),
+    display: svg('<rect x="2.5" y="3" width="11" height="10" rx="1.5"/><path d="M8 3v10"/>'),
+    alignItems: svg('<path d="M2 8h12"/><rect x="4" y="5" width="3" height="6" rx="0.8"/><rect x="9" y="6" width="3" height="4" rx="0.8"/>'),
+    direction: svg('<path d="M2.5 8h11M10 4.5 13.5 8 10 11.5"/>'),
+    wrap: svg('<path d="M2.5 4.5h9a2 2 0 0 1 0 4h-5M8.5 6.5l-2 2 2 2"/>'),
+    padding: svg('<rect x="2.5" y="2.5" width="11" height="11" rx="1.5"/><rect x="6" y="6" width="4" height="4" rx="0.6"/>'),
+    width: svg('<path d="M2 8h12M4.5 5.5 2 8l2.5 2.5M11.5 5.5 14 8l-2.5 2.5"/>'),
+    radius: svg('<path d="M3 13V8a5 5 0 0 1 5-5h5"/>'),
+    fill: svg('<rect x="3" y="3" width="10" height="10" rx="2"/>'),
+    fontSize: svg('<path d="M2.5 4.5h7M6 4.5v8M10 8h4M12 8v4.5"/>'),
+    color: svg('<path d="m4.5 11 3.5-8 3.5 8M5.8 8.2h4.4M3 13.5h10"/>'),
+  };
+
+  /* ------------------------------------------------------- mock design system */
+  const TOKENS = {
+    color: [
+      ["color-primary", "#E5372C"], ["color-secondary", "#1B87DB"], ["color-tertiary", "#F4B81E"], ["color-success", "#2F9E55"],
+      ["color-surface", "#F1ECE3"], ["color-on-primary", "#FFFFFF"], ["color-on-secondary", "#FFFFFF"], ["color-on-tertiary", "#2A2622"],
+      ["color-on-success", "#FFFFFF"], ["color-on-surface", "#2A2622"],
+    ],
+    radius: [["shape-corner-none", "0px"], ["shape-corner-sm", "4px"], ["shape-corner-md", "8px"], ["shape-corner-lg", "16px"], ["shape-corner-full", "999px"]],
+    spacing: [["spacing-inset-xs", "4px"], ["spacing-inset-sm", "8px"], ["spacing-inset-md", "12px"], ["spacing-inset-lg", "16px"], ["spacing-inset-xl", "24px"]],
+    size: [["typescale-label-size", "13px"], ["typescale-body-size", "16px"], ["typescale-title-size", "20px"], ["typescale-headline-size", "28px"]],
+  };
+  const VALUE = Object.fromEntries(Object.values(TOKENS).flat());
+  const PROPS = {
+    padding: { kind: "spacing", css: "padding", comp: "--comp-badge-pad" },
+    radius: { kind: "radius", css: "border-radius", comp: null },
+    fill: { kind: "color", css: "background", comp: "--comp-badge-fill" },
+    fontSize: { kind: "size", css: "font-size", comp: "--comp-badge-size" },
+    color: { kind: "color", css: "color", comp: "--comp-badge-text" },
+  };
+  const ROWS = {
+    root: [
+      { section: "layout", id: "display", lock: "structure", value: "flex" },
+      { section: "layout", id: "alignItems", lock: "structure", value: "center" },
+      { section: "layout", id: "direction", lock: "structure", value: "row", unset: true },
+      { section: "layout", id: "wrap", lock: "structure", value: "nowrap", unset: true },
+      { section: "spacing", id: "padding", prop: "padding" },
+      { section: "size", id: "minWidth", icon: "width", lock: "literal", value: "88px" },
+      { section: "appearance", id: "radius", prop: "radius" },
+      { section: "fill", id: "fill", prop: "fill" },
+      { section: "typography", id: "fontSize", prop: "fontSize" },
+      { section: "typography", id: "color", prop: "color" },
+    ],
+    content: [
+      { section: "typography", id: "fontSize", prop: "fontSize", inherited: true },
+      { section: "typography", id: "color", prop: "color", inherited: true },
+    ],
+  };
+  const SECTIONS = ["layout", "spacing", "size", "appearance", "fill", "typography"];
+  const EL = { root: "Badge / seal", content: "Badge › content" };
+
+  /* ---------------------------------- interface text (keep in step with the tool) */
+  const L = {
+    zh: {
+      toggle: "Code Layer", guide: [["點一下", "選取元件"], ["雙擊", "進入內層"], ["點數值", "換成另一個 token"]],
+      sections: { layout: "版面", spacing: "間距", size: "尺寸", appearance: "外觀", fill: "填色", typography: "文字" },
+      fields: { display: "顯示", alignItems: "對齊", direction: "方向", wrap: "換行", padding: "內距", minWidth: "最小寬", radius: "圓角", fill: "填色", fontSize: "字級", color: "文字色" },
+      reach: { title: "套用到", declaration: "只有這裡", component: "這個元件", system: "整個系統" },
+      impact: (n) => `影響 ${n} 個元件`, search: (n) => `搜尋 ${n} 個 token`, stepDown: "小一級", stepUp: "大一級",
+      inherited: (label) => `繼承自 ${label}`, changedOn: (label) => `改在「${label}」的宣告上（繼承來源）`,
+      previewOnly: (n) => `預覽中 · ${n} 項變更尚未寫入檔案`, compare: "對照", discard: "捨棄", apply: "套用到檔案",
+      applying: "套用中…", verifying: "已寫入，驗證中…", verified: "已寫入並驗證", undo: "還原", undoing: "還原中…", undoVerifying: "已還原，驗證中…", undone: "已還原並驗證",
+      items: (n) => `逐項結果（${n}）`, itemOk: (e) => `已驗證（預期 ${e}，實際 ${e}）`, docs: (n) => `已同步改寫規格文件 ${n} 處`, pending: (n) => `文件待同步（${n}）`,
+      copyForAi: "複製給 AI", resolve: "標示完成", derived: "衍生文件已重新產生", reverify: "重新驗證", reloadVerify: "重新整理預覽並驗證",
+      copyRef: "複製參照", contrast: (a, b) => `對比 ${a} → ${b}`, pairAccept: "一起改內容色",
+      lock: { structure: "版面結構屬性，只供檢視", literal: "寫死的數值，沒有綁定 token" },
+      noScope: { system: "這個專案沒有開放 system 層", component: "這個值沒有經過元件 token" },
+      pendingReason: "元件樣式表的宣告沒有任何表格記載，請確認規格的敘述是否需要更新",
+      more: (n) => `＋${n}`, less: "收起", dev: "開發者資訊：顯示檔案位置與 token 鏈", collapse: "收合", expand: "展開", close: "關閉", remove: (row) => `移除 ${row} 的變更`,
+      writes: (file) => `寫入 ${file}`, mirror: "（＋鏡像）", compareTitle: "按住時暫時顯示原本的樣子",
+    },
+    en: {
+      toggle: "Code Layer", guide: [["Click", "Select a component"], ["Double-click", "Go one level in"], ["Click a value", "Swap it for another token"]],
+      sections: { layout: "Layout", spacing: "Spacing", size: "Size", appearance: "Appearance", fill: "Fill", typography: "Typography" },
+      fields: { display: "Display", alignItems: "Align", direction: "Direction", wrap: "Wrap", padding: "Padding", minWidth: "Min W", radius: "Radius", fill: "Fill", fontSize: "Size", color: "Text" },
+      reach: { title: "Apply to", declaration: "Only here", component: "This component", system: "Whole system" },
+      impact: (n) => `Affects ${n} component(s)`, search: (n) => `Search tokens, ${n} in total`, stepDown: "One step down", stepUp: "One step up",
+      inherited: (label) => `Inherited from ${label}`, changedOn: (label) => `Made on the declaration of “${label}”`,
+      previewOnly: (n) => `Preview only · ${n} change(s) not written to files yet`, compare: "Compare", discard: "Discard", apply: "Apply to files",
+      applying: "Applying…", verifying: "Written; verifying…", verified: "Written and verified", undo: "Undo", undoing: "Undoing…", undoVerifying: "Undone; verifying…", undone: "Undone and verified",
+      items: (n) => `Results (${n})`, itemOk: (e) => `verified (expected ${e}, got ${e})`, docs: (n) => `${n} specification row(s) rewritten in the same write`, pending: (n) => `Documents pending sync (${n})`,
+      copyForAi: "Copy for AI", resolve: "Mark done", derived: "Derived artifacts regenerated", reverify: "Verify again", reloadVerify: "Reload the preview and verify",
+      copyRef: "Copy reference", contrast: (a, b) => `Contrast ${a} → ${b}`, pairAccept: "Update content color too",
+      lock: { structure: "Structural layout property: view only", literal: "A fixed value, not bound to a token" },
+      noScope: { system: "This project has not opened the system tier", component: "This value does not go through a component token" },
+      pendingReason: "No table documents component stylesheet declarations; check whether the specification needs an update",
+      more: (n) => `+${n}`, less: "Less", dev: "Developer details: show file locations and token chains", collapse: "Collapse", expand: "Expand", close: "Close", remove: (row) => `Remove the change to ${row}`,
+      writes: (file) => `Writes ${file}`, mirror: " (+ mirror)", compareTitle: "While held, shows the page without your changes",
+    },
+  };
+
+  /* ------------------------------------------------------------- state helpers */
+  const freshState = () => ({
+    on: false, lang: "zh", selection: null, hover: null, openRow: null, scope: {}, drafts: [], transient: null, comparing: false,
+    bind: {
+      padding: { decl: "comp", comp: "spacing-inset-md" }, radius: { decl: "shape-corner-sm", comp: null }, fill: { decl: "comp", comp: "color-primary" },
+      fontSize: { decl: "comp", comp: "typescale-label-size" }, color: { decl: "comp", comp: "color-on-primary" },
+    },
+    history: [], report: null, busy: false, dev: false, collapsed: false, more: {}, lockShown: null, query: "", written: [], flags: {}, pos: { right: 14, top: 14 }, applies: 0,
+  });
+  const clone = (value) => JSON.parse(JSON.stringify(value));
+  const applied = (s, prop) => (s.bind[prop].decl === "comp" ? s.bind[prop].comp : s.bind[prop].decl);
+  const draftOf = (s, prop) => s.drafts.find((d) => d.prop === prop) ?? null;
+  const shown = (s, prop) => {
+    if (s.transient && s.transient.prop === prop) return s.transient.to;
+    const draft = s.comparing || !s.on ? null : draftOf(s, prop);
+    return draft ? draft.to : applied(s, prop);
+  };
+  const scopesOf = (s, prop) => ({ declaration: true, component: s.bind[prop].decl === "comp", system: false });
+  const scopeOf = (s, prop) => {
+    const wanted = s.scope[prop] ?? "component";
+    return scopesOf(s, prop)[wanted] ? wanted : "declaration";
+  };
+  const targets = (prop, scope) => (scope === "component" ? [`tok:${prop}`, `spec:${prop}`] : [`css:${prop}`]);
+  const luminance = (hex) => {
+    const n = parseInt(hex.slice(1), 16);
+    const [r, g, b] = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => {
+      const c = v / 255;
+      return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+    });
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  };
+  const contrast = (a, b) => {
+    const [hi, lo] = [luminance(VALUE[a]), luminance(VALUE[b])].sort((x, y) => y - x);
+    return ((hi + 0.05) / (lo + 0.05)).toFixed(2);
+  };
+  /** The warning under a staged fill whose content color still follows the old role. */
+  const pairing = (s, draft) => {
+    if (draft.prop !== "fill") return null;
+    const partner = draft.to.replace("color-", "color-on-");
+    const text = draftOf(s, "color") ? draftOf(s, "color").to : applied(s, "color");
+    if (!(partner in VALUE) || text === partner) return null;
+    return { partner, before: contrast(draft.from, applied(s, "color")), after: contrast(draft.to, text) };
+  };
+  const fileModel = (s) => {
+    const withComp = Object.entries(PROPS).filter(([, p]) => p.comp);
+    return [
+      { file: "tokens/tokens-comp.css", note: "元件 token（同步複本會一起寫）", lines: withComp.map(([prop, p]) => ({ key: `tok:${prop}`, text: `${p.comp}: var(--sys-${s.bind[prop].comp});` })) },
+      { file: "src/components/badge/Badge.css", note: "元件樣式表", lines: Object.entries(PROPS).map(([prop, p]) => ({ key: `css:${prop}`, text: `${p.css}: var(${s.bind[prop].decl === "comp" ? p.comp : `--sys-${s.bind[prop].decl}`});` })) },
+      { file: "design-system/components/badge.md", note: "元件規格表", lines: withComp.map(([prop, p]) => ({ key: `spec:${prop}`, text: `| ${p.comp} | --sys-${s.bind[prop].comp} |` })) },
+    ];
+  };
+  const lineNumber = (key) => ({ "tok:padding": 4, "tok:fill": 5, "tok:fontSize": 6, "tok:color": 7, "css:padding": 12, "css:radius": 13, "css:fill": 14, "css:fontSize": 15, "css:color": 16, "spec:padding": 21, "spec:fill": 22, "spec:fontSize": 23, "spec:color": 24 }[key]);
+
+  /* --------------------------------------------------------------- HTML pieces */
+  const rowsFor = (s) => ROWS[s.selection] ?? [];
+  function headerHTML(s, T) {
+    const title = s.selection ? EL[s.selection] : "Code Layer";
+    return `<div class="i-head" data-part="head">
+      <span class="i-grip" data-part="grip" title="拖曳移動">${ICON.grip}</span>
+      <span class="i-title" data-part="title">${esc(title)}</span>
+      <button type="button" class="i-btn" data-act="dev" data-part="dev" aria-pressed="${s.dev}" aria-label="${esc(T.dev)}" title="${esc(T.dev)}">${ICON.code}</button>
+      <button type="button" class="i-btn" data-act="copy" data-part="copy" ${s.selection ? "" : "disabled"} aria-label="${esc(T.copyRef)}" title="${esc(T.copyRef)}">${s.flags.justCopied ? ICON.check : ICON.copy}</button>
+      <button type="button" class="i-btn" data-act="collapse" data-part="collapse" aria-expanded="${!s.collapsed}" aria-label="${esc(s.collapsed ? T.expand : T.collapse)}" title="${esc(s.collapsed ? T.expand : T.collapse)}">${s.collapsed ? ICON.down : ICON.up}</button>
+    </div>`;
+  }
+  function navHTML(s) {
+    if (!s.selection) return "";
+    const size = s.size ? ` · ${s.size}` : "";
+    const crumb = s.selection === "root"
+      ? `<span>div</span><span>›</span><span class="here">◆ ${esc(EL.root)}</span>`
+      : `<span>div</span><span>›</span><button type="button" data-act="nav" data-el="root">◆ ${esc(EL.root)}</button><span>›</span><span class="here">${esc(EL.content)}</span>`;
+    const children = s.selection === "root" ? `<button type="button" data-act="nav" data-el="content" data-part="child">↳ ${esc(EL.content)}</button>` : "";
+    const dev = s.dev ? `<div class="i-dev">src/components/badge/Badge.css · .badge--seal（第 11 行）</div>` : "";
+    return `<div class="i-nav" data-part="nav"><div>badge · seal${esc(size)}</div><div class="i-crumb" data-part="crumb">${crumb}</div>${children}${dev}</div>`;
+  }
+  function rowHTML(s, T, row) {
+    const label = T.fields[row.id];
+    const icon = ICON[row.icon ?? row.id] ?? "";
+    if (row.lock) {
+      const reason = T.lock[row.lock];
+      return `<button type="button" class="i-row is-locked" data-act="lock" data-id="${row.id}" title="${esc(reason)}"><span class="ic">${icon}</span><span class="lb">${esc(label)}</span><span class="val">${esc(row.value)}</span><span class="end" data-part="lock">${ICON.lock}</span></button>${s.lockShown === row.id ? `<div class="i-reason">${esc(reason)}</div>` : ""}`;
+    }
+    const token = draftOf(s, row.prop) ? draftOf(s, row.prop).to : applied(s, row.prop);
+    const staged = Boolean(draftOf(s, row.prop));
+    const isColor = PROPS[row.prop].kind === "color";
+    const value = isColor ? "" : `<span class="val">${esc(VALUE[token])}</span>`;
+    const pill = `<span class="pill${staged ? " is-staged" : ""}" data-part="pill">${isColor ? `<span class="sw" style="background:${VALUE[token]}"></span>` : ""}<span>${esc(token)}</span></span>`;
+    const end = row.inherited ? `<span class="end" title="${esc(T.inherited(EL.root))}">${ICON.inherit}</span>` : "";
+    return `<button type="button" class="i-row" data-act="row" data-id="${row.id}" data-open="${s.openRow === row.prop}" data-part="row-${row.id}"><span class="ic">${icon}</span><span class="lb">${esc(label)}</span>${value}${pill}${end}</button>`;
+  }
+  function bodyHTML(s, T, { inlinePop = false } = {}) {
+    if (!s.selection) {
+      return `<div class="i-guide">${T.guide.map(([key, text]) => `<b>${esc(key)}</b><span>${esc(text)}</span>`).join("")}</div>`;
+    }
+    const rows = rowsFor(s);
+    const sections = SECTIONS.map((section) => {
+      const all = rows.filter((row) => row.section === section);
+      if (!all.length) return "";
+      const hidden = all.filter((row) => row.unset);
+      const visible = all.filter((row) => !row.unset || s.more[section]);
+      const more = hidden.length ? `<button type="button" class="i-more" data-act="more" data-section="${section}" data-part="more">${esc(s.more[section] ? T.less : T.more(hidden.length))}</button>` : "";
+      const html = visible.map((row) => rowHTML(s, T, row) + (inlinePop && row.prop && s.openRow === row.prop ? popoverHTML(s, T, "is-inline") : "")).join("");
+      return `<div class="i-sec"><div class="i-sec-head" data-part="sec-${section}"><span>${esc(T.sections[section])}</span>${more}</div>${html}</div>`;
+    }).join("");
+    return navHTML(s) + sections;
+  }
+  function optionsHTML(s, T, prop) {
+    const kind = PROPS[prop].kind;
+    const current = draftOf(s, prop) ? draftOf(s, prop).to : applied(s, prop);
+    const query = s.query.trim().toLowerCase();
+    const list = TOKENS[kind].filter(([name, value]) => !query || name.includes(query) || value.toLowerCase().includes(query));
+    if (!list.length) return `<div class="pop-note">沒有符合的 token。</div>`;
+    return list.map(([name, value]) => `<button type="button" class="opt" role="option" data-act="opt" data-token="${name}" aria-selected="${name === current}">${kind === "color" ? `<span class="sw" style="background:${value}"></span>` : ""}<span class="nm">${esc(name)}</span><span class="v">${name === current ? "✓" : esc(value)}</span></button>`).join("");
+  }
+  function popoverHTML(s, T, mode = "") {
+    const prop = s.openRow;
+    if (!prop) return "";
+    const meta = PROPS[prop];
+    const scopes = scopesOf(s, prop);
+    const scope = scopeOf(s, prop);
+    const row = rowsFor(s).find((r) => r.prop === prop);
+    const current = draftOf(s, prop) ? draftOf(s, prop).to : applied(s, prop);
+    const scale = meta.kind === "color" ? null : TOKENS[meta.kind].map(([name]) => name);
+    const at = scale ? scale.indexOf(current) : -1;
+    const seg = ["declaration", "component", "system"].map((key) => `<button type="button" data-act="scope" data-scope="${key}" aria-pressed="${scope === key}" ${scopes[key] ? "" : `disabled title="${esc(T.noScope[key] ?? "")}"`}>${esc(T.reach[key])}</button>`).join("");
+    const file = scope === "component" ? `tokens/tokens-comp.css:${lineNumber(`tok:${prop}`)}${T.mirror}` : `src/components/badge/Badge.css:${lineNumber(`css:${prop}`)}`;
+    const dev = s.dev ? `<div class="i-dev" data-part="pop-dev">${esc(T.writes(file))}<br>${esc(meta.css)} → ${meta.comp && s.bind[prop].decl === "comp" ? `${esc(meta.comp)} → ` : ""}--sys-${esc(applied(s, prop))} = ${esc(VALUE[applied(s, prop)])}</div>` : "";
+    const stepper = scale ? `<div class="stepper" data-part="pop-stepper"><button type="button" data-act="step" data-dir="-1" ${at <= 0 ? "disabled" : ""} aria-label="${esc(T.stepDown)}" title="${esc(T.stepDown)}">−</button><span class="cur">${esc(VALUE[current])} · ${esc(current)}</span><button type="button" data-act="step" data-dir="1" ${at >= scale.length - 1 ? "disabled" : ""} aria-label="${esc(T.stepUp)}" title="${esc(T.stepUp)}">＋</button></div>` : "";
+    return `<div class="pop ${mode}" data-pop="${prop}">
+      <div class="pop-head"><span>${esc(T.fields[prop])}</span><button type="button" class="i-btn" data-act="close-pop" data-part="pop-close" aria-label="${esc(T.close)}">${ICON.close}</button></div>
+      ${row && row.inherited ? `<div class="pop-note" data-part="pop-inherited">${ICON.inherit} ${esc(T.inherited(EL.root))}</div>` : ""}
+      <div class="seg" role="group" aria-label="${esc(T.reach.title)}" data-part="pop-seg">${seg}</div>
+      <div class="pop-note" data-part="pop-impact">${esc(T.impact(1))}</div>
+      ${stepper}
+      <input class="pop-search" id="sim-search-${mode || "float"}" type="search" autocomplete="off" data-part="pop-search" placeholder="${esc(T.search(TOKENS[meta.kind].length))}" aria-label="${esc(T.search(TOKENS[meta.kind].length))}" value="${esc(s.query)}">
+      <div class="opts" role="listbox" data-part="pop-opts">${optionsHTML(s, T, prop)}</div>
+      ${dev}
+    </div>`;
+  }
+  function changesHTML(s, T) {
+    if (!s.drafts.length) return "";
+    const lines = s.drafts.map((draft) => {
+      const pair = pairing(s, draft);
+      const sub = [];
+      if (draft.inherited) sub.push(`<span>${esc(T.changedOn(EL.root))}</span>`);
+      if (pair) sub.push(`<span class="warn" data-part="chg-pair">${ICON.warn}${esc(T.contrast(pair.before, pair.after))}</span><button type="button" class="chip-btn" data-act="pair" data-token="${pair.partner}">${esc(T.pairAccept)}</button>`);
+      const where = `${T.reach[draft.scope]} · ${T.writes(draft.scope === "component" ? "tokens/tokens-comp.css" : "src/components/badge/Badge.css")}`;
+      return `<div class="chg" data-prop="${draft.prop}" title="${esc(where)}"><span class="dot"></span><span class="chg-main" data-part="chg-line"><b>${esc(T.fields[draft.prop])}</b>${esc(draft.from)} → <strong>${esc(draft.to)}</strong></span><button type="button" class="x" data-act="remove" data-prop="${draft.prop}" data-part="chg-x" aria-label="${esc(T.remove(T.fields[draft.prop]))}">${ICON.close}</button>${sub.length ? `<div class="chg-sub">${sub.join("")}</div>` : ""}</div>`;
+    }).join("");
+    return `<div class="i-changes" data-part="changes">${lines}
+      <div class="i-state" data-part="chg-state"><span class="dot"></span>${esc(T.previewOnly(s.drafts.length))}</div>
+      <div class="i-actions"><button type="button" class="tbtn" data-act="compare" data-part="chg-compare" title="${esc(T.compareTitle)}">${esc(T.compare)}</button><button type="button" class="tbtn" data-act="discard" data-part="chg-discard">${esc(T.discard)}</button><button type="button" class="tbtn primary" data-act="apply" data-part="chg-apply" ${s.busy ? "disabled" : ""}>${esc(T.apply)}</button></div>
+    </div>`;
+  }
+  function reportHTML(s, T) {
+    const report = s.report;
+    if (!report) return "";
+    if (report.phase !== "done") {
+      const text = report.mode === "apply" ? (report.phase === "writing" ? T.applying : T.verifying) : report.phase === "writing" ? T.undoing : T.undoVerifying;
+      return `<div class="i-report"><div class="rep-head"><span class="rep-ic busy"></span><strong>${esc(text)}</strong></div></div>`;
+    }
+    if (report.mode === "undo") {
+      return `<div class="i-report" data-part="report"><div class="rep-head"><span class="rep-ic">${ICON.check}</span><strong>${esc(T.undone)}</strong></div></div>`;
+    }
+    const part = (id, label, body) => `<div class="part"><button type="button" data-act="part" data-part-id="${id}" data-part="rep-${id}" aria-expanded="${Boolean(report.open[id])}"><span>${report.open[id] ? "▾" : "▸"}</span><span>${esc(label)}</span></button>${report.open[id] ? `<div class="part-body">${body}</div>` : ""}</div>`;
+    const items = report.items.map((item) => `<div>${esc(T.fields[item.prop])} · ${esc(item.inherited ? EL.root : EL[item.element] ?? EL.root)}：${esc(item.from)} → ${esc(item.to)}：${esc(T.itemOk(VALUE[item.to]))}</div>`).join("") + `<div class="acts"><button type="button" class="tbtn" data-act="reverify">${esc(T.reverify)}</button><button type="button" class="tbtn" data-act="reverify">${esc(T.reloadVerify)}</button></div>`;
+    const docs = report.docs.map((doc) => `<div>design-system/components/badge.md:${doc.line}：sys-${esc(doc.from)} → sys-${esc(doc.to)}</div>`).join("");
+    const pending = report.pending.map((entry) => `<div>src/components/badge/Badge.css:${entry.line} — ${esc(T.pendingReason)}</div>`).join("") + `<div class="acts"><button type="button" class="tbtn" data-act="copy-brief" data-part="rep-copy-ai">${esc(T.copyForAi)}</button><button type="button" class="tbtn" data-act="resolve" data-part="rep-resolve">${esc(T.resolve)}</button></div>`;
+    return `<div class="i-report" data-part="report">
+      <div class="rep-head" data-part="rep-head"><span class="rep-ic">${ICON.check}</span><strong>${esc(T.verified)}</strong><button type="button" class="tbtn" data-act="undo" data-part="rep-undo" ${s.busy ? "disabled" : ""}>${esc(T.undo)}</button></div>
+      ${part("items", T.items(report.items.length), items)}
+      ${report.docs.length ? part("docs", T.docs(report.docs.length), docs) : ""}
+      ${report.pending.length ? part("pending", T.pending(report.pending.length), pending) : ""}
+      <div class="part-line" data-part="rep-derived">▸ ${esc(T.derived)}</div>
+    </div>`;
+  }
+
+  /* ================================================================ simulator */
+  const sim = $("#sim");
+  const canvas = $("#sim-canvas");
+  const below = $("#sim-below");
+  const filesEl = $("#sim-files");
+  const story = $(".sim-story", canvas);
+  const badge = $(".m-badge", canvas);
+  const insp = document.createElement("div");
+  insp.className = "insp";
+  insp.setAttribute("aria-label", "Code Layer 檢視器（模擬）");
+  const selBox = document.createElement("div");
+  selBox.className = "sel";
+  const selLabel = document.createElement("div");
+  selLabel.className = "sel-label";
+  const hovBox = document.createElement("div");
+  hovBox.className = "hov";
+  canvas.append(hovBox, selBox, selLabel);
+
+  let s = freshState();
+  let narrow = false;
+  let timers = [];
+  const T = () => L[s.lang];
+  const later = (ms, fn) => timers.push(setTimeout(fn, ms));
+  const elementOf = (key) => (key === "content" ? $('[data-el="content"]', badge) : badge);
+
+  function renderCanvas() {
+    canvas.dataset.on = String(s.on);
+    badge.style.background = VALUE[shown(s, "fill")];
+    badge.style.color = VALUE[shown(s, "color")];
+    badge.style.borderRadius = VALUE[shown(s, "radius")];
+    badge.style.padding = VALUE[shown(s, "padding")];
+    badge.style.fontSize = VALUE[shown(s, "fontSize")];
+    const place = (box, key) => {
+      const el = key ? elementOf(key) : null;
+      if (!s.on || !el) return (box.hidden = true), null;
+      // The badge is rotated: outline it with its own box, turned the same way.
+      const frame = canvas.getBoundingClientRect();
+      const rect = el.getBoundingClientRect();
+      const w = el.offsetWidth, h = el.offsetHeight;
+      box.hidden = false;
+      box.style.width = `${w}px`;
+      box.style.height = `${h}px`;
+      box.style.left = `${rect.left - frame.left + rect.width / 2 - w / 2}px`;
+      box.style.top = `${rect.top - frame.top + rect.height / 2 - h / 2}px`;
+      box.style.transform = "rotate(-6deg)";
+      return { rect, frame, w, h };
+    };
+    place(hovBox, s.hover && s.hover !== s.selection ? s.hover : null);
+    const placed = place(selBox, s.selection);
+    if (placed) {
+      s.size = `${placed.w} × ${placed.h}`;
+      selLabel.hidden = false;
+      selLabel.innerHTML = `<span>${esc(EL[s.selection])}</span><span>${placed.w} × ${placed.h}</span><button type="button" data-act="copy">${esc(T().copyRef)}</button>`;
+      selLabel.style.left = `${Math.max(4, placed.rect.left - placed.frame.left)}px`;
+      selLabel.style.top = `${Math.max(4, placed.rect.top - placed.frame.top - 26)}px`;
+    } else {
+      selLabel.hidden = true;
+    }
+    $("#sim-hint").textContent = s.on ? "" : "按上方的 Code Layer 開始";
+  }
+
+  function renderInspector() {
+    const toggle = $("#sim-toggle");
+    toggle.setAttribute("aria-pressed", String(s.on));
+    toggle.innerHTML = `${ICON.pointer}<span>${esc(T().toggle)}</span>`;
+    $$("[data-lang]", sim).forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.lang === s.lang)));
+    if (!s.on) {
+      insp.remove();
+      return;
+    }
+    const home = narrow ? below : canvas;
+    if (insp.parentElement !== home) home.append(insp);
+    insp.classList.toggle("is-collapsed", s.collapsed);
+    const scroll = $(".i-body", insp)?.scrollTop ?? 0;
+    insp.innerHTML = headerHTML(s, T()) + (s.collapsed ? "" : `<div class="i-body">${bodyHTML(s, T(), { inlinePop: narrow })}</div>${changesHTML(s, T())}${reportHTML(s, T())}${narrow ? "" : popoverHTML(s, T())}`);
+    const body = $(".i-body", insp);
+    if (body) body.scrollTop = scroll;
+    placeInspector();
+    placePopover();
+  }
+  function placeInspector() {
+    if (narrow || !s.on) return void (insp.style.cssText = "");
+    const maxRight = Math.max(8, canvas.clientWidth - insp.offsetWidth - 8);
+    const maxTop = Math.max(8, canvas.clientHeight - 46);
+    s.pos.right = Math.min(Math.max(8, s.pos.right), maxRight);
+    s.pos.top = Math.min(Math.max(8, s.pos.top), maxTop);
+    insp.style.right = `${s.pos.right}px`;
+    insp.style.top = `${s.pos.top}px`;
+    insp.style.maxHeight = s.collapsed ? "" : `${canvas.clientHeight - s.pos.top - 8}px`;
+  }
+  function placePopover() {
+    const pop = $(".pop:not(.is-inline)", insp);
+    if (!pop) return;
+    const row = $(`.i-row[data-open="true"]`, insp);
+    const root = insp.getBoundingClientRect();
+    const frame = canvas.getBoundingClientRect();
+    const rowTop = row ? row.getBoundingClientRect().top - root.top : 40;
+    const top = Math.min(Math.max(8 - (root.top - frame.top), rowTop - 6), frame.bottom - root.top - pop.offsetHeight - 8);
+    const roomLeft = root.left - frame.left;
+    pop.style.top = `${top}px`;
+    if (roomLeft >= pop.offsetWidth + 16) {
+      pop.style.right = "calc(100% + 8px)";
+      pop.style.left = "auto";
+    } else {
+      pop.style.left = "calc(100% + 8px)";
+      pop.style.right = "auto";
+    }
+  }
+  function renderFiles() {
+    const will = new Set(s.drafts.flatMap((draft) => targets(draft.prop, draft.scope)));
+    const wrote = new Set(s.written);
+    const status = s.drafts.length ? ["preview", `檔案沒有變動（${s.drafts.length} 項只是預覽）`] : wrote.size ? ["written", s.report && s.report.mode === "undo" ? `已還原 ${wrote.size} 行` : `剛寫入 ${wrote.size} 行`] : ["idle", "檔案沒有變動"];
+    filesEl.innerHTML = `<div class="files-head"><strong>檔案</strong><span>只有「套用到檔案」會改變這裡。</span><span class="fstatus" data-kind="${status[0]}">${esc(status[1])}</span></div>
+      <div class="files-grid">${fileModel(s).map((file) => `<div class="file"><div class="file-name">${esc(file.file)}<small>${esc(file.note)}</small></div><div class="file-lines">${file.lines.map((line) => `<div class="fline${will.has(line.key) ? " will" : wrote.has(line.key) ? " wrote" : ""}" data-line="${line.key}"><span class="tag">${will.has(line.key) ? "預覽中" : wrote.has(line.key) ? (s.report && s.report.mode === "undo" ? "已還原" : "已寫入") : ""}</span><span>${esc(line.text)}</span></div>`).join("")}</div></div>`).join("")}</div>`;
+  }
+  function render() {
+    renderCanvas();
+    renderInspector();
+    renderCanvas(); // the inspector may have changed the label's language
+    renderFiles();
+    coach.sync();
+  }
+
+  /* ----------------------------------------------------------------- actions */
+  const act = {
+    toggle() {
+      s.on = !s.on;
+      if (!s.on) Object.assign(s, { selection: null, hover: null, openRow: null });
+      render();
+    },
+    select(key) {
+      if (!s.on) return;
+      if (s.selection !== key) Object.assign(s, { openRow: null, query: "", lockShown: null });
+      s.selection = key;
+      render();
+    },
+    open(prop) {
+      if (!s.selection) return;
+      s.openRow = s.openRow === prop ? null : prop;
+      s.query = "";
+      s.transient = null;
+      render();
+    },
+    closePop() {
+      Object.assign(s, { openRow: null, transient: null, query: "" });
+      render();
+    },
+    stage(prop, to, { keepOpen = false } = {}) {
+      const from = applied(s, prop);
+      const row = rowsFor(s).find((r) => r.prop === prop);
+      s.drafts = s.drafts.filter((draft) => draft.prop !== prop);
+      if (to !== from) s.drafts.push({ prop, from, to, scope: scopeOf(s, prop), element: s.selection ?? "root", inherited: Boolean(row && row.inherited) });
+      s.transient = null;
+      s.report = null;
+      s.written = [];
+      if (!keepOpen) Object.assign(s, { openRow: null, query: "" });
+      render();
+    },
+    step(dir) {
+      const prop = s.openRow;
+      if (!prop || PROPS[prop].kind === "color") return;
+      const scale = TOKENS[PROPS[prop].kind].map(([name]) => name);
+      const current = draftOf(s, prop) ? draftOf(s, prop).to : applied(s, prop);
+      const next = scale[scale.indexOf(current) + dir];
+      if (next) act.stage(prop, next, { keepOpen: true });
+    },
+    scope(prop, scope) {
+      s.scope[prop] = scope;
+      const draft = draftOf(s, prop);
+      if (draft) draft.scope = scopeOf(s, prop);
+      render();
+    },
+    remove(prop) {
+      s.drafts = s.drafts.filter((draft) => draft.prop !== prop);
+      render();
+    },
+    discard() {
+      s.drafts = [];
+      render();
+    },
+    compare(on) {
+      s.comparing = on;
+      if (on) s.flags.compared = true;
+      renderCanvas();
+      if (!on) coach.sync();
+    },
+    apply() {
+      if (!s.drafts.length || s.busy) return;
+      const changes = clone(s.drafts);
+      Object.assign(s, { busy: true, openRow: null, report: { mode: "apply", phase: "writing" } });
+      render();
+      later(600, () => {
+        s.history.push(clone(s.bind));
+        for (const change of changes) s.bind[change.prop][change.scope === "component" ? "comp" : "decl"] = change.to;
+        s.written = changes.flatMap((change) => targets(change.prop, change.scope));
+        s.drafts = [];
+        s.report.phase = "verifying";
+        render();
+        later(700, () => {
+          s.applies += 1;
+          s.report = {
+            mode: "apply", phase: "done", open: {}, items: changes,
+            docs: changes.filter((c) => c.scope === "component").map((c) => ({ line: lineNumber(`spec:${c.prop}`), from: c.from, to: c.to })),
+            pending: changes.filter((c) => c.scope === "declaration").map((c) => ({ line: lineNumber(`css:${c.prop}`), prop: c.prop })),
+          };
+          s.busy = false;
+          render();
+        });
+      });
+    },
+    undo() {
+      if (!s.history.length || s.busy) return;
+      const before = clone(s.bind);
+      Object.assign(s, { busy: true, report: { mode: "undo", phase: "writing" } });
+      render();
+      later(500, () => {
+        s.bind = s.history.pop();
+        s.written = Object.keys(PROPS).flatMap((prop) => [
+          ...(before[prop].comp !== s.bind[prop].comp ? targets(prop, "component") : []),
+          ...(before[prop].decl !== s.bind[prop].decl ? targets(prop, "declaration") : []),
+        ]);
+        s.report.phase = "verifying";
+        render();
+        later(600, () => {
+          s.report = { mode: "undo", phase: "done" };
+          s.busy = false;
+          render();
+        });
+      });
+    },
+    copy() {
+      if (!s.selection) return;
+      showCopied("已複製到剪貼簿（貼給 AI，它就知道你指的是哪裡）", referenceText());
+      s.flags.copied = true;
+      s.flags.justCopied = true;
+      render();
+      later(1400, () => {
+        s.flags.justCopied = false;
+        renderInspector();
+        coach.sync();
+      });
+    },
+  };
+  function showCopied(title, text) {
+    $("#sim-copied").hidden = false;
+    $("#sim-copied-title").textContent = title;
+    $("#sim-copied-text").textContent = text;
+    try {
+      navigator.clipboard.writeText(text).catch(() => undefined);
+    } catch {
+      // The box shows the text: it can be selected by hand.
+    }
+  }
+  function referenceText() {
+    const line = (prop) => {
+      const meta = PROPS[prop];
+      const token = applied(s, prop);
+      const viaComp = s.bind[prop].decl === "comp";
+      return `${L.zh.fields[prop]}：${meta.css} → ${viaComp ? `${meta.comp}（tokens/tokens-comp.css:${lineNumber(`tok:${prop}`)}）→ ` : ""}--sys-${token} = ${VALUE[token]}`;
+    };
+    const rows = rowsFor(s);
+    return [
+      "[Code Layer 物件參照 v2]",
+      "Story：components-badge--seal（Components/Badge › Seal）",
+      `元件：badge · variant：seal · 元素：${EL[s.selection]}`,
+      "CSS：src/components/badge/Badge.css · .badge--seal（規則 #2，第 11 行）",
+      ...rows.filter((row) => row.prop).map((row) => line(row.prop) + (row.inherited ? ` · 繼承自 ${EL.root}` : "")),
+      ...rows.filter((row) => row.lock && !row.unset).map((row) => `${L.zh.fields[row.id]}：${row.value} · 唯讀：${L.zh.lock[row.lock]}`),
+    ].join("\n");
+  }
+
+  /* ------------------------------------------------------------------ events */
+  sim.addEventListener("click", (event) => {
+    const target = event.target instanceof Element ? event.target.closest("[data-act],[data-lang]") : null;
+    if (!target || !sim.contains(target)) return;
+    if (target.dataset.lang) {
+      s.lang = target.dataset.lang;
+      return render();
+    }
+    const name = target.dataset.act;
+    const prop = target.dataset.prop ?? s.openRow;
+    if (name === "toggle") act.toggle();
+    else if (name === "dev") (s.dev = !s.dev), render();
+    else if (name === "collapse") (s.collapsed = !s.collapsed), (s.openRow = null), render();
+    else if (name === "copy") act.copy();
+    else if (name === "more") (s.more[target.dataset.section] = !s.more[target.dataset.section]), render();
+    else if (name === "nav") act.select(target.dataset.el);
+    else if (name === "row") act.open(rowsFor(s).find((row) => row.id === target.dataset.id).prop);
+    else if (name === "lock") (s.lockShown = s.lockShown === target.dataset.id ? null : target.dataset.id), (s.flags.lockSeen = true), render();
+    else if (name === "close-pop") act.closePop();
+    else if (name === "scope") act.scope(s.openRow, target.dataset.scope);
+    else if (name === "step") act.step(Number(target.dataset.dir));
+    else if (name === "opt") act.stage(s.openRow, target.dataset.token);
+    else if (name === "remove") act.remove(prop);
+    else if (name === "pair") act.stage("color", target.dataset.token, { keepOpen: true });
+    else if (name === "discard") act.discard();
+    else if (name === "apply") act.apply();
+    else if (name === "undo") act.undo();
+    else if (name === "part") (s.report.open[target.dataset.partId] = !s.report.open[target.dataset.partId]), render();
+    else if (name === "resolve") (s.report.pending = []), (s.flags.resolved = true), render();
+    else if (name === "copy-brief") {
+      showCopied("已複製給 AI 的內容", [`[Code Layer 文件待同步：sim-apply-${s.applies}]`, ...s.report.pending.map((entry) => `src/components/badge/Badge.css:${entry.line} — ${L.zh.pendingReason}`), "", referenceText()].join("\n"));
+      s.flags.briefCopied = true;
+      coach.sync();
+    } else if (name === "reverify") coach.sync();
+  });
+  // Selecting on the canvas: a click takes the outermost component, a double-click goes one level in.
+  const hit = (event) => (event.target instanceof Element ? event.target.closest("[data-el]") : null);
+  story.addEventListener("pointermove", (event) => {
+    if (!s.on) return;
+    const el = hit(event);
+    const key = !el ? null : s.selection === "content" && el.dataset.el === "content" ? "content" : "root";
+    if (key !== s.hover) (s.hover = key), renderCanvas();
+  });
+  story.addEventListener("pointerleave", () => {
+    if (s.hover) (s.hover = null), renderCanvas();
+  });
+  story.addEventListener("click", (event) => {
+    if (!s.on) return;
+    canvas.focus({ preventScroll: true });
+    const el = hit(event);
+    if (!el) return act.select(null);
+    act.select(s.selection === "content" && el.dataset.el === "content" ? "content" : "root");
+  });
+  story.addEventListener("dblclick", (event) => {
+    if (s.on && hit(event)) act.select("content");
+  });
+  canvas.addEventListener("keydown", (event) => {
+    if (!s.on || (event.target instanceof Node && insp.contains(event.target))) return;
+    if (event.key === "Escape") s.openRow ? act.closePop() : act.select(null);
+    else if (event.key === "Enter" && event.shiftKey && s.selection === "content") act.select("root");
+    else if (event.key === "Enter" && s.selection === "root") act.select("content");
+    else return;
+    event.preventDefault();
+  });
+  // The token list: hovering previews, typing filters (only the list is redrawn, so the caret stays).
+  insp.addEventListener("pointerover", (event) => {
+    const option = event.target instanceof Element ? event.target.closest(".opt") : null;
+    if (!option || !s.openRow) return;
+    s.transient = { prop: s.openRow, to: option.dataset.token };
+    renderCanvas();
+  });
+  insp.addEventListener("pointerout", (event) => {
+    const from = event.target instanceof Element ? event.target.closest(".opts") : null;
+    if (!from || (event.relatedTarget instanceof Node && from.contains(event.relatedTarget))) return;
+    if (s.transient) (s.transient = null), renderCanvas();
+  });
+  insp.addEventListener("input", (event) => {
+    if (!(event.target instanceof HTMLInputElement) || !event.target.classList.contains("pop-search")) return;
+    s.query = event.target.value;
+    const list = $(".opts", event.target.closest(".pop"));
+    if (list) list.innerHTML = optionsHTML(s, T(), s.openRow);
+  });
+  // Hold to compare.
+  insp.addEventListener("pointerdown", (event) => {
+    const button = event.target instanceof Element ? event.target.closest('[data-act="compare"]') : null;
+    if (!button) return;
+    button.setPointerCapture?.(event.pointerId);
+    act.compare(true);
+    const stop = () => {
+      act.compare(false);
+      button.removeEventListener("pointerup", stop);
+      button.removeEventListener("pointercancel", stop);
+    };
+    button.addEventListener("pointerup", stop);
+    button.addEventListener("pointercancel", stop);
+  });
+  insp.addEventListener("keydown", (event) => {
+    const button = event.target instanceof Element ? event.target.closest('[data-act="compare"]') : null;
+    if (button && (event.key === " " || event.key === "Enter") && !event.repeat) act.compare(true);
+    if (event.key === "Escape" && s.openRow) act.closePop();
+  });
+  insp.addEventListener("keyup", (event) => {
+    if (s.comparing && (event.key === " " || event.key === "Enter")) act.compare(false);
+  });
+  // Drag by the header.
+  insp.addEventListener("pointerdown", (event) => {
+    const head = event.target instanceof Element ? event.target.closest(".i-head") : null;
+    if (!head || narrow || (event.target instanceof Element && event.target.closest("button"))) return;
+    const start = { x: event.clientX, y: event.clientY, right: s.pos.right, top: s.pos.top };
+    head.setPointerCapture?.(event.pointerId);
+    const move = (e) => {
+      s.pos.right = start.right - (e.clientX - start.x);
+      s.pos.top = start.top + (e.clientY - start.y);
+      placeInspector();
+      placePopover();
+    };
+    const stop = () => {
+      head.removeEventListener("pointermove", move);
+      head.removeEventListener("pointerup", stop);
+      head.removeEventListener("pointercancel", stop);
+      s.flags.dragged = true;
+    };
+    head.addEventListener("pointermove", move);
+    head.addEventListener("pointerup", stop);
+    head.addEventListener("pointercancel", stop);
+  });
+  let lastWidth = -1;
+  const watchWidth = () => {
+    if (sim.clientWidth === lastWidth) return;
+    lastWidth = sim.clientWidth;
+    const next = lastWidth < 780;
+    if (next !== narrow) {
+      narrow = next;
+      sim.classList.toggle("is-narrow", narrow);
+    }
+    render();
+  };
+
+  /* ================================================================= journeys */
+  const draftsReady = (list) => {
+    for (const [prop, to] of list) if (!draftOf(s, prop)) act.stage(prop, to);
+  };
+  const applyDone = () => Boolean(s.report && s.report.mode === "apply" && s.report.phase === "done");
+  const row = (id) => `.i-row[data-id="${id}"]`;
+  const JOURNEYS = [
+    {
+      id: "color", title: "換一個顏色", sub: "最常走的一趟",
+      who: "印章的紅色太搶眼，想換成品牌的藍色看看。",
+      preset: () => ({}),
+      steps: [
+        { do: "打開工具列的 Code Layer", see: "畫布上出現檢視器。", target: '[data-act="toggle"]', done: () => s.on, auto: () => act.toggle() },
+        { do: "點一下印章", see: "出現藍色選取框，檢視器列出它的樣式。", target: '[data-el="root"]', done: () => s.selection === "root", auto: () => act.select("root") },
+        { do: "點「填色」那一列", see: "旁邊打開浮層，列出可以換的顏色。", target: row("fill"), done: () => s.openRow === "fill" || Boolean(draftOf(s, "fill")), auto: () => act.open("fill") },
+        { do: "挑 color-secondary", see: "印章變藍。下面的檔案沒有變，只標了「預覽中」。", target: '.opt[data-token="color-secondary"]', done: () => Boolean(draftOf(s, "fill")), auto: () => act.stage("fill", "color-secondary") },
+        { do: "按住「對照」", see: "按著時回到紅色，放開又變藍。", target: '[data-act="compare"]', done: () => Boolean(s.flags.compared) && !s.comparing, auto: () => (act.compare(true), later(900, () => act.compare(false))) },
+        { do: "按「套用到檔案」", see: "檔案裡那一行變了，結果顯示「已寫入並驗證」。", target: '[data-act="apply"]', done: applyDone, auto: () => (draftsReady([["fill", "color-secondary"]]), act.apply()) },
+        { do: "想反悔的話，按「還原」", see: "檔案和畫面都回到套用前。", target: '[data-act="undo"]', done: () => Boolean(s.report && s.report.mode === "undo" && s.report.phase === "done"), auto: () => act.undo() },
+      ],
+    },
+    {
+      id: "scale", title: "圓角和內距各調一級", sub: "一次套用好幾項",
+      who: "印章看起來太方、字太擠，想把圓角和內距都放大一點。",
+      preset: () => ({ on: true, selection: "root" }),
+      steps: [
+        { do: "點「圓角」那一列", see: "浮層多了一組 −／＋，代表這個值有刻度。", target: row("radius"), done: () => s.openRow === "radius" || Boolean(draftOf(s, "radius")), auto: () => act.open("radius") },
+        { do: "按「＋」大一級", see: "4px 變成 8px，並且自動暫存。", target: '[data-act="step"][data-dir="1"]', done: () => Boolean(draftOf(s, "radius")), auto: () => ((s.openRow = "radius"), act.step(1)) },
+        { do: "點「內距」那一列", see: "浮層換成內距的刻度。", target: row("padding"), done: () => s.openRow === "padding" || Boolean(draftOf(s, "padding")), auto: () => act.open("padding") },
+        { do: "再按一次「＋」", see: "檢視器底部現在有兩筆變更。", target: '[data-act="step"][data-dir="1"]', done: () => Boolean(draftOf(s, "padding")), auto: () => ((s.openRow = "padding"), act.step(1)) },
+        { do: "按「套用到檔案」", see: "兩筆一起寫入。結果多了一行「文件待同步」。", target: '[data-act="apply"]', done: applyDone, auto: () => (draftsReady([["radius", "shape-corner-md"], ["padding", "spacing-inset-lg"]]), act.apply()) },
+        { do: "展開「文件待同步」", see: "圓角直接寫在樣式表裡，規格表沒有對應的列，工具請你確認。", target: '[data-part-id="pending"]', done: () => Boolean(s.report && s.report.open && s.report.open.pending) || Boolean(s.flags.resolved), auto: () => ((s.report.open.pending = true), render()) },
+        { do: "按「複製給 AI」或「標示完成」", see: "交給 AI 處理，或確認不用改就標示完成。", target: '[data-act="resolve"]', done: () => Boolean(s.flags.resolved || s.flags.briefCopied), auto: () => ((s.report.pending = []), (s.flags.resolved = true), render()) },
+      ],
+    },
+    {
+      id: "inner", title: "改內層的文字", sub: "進入元件裡面",
+      who: "印章裡的字太小，想只選到那兩個字來調整。",
+      preset: () => ({ on: true }),
+      steps: [
+        { do: "點一下印章", see: "先選到整個元件。", target: '[data-el="root"]', done: () => Boolean(s.selection), auto: () => act.select("root") },
+        { do: "雙擊印章，或點「↳ Badge › content」", see: "選取框縮到文字上，檢視器只列出文字相關的列。", target: '[data-act="nav"][data-el="content"]', done: () => s.selection === "content", auto: () => act.select("content") },
+        { do: "點「字級」那一列", see: "向上箭頭代表字級是從外層繼承來的。", target: row("fontSize"), done: () => s.openRow === "fontSize" || Boolean(draftOf(s, "fontSize")), auto: () => act.open("fontSize") },
+        { do: "挑 typescale-title-size", see: "字變大。變更下方說明：改的是外層的設定。", target: '.opt[data-token="typescale-title-size"]', done: () => Boolean(draftOf(s, "fontSize")), auto: () => act.stage("fontSize", "typescale-title-size") },
+        { do: "按「套用到檔案」", see: "寫進元件的 token，規格表的那一列也一起改了。", target: '[data-act="apply"]', done: applyDone, auto: () => (draftsReady([["fontSize", "typescale-title-size"]]), act.apply()) },
+      ],
+    },
+    {
+      id: "locked", title: "遇到鎖頭", sub: "交給 AI",
+      who: "想改排列方式，但那一列有鎖頭，點了沒有反應。",
+      preset: () => ({ on: true, selection: "root" }),
+      steps: [
+        { do: "點一下有鎖頭的「顯示」", see: "出現原因：版面結構只供檢視。真的工具是滑鼠停著就會顯示。", target: row("display"), done: () => Boolean(s.flags.lockSeen), auto: () => ((s.lockShown = "display"), (s.flags.lockSeen = true), render()) },
+        { do: "按標題列的複製圖示", see: "一段文字複製到剪貼簿，寫明是哪個元件、哪個檔案、哪些 token。", target: '.i-head [data-act="copy"]', done: () => Boolean(s.flags.copied), auto: () => act.copy() },
+        { do: "貼到 AI 對話，加一句你要的修改", see: "例如：「把這個改成直向排列」。AI 會知道你指的是哪裡。", target: "#sim-copied", done: () => Boolean(s.flags.pasted), auto: () => ((s.flags.pasted = true), coach.sync()), manual: "我知道了" },
+      ],
+    },
+    {
+      id: "regret", title: "改了又不想要", sub: "對照、移除、捨棄",
+      who: "試了兩個修改，看一看覺得原本比較好。",
+      preset: () => ({ on: true, selection: "root", drafts: [
+        { prop: "fill", from: "color-primary", to: "color-secondary", scope: "component", element: "root", inherited: false },
+        { prop: "radius", from: "shape-corner-sm", to: "shape-corner-lg", scope: "declaration", element: "root", inherited: false },
+      ] }),
+      steps: [
+        { do: "按住「對照」", see: "按著時顯示原本的樣子，放開回到修改後。", target: '[data-act="compare"]', done: () => Boolean(s.flags.compared) && !s.comparing, auto: () => (act.compare(true), later(900, () => act.compare(false))) },
+        { do: "按圓角那一筆右邊的 ✕", see: "只取消這一筆，另一筆還在。", target: '[data-act="remove"][data-prop="radius"]', done: () => !draftOf(s, "radius"), auto: () => act.remove("radius") },
+        { do: "按「捨棄」", see: "全部取消，畫面回到原樣。檔案從頭到尾都沒有變。", target: '[data-act="discard"]', done: () => s.drafts.length === 0, auto: () => act.discard() },
+      ],
+    },
+  ];
+
+  const coach = {
+    journey: JOURNEYS[0],
+    index: 0,
+    start(journey) {
+      timers.forEach(clearTimeout);
+      timers = [];
+      this.journey = journey;
+      this.index = 0;
+      s = Object.assign(freshState(), { lang: s.lang }, clone(journey.preset()));
+      $("#sim-copied").hidden = true;
+      $$("#jtabs .chip").forEach((tab) => tab.setAttribute("aria-selected", String(tab.dataset.id === journey.id)));
+      $("#jwho").textContent = journey.who;
+      render();
+    },
+    sync() {
+      const steps = this.journey.steps;
+      while (this.index < steps.length && steps[this.index].done()) this.index += 1;
+      const finished = this.index >= steps.length;
+      const next = JOURNEYS[(JOURNEYS.indexOf(this.journey) + 1) % JOURNEYS.length];
+      $("#steps").innerHTML = steps.map((step, i) => {
+        const state = i < this.index ? "done" : i === this.index ? "current" : "todo";
+        const detail = state === "current" ? `<span class="s-see">${esc(step.see)}</span><button type="button" class="s-btn" data-coach="auto">${esc(step.manual ?? "幫我做這一步")}</button>` : "";
+        return `<li data-state="${state}"><span class="dot">${state === "done" ? ICON.check : i + 1}</span><div><span class="s-do">${esc(step.do)}</span>${detail}</div></li>`;
+      }).join("") + (finished ? `<li data-state="end"><span class="dot">${ICON.check}</span><div><span class="s-do">完成了</span><span class="s-see">可以繼續自由操作，或換下一段旅程。</span><button type="button" class="s-btn" data-coach="next" data-id="${next.id}">下一段：${esc(next.title)}</button></div></li>` : "");
+      $("#progress span").style.width = `${Math.round((Math.min(this.index, steps.length) / steps.length) * 100)}%`;
+      $("#progress-text").textContent = finished ? "全部完成" : `步驟 ${this.index + 1}／${steps.length}`;
+      $$(".coach-hit").forEach((el) => el.classList.remove("coach-hit"));
+      const step = steps[this.index];
+      if (!step) return;
+      const target = step.target ? document.querySelector(step.target.startsWith("#") ? step.target : `#sim ${step.target}`) : null;
+      if (target && !target.hidden) target.classList.add("coach-hit");
+    },
+  };
+  $("#jtabs").innerHTML = JOURNEYS.map((journey) => `<button type="button" class="chip" role="tab" data-id="${journey.id}" title="${esc(journey.sub)}" aria-selected="false">${esc(journey.title)}</button>`).join("");
+  $("#jtabs").addEventListener("click", (event) => {
+    const tab = event.target instanceof Element ? event.target.closest(".chip") : null;
+    if (tab) coach.start(JOURNEYS.find((journey) => journey.id === tab.dataset.id));
+  });
+  $("#steps").addEventListener("click", (event) => {
+    const button = event.target instanceof Element ? event.target.closest("[data-coach]") : null;
+    if (!button) return;
+    if (button.dataset.coach === "next") return coach.start(JOURNEYS.find((journey) => journey.id === button.dataset.id));
+    const step = coach.journey.steps[coach.index];
+    if (step && !s.busy) step.auto();
+  });
+  $("#coach-reset").addEventListener("click", () => coach.start(coach.journey));
+  if (typeof ResizeObserver === "function") new ResizeObserver(watchWidth).observe(sim);
+  else window.addEventListener("resize", watchWidth);
+  watchWidth();
+  coach.start(JOURNEYS[0]);
+
+  /* ============================================================ anatomy figures */
+  const figureState = (patch) => Object.assign(freshState(), { on: true, selection: "root", size: "88 × 88" }, patch);
+  const FIGURES = [
+    {
+      title: "檢視器", intro: "選到元件之後的樣子。",
+      html: (T) => { const st = figureState({}); return `<div class="insp is-static">${headerHTML(st, T)}<div class="i-body">${bodyHTML(st, T)}</div></div>`; },
+      parts: [
+        { sel: '[data-part="grip"]', at: "top", t: "拖曳把手", d: "按住標題列，把檢視器拖到任何位置。位置會記住。" },
+        { sel: '[data-part="title"]', at: "top", t: "目前選到的東西", d: "元件名稱和它的款式。" },
+        { sel: '[data-part="dev"]', at: "top", t: "開發者資訊", d: "打開後會多顯示每個值來自哪個檔案的哪一行。設計時不需要開。" },
+        { sel: '[data-part="copy"]', at: "top", t: "複製參照", d: "把這個元件的描述複製起來，貼給 AI 就知道你指的是哪裡。" },
+        { sel: '[data-part="collapse"]', at: "top", t: "收合", d: "收成只剩標題列，不擋畫面。" },
+        { sel: '[data-part="crumb"]', at: "left", t: "所在層級", d: "◆ 是元件的根。選到內層時，點上層可以往回選。" },
+        { sel: '[data-part="child"]', at: "left", t: "內層元素", d: "「↳」後面是元件裡面的東西，點了就進入。" },
+        { sel: '[data-part="more"]', at: "right", t: "＋n", d: "這一區還有 n 個沒有設定的屬性，點了展開。" },
+        { sel: '[data-part="row-fill"]', at: "left", t: "一列一個屬性", d: "圖示、數值、token。點一下就能換 token。" },
+        { sel: '[data-part="lock"]', at: "right", t: "鎖頭", d: "只能看。滑鼠停在這一列上會說明原因。" },
+      ],
+    },
+    {
+      title: "換 token 的浮層", intro: "點任何一列，會在檢視器旁邊打開。",
+      html: (T) => popoverHTML(figureState({ openRow: "padding" }), T, "is-static"),
+      parts: [
+        { sel: '[data-part="pop-seg"]', at: "left", t: "套用到", d: "這次修改影響多大：只有這裡、這個元件、整個系統。下一行說影響幾個元件。" },
+        { sel: '[data-part="pop-stepper"]', at: "left", t: "−／＋", d: "有刻度的值才會出現（圓角、間距、字級）。按一下移動一級並暫存。" },
+        { sel: '[data-part="pop-search"]', at: "left", t: "搜尋", d: "token 很多時，輸入名稱或數值來找。" },
+        { sel: '[data-part="pop-opts"]', at: "left", t: "可以換的 token", d: "滑鼠移過去，畫面立刻預覽；點下去才暫存。打勾的是目前的值。" },
+        { sel: '[data-part="pop-close"]', at: "top", t: "關閉", d: "也可以按 Esc。" },
+      ],
+    },
+    {
+      title: "變更清單", intro: "有暫存的變更時，出現在檢視器底部。",
+      html: (T) => { const st = figureState({ drafts: [
+        { prop: "fill", from: "color-primary", to: "color-tertiary", scope: "component", element: "root", inherited: false },
+        { prop: "radius", from: "shape-corner-sm", to: "shape-corner-md", scope: "declaration", element: "root", inherited: false },
+      ] }); return `<div class="insp is-static">${changesHTML(st, T)}</div>`; },
+      parts: [
+        { sel: '[data-part="chg-line"]', at: "left", t: "一筆一行", d: "屬性、舊的 → 新的。滑鼠停上去會說明寫到哪裡。" },
+        { sel: '[data-part="chg-x"]', at: "right", t: "✕", d: "只取消這一筆。" },
+        { sel: '[data-part="chg-pair"]', at: "left", t: "對比提示", d: "改了底色但文字色沒跟著改時出現。旁邊的按鈕可以一起改。" },
+        { sel: '[data-part="chg-state"]', at: "left", t: "預覽中", d: "提醒你這些變更還沒寫入檔案。" },
+        { sel: '[data-part="chg-compare"]', at: "bottom", t: "對照", d: "按住時暫時顯示原本的樣子。" },
+        { sel: '[data-part="chg-discard"]', at: "bottom", t: "捨棄", d: "全部取消。" },
+        { sel: '[data-part="chg-apply"]', at: "bottom", t: "套用到檔案", d: "真正寫入。這是唯一會改到檔案的按鈕。" },
+      ],
+    },
+    {
+      title: "結果報告", intro: "按下「套用到檔案」之後出現。",
+      html: (T) => { const st = figureState({ report: { mode: "apply", phase: "done", open: { pending: true }, items: [
+        { prop: "fill", from: "color-primary", to: "color-secondary", element: "root" },
+        { prop: "radius", from: "shape-corner-sm", to: "shape-corner-md", element: "root" },
+      ], docs: [{ line: 22, from: "color-primary", to: "color-secondary" }], pending: [{ line: 13, prop: "radius" }] } }); return `<div class="insp is-static">${reportHTML(st, T)}</div>`; },
+      parts: [
+        { sel: '[data-part="rep-head"] strong', at: "top", t: "結果", d: "一行說完：寫入了沒、檢查過了沒。" },
+        { sel: '[data-part="rep-undo"]', at: "top", t: "還原", d: "把這次寫過的檔案完整放回去。" },
+        { sel: '[data-part="rep-items"]', at: "left", t: "逐項結果", d: "每一筆各自的檢查結果。點了展開。" },
+        { sel: '[data-part="rep-docs"]', at: "left", t: "規格文件", d: "規格表裡對應的列已經一起改好。" },
+        { sel: '[data-part="rep-pending"]', at: "left", t: "文件待同步", d: "工具不確定怎麼改的地方。只有這一項需要你或 AI 接手。" },
+        { sel: '[data-part="rep-copy-ai"]', at: "right", t: "複製給 AI", d: "把待同步的清單複製成一段說明，貼給 AI 處理。" },
+        { sel: '[data-part="rep-derived"]', at: "left", t: "衍生文件", d: "設計系統的文件頁已自動更新。" },
+      ],
+    },
+  ];
+  const figuresEl = $("#figures");
+  figuresEl.innerHTML = `<div class="center"><div class="segmented" role="group" aria-label="選一個部分">${FIGURES.map((figure, i) => `<button type="button" data-figtab="${i}" aria-pressed="${i === 0}">${esc(figure.title)}</button>`).join("")}</div></div>`
+    + FIGURES.map((figure, f) => `<div class="fig" data-fig="${f}"${f ? " hidden" : ""}>
+      <div class="fig-stage">${figure.html(L.zh)}</div>
+      <div><p class="fig-intro">${esc(figure.intro)}</p>
+        <ol class="legend">${figure.parts.map((part, i) => `<li data-n="${i}" tabindex="0"><span class="n">${i + 1}</span><div><strong>${esc(part.t)}</strong><span>${esc(part.d)}</span></div></li>`).join("")}</ol>
+      </div>
+    </div>`).join("");
+  function placePins() {
+    $$(".fig:not([hidden])", figuresEl).forEach((fig) => {
+      const figure = FIGURES[Number(fig.dataset.fig)];
+      const stage = $(".fig-stage", fig);
+      $$(".pin", stage).forEach((pin) => pin.remove());
+      const frame = stage.getBoundingClientRect();
+      const panel = stage.firstElementChild.getBoundingClientRect();
+      figure.parts.forEach((part, i) => {
+        const el = $(part.sel, stage);
+        if (!el) return;
+        const r = el.getBoundingClientRect();
+        const at = part.at ?? "left";
+        const x = at === "left" ? panel.left - 15 : at === "right" ? panel.right + 15 : r.left + r.width / 2;
+        const y = at === "top" ? panel.top - 15 : at === "bottom" ? panel.bottom + 15 : r.top + r.height / 2;
+        const pin = document.createElement("button");
+        pin.type = "button";
+        pin.className = "pin";
+        pin.dataset.n = String(i);
+        pin.textContent = String(i + 1);
+        pin.setAttribute("aria-label", `${i + 1}：${part.t}`);
+        pin.style.left = `${x - frame.left}px`;
+        pin.style.top = `${y - frame.top}px`;
+        stage.append(pin);
+      });
+      const on = $(".legend li[data-on]", fig);
+      if (on) $(`.pin[data-n="${on.dataset.n}"]`, stage)?.setAttribute("data-on", "true");
+    });
+  }
+  function highlight(fig, n) {
+    const figure = FIGURES[Number(fig.dataset.fig)];
+    $$(".fig-hit", fig).forEach((el) => el.classList.remove("fig-hit"));
+    $$("[data-on]", fig).forEach((el) => el.removeAttribute("data-on"));
+    if (n === null) return;
+    $(`.legend li[data-n="${n}"]`, fig)?.setAttribute("data-on", "true");
+    $(`.pin[data-n="${n}"]`, fig)?.setAttribute("data-on", "true");
+    $(figure.parts[n].sel, $(".fig-stage", fig))?.classList.add("fig-hit");
+  }
+  for (const type of ["pointerover", "focusin", "click"]) {
+    figuresEl.addEventListener(type, (event) => {
+      const item = event.target instanceof Element ? event.target.closest(".legend li, .pin") : null;
+      if (item) highlight(item.closest(".fig"), Number(item.dataset.n));
+    });
+  }
+  figuresEl.addEventListener("click", (event) => {
+    const tab = event.target instanceof Element ? event.target.closest("[data-figtab]") : null;
+    if (!tab) return;
+    const n = Number(tab.dataset.figtab);
+    $$("[data-figtab]", figuresEl).forEach((b) => b.setAttribute("aria-pressed", String(b === tab)));
+    $$(".fig", figuresEl).forEach((fig) => (fig.hidden = Number(fig.dataset.fig) !== n));
+    highlight($(`.fig[data-fig="${n}"]`, figuresEl), 0);
+    placePins();
+  });
+  // The figures are pictures of the tool: their controls do nothing.
+  figuresEl.addEventListener("click", (event) => {
+    if (event.target instanceof Element && event.target.closest(".fig-stage") && !event.target.closest(".pin")) event.preventDefault();
+  });
+  $$(".fig-stage button:not(.pin), .fig-stage input", figuresEl).forEach((el) => el.setAttribute("tabindex", "-1"));
+  $$(".fig", figuresEl).forEach((fig) => highlight(fig, 0));
+  placePins();
+  if (typeof ResizeObserver === "function") new ResizeObserver(placePins).observe(figuresEl);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(placePins).catch(() => undefined);
+
+  /* ================================================================ scope demo */
+  const SCOPE_TEXT = {
+    declaration: "寫入<strong>元件樣式表的一條宣告</strong>。只有你點的那個屬性會變，元件裡其他用到同一個 token 的地方不動。",
+    component: "寫入<strong>元件自己的 token</strong>（<code>tokens-comp.css</code>）。這個元件裡所有用到它的地方一起變。這是預設。",
+    system: "寫入<strong>全域的 token</strong>（<code>tokens-sys.css</code>）。所有用到這個顏色的元件一起變，所以要專案開放、而且會先請你確認。",
+  };
+  function renderScope(scope) {
+    $$(".scope-seg button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.scope === scope)));
+    $$(".scope-item").forEach((item) => {
+      const hitNow = item.dataset.reach.split(" ").includes(scope);
+      item.dataset.hit = String(hitNow);
+      $(".shape", item).style.background = hitNow ? "#1B87DB" : "#E5372C";
+      $(".state", item).textContent = hitNow ? "會改變" : "不變";
+    });
+    $("#scope-out").innerHTML = SCOPE_TEXT[scope];
+  }
+  $(".scope-seg").addEventListener("click", (event) => {
+    const button = event.target instanceof Element ? event.target.closest("button[data-scope]") : null;
+    if (button) renderScope(button.dataset.scope);
+  });
+  renderScope("component");
+
+  /* ------------------------------------------------------- small glyphs in text */
+  const GLYPH = { lock: ICON.lock, up: ICON.inherit, pill: '<span style="border:1px solid currentColor;border-radius:4px;padding:0 4px;font-size:10px">tok</span>', plus: "＋n", warn: ICON.warn, diamond: "◆" };
+  $$("[data-icon]").forEach((el) => (el.innerHTML = GLYPH[el.dataset.icon] ?? ""));
+})();
+</script>
+<!-- artifact:end -->
+</body>
+</html>
