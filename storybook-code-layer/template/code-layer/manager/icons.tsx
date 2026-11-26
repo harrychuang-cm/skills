@@ -215,3 +215,117 @@ export const PlusIcon = () => (
     <path d="M4 8h8M8 4v8" />
   </Svg>
 );
+
+// ---- layout keywords ---------------------------------------------------------------------
+//
+// Every icon is drawn for children that run left to right and are aligned from
+// the top, then turned to how this element's children really run (its flex
+// direction, writing mode and text direction).
+
+export type LayoutFlow = { direction: string; writingMode: string; textDirection: string };
+
+type Axes = { mainHorizontal: boolean; mainFlip: boolean; crossFlip: boolean };
+
+function axesOf(flow: LayoutFlow): Axes {
+  const row = !flow.direction.startsWith("column");
+  const reversed = flow.direction.endsWith("reverse");
+  const horizontalWriting = !flow.writingMode.startsWith("vertical");
+  const rtl = flow.textDirection === "rtl";
+  // The block axis of vertical-rl runs right to left.
+  const blockFlip = flow.writingMode === "vertical-rl";
+  return {
+    mainHorizontal: row ? horizontalWriting : !horizontalWriting,
+    mainFlip: (row ? rtl : blockFlip) !== reversed,
+    crossFlip: row ? blockFlip : rtl,
+  };
+}
+
+/** SVG matrix that maps the drawing (main axis left to right, cross axis top to bottom) onto the element's axes. */
+function axisTransform(flow: LayoutFlow): string {
+  const { mainHorizontal, mainFlip, crossFlip } = axesOf(flow);
+  const main = mainFlip ? [-1, 16] : [1, 0];
+  const cross = crossFlip ? [-1, 16] : [1, 0];
+  return mainHorizontal ? `matrix(${main[0]} 0 0 ${cross[0]} ${main[1]} ${cross[1]})` : `matrix(0 ${main[0]} ${cross[0]} 0 ${cross[1]} ${main[1]})`;
+}
+
+/**
+ * The physical side ("left" | "right" | "top" | "bottom") the start or end
+ * keyword of a layout property is on for this element; null for the keywords
+ * that are not a side.
+ */
+export function layoutSide(property: string, keyword: string, flow: LayoutFlow): "left" | "right" | "top" | "bottom" | null {
+  if (keyword !== "flex-start" && keyword !== "flex-end") return null;
+  if (property !== "align-items" && property !== "justify-content") return null;
+  const { mainHorizontal, mainFlip, crossFlip } = axesOf(flow);
+  const end = keyword === "flex-end";
+  const alongMain = property === "justify-content";
+  const horizontal = alongMain ? mainHorizontal : !mainHorizontal;
+  const flipped = (alongMain ? mainFlip : crossFlip) !== end;
+  return horizontal ? (flipped ? "right" : "left") : flipped ? "bottom" : "top";
+}
+
+/** Three items along the main axis: [x, width] each; height and y per keyword of align-items. */
+const BARS: Array<[number, number]> = [[3, 2.6], [6.7, 2.6], [10.4, 2.6]];
+const ALIGN: Record<string, Array<[number, number]>> = {
+  "flex-start": [[3, 7], [3, 10], [3, 5]],
+  center: [[4.5, 7], [3, 10], [5.5, 5]],
+  "flex-end": [[6, 7], [3, 10], [8, 5]],
+  stretch: [[3, 10], [3, 10], [3, 10]],
+  baseline: [[4, 6], [2.5, 7.5], [5.5, 4.5]],
+};
+const JUSTIFY: Record<string, number[]> = {
+  "flex-start": [2, 5, 8],
+  center: [4, 7, 10],
+  "flex-end": [6, 9, 12],
+  "space-between": [2, 7, 12],
+  "space-around": [2.9, 7, 11.1],
+  "space-evenly": [3.8, 7, 10.2],
+};
+
+/** The icon of one keyword of a layout property, as it applies to this element. */
+export function LayoutIcon({ property, keyword, flow, size = 14 }: { property: string; keyword: string; flow: LayoutFlow; size?: number }) {
+  let shape: React.ReactNode = null;
+  if (property === "flex-direction") {
+    shape = <path d="M3 8h10M9.5 4.5 13 8l-3.5 3.5" />;
+  } else if (property === "flex-wrap") {
+    shape =
+      keyword === "wrap" ? (
+        <>
+          <rect x="2.5" y="3" width="4" height="4" rx="0.8" />
+          <rect x="9.5" y="3" width="4" height="4" rx="0.8" />
+          <rect x="2.5" y="9" width="4" height="4" rx="0.8" />
+        </>
+      ) : (
+        <>
+          <rect x="2" y="6" width="3" height="4" rx="0.8" />
+          <rect x="6.5" y="6" width="3" height="4" rx="0.8" />
+          <rect x="11" y="6" width="3" height="4" rx="0.8" />
+        </>
+      );
+  } else if (property === "align-items" && ALIGN[keyword]) {
+    shape = (
+      <>
+        {BARS.map(([x, w], i) => (
+          <rect key={x} x={x} y={ALIGN[keyword][i][0]} width={w} height={ALIGN[keyword][i][1]} rx="0.7" />
+        ))}
+        {keyword === "baseline" ? <path d="M1.5 10h13" strokeWidth="0.9" /> : null}
+      </>
+    );
+  } else if (property === "justify-content" && JUSTIFY[keyword]) {
+    shape = (
+      <>
+        <path d="M1 2.5v11M15 2.5v11" strokeWidth="0.9" opacity="0.55" />
+        {JUSTIFY[keyword].map((x) => (
+          <rect key={x} x={x} y="4.5" width="2" height="7" rx="0.6" />
+        ))}
+      </>
+    );
+  }
+  if (!shape) return <span />;
+  // A wrapped line breaks along the cross axis, so the same turn applies to every property.
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false" data-code-layer-layout-icon={keyword} style={{ flex: "0 0 auto" }}>
+      <g transform={axisTransform(flow)}>{shape}</g>
+    </svg>
+  );
+}

@@ -16,7 +16,7 @@ import { checkScriptProblems, runChecks } from "./checks.mjs";
 import { decodeCss, diskHash, servedTextHashSync } from "./css-source.mjs";
 import { buildIndex } from "./index-builder.mjs";
 import { Journal, newApplyId } from "./journal.mjs";
-import { replaceVarName } from "../shared/value-refs.mjs";
+import { replaceComponent, replaceVarName } from "../shared/value-refs.mjs";
 import { resolveOperations, validateBatch } from "./operations.mjs";
 import { patchFile } from "./patcher.mjs";
 import { pairingReport } from "./pairing.mjs";
@@ -239,11 +239,12 @@ export function createEngine({ config, postcss, log = { info() {}, warn() {}, er
    */
   async function runBatch(body, { dryRun = false, kind = "apply", undoes = null } = {}) {
     requireWritable();
-    const batch = validateBatch(body, config.limits);
+    const internal = kind === "reverse";
+    const batch = validateBatch(body, config.limits, { internal });
     const index = buildIndex({ config, postcss });
     const drift = mirrorDrift(index);
     if (drift) throw new ApiError("mirror-drift", "the source of truth and its mirror differ; every batch is refused until the mirror is synchronised", { mirrors: drift });
-    const { files, results } = resolveOperations(batch, { config, postcss, index });
+    const { files, results } = resolveOperations(batch, { config, postcss, index, internal });
     const plans = [];
     for (const [abs, entry] of files) {
       assertWritable(abs);
@@ -295,11 +296,13 @@ export function createEngine({ config, postcss, log = { info() {}, warn() {}, er
       before: r.before,
       after: r.after,
       value: r.after,
-      fromToken: r.fromToken,
-      toToken: r.toToken,
+      fromToken: r.fromToken ?? null,
+      toToken: r.toToken ?? null,
       rule: r.rule ?? null,
       property: r.property ?? null,
       refIndex: r.refIndex ?? 0,
+      // Layout operations: which component, which keywords, and the exact text an add inserted.
+      ...(r.slot ? { slot: r.slot, component: r.component ?? null, fromKeyword: r.fromKeyword ?? null, toKeyword: r.toKeyword ?? null, ...(r.inserted ? { inserted: r.inserted } : {}) } : {}),
     }));
     const response = {
       ok: true,
@@ -359,13 +362,16 @@ export function createEngine({ config, postcss, log = { info() {}, warn() {}, er
     return journal.transactions().get(top);
   }
 
-  /** The journaled operations can be inverted: each names both tokens and, for a declaration, its locator. */
+  /** The journaled operations can be inverted: each carries what its inverse needs to find its target and to know the old content. */
   function reversible(operations) {
-    return (
-      Array.isArray(operations) &&
-      operations.length > 0 &&
-      operations.every((o) => o.fromToken && o.toToken && (o.type === "rebind-token" ? o.token : o.rule && o.property && Number.isInteger(o.refIndex)))
-    );
+    const one = (o) => {
+      if (o.type === "rebind-token") return Boolean(o.fromToken && o.toToken && o.token);
+      if (o.type === "rebind-declaration") return Boolean(o.fromToken && o.toToken && o.rule && o.property && Number.isInteger(o.refIndex));
+      if (o.type === "set-keyword") return Boolean(o.rule && o.property && Number.isInteger(o.component) && o.fromKeyword && o.toKeyword);
+      if (o.type === "add-declaration") return Boolean(o.rule && o.property && o.toKeyword && typeof o.inserted === "string" && o.inserted);
+      return false;
+    };
+    return Array.isArray(operations) && operations.length > 0 && operations.every(one);
   }
 
   /**
@@ -396,6 +402,31 @@ export function createEngine({ config, postcss, log = { info() {}, warn() {}, er
         const rule = file?.rules[o.rule.ordinal];
         const sameRule = rule && rule.selector === o.rule.selector && JSON.stringify(rule.atRules) === JSON.stringify(o.rule.atRules) && rule.occurrence === o.rule.occurrence;
         const decl = sameRule ? rule.declarations.filter((d) => d.property === o.property).at(-1) : null;
+        if (o.type === "set-keyword") {
+          // Back to the keyword the file held, which need not be one the inspector offers.
+          const component = decl?.components[o.component];
+          if (!decl || !component || component.text !== o.toKeyword) {
+            throw new ApiError("stale-before", `${o.property} of ${o.rule.selector} in ${o.file} no longer holds what this apply wrote; it cannot be reversed`, { file: o.file, selector: o.rule.selector, property: o.property, expected: o.toKeyword, actual: decl?.value ?? null });
+          }
+          return {
+            id,
+            type: o.type,
+            file: o.file,
+            rule: o.rule,
+            declaration: { property: o.property },
+            component: o.component,
+            fromKeyword: o.toKeyword,
+            toKeyword: o.fromKeyword,
+            before: { value: decl.value },
+            after: { value: replaceComponent(decl.value, o.component, o.toKeyword, o.fromKeyword) },
+          };
+        }
+        if (o.type === "add-declaration") {
+          if (!decl || decl.value !== o.toKeyword) {
+            throw new ApiError("stale-before", `${o.property} of ${o.rule.selector} in ${o.file} no longer holds what this apply added; it cannot be reversed`, { file: o.file, selector: o.rule.selector, property: o.property, expected: o.toKeyword, actual: decl?.value ?? null });
+          }
+          return { id, type: "remove-declaration", file: o.file, rule: o.rule, declaration: { property: o.property }, fromKeyword: o.toKeyword, inserted: o.inserted };
+        }
         const ref = decl?.refs.find((r) => r.refIndex === o.refIndex);
         if (!decl || !ref || ref.name !== o.toToken) {
           throw new ApiError("stale-before", `${o.property} of ${o.rule.selector} in ${o.file} no longer holds what this apply wrote; it cannot be reversed`, { file: o.file, selector: o.rule.selector, property: o.property, expected: o.toToken, actual: decl?.value ?? null });

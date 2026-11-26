@@ -140,6 +140,8 @@ export type CssRuleInfo = {
   occurrence: number;
   line: number;
   nested: boolean;
+  /** Whether a declaration can be appended to the rule without touching any other byte. */
+  append: { ok: boolean; reason: string | null };
   declarations: CssDecl[];
 };
 
@@ -214,7 +216,11 @@ export type ScopeId = "declaration" | "component-token" | "system-token";
 
 export type ScopeTarget =
   | { type: "rebind-declaration"; file: string; workspacePath: string; ordinal: number; selector: string; property: string; refIndex: number; line: number }
-  | { type: "rebind-token"; token: string; tier: "comp" | "sys"; file: string; line: number };
+  | { type: "rebind-token"; token: string; tier: "comp" | "sys"; file: string; line: number }
+  /** A layout keyword: the component of a declaration that holds it now. */
+  | { type: "set-keyword"; file: string; workspacePath: string; ordinal: number; selector: string; property: string; component: number; line: number }
+  /** A layout property nothing declares yet: a declaration appended to the rule that declares the element's display. */
+  | { type: "add-declaration"; file: string; workspacePath: string; ordinal: number; selector: string; property: string; line: number };
 
 export type RowScope = {
   id: ScopeId;
@@ -223,7 +229,11 @@ export type RowScope = {
   reason: string | null;
   detail: string | null;
   target: ScopeTarget;
-  /** The token bound at this scope now, and the whole text at the target. */
+  /**
+   * The token bound at this scope now, and the whole text at the target. For a
+   * layout row: the keyword declared now (empty when a declaration is added)
+   * and the declared value (empty likewise).
+   */
   fromToken: string;
   before: string;
   /** Tier a new token must be in; a declaration may also use its own component's tokens. */
@@ -278,6 +288,13 @@ export type RowTrace = {
   defaultScope: ScopeId | null;
   inheritedFrom: InheritedFrom | null;
   warnings: string[];
+  /**
+   * Set on the direction, wrapping, alignment and distribution rows of a flex
+   * container: the keywords the row can be set to and where the element's
+   * children run, for drawing the options. `declared` is the keyword the
+   * source holds (null when nothing declares the property).
+   */
+  layout: { property: string; options: string[]; declared: string | null; direction: string; wrap: string } | null;
 };
 
 export type ElementTrace = {
@@ -330,7 +347,29 @@ export type DraftOp =
       fromToken: string;
       toToken: string;
       line: number;
-    };
+    }
+  | { type: "set-keyword"; file: string; ordinal: number; selector: string; property: string; component: number; fromKeyword: string; toKeyword: string; line: number }
+  | { type: "add-declaration"; file: string; ordinal: number; selector: string; property: string; toKeyword: string; line: number };
+
+/** A layout operation: a keyword instead of a token. */
+export type LayoutOp = Extract<DraftOp, { type: "set-keyword" | "add-declaration" }>;
+export type TokenOp = Exclude<DraftOp, LayoutOp>;
+
+export function isLayoutOp(op: DraftOp): op is LayoutOp {
+  return op.type === "set-keyword" || op.type === "add-declaration";
+}
+
+/** What the target holds before the change: a token name, a keyword, or nothing for an added declaration. */
+export function opFrom(op: DraftOp): string {
+  if (op.type === "set-keyword") return op.fromKeyword;
+  if (op.type === "add-declaration") return "";
+  return op.fromToken;
+}
+
+/** What the change puts there: a token name or a keyword. */
+export function opTo(op: DraftOp): string {
+  return isLayoutOp(op) ? op.toKeyword : op.toToken;
+}
 
 export type Draft = {
   schema: 2;
@@ -376,13 +415,26 @@ export type PreviewStatePayload = {
   items: Array<{ id: string; status: DraftStatus; message: string | null; params?: Record<string, string> }>;
 };
 
+type Addressed =
+  | { type: "rebind-token"; token: string }
+  | { type: "rebind-declaration"; file: string; ordinal: number; property: string; refIndex: number }
+  | { type: "set-keyword"; file: string; ordinal: number; property: string; component: number }
+  | { type: "add-declaration"; file: string; ordinal: number; property: string };
+
+function addressId(target: Addressed): string {
+  if (target.type === "rebind-token") return `token:${target.token}`;
+  if (target.type === "set-keyword") return `keyword:${target.file}#${target.ordinal}#${target.property}#${target.component}`;
+  if (target.type === "add-declaration") return `add:${target.file}#${target.ordinal}#${target.property}`;
+  return `decl:${target.file}#${target.ordinal}#${target.property}#${target.refIndex}`;
+}
+
 export function draftId(op: DraftOp): string {
-  return op.type === "rebind-token" ? `token:${op.token}` : `decl:${op.file}#${op.ordinal}#${op.property}#${op.refIndex}`;
+  return addressId(op);
 }
 
 /** Id of the draft a scope would produce. */
 export function scopeDraftId(target: ScopeTarget): string {
-  return target.type === "rebind-token" ? `token:${target.token}` : `decl:${target.file}#${target.ordinal}#${target.property}#${target.refIndex}`;
+  return addressId(target);
 }
 
 /** Boxes of the story's outermost components and the size of the preview viewport, in preview pixels. */

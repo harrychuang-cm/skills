@@ -2,8 +2,8 @@
 import { rebindTargets } from "../shared/candidates.mjs";
 import { kindsCompatible, parseScalar, sameScale } from "../shared/kinds.mjs";
 import { GROUP_BY_ID } from "../shared/properties";
-import { normalizeValue, replaceVarName } from "../shared/value-refs.mjs";
-import { PROTOCOL_VERSION, draftId, scopeDraftId, type Draft, type DraftOp, type ElementTrace, type IndexJson, type RowScope, type RowTrace, type ScopeId, type TokenItem } from "../shared/protocol";
+import { normalizeValue, replaceComponent, replaceVarName } from "../shared/value-refs.mjs";
+import { PROTOCOL_VERSION, draftId, opFrom, scopeDraftId, type Draft, type DraftOp, type ElementTrace, type IndexJson, type RowScope, type RowTrace, type ScopeId, type TokenItem } from "../shared/protocol";
 
 /** Identifies a row of an element across re-traces (for the chosen scope and the open row). */
 export function rowKey(trace: ElementTrace, row: RowTrace): string {
@@ -22,21 +22,26 @@ export function draftOfRow(row: RowTrace, drafts: Draft[]): Draft | null {
   return drafts.find((draft) => ids.has(draft.id)) ?? null;
 }
 
-function opFor(scope: RowScope, toToken: string, fromToken: string): DraftOp {
+/** `to` and `from` are token names, or keywords for a layout target. */
+function opFor(scope: RowScope, to: string, from: string): DraftOp {
   const target = scope.target;
-  if (target.type === "rebind-token") return { type: "rebind-token", token: target.token, tier: target.tier, fromToken, toToken, file: target.file, line: target.line };
-  return { type: "rebind-declaration", file: target.file, ordinal: target.ordinal, selector: target.selector, property: target.property, refIndex: target.refIndex, fromToken, toToken, line: target.line };
+  if (target.type === "rebind-token") return { type: "rebind-token", token: target.token, tier: target.tier, fromToken: from, toToken: to, file: target.file, line: target.line };
+  if (target.type === "set-keyword") return { type: "set-keyword", file: target.file, ordinal: target.ordinal, selector: target.selector, property: target.property, component: target.component, fromKeyword: from, toKeyword: to, line: target.line };
+  if (target.type === "add-declaration") return { type: "add-declaration", file: target.file, ordinal: target.ordinal, selector: target.selector, property: target.property, toKeyword: to, line: target.line };
+  return { type: "rebind-declaration", file: target.file, ordinal: target.ordinal, selector: target.selector, property: target.property, refIndex: target.refIndex, fromToken: from, toToken: to, line: target.line };
 }
 
+/** Stage `toToken` (a token name, or a keyword on a layout row) at a scope of a row. */
 export function makeDraft(trace: ElementTrace, row: RowTrace, scope: RowScope, toToken: string, index: IndexJson, existing: Draft | null): Draft | null {
   if (!scope.available) return null;
   // Re-picking on an already staged row keeps what the source held when it was first staged.
-  const fromToken = existing?.op.fromToken ?? scope.fromToken;
+  const fromToken = existing ? opFrom(existing.op) : scope.fromToken;
   const before = existing?.before ?? normalizeValue(scope.before);
-  const refIndex = scope.target.type === "rebind-declaration" ? scope.target.refIndex : 0;
   let after: string;
   try {
-    after = replaceVarName(before, refIndex, fromToken, toToken);
+    if (scope.target.type === "add-declaration") after = toToken;
+    else if (scope.target.type === "set-keyword") after = replaceComponent(before, scope.target.component, fromToken, toToken);
+    else after = replaceVarName(before, scope.target.type === "rebind-declaration" ? scope.target.refIndex : 0, fromToken, toToken);
   } catch {
     return null;
   }
@@ -70,6 +75,8 @@ function ownComponentPrefix(scope: RowScope, index: IndexJson): string | null {
 
 /** Tokens a row may be re-bound to at a scope, best matches first. */
 export function candidatesFor(row: RowTrace, scope: RowScope, index: IndexJson): TokenItem[] {
+  // A layout row is set to a keyword, never to a token.
+  if (row.layout) return [];
   const tokens = index.tokens.items;
   const from = tokens.find((t) => t.name === scope.fromToken) ?? null;
   const fromKind = from?.kind ?? "unknown";
@@ -89,6 +96,7 @@ export function candidatesFor(row: RowTrace, scope: RowScope, index: IndexJson):
  * order. Values are the live ones of the page when known.
  */
 export function scaleFor(row: RowTrace, scope: RowScope, index: IndexJson, liveValues: Record<string, string>): TokenItem[] {
+  if (row.layout) return [];
   const tokens = index.tokens.items;
   const from = tokens.find((t) => t.name === scope.fromToken) ?? null;
   if (!from?.scale) return [];

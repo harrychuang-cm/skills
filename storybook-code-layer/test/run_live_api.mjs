@@ -215,6 +215,64 @@ async function main() {
     assert.deepEqual(state.undoStack.map((entry) => entry.applyId), stackBefore, "the undo stack is what it was before the run");
   });
 
+  // ---- layout: a keyword replaced and a declaration added, through the same routes ----
+  const layoutBatch = (batchId, { keyword = "space-between", wrap = "wrap" } = {}) => {
+    const file = index.css.files.find((f) => f.file === "src/components/badge-seal/BadgeSeal.css");
+    const rule = file.rules[0];
+    const locator = { ordinal: rule.ordinal, selector: rule.selector, atRules: rule.atRules, occurrence: rule.occurrence };
+    const justify = rule.declarations.find((d) => d.property === "justify-content");
+    return {
+      schemaVersion: 1,
+      batchId,
+      indexRevision: index.revision,
+      operations: [
+        { id: "justify", type: "set-keyword", file: file.file, rule: locator, declaration: { property: "justify-content" }, component: 0, fromKeyword: justify.value, toKeyword: keyword, before: { value: justify.value }, after: { value: keyword } },
+        { id: "wrap", type: "add-declaration", file: file.file, rule: locator, declaration: { property: "flex-wrap" }, toKeyword: wrap, after: { value: wrap } },
+      ],
+    };
+  };
+
+  await check("10.9 layout operations: validate plans a replaced keyword and an inserted line and writes nothing; refusals write nothing", async () => {
+    const plan = await post("/validate", layoutBatch("live-layout-dry"), session.session);
+    assert.equal(plan.status, 200, JSON.stringify(plan.json));
+    assert.deepEqual(plan.json.results.map((r) => [r.type, r.slot, r.fromKeyword, r.toKeyword]), [["set-keyword", "justify-content", "center", "space-between"], ["add-declaration", "flex-wrap", null, "wrap"]]);
+    assert.deepEqual(plan.json.files.map((file) => [file.role, file.edits.length]), [["component-css", 2]]);
+    const refusals = [
+      ["a keyword outside the list", layoutBatch("live-layout-r1", { keyword: "start" }), 422, "keyword-not-allowed"],
+      ["a second keyword", layoutBatch("live-layout-r2", { keyword: "safe center" }), 422, "keyword-not-allowed"],
+      ["wrap-reverse", layoutBatch("live-layout-r3", { wrap: "wrap-reverse" }), 422, "keyword-not-allowed"],
+    ];
+    for (const [label, body, status, code] of refusals) {
+      const response = await post("/apply", body, session.session);
+      assert.deepEqual([response.status, response.json.error?.code], [status, code], label);
+    }
+    // A rule that does not declare flex cannot take a layout declaration; the internal removal cannot be sent at all.
+    const file = index.css.files.find((f) => f.file === "src/components/badge-seal/BadgeSeal.css");
+    const plain = file.rules.find((rule) => !rule.declarations.some((d) => d.property === "display"));
+    const locator = { ordinal: plain.ordinal, selector: plain.selector, atRules: plain.atRules, occurrence: plain.occurrence };
+    const notFlex = await post("/apply", { schemaVersion: 1, batchId: "live-layout-r4", indexRevision: index.revision, operations: [{ id: "x", type: "add-declaration", file: file.file, rule: locator, declaration: { property: "flex-wrap" }, toKeyword: "wrap", after: { value: "wrap" } }] }, session.session);
+    assert.deepEqual([notFlex.status, notFlex.json.error?.code], [422, "rule-not-eligible"]);
+    const removal = await post("/apply", { schemaVersion: 1, batchId: "live-layout-r5", indexRevision: index.revision, operations: [{ id: "x", type: "remove-declaration", file: file.file, rule: locator, declaration: { property: "color" }, fromKeyword: "red", inserted: "\n  color: red;" }] }, session.session);
+    assert.deepEqual([removal.status, removal.json.error?.code], [400, "schema-invalid"]);
+    assert.deepEqual(hashes(), start, "nothing was written");
+    return `${refusals.length + 2} refusals; rule without display: ${plain.selector}`;
+  });
+
+  await check("10.10 layout operations: apply writes one stylesheet, undo restores its exact bytes", async () => {
+    const applied = await post("/apply", layoutBatch("live-layout-apply"), session.session);
+    assert.equal(applied.status, 200, JSON.stringify(applied.json));
+    const now = fs.readFileSync(files.css, "utf8");
+    assert.equal(now, originals.css.replace("  justify-content: center;\n  min-inline-size", "  justify-content: space-between;\n  min-inline-size").replace("  text-align: center;\n}", "  text-align: center;\n  flex-wrap: wrap;\n}"));
+    assert.deepEqual(Object.entries(hashes()).filter(([key, value]) => value !== start[key]).map(([key]) => key), ["css"], "only the component stylesheet changed");
+    assert.deepEqual(applied.json.pending.map((e) => [e.kind, e.property, e.oldValue, e.newValue]), [["declaration", "justify-content", "center", "space-between"], ["declaration", "flex-wrap", null, "wrap"]]);
+    const undone = await post("/undo", { applyId: applied.json.applyId }, session.session);
+    assert.equal(undone.status, 200, JSON.stringify(undone.json));
+    assert.deepEqual(hashes(), start);
+    const state = (await request({ route: "/state" })).json;
+    assert.deepEqual(state.undoStack.map((entry) => entry.applyId), stackBefore, "the undo stack is what it was before the run");
+    return applied.json.applyId;
+  });
+
   const failed = results.filter((r) => !r.ok);
   if (JSON.stringify(hashes()) !== JSON.stringify(start)) {
     process.stdout.write("!! files differ from the start of this run; restoring from the in-memory originals\n");

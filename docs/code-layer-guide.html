@@ -13,6 +13,7 @@
   3. 使用者旅程：script 裡的 JOURNEYS（每一步有 do／see／target／done／auto）。
   4. 介面導覽：script 裡的 FIGURES（每個編號對應 sel 與說明）。
   5. 模擬器的介面文字：script 裡的 L.zh／L.en，要和工具的 shared/messages.*.ts 一致。
+     排列的四個屬性與選項：script 裡的 LAYOUT，要和工具的 shared/layout.mjs 一致。
   6. 其餘章節（範圍、記號、結果、滑鼠與鍵盤、常見問題）是一般 HTML，直接改。
   視覺：只有亮色。白色與淺灰的區塊交替，強調色只有一個藍色。
   發佈：artifact:start 與 artifact:end 之間（去掉 </head> 與 <body> 兩行）就是發佈用的內容。
@@ -191,9 +192,10 @@
   .sim-story { position: absolute; left: 0; top: 0; bottom: 0; width: calc(100% - 556px); min-width: 200px; display: grid; place-items: center; }
   .sim-hint { position: absolute; left: 0; right: 0; bottom: 18px; text-align: center; font-size: 13px; color: var(--ink-3); }
   .m-badge {
-    display: flex; align-items: center; justify-content: center; min-width: 88px; min-height: 88px;
+    display: flex; align-items: center; justify-content: center; gap: 3px; min-width: 88px; min-height: 88px;
     font-weight: 700; letter-spacing: 0.04em; line-height: 1.2; transform: rotate(-6deg); user-select: none;
   }
+  .m-star { font-size: 0.8em; line-height: 1; }
   .sel, .hov { position: absolute; pointer-events: none; border: 2px solid var(--outline); transform-origin: center; }
   .hov { border-width: 1px; }
   .sel-label {
@@ -257,6 +259,11 @@
   .pill.is-staged { border-color: var(--tool-accent); background: var(--tool-bg); color: var(--tool-accent); }
   .sw { width: 11px; height: 11px; flex: none; border-radius: 3px; box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.14); }
   .i-reason { margin: 0 12px 4px 34px; font-size: 11.5px; color: var(--tool-warn); }
+  .pill.is-default { opacity: 0.6; }
+  .pill svg { flex: none; }
+  .opt .li { width: 14px; height: 14px; flex: none; display: grid; place-items: center; color: var(--tool-dim); }
+  .pop-where { font-size: 11.5px; color: var(--tool-dim); line-height: 1.5; }
+  .fline.is-new > span:last-child::before { content: "＋ "; color: var(--accent); }
 
   .pop {
     position: absolute; z-index: 3; width: 252px; display: flex; flex-direction: column; gap: 9px; padding: 11px; text-align: left;
@@ -521,7 +528,7 @@
             </span>
           </div>
           <div class="sim-canvas" id="sim-canvas" tabindex="0" aria-label="模擬的 Storybook 畫布">
-            <div class="sim-story"><div class="m-badge" data-el="root"><span data-el="content">精選</span></div></div>
+            <div class="sim-story"><div class="m-badge" data-el="root"><span class="m-star" aria-hidden="true">★</span><span data-el="content">精選</span></div></div>
             <span class="sim-hint" id="sim-hint"></span>
           </div>
           <div class="sim-below" id="sim-below"></div>
@@ -598,8 +605,9 @@
     </div>
     <div class="rows">
       <div class="row label-row"><span>為什麼鎖住</span><span>例子</span><span>想改的話</span></div>
-      <div class="row"><span>版面結構，這一版不開放</span><span data-label="例子">顯示方式、方向、對齊、分布、換行</span><span data-label="想改的話">用「複製參照」貼給 AI，請它改</span></div>
-      <div class="row"><span>沒有綁 token</span><span data-label="例子">寫死的數值（<code>100%</code>、<code>12px</code>）、關鍵字、<code>calc()</code></span><span data-label="想改的話">同上，或請工程師先改成 token</span></div>
+      <div class="row"><span>顯示方式，只供檢視</span><span data-label="例子"><code>display</code>（把區塊改成 flex 或 grid、隱藏）</span><span data-label="想改的話">用「複製參照」貼給 AI，請它改</span></div>
+      <div class="row"><span>不是 flex 容器</span><span data-label="例子">一般區塊上的方向、對齊、分布、換行</span><span data-label="想改的話">這些設定對它沒有作用；要排列先請 AI 改成 flex</span></div>
+      <div class="row"><span>沒有綁 token</span><span data-label="例子">寫死的數值（<code>100%</code>、<code>12px</code>）、關鍵字、<code>calc()</code></span><span data-label="想改的話">貼給 AI：只用一次就請它改數值；別處也會用就請它新增 token</span></div>
       <div class="row"><span>值來自元件外面</span><span data-label="例子">字體繼承自整個頁面、來自另一個元件</span><span data-label="想改的話">選到來源的元件再改</span></div>
       <div class="row"><span>無法確認規則在作用</span><span data-label="例子">被別的規則蓋過、行內樣式、<code>!important</code>、動畫中</span><span data-label="想改的話">請工程師看一下</span></div>
     </div>
@@ -691,10 +699,18 @@
         <div class="a"><p>會。你改的是 token 或樣式規則，所有用到它的地方都會跟著變。工具只在目前這一頁檢查畫面，浮層和報告會告訴你影響幾個元件。</p></div>
       </details>
       <details>
+        <summary>排列的選項為什麼不是 token？改了會寫到哪裡？</summary>
+        <div class="a"><p>方向、對齊、分布、換行的值是 CSS 的關鍵字（例如 <code>column</code>、<code>center</code>），不是數值或顏色，所以沒有 token。工具會直接改元件樣式表：這個屬性已經有寫就改那一行，還沒寫就在宣告 <code>display</code> 的那條規則最後新增一行。浮層最下面會寫出是哪條規則。</p><p>選項是固定的幾個，不能輸入別的值。數值、顏色和字級仍然只能用 token。</p></div>
+      </details>
+      <details>
+        <summary>為什麼有些元素的方向、對齊是鎖住的？</summary>
+        <div class="a"><p>這四個設定只對 flex 容器有作用。選到的元素不是 flex 容器時，它們沒有效果，所以鎖住。另外，樣式表裡用 <code>place-items</code> 這類簡寫設定、或值不是單一關鍵字時，工具不會去改，也會鎖住並說明原因。</p></div>
+      </details>
+      <details>
         <summary>有哪些事還不能做？</summary>
         <div class="a"><ul>
-          <li>改版面結構（排列方向、對齊等）。</li>
-          <li>把寫死的數值換成 token，或新增一個原本沒有的 token。</li>
+          <li>改顯示方式（<code>display</code>）、grid 的排列、子元素的順序，或用拖曳調整大小與位置。flex 容器的方向、對齊、分布、換行可以改。</li>
+          <li>改寫死的數值、把它換成 token，或新增一個原本沒有的 token。</li>
           <li>選取或修改 <code>::before</code>／<code>::after</code> 這類裝飾，以及滑鼠移上去、聚焦時才出現的樣式。</li>
           <li>只改畫面上的某一顆元件，而不影響同款的其他顆。</li>
         </ul><p>這些可以用「複製參照」交給 AI 處理。</p></div>
@@ -726,6 +742,15 @@
       <p>工具有新功能時，這份文件會一起更新。</p>
     </div>
     <div class="log">
+      <article>
+        <div class="v">1.2.0<small>2026-11-25</small></div>
+        <ul>
+          <li>可以調整排列：選到 flex 容器時，版面區的方向、對齊、分布、換行四列可以點開，從固定的選項裡挑。</li>
+          <li>這四列一律顯示；樣式表還沒寫的屬性以較淡的樣子顯示預設值，設定時會新增一行。</li>
+          <li>選項的圖示和名稱依元件目前的排列方向顯示（靠左、靠上…）。</li>
+          <li>顯示方式（<code>display</code>）仍然只供檢視。</li>
+        </ul>
+      </article>
       <article>
         <div class="v">1.1.0<small>2026-11-25</small></div>
         <ul>
@@ -764,7 +789,7 @@
 <script>
 (() => {
   "use strict";
-  const GUIDE_VERSION = "1.1.0";
+  const GUIDE_VERSION = "1.2.0";
   const GUIDE_UPDATED = "2026-11-25";
 
   const $ = (sel, root = document) => root.querySelector(sel);
@@ -791,6 +816,8 @@
     alignItems: svg('<path d="M2 8h12"/><rect x="4" y="5" width="3" height="6" rx="0.8"/><rect x="9" y="6" width="3" height="4" rx="0.8"/>'),
     direction: svg('<path d="M2.5 8h11M10 4.5 13.5 8 10 11.5"/>'),
     wrap: svg('<path d="M2.5 4.5h9a2 2 0 0 1 0 4h-5M8.5 6.5l-2 2 2 2"/>'),
+    justifyContent: svg('<path d="M2.5 3v10M13.5 3v10"/><rect x="5" y="5.5" width="2" height="5" rx="0.6"/><rect x="9" y="5.5" width="2" height="5" rx="0.6"/>'),
+    margin: svg('<rect x="4.5" y="4.5" width="7" height="7" rx="1"/><path d="M2 2.5h12M2 13.5h12" stroke-dasharray="1.5 2"/>'),
     padding: svg('<rect x="2.5" y="2.5" width="11" height="11" rx="1.5"/><rect x="6" y="6" width="4" height="4" rx="0.6"/>'),
     width: svg('<path d="M2 8h12M4.5 5.5 2 8l2.5 2.5M11.5 5.5 14 8l-2.5 2.5"/>'),
     radius: svg('<path d="M3 13V8a5 5 0 0 1 5-5h5"/>'),
@@ -818,13 +845,22 @@
     fontSize: { kind: "size", css: "font-size", comp: "--comp-badge-size" },
     color: { kind: "color", css: "color", comp: "--comp-badge-text" },
   };
+  /* The four layout rows of a flex container: a fixed list of keywords each, written straight into the stylesheet. */
+  const LAYOUT = {
+    direction: { css: "flex-direction", options: ["row", "column", "row-reverse", "column-reverse"], initial: "row" },
+    alignItems: { css: "align-items", options: ["flex-start", "center", "flex-end", "stretch", "baseline"], initial: "normal" },
+    justifyContent: { css: "justify-content", options: ["flex-start", "center", "flex-end", "space-between", "space-around", "space-evenly"], initial: "normal" },
+    wrap: { css: "flex-wrap", options: ["nowrap", "wrap"], initial: "nowrap" },
+  };
   const ROWS = {
     root: [
       { section: "layout", id: "display", lock: "structure", value: "flex" },
-      { section: "layout", id: "alignItems", lock: "structure", value: "center" },
-      { section: "layout", id: "direction", lock: "structure", value: "row", unset: true },
-      { section: "layout", id: "wrap", lock: "structure", value: "nowrap", unset: true },
+      { section: "layout", id: "direction", prop: "direction" },
+      { section: "layout", id: "alignItems", prop: "alignItems" },
+      { section: "layout", id: "justifyContent", prop: "justifyContent" },
+      { section: "layout", id: "wrap", prop: "wrap" },
       { section: "spacing", id: "padding", prop: "padding" },
+      { section: "spacing", id: "margin", lock: "unset", value: "0px", unset: true },
       { section: "size", id: "minWidth", icon: "width", lock: "literal", value: "88px" },
       { section: "appearance", id: "radius", prop: "radius" },
       { section: "fill", id: "fill", prop: "fill" },
@@ -844,7 +880,9 @@
     zh: {
       toggle: "Code Layer", guide: [["點一下", "選取元件"], ["雙擊", "進入內層"], ["點數值", "換成另一個 token"]],
       sections: { layout: "版面", spacing: "間距", size: "尺寸", appearance: "外觀", fill: "填色", typography: "文字" },
-      fields: { display: "顯示", alignItems: "對齊", direction: "方向", wrap: "換行", padding: "內距", minWidth: "最小寬", radius: "圓角", fill: "填色", fontSize: "字級", color: "文字色" },
+      fields: { display: "顯示", alignItems: "對齊", justifyContent: "分布", direction: "方向", wrap: "換行", padding: "內距", margin: "外距", minWidth: "最小寬", radius: "圓角", fill: "填色", fontSize: "字級", color: "文字色" },
+      layout: { row: "橫向", column: "直向", "row-reverse": "橫向（反向）", "column-reverse": "直向（反向）", nowrap: "不換行", wrap: "換行", center: "置中", stretch: "撐滿", baseline: "對齊文字基線", "space-between": "兩端對齊", "space-around": "分散對齊", "space-evenly": "等距分布", normal: "預設", left: "靠左", right: "靠右", top: "靠上", bottom: "靠下" },
+      unset: "未設定", layDefault: "預設值，尚未宣告", layEdits: (selector, css) => `會改 ${selector} 的 ${css}。`, layAdds: (selector, css) => `${selector} 還沒有設定 ${css}，會在這條規則新增一行。`, layUnstage: "取消這個變更", original: (v) => `原本：${v}`,
       reach: { title: "套用到", declaration: "只有這裡", component: "這個元件", system: "整個系統" },
       impact: (n) => `影響 ${n} 個元件`, search: (n) => `搜尋 ${n} 個 token`, stepDown: "小一級", stepUp: "大一級",
       inherited: (label) => `繼承自 ${label}`, changedOn: (label) => `改在「${label}」的宣告上（繼承來源）`,
@@ -853,7 +891,7 @@
       items: (n) => `逐項結果（${n}）`, itemOk: (e) => `已驗證（預期 ${e}，實際 ${e}）`, docs: (n) => `已同步改寫規格文件 ${n} 處`, pending: (n) => `文件待同步（${n}）`,
       copyForAi: "複製給 AI", resolve: "標示完成", derived: "衍生文件已重新產生", reverify: "重新驗證", reloadVerify: "重新整理預覽並驗證",
       copyRef: "複製參照", contrast: (a, b) => `對比 ${a} → ${b}`, pairAccept: "一起改內容色",
-      lock: { structure: "版面結構屬性，只供檢視", literal: "寫死的數值，沒有綁定 token" },
+      lock: { structure: "display 只供檢視", literal: "寫死的數值，沒有綁定 token", unset: "沒有宣告：使用瀏覽器預設值" },
       noScope: { system: "這個專案沒有開放 system 層", component: "這個值沒有經過元件 token" },
       pendingReason: "元件樣式表的宣告沒有任何表格記載，請確認規格的敘述是否需要更新",
       more: (n) => `＋${n}`, less: "收起", dev: "開發者資訊：顯示檔案位置與 token 鏈", collapse: "收合", expand: "展開", close: "關閉", remove: (row) => `移除 ${row} 的變更`,
@@ -862,7 +900,9 @@
     en: {
       toggle: "Code Layer", guide: [["Click", "Select a component"], ["Double-click", "Go one level in"], ["Click a value", "Swap it for another token"]],
       sections: { layout: "Layout", spacing: "Spacing", size: "Size", appearance: "Appearance", fill: "Fill", typography: "Typography" },
-      fields: { display: "Display", alignItems: "Align", direction: "Direction", wrap: "Wrap", padding: "Padding", minWidth: "Min W", radius: "Radius", fill: "Fill", fontSize: "Size", color: "Text" },
+      fields: { display: "Display", alignItems: "Align", justifyContent: "Justify", direction: "Direction", wrap: "Wrap", padding: "Padding", margin: "Margin", minWidth: "Min W", radius: "Radius", fill: "Fill", fontSize: "Size", color: "Text" },
+      layout: { row: "Horizontal", column: "Vertical", "row-reverse": "Horizontal, reversed", "column-reverse": "Vertical, reversed", nowrap: "No wrap", wrap: "Wrap", center: "Center", stretch: "Stretch", baseline: "Text baseline", "space-between": "Space between", "space-around": "Space around", "space-evenly": "Space evenly", normal: "Default", left: "Left", right: "Right", top: "Top", bottom: "Bottom" },
+      unset: "not set", layDefault: "default, not declared", layEdits: (selector, css) => `Changes ${css} of ${selector}.`, layAdds: (selector, css) => `${selector} does not set ${css} yet; a line is added to that rule.`, layUnstage: "Discard this change", original: (v) => `Was: ${v}`,
       reach: { title: "Apply to", declaration: "Only here", component: "This component", system: "Whole system" },
       impact: (n) => `Affects ${n} component(s)`, search: (n) => `Search tokens, ${n} in total`, stepDown: "One step down", stepUp: "One step up",
       inherited: (label) => `Inherited from ${label}`, changedOn: (label) => `Made on the declaration of “${label}”`,
@@ -871,7 +911,7 @@
       items: (n) => `Results (${n})`, itemOk: (e) => `verified (expected ${e}, got ${e})`, docs: (n) => `${n} specification row(s) rewritten in the same write`, pending: (n) => `Documents pending sync (${n})`,
       copyForAi: "Copy for AI", resolve: "Mark done", derived: "Derived artifacts regenerated", reverify: "Verify again", reloadVerify: "Reload the preview and verify",
       copyRef: "Copy reference", contrast: (a, b) => `Contrast ${a} → ${b}`, pairAccept: "Update content color too",
-      lock: { structure: "Structural layout property: view only", literal: "A fixed value, not bound to a token" },
+      lock: { structure: "display is shown for reference only", literal: "A fixed value, not bound to a token", unset: "No declaration: the browser default applies" },
       noScope: { system: "This project has not opened the system tier", component: "This value does not go through a component token" },
       pendingReason: "No table documents component stylesheet declarations; check whether the specification needs an update",
       more: (n) => `+${n}`, less: "Less", dev: "Developer details: show file locations and token chains", collapse: "Collapse", expand: "Expand", close: "Close", remove: (row) => `Remove the change to ${row}`,
@@ -886,6 +926,7 @@
       padding: { decl: "comp", comp: "spacing-inset-md" }, radius: { decl: "shape-corner-sm", comp: null }, fill: { decl: "comp", comp: "color-primary" },
       fontSize: { decl: "comp", comp: "typescale-label-size" }, color: { decl: "comp", comp: "color-on-primary" },
     },
+    lay: { direction: null, alignItems: "center", justifyContent: "center", wrap: null }, added: [],
     history: [], report: null, busy: false, dev: false, collapsed: false, more: {}, lockShown: null, query: "", written: [], flags: {}, pos: { right: 14, top: 14 }, applies: 0,
   });
   const clone = (value) => JSON.parse(JSON.stringify(value));
@@ -896,6 +937,36 @@
     const draft = s.comparing || !s.on ? null : draftOf(s, prop);
     return draft ? draft.to : applied(s, prop);
   };
+  /** The keyword a layout row shows: the highlighted one, the staged one, the declared one, or the default. */
+  const layShown = (s, id) => {
+    if (s.transient && s.transient.prop === id) return s.transient.to;
+    const draft = s.comparing || !s.on ? null : draftOf(s, id);
+    return draft ? draft.to : s.lay[id] ?? LAYOUT[id].initial;
+  };
+  /** Start and end are named by the side they are on for the direction in effect. */
+  const laySide = (id, keyword, direction) => {
+    if ((keyword !== "flex-start" && keyword !== "flex-end") || (id !== "alignItems" && id !== "justifyContent")) return null;
+    const row = !direction.startsWith("column");
+    const horizontal = id === "justifyContent" ? row : !row;
+    const flipped = (id === "justifyContent" && direction.endsWith("reverse")) !== (keyword === "flex-end");
+    return horizontal ? (flipped ? "right" : "left") : flipped ? "bottom" : "top";
+  };
+  const layLabel = (T, id, keyword, direction) => T.layout[laySide(id, keyword, direction) ?? keyword] ?? keyword;
+  /** Drawn for children running left to right, then turned to the direction in effect. */
+  const layIcon = (id, keyword, direction) => {
+    const row = !direction.startsWith("column");
+    const reversed = direction.endsWith("reverse");
+    const turn = row ? (reversed ? "matrix(-1 0 0 1 16 0)" : "") : reversed ? "matrix(0 -1 1 0 0 16)" : "matrix(0 1 1 0 0 0)";
+    const align = { "flex-start": [[3, 7], [3, 10], [3, 5]], center: [[4.5, 7], [3, 10], [5.5, 5]], "flex-end": [[6, 7], [3, 10], [8, 5]], stretch: [[3, 10], [3, 10], [3, 10]], baseline: [[4, 6], [2.5, 7.5], [5.5, 4.5]] };
+    const justify = { "flex-start": [2, 5, 8], center: [4, 7, 10], "flex-end": [6, 9, 12], "space-between": [2, 7, 12], "space-around": [2.9, 7, 11.1], "space-evenly": [3.8, 7, 10.2] };
+    let shape = "";
+    if (id === "direction") shape = '<path d="M3 8h10M9.5 4.5 13 8l-3.5 3.5"/>';
+    else if (id === "wrap") shape = keyword === "wrap" ? '<rect x="2.5" y="3" width="4" height="4" rx="0.8"/><rect x="9.5" y="3" width="4" height="4" rx="0.8"/><rect x="2.5" y="9" width="4" height="4" rx="0.8"/>' : '<rect x="2" y="6" width="3" height="4" rx="0.8"/><rect x="6.5" y="6" width="3" height="4" rx="0.8"/><rect x="11" y="6" width="3" height="4" rx="0.8"/>';
+    else if (id === "alignItems" && align[keyword]) shape = [3, 6.7, 10.4].map((x, i) => `<rect x="${x}" y="${align[keyword][i][0]}" width="2.6" height="${align[keyword][i][1]}" rx="0.7"/>`).join("");
+    else if (id === "justifyContent" && justify[keyword]) shape = '<path d="M1 2.5v11M15 2.5v11" stroke-width="0.9" opacity="0.55"/>' + justify[keyword].map((x) => `<rect x="${x}" y="4.5" width="2" height="7" rx="0.6"/>`).join("");
+    return shape ? svg(`<g${turn ? ` transform="${turn}"` : ""}>${shape}</g>`, 12) : "";
+  };
+  const directionFor = (s, id, keyword) => (id === "direction" ? keyword : layShown(s, "direction"));
   const scopesOf = (s, prop) => ({ declaration: true, component: s.bind[prop].decl === "comp", system: false });
   const scopeOf = (s, prop) => {
     const wanted = s.scope[prop] ?? "component";
@@ -926,11 +997,18 @@
     const withComp = Object.entries(PROPS).filter(([, p]) => p.comp);
     return [
       { file: "tokens/tokens-comp.css", note: "元件 token（同步複本會一起寫）", lines: withComp.map(([prop, p]) => ({ key: `tok:${prop}`, text: `${p.comp}: var(--sys-${s.bind[prop].comp});` })) },
-      { file: "src/components/badge/Badge.css", note: "元件樣式表", lines: Object.entries(PROPS).map(([prop, p]) => ({ key: `css:${prop}`, text: `${p.css}: var(${s.bind[prop].decl === "comp" ? p.comp : `--sys-${s.bind[prop].decl}`});` })) },
+      { file: "src/components/badge/Badge.css", note: "元件樣式表", lines: [
+        { key: "css:display", text: "display: flex;" },
+        // Declared layout properties sit where they were written.
+        ...Object.entries(LAYOUT).filter(([id]) => s.lay[id] !== null && !s.added.includes(id)).map(([id, p]) => ({ key: `css:${id}`, text: `${p.css}: ${s.lay[id]};` })),
+        ...Object.entries(PROPS).map(([prop, p]) => ({ key: `css:${prop}`, text: `${p.css}: var(${s.bind[prop].decl === "comp" ? p.comp : `--sys-${s.bind[prop].decl}`});` })),
+        // A layout property nothing declared goes at the end of the rule: shown as a line to come while it is only staged.
+        ...Object.entries(LAYOUT).filter(([id]) => s.added.includes(id) || (s.lay[id] === null && draftOf(s, id))).map(([id, p]) => ({ key: `css:${id}`, text: `${p.css}: ${s.lay[id] ?? draftOf(s, id).to};`, added: s.lay[id] === null })),
+      ] },
       { file: "design-system/components/badge.md", note: "元件規格表", lines: withComp.map(([prop, p]) => ({ key: `spec:${prop}`, text: `| ${p.comp} | --sys-${s.bind[prop].comp} |` })) },
     ];
   };
-  const lineNumber = (key) => ({ "tok:padding": 4, "tok:fill": 5, "tok:fontSize": 6, "tok:color": 7, "css:padding": 12, "css:radius": 13, "css:fill": 14, "css:fontSize": 15, "css:color": 16, "spec:padding": 21, "spec:fill": 22, "spec:fontSize": 23, "spec:color": 24 }[key]);
+  const lineNumber = (key) => ({ "css:display": 9, "css:alignItems": 10, "css:justifyContent": 11, "css:direction": 17, "css:wrap": 18, "tok:padding": 4, "tok:fill": 5, "tok:fontSize": 6, "tok:color": 7, "css:padding": 12, "css:radius": 13, "css:fill": 14, "css:fontSize": 15, "css:color": 16, "spec:padding": 21, "spec:fill": 22, "spec:fontSize": 23, "spec:color": 24 }[key]);
 
   /* --------------------------------------------------------------- HTML pieces */
   const rowsFor = (s) => ROWS[s.selection] ?? [];
@@ -960,6 +1038,15 @@
     if (row.lock) {
       const reason = T.lock[row.lock];
       return `<button type="button" class="i-row is-locked" data-act="lock" data-id="${row.id}" title="${esc(reason)}"><span class="ic">${icon}</span><span class="lb">${esc(label)}</span><span class="val">${esc(row.value)}</span><span class="end" data-part="lock">${ICON.lock}</span></button>${s.lockShown === row.id ? `<div class="i-reason">${esc(reason)}</div>` : ""}`;
+    }
+    if (LAYOUT[row.prop]) {
+      // A layout row: the icon and the name of the keyword in effect; paler while it is only the default.
+      const draft = draftOf(s, row.prop);
+      const keyword = draft ? draft.to : s.lay[row.prop] ?? LAYOUT[row.prop].initial;
+      const direction = directionFor(s, row.prop, keyword);
+      const isDefault = !draft && s.lay[row.prop] === null;
+      const tip = draft ? T.original(draft.from || T.unset) : isDefault ? T.layDefault : `${LAYOUT[row.prop].css}: ${keyword}`;
+      return `<button type="button" class="i-row" data-act="row" data-id="${row.id}" data-open="${s.openRow === row.prop}" data-part="row-${row.id}" title="${esc(tip)}"><span class="ic">${icon}</span><span class="lb">${esc(label)}</span><span class="pill${draft ? " is-staged" : ""}${isDefault ? " is-default" : ""}" data-part="lay-pill">${layIcon(row.prop, keyword, direction)}<span>${esc(layLabel(T, row.prop, keyword, direction))}</span></span></button>`;
     }
     const token = draftOf(s, row.prop) ? draftOf(s, row.prop).to : applied(s, row.prop);
     const staged = Boolean(draftOf(s, row.prop));
@@ -993,9 +1080,30 @@
     if (!list.length) return `<div class="pop-note">沒有符合的 token。</div>`;
     return list.map(([name, value]) => `<button type="button" class="opt" role="option" data-act="opt" data-token="${name}" aria-selected="${name === current}">${kind === "color" ? `<span class="sw" style="background:${value}"></span>` : ""}<span class="nm">${esc(name)}</span><span class="v">${name === current ? "✓" : esc(value)}</span></button>`).join("");
   }
+  /** The options of a layout row: no scopes, no search, no stepper; where the change goes instead. */
+  function layoutPopHTML(s, T, prop, mode) {
+    const meta = LAYOUT[prop];
+    const draft = draftOf(s, prop);
+    const current = draft ? draft.to : s.lay[prop] ?? meta.initial;
+    const adds = s.lay[prop] === null;
+    const options = meta.options.map((keyword) => {
+      const direction = directionFor(s, prop, keyword);
+      return `<button type="button" class="opt" role="option" data-act="opt" data-token="${keyword}" aria-selected="${keyword === current}"><span class="li">${layIcon(prop, keyword, direction)}</span><span class="nm">${esc(layLabel(T, prop, keyword, direction))}</span><span class="v">${keyword === current ? "✓" : esc(keyword)}</span></button>`;
+    }).join("");
+    const where = adds ? T.layAdds(".badge--seal", meta.css) : T.layEdits(".badge--seal", meta.css);
+    const unstage = draft && adds ? ` <button type="button" class="link" data-act="remove" data-prop="${prop}">${esc(T.layUnstage)}</button>` : "";
+    const dev = s.dev ? `<div class="i-dev" data-part="pop-dev">${esc(T.writes(`src/components/badge/Badge.css:${lineNumber(`css:${prop}`)}`))}</div>` : "";
+    return `<div class="pop ${mode}" data-pop="${prop}">
+      <div class="pop-head"><span>${esc(T.fields[prop])}</span><button type="button" class="i-btn" data-act="close-pop" data-part="pop-close" aria-label="${esc(T.close)}">${ICON.close}</button></div>
+      <div class="opts" role="listbox" data-part="lay-opts">${options}</div>
+      <div class="pop-where" data-part="lay-where">${esc(where)}${unstage}</div>
+      ${dev}
+    </div>`;
+  }
   function popoverHTML(s, T, mode = "") {
     const prop = s.openRow;
     if (!prop) return "";
+    if (LAYOUT[prop]) return layoutPopHTML(s, T, prop, mode);
     const meta = PROPS[prop];
     const scopes = scopesOf(s, prop);
     const scope = scopeOf(s, prop);
@@ -1025,8 +1133,8 @@
       const sub = [];
       if (draft.inherited) sub.push(`<span>${esc(T.changedOn(EL.root))}</span>`);
       if (pair) sub.push(`<span class="warn" data-part="chg-pair">${ICON.warn}${esc(T.contrast(pair.before, pair.after))}</span><button type="button" class="chip-btn" data-act="pair" data-token="${pair.partner}">${esc(T.pairAccept)}</button>`);
-      const where = `${T.reach[draft.scope]} · ${T.writes(draft.scope === "component" ? "tokens/tokens-comp.css" : "src/components/badge/Badge.css")}`;
-      return `<div class="chg" data-prop="${draft.prop}" title="${esc(where)}"><span class="dot"></span><span class="chg-main" data-part="chg-line"><b>${esc(T.fields[draft.prop])}</b>${esc(draft.from)} → <strong>${esc(draft.to)}</strong></span><button type="button" class="x" data-act="remove" data-prop="${draft.prop}" data-part="chg-x" aria-label="${esc(T.remove(T.fields[draft.prop]))}">${ICON.close}</button>${sub.length ? `<div class="chg-sub">${sub.join("")}</div>` : ""}</div>`;
+      const where = draft.layout ? T.writes("src/components/badge/Badge.css") : `${T.reach[draft.scope]} · ${T.writes(draft.scope === "component" ? "tokens/tokens-comp.css" : "src/components/badge/Badge.css")}`;
+      return `<div class="chg" data-prop="${draft.prop}" title="${esc(where)}"><span class="dot"></span><span class="chg-main" data-part="chg-line"><b>${esc(T.fields[draft.prop])}</b>${esc(draft.from || T.unset)} → <strong>${esc(draft.to)}</strong></span><button type="button" class="x" data-act="remove" data-prop="${draft.prop}" data-part="chg-x" aria-label="${esc(T.remove(T.fields[draft.prop]))}">${ICON.close}</button>${sub.length ? `<div class="chg-sub">${sub.join("")}</div>` : ""}</div>`;
     }).join("");
     return `<div class="i-changes" data-part="changes">${lines}
       <div class="i-state" data-part="chg-state"><span class="dot"></span>${esc(T.previewOnly(s.drafts.length))}</div>
@@ -1044,7 +1152,7 @@
       return `<div class="i-report" data-part="report"><div class="rep-head"><span class="rep-ic">${ICON.check}</span><strong>${esc(T.undone)}</strong></div></div>`;
     }
     const part = (id, label, body) => `<div class="part"><button type="button" data-act="part" data-part-id="${id}" data-part="rep-${id}" aria-expanded="${Boolean(report.open[id])}"><span>${report.open[id] ? "▾" : "▸"}</span><span>${esc(label)}</span></button>${report.open[id] ? `<div class="part-body">${body}</div>` : ""}</div>`;
-    const items = report.items.map((item) => `<div>${esc(T.fields[item.prop])} · ${esc(item.inherited ? EL.root : EL[item.element] ?? EL.root)}：${esc(item.from)} → ${esc(item.to)}：${esc(T.itemOk(VALUE[item.to]))}</div>`).join("") + `<div class="acts"><button type="button" class="tbtn" data-act="reverify">${esc(T.reverify)}</button><button type="button" class="tbtn" data-act="reverify">${esc(T.reloadVerify)}</button></div>`;
+    const items = report.items.map((item) => `<div>${esc(T.fields[item.prop])} · ${esc(item.inherited ? EL.root : EL[item.element] ?? EL.root)}：${esc(item.from || T.unset)} → ${esc(item.to)}：${esc(T.itemOk(item.layout ? item.to : VALUE[item.to]))}</div>`).join("") + `<div class="acts"><button type="button" class="tbtn" data-act="reverify">${esc(T.reverify)}</button><button type="button" class="tbtn" data-act="reverify">${esc(T.reloadVerify)}</button></div>`;
     const docs = report.docs.map((doc) => `<div>design-system/components/badge.md:${doc.line}：sys-${esc(doc.from)} → sys-${esc(doc.to)}</div>`).join("");
     const pending = report.pending.map((entry) => `<div>src/components/badge/Badge.css:${entry.line} — ${esc(T.pendingReason)}</div>`).join("") + `<div class="acts"><button type="button" class="tbtn" data-act="copy-brief" data-part="rep-copy-ai">${esc(T.copyForAi)}</button><button type="button" class="tbtn" data-act="resolve" data-part="rep-resolve">${esc(T.resolve)}</button></div>`;
     return `<div class="i-report" data-part="report">
@@ -1088,6 +1196,10 @@
     badge.style.borderRadius = VALUE[shown(s, "radius")];
     badge.style.padding = VALUE[shown(s, "padding")];
     badge.style.fontSize = VALUE[shown(s, "fontSize")];
+    badge.style.flexDirection = layShown(s, "direction");
+    badge.style.alignItems = layShown(s, "alignItems");
+    badge.style.justifyContent = layShown(s, "justifyContent");
+    badge.style.flexWrap = layShown(s, "wrap");
     const place = (box, key) => {
       const el = key ? elementOf(key) : null;
       if (!s.on || !el) return (box.hidden = true), null;
@@ -1169,7 +1281,7 @@
     const wrote = new Set(s.written);
     const status = s.drafts.length ? ["preview", `檔案沒有變動（${s.drafts.length} 項只是預覽）`] : wrote.size ? ["written", s.report && s.report.mode === "undo" ? `已還原 ${wrote.size} 行` : `剛寫入 ${wrote.size} 行`] : ["idle", "檔案沒有變動"];
     filesEl.innerHTML = `<div class="files-head"><strong>檔案</strong><span>只有「套用到檔案」會改變這裡。</span><span class="fstatus" data-kind="${status[0]}">${esc(status[1])}</span></div>
-      <div class="files-grid">${fileModel(s).map((file) => `<div class="file"><div class="file-name">${esc(file.file)}<small>${esc(file.note)}</small></div><div class="file-lines">${file.lines.map((line) => `<div class="fline${will.has(line.key) ? " will" : wrote.has(line.key) ? " wrote" : ""}" data-line="${line.key}"><span class="tag">${will.has(line.key) ? "預覽中" : wrote.has(line.key) ? (s.report && s.report.mode === "undo" ? "已還原" : "已寫入") : ""}</span><span>${esc(line.text)}</span></div>`).join("")}</div></div>`).join("")}</div>`;
+      <div class="files-grid">${fileModel(s).map((file) => `<div class="file"><div class="file-name">${esc(file.file)}<small>${esc(file.note)}</small></div><div class="file-lines">${file.lines.map((line) => `<div class="fline${will.has(line.key) ? " will" : wrote.has(line.key) ? " wrote" : ""}${line.added ? " is-new" : ""}" data-line="${line.key}"><span class="tag">${will.has(line.key) ? "預覽中" : wrote.has(line.key) ? (s.report && s.report.mode === "undo" ? "已還原" : "已寫入") : ""}</span><span>${esc(line.text)}</span></div>`).join("")}</div></div>`).join("")}</div>`;
   }
   function render() {
     renderCanvas();
@@ -1204,6 +1316,14 @@
       render();
     },
     stage(prop, to, { keepOpen = false } = {}) {
+      if (LAYOUT[prop]) {
+        // A keyword instead of a token; choosing what the source holds is not a change.
+        s.drafts = s.drafts.filter((draft) => draft.prop !== prop);
+        if (to !== s.lay[prop]) s.drafts.push({ prop, layout: true, from: s.lay[prop] ?? "", to, scope: "declaration", element: "root", inherited: false });
+        Object.assign(s, { transient: null, report: null, written: [] });
+        if (!keepOpen) Object.assign(s, { openRow: null, query: "" });
+        return render();
+      }
       const from = applied(s, prop);
       const row = rowsFor(s).find((r) => r.prop === prop);
       s.drafts = s.drafts.filter((draft) => draft.prop !== prop);
@@ -1216,13 +1336,14 @@
     },
     step(dir) {
       const prop = s.openRow;
-      if (!prop || PROPS[prop].kind === "color") return;
+      if (!prop || !PROPS[prop] || PROPS[prop].kind === "color") return;
       const scale = TOKENS[PROPS[prop].kind].map(([name]) => name);
       const current = draftOf(s, prop) ? draftOf(s, prop).to : applied(s, prop);
       const next = scale[scale.indexOf(current) + dir];
       if (next) act.stage(prop, next, { keepOpen: true });
     },
     scope(prop, scope) {
+      if (!PROPS[prop]) return;
       s.scope[prop] = scope;
       const draft = draftOf(s, prop);
       if (draft) draft.scope = scopeOf(s, prop);
@@ -1248,8 +1369,13 @@
       Object.assign(s, { busy: true, openRow: null, report: { mode: "apply", phase: "writing" } });
       render();
       later(600, () => {
-        s.history.push(clone(s.bind));
-        for (const change of changes) s.bind[change.prop][change.scope === "component" ? "comp" : "decl"] = change.to;
+        s.history.push(clone({ bind: s.bind, lay: s.lay, added: s.added }));
+        for (const change of changes) {
+          if (change.layout) {
+            if (s.lay[change.prop] === null) s.added.push(change.prop);
+            s.lay[change.prop] = change.to;
+          } else s.bind[change.prop][change.scope === "component" ? "comp" : "decl"] = change.to;
+        }
         s.written = changes.flatMap((change) => targets(change.prop, change.scope));
         s.drafts = [];
         s.report.phase = "verifying";
@@ -1269,14 +1395,15 @@
     undo() {
       if (!s.history.length || s.busy) return;
       const before = clone(s.bind);
+      const layBefore = clone(s.lay);
       Object.assign(s, { busy: true, report: { mode: "undo", phase: "writing" } });
       render();
       later(500, () => {
-        s.bind = s.history.pop();
+        Object.assign(s, s.history.pop());
         s.written = Object.keys(PROPS).flatMap((prop) => [
           ...(before[prop].comp !== s.bind[prop].comp ? targets(prop, "component") : []),
           ...(before[prop].decl !== s.bind[prop].decl ? targets(prop, "declaration") : []),
-        ]);
+        ]).concat(Object.keys(LAYOUT).filter((id) => layBefore[id] !== s.lay[id] && s.lay[id] !== null).map((id) => `css:${id}`));
         s.report.phase = "verifying";
         render();
         later(600, () => {
@@ -1322,7 +1449,8 @@
       "Story：components-badge--seal（Components/Badge › Seal）",
       `元件：badge · variant：seal · 元素：${EL[s.selection]}`,
       "CSS：src/components/badge/Badge.css · .badge--seal（規則 #2，第 11 行）",
-      ...rows.filter((row) => row.prop).map((row) => line(row.prop) + (row.inherited ? ` · 繼承自 ${EL.root}` : "")),
+      ...rows.filter((row) => LAYOUT[row.prop]).map((row) => `${L.zh.fields[row.id]}：${LAYOUT[row.prop].css} = ${s.lay[row.prop] ?? LAYOUT[row.prop].initial} · ${s.lay[row.prop] === null ? "尚未宣告；可設為" : "可改成"} ${LAYOUT[row.prop].options.join(" | ")} 之一`),
+      ...rows.filter((row) => PROPS[row.prop]).map((row) => line(row.prop) + (row.inherited ? ` · 繼承自 ${EL.root}` : "")),
       ...rows.filter((row) => row.lock && !row.unset).map((row) => `${L.zh.fields[row.id]}：${row.value} · 唯讀：${L.zh.lock[row.lock]}`),
     ].join("\n");
   }
@@ -1501,6 +1629,19 @@
       ],
     },
     {
+      id: "layout", title: "調整排列", sub: "方向與對齊",
+      who: "想把星號和文字改成上下排列，再讓它們靠左。",
+      preset: () => ({ on: true, selection: "root" }),
+      steps: [
+        { do: "點「方向」那一列", see: "浮層列出四個方向。它的顏色比較淡，代表樣式表還沒寫這個屬性，目前是預設值。", target: row("direction"), done: () => s.openRow === "direction" || Boolean(draftOf(s, "direction")), auto: () => act.open("direction") },
+        { do: "挑「直向」", see: "星號和文字變成上下排列。下面的檔案多了一行預覽：這個屬性原本沒有，會新增。", target: '.opt[data-token="column"]', done: () => Boolean(draftOf(s, "direction")), auto: () => act.stage("direction", "column") },
+        { do: "點「對齊」那一列", see: "選項變成靠左、置中、靠右：因為現在是直向排列，圖示畫的就是結果。", target: row("alignItems"), done: () => s.openRow === "alignItems" || Boolean(draftOf(s, "alignItems")), auto: () => act.open("alignItems") },
+        { do: "挑「靠左」", see: "星號和文字都靠到左邊。這個屬性本來就有寫，所以是改那一行。", target: '.opt[data-token="flex-start"]', done: () => Boolean(draftOf(s, "alignItems")), auto: () => act.stage("alignItems", "flex-start") },
+        { do: "按「套用到檔案」", see: "樣式表改了一個字、多了一行。排列沒有對應的規格表，所以列在「文件待同步」。", target: '[data-act="apply"]', done: applyDone, auto: () => (draftsReady([["direction", "column"], ["alignItems", "flex-start"]]), act.apply()) },
+        { do: "想反悔的話，按「還原」", see: "新增的那一行消失，對齊也回到置中。", target: '[data-act="undo"]', done: () => Boolean(s.report && s.report.mode === "undo" && s.report.phase === "done"), auto: () => act.undo() },
+      ],
+    },
+    {
       id: "inner", title: "改內層的文字", sub: "進入元件裡面",
       who: "印章裡的字太小，想只選到那兩個字來調整。",
       preset: () => ({ on: true }),
@@ -1514,12 +1655,12 @@
     },
     {
       id: "locked", title: "遇到鎖頭", sub: "交給 AI",
-      who: "想改排列方式，但那一列有鎖頭，點了沒有反應。",
+      who: "想把最小寬從 88px 改大一點，但那一列有鎖頭，點了沒有反應。",
       preset: () => ({ on: true, selection: "root" }),
       steps: [
-        { do: "點一下有鎖頭的「顯示」", see: "出現原因：版面結構只供檢視。真的工具是滑鼠停著就會顯示。", target: row("display"), done: () => Boolean(s.flags.lockSeen), auto: () => ((s.lockShown = "display"), (s.flags.lockSeen = true), render()) },
+        { do: "點一下有鎖頭的「最小寬」", see: "出現原因：這個數值是寫死的，沒有綁 token。真的工具是滑鼠停著就會顯示。", target: row("minWidth"), done: () => Boolean(s.flags.lockSeen), auto: () => ((s.lockShown = "minWidth"), (s.flags.lockSeen = true), render()) },
         { do: "按標題列的複製圖示", see: "一段文字複製到剪貼簿，寫明是哪個元件、哪個檔案、哪些 token。", target: '.i-head [data-act="copy"]', done: () => Boolean(s.flags.copied), auto: () => act.copy() },
-        { do: "貼到 AI 對話，加一句你要的修改", see: "例如：「把這個改成直向排列」。AI 會知道你指的是哪裡。", target: "#sim-copied", done: () => Boolean(s.flags.pasted), auto: () => ((s.flags.pasted = true), coach.sync()), manual: "我知道了" },
+        { do: "貼到 AI 對話，加一句你要的修改", see: "只用這一次的數值，就說「把最小寬改成 96px」。別處也會用到，就說「新增一個 token 並把這裡換成它」。", target: "#sim-copied", done: () => Boolean(s.flags.pasted), auto: () => ((s.flags.pasted = true), coach.sync()), manual: "我知道了" },
       ],
     },
     {
@@ -1615,6 +1756,17 @@
         { sel: '[data-part="pop-stepper"]', at: "left", t: "−／＋", d: "有刻度的值才會出現（圓角、間距、字級）。按一下移動一級並暫存。" },
         { sel: '[data-part="pop-search"]', at: "left", t: "搜尋", d: "token 很多時，輸入名稱或數值來找。" },
         { sel: '[data-part="pop-opts"]', at: "left", t: "可以換的 token", d: "滑鼠移過去，畫面立刻預覽；點下去才暫存。打勾的是目前的值。" },
+        { sel: '[data-part="pop-close"]', at: "top", t: "關閉", d: "也可以按 Esc。" },
+      ],
+    },
+    {
+      title: "排列的選項", intro: "點「方向、對齊、分布、換行」任何一列，會打開這個浮層。",
+      html: (T) => layoutPopHTML(figureState({ openRow: "alignItems" }), T, "alignItems", "is-static"),
+      parts: [
+        { sel: '[data-part="lay-opts"] .opt .li', at: "left", t: "圖示畫的是結果", d: "依這個元件目前的排列方向畫，不用去想主軸和交叉軸。" },
+        { sel: '[data-part="lay-opts"] .opt:nth-child(2) .v', at: "right", t: "打勾的是目前的值", d: "滑鼠移到別的選項，畫面立刻預覽；點下去才暫存。" },
+        { sel: '[data-part="lay-opts"] .opt:nth-child(3) .v', at: "right", t: "右邊是 CSS 的寫法", d: "工程師看的是這個字。選項是固定的，不能輸入其他值。" },
+        { sel: '[data-part="lay-where"]', at: "left", t: "會改哪裡", d: "已經有寫的屬性，改那一行；還沒寫的，會在這條規則新增一行。" },
         { sel: '[data-part="pop-close"]', at: "top", t: "關閉", d: "也可以按 Esc。" },
       ],
     },

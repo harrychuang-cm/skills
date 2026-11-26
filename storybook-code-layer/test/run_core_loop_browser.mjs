@@ -19,7 +19,7 @@ import { loadPostcss, testProject } from "./helpers.mjs";
 const BASE = process.env.STORYBOOK_URL ?? "http://localhost:6006";
 const HANKO = "components-marks-badge-seal--hanko";
 const args = process.argv.slice(2);
-const ALL_STAGES = [6, 7, 11, 12, 13, 14, 15];
+const ALL_STAGES = [6, 7, 11, 12, 13, 14, 15, 16];
 const stageArg = args.includes("--stage") ? args[args.indexOf("--stage") + 1] : "6";
 const stages = stageArg === "all" ? ALL_STAGES : stageArg.split(",").map(Number);
 const headed = args.includes("--headed");
@@ -717,7 +717,7 @@ async function stage7(cdp) {
     // A read-only row says why as its tooltip.
     const display = shown.find((row) => row.id === "display");
     assert.deepEqual([display.editable, display.readonly, display.text], ["false", "structural", "顯示flex"]);
-    assert.match(display.title, /版面結構屬性，只供檢視/);
+    assert.match(display.title, /display 只供檢視/);
     // Sections in the order of the tracing table; rows that are not set are hidden behind a count.
     const sections = await inManager(cdp, `return [...document.querySelectorAll("[data-code-layer-section]")].map((e) => [e.getAttribute("data-code-layer-section"), Number(e.getAttribute("data-rows")), Number(e.querySelector('[data-code-layer-action="toggle-more"]')?.getAttribute("data-hidden") ?? 0)])`);
     assert.deepEqual(sections.map(([id]) => id), ["layout", "spacing", "size", "appearance", "fill", "stroke", "typography"]);
@@ -1430,7 +1430,12 @@ async function stage12(cdp) {
       const rowSections = trace.rows.map((r) => r.section);
       assert.deepEqual(rowSections.filter((x, i) => x !== rowSections[i - 1]), sections, `${story}: sections in order`);
       assert.ok(trace.rows.every((r) => r.computed !== "" && r.sides.length > 0), `${story}: every row has a computed value`);
-      assert.ok(trace.rows.filter((r) => ["display", "direction", "alignItems", "justifyContent", "wrap"].includes(r.group)).every((r) => r.scopes.length === 0), `${story}: structural layout rows are never editable`);
+      assert.ok(trace.rows.filter((r) => r.group === "display").every((r) => r.scopes.length === 0 && r.layout === null), `${story}: display is never editable`);
+      // Direction, alignment, distribution and wrapping: one target on a flex container, none anywhere else.
+      const flex = /^(inline-)?flex$/.test(rowOf(trace, "display").computed);
+      for (const row of trace.rows.filter((r) => ["direction", "alignItems", "justifyContent", "wrap"].includes(r.group))) {
+        assert.ok(flex ? row.layout !== null && (row.readOnly ? row.scopes.length === 0 : row.scopes.length === 1) : row.layout === null && row.scopes.length === 0, `${story}: layout row ${row.id} on display ${rowOf(trace, "display").computed}: ${JSON.stringify([row.layout, row.readOnly, row.scopes.length])}`);
+      }
       traceTimes.push(trace.durationMs);
     }
     return `${roots.length} roots; trace ${Math.min(...traceTimes)}–${Math.max(...traceTimes)} ms`;
@@ -2154,7 +2159,7 @@ async function stage14(cdp) {
       assert.match(chrome.tool, /^Code Layer: on/);
       // Tooltips are interface text too.
       assert.ok(chrome.tips.length > 10 && chrome.tips.every((tip) => !CJK.test(tip)), JSON.stringify(chrome.tips.filter((tip) => CJK.test(tip))));
-      assert.ok(chrome.tips.some((tip) => /Structural layout property/.test(tip)), "read-only rows say why in their tooltip");
+      assert.ok(chrome.tips.some((tip) => /display is shown for reference only/.test(tip)), "read-only rows say why in their tooltip");
       const overlay = await overlayState(cdp);
       assert.match(overlay.selectLabel, /Copy reference/);
       assert.doesNotMatch(overlay.selectLabel, CJK);
@@ -2226,7 +2231,7 @@ async function stage14(cdp) {
     await waitTitle(cdp, `Ribbon Banner / ${facts.variant}`);
     const rows = await inManager(cdp, `return [...document.querySelectorAll("[data-code-layer-row]")].map((e) => e.getAttribute("data-code-layer-row"))`);
     // The rows of the new selection: those that are set (a declaration, or a value inherited from an element).
-    assert.deepEqual(rows, await inPreview(cdp, `return w.__CODE_LAYER__.lastTrace.rows.filter((r) => r.source !== "none" || (r.inheritedFrom && r.inheritedFrom.kind !== "default")).map((r) => r.id)`));
+    assert.deepEqual(rows, await inPreview(cdp, `return w.__CODE_LAYER__.lastTrace.rows.filter((r) => r.source !== "none" || r.layout !== null || (r.inheritedFrom && r.inheritedFrom.kind !== "default")).map((r) => r.id)`));
     assert.ok(rows.length >= 4, rows.join(", "));
     assert.equal(await inManager(cdp, `return document.querySelector("[data-code-layer-own-rule]").textContent.includes(".md-ribbon-banner__strip")`), false, "the header shows the root's own rule now");
 
@@ -2633,7 +2638,7 @@ async function stage14(cdp) {
     assert.equal(lines[0], "[Code Layer 物件參照 v2]");
     assert.match(text, /元件：badge-seal · variant：hanko · 元素：Badge Seal › content/);
     // One line per traced row, with inheritance and scopes.
-    const traced = await inPreview(cdp, `return w.__CODE_LAYER__.lastTrace.rows.filter((r) => r.source !== "none" || (r.inheritedFrom && r.inheritedFrom.kind !== "default")).length`);
+    const traced = await inPreview(cdp, `return w.__CODE_LAYER__.lastTrace.rows.filter((r) => r.source !== "none" || r.layout !== null || (r.inheritedFrom && r.inheritedFrom.kind !== "default")).length`);
     const rowLines = lines.filter((l) => /：.* = /.test(l) && !l.startsWith("CSS："));
     assert.equal(rowLines.length, traced, rowLines.join("\n"));
     assert.ok(rowLines.some((l) => l.includes("繼承自 Badge Seal / hanko") && l.includes("可修改範圍：") && l.includes("［預設］")), text);
@@ -3109,6 +3114,382 @@ async function stage15(cdp) {
   });
 }
 
+// ---- stage 16: layout rows (direction, wrapping, alignment, distribution) -------------------
+
+const SEAL_CONTENT = ".md-badge-seal__content";
+const LAYOUT_ROWS = ["direction", "alignItems", "justifyContent", "wrap"];
+const optionsSelector = (rowId) => `[data-code-layer-layout-options=${JSON.stringify(rowId)}]`;
+
+/** A layout row of the inspector as the person sees it. */
+function layoutRow(cdp, rowId) {
+  return inManager(
+    cdp,
+    `const r = document.querySelector(${JSON.stringify(rowSelector(rowId))}); if (!r) return null;
+     return { editable: r.getAttribute("data-editable"), readonly: r.getAttribute("data-readonly"), keyword: r.getAttribute("data-layout"), isDefault: r.getAttribute("data-layout-default"), token: r.getAttribute("data-token"),
+       steps: Number(r.getAttribute("data-steps")), status: r.getAttribute("data-status"), title: r.getAttribute("title") ?? "", text: r.textContent, icon: r.querySelector("[data-code-layer-layout-icon]")?.getAttribute("data-code-layer-layout-icon") ?? null,
+       pill: !!r.querySelector("[data-code-layer-layout-value]") };`,
+  );
+}
+
+/** The options popover of an open layout row. */
+function layoutOptionsState(cdp, rowId) {
+  return inManager(
+    cdp,
+    `const box = document.querySelector(${JSON.stringify(optionsSelector(rowId))}); if (!box) return null;
+     const pop = document.querySelector(${JSON.stringify(popSelector(rowId))});
+     return { probe: box.getAttribute("data-probe"), adds: box.getAttribute("data-adds"), property: box.getAttribute("data-property"), where: box.querySelector("[data-code-layer-layout-where]")?.textContent ?? "",
+       unlisted: box.querySelector("[data-code-layer-layout-unlisted]")?.textContent ?? null, unset: !!box.querySelector('[data-code-layer-action="layout-unset"]'),
+       options: [...box.querySelectorAll("[data-keyword]")].map((e) => ({ keyword: e.getAttribute("data-keyword"), current: e.getAttribute("data-current"), disabled: e.getAttribute("aria-disabled"), active: e.getAttribute("aria-selected"), text: e.textContent })),
+       scopes: !!pop?.querySelector("[data-code-layer-scopes]"), stepper: !!pop?.querySelector("[data-code-layer-stepper]"), picker: !!pop?.querySelector("[data-code-layer-picker]"), text: pop?.textContent ?? "" };`,
+  );
+}
+
+async function openLayoutRow(cdp, rowId) {
+  if (!(await layoutOptionsState(cdp, rowId))) await clickIn(cdp, rowSelector(rowId));
+  return waitSeen(() => layoutOptionsState(cdp, rowId), (state) => state.probe === "confirmed", `options of ${rowId} confirmed`);
+}
+
+const layoutDrafts = (cdp) =>
+  inManager(cdp, `return [...document.querySelectorAll("[data-code-layer-draft]")].map((e) => ({ id: e.getAttribute("data-code-layer-draft"), type: e.getAttribute("data-type"), from: e.getAttribute("data-from"), to: e.getAttribute("data-to"), status: e.getAttribute("data-status"), text: e.firstElementChild?.textContent ?? "" }))`);
+const waitLayoutDrafts = (cdp, predicate, label) => waitSeen(() => layoutDrafts(cdp), predicate, label);
+const optionAt = (rowId, keyword) => `${optionsSelector(rowId)} [data-keyword="${keyword}"]`;
+const sealRuleText = (cdp, selector) =>
+  inPreview(cdp, `const s = [...d.querySelectorAll("style[data-vite-dev-id]")].find((e) => e.dataset.viteDevId.endsWith("/BadgeSeal.css")); return [...s.sheet.cssRules].find((r) => r.selectorText === ${JSON.stringify(selector)}).cssText`);
+const waitComputed = (cdp, selector, property, value) =>
+  waitSeen(async () => (await computedOf(cdp, selector, [property]))[0], (now) => now === value, `${property} of ${selector} is ${value}`);
+
+async function stage16(cdp) {
+  const start = governedHashes();
+  const sealBefore = fs.readFileSync(BADGE_CSS(), "utf8");
+  await cdp.send("Network.setBlockedURLs", { urls: [] });
+  await cdp.send("Browser.grantPermissions", { permissions: ["clipboardReadWrite", "clipboardSanitizedWrite"], origin: BASE }).catch(() => undefined);
+  const check = async (name, fn) =>
+    checkOuter(name, async () => {
+      try {
+        return await fn();
+      } finally {
+        const leftovers = await undoLeftovers().catch((error) => [`cleanup failed: ${error.message}`]);
+        if (leftovers.length > 0) process.stdout.write(`    (cleanup: undone through the API after the check: ${leftovers.join(", ")})\n`);
+      }
+    });
+
+  await check("16.1 a flex container lists its four layout rows, declared or not, each with one target; display stays view-only", async () => {
+    await clearDrafts(cdp);
+    await loadActive(cdp, STORY.hanko);
+    const trace = await traceOf(cdp, ROOT);
+    const display = rowOf(trace, "display");
+    assert.deepEqual([display.readOnly?.reason, display.scopes.length, display.layout], ["structural", 0, null]);
+    const facts = (id) => {
+      const row = rowOf(trace, id);
+      const target = row.scopes[0]?.target ?? {};
+      return [row.readOnly, row.scopes.length, row.defaultScope, target.type, target.selector, target.property, target.component ?? null, target.line, row.layout?.declared ?? null, row.layout?.options.length];
+    };
+    // align-items and justify-content are declared in .md-badge-seal (lines 6 and 7); direction and wrapping are not.
+    assert.deepEqual(facts("alignItems"), [null, 1, "declaration", "set-keyword", ".md-badge-seal", "align-items", 0, 6, "center", 5]);
+    assert.deepEqual(facts("justifyContent"), [null, 1, "declaration", "set-keyword", ".md-badge-seal", "justify-content", 0, 7, "center", 6]);
+    assert.deepEqual(facts("direction"), [null, 1, "declaration", "add-declaration", ".md-badge-seal", "flex-direction", null, 3, null, 4]);
+    assert.deepEqual(facts("wrap"), [null, 1, "declaration", "add-declaration", ".md-badge-seal", "flex-wrap", null, 3, null, 2]);
+    assert.deepEqual(rowOf(trace, "wrap").layout.options, ["nowrap", "wrap"]);
+    assert.ok(LAYOUT_ROWS.every((id) => rowOf(trace, id).scopes[0].writes.files[0] === "storybook/src/components/badge-seal/BadgeSeal.css"));
+
+    // In the inspector, with the default settings: all five rows are listed; the undeclared ones are marked as defaults.
+    const shown = {};
+    for (const id of ["display", ...LAYOUT_ROWS]) shown[id] = await waitFor(() => layoutRow(cdp, id), { label: `row ${id} listed without revealing anything` });
+    assert.deepEqual([shown.display.editable, shown.display.readonly, shown.display.pill], ["false", "structural", false]);
+    assert.match(shown.display.title, /display 只供檢視/);
+    assert.deepEqual(LAYOUT_ROWS.map((id) => [id, shown[id].editable, shown[id].keyword, shown[id].isDefault, shown[id].token, shown[id].pill, shown[id].steps]), [
+      ["direction", "true", "row", "true", "", true, 0],
+      ["alignItems", "true", "center", "false", "", true, 0],
+      ["justifyContent", "true", "center", "false", "", true, 0],
+      ["wrap", "true", "nowrap", "true", "", true, 0],
+    ]);
+    assert.deepEqual(LAYOUT_ROWS.map((id) => shown[id].text), ["方向橫向", "對齊置中", "分布置中", "換行不換行"]);
+    assert.match(shown.direction.title, /預設值，尚未宣告/);
+
+    // An element that is not a flex container has no layout row to edit (the seal has none; a headline does).
+    await loadActive(cdp, STORY.heroDefault);
+    const plain = await inPreview(
+      cdp,
+      `const cl = w.__CODE_LAYER__; const el = [...d.querySelectorAll("#storybook-root [data-component] *")].find((e) => !/flex/.test(getComputedStyle(e).display)); if (!el) return { missing: true };
+       const before = cl.lastTrace; cl.select(el, "panel");
+       for (let i = 0; i < 100 && (cl.lastTrace === before || cl.selected !== el); i += 1) await new Promise((r) => setTimeout(r, 30));
+       return { display: getComputedStyle(el).display, rows: cl.lastTrace.rows.filter((r) => ${JSON.stringify(LAYOUT_ROWS)}.includes(r.group)).map((r) => [r.group, r.layout, r.scopes.length, r.readOnly?.reason ?? null]) };`,
+    );
+    assert.ok(!plain.missing, "the story has an element that is not a flex container");
+    assert.ok(plain.rows.length === 4 && plain.rows.every(([, layout, scopes, reason]) => layout === null && scopes === 0 && ["no-declaration", "not-flex-container"].includes(reason)), JSON.stringify(plain));
+    return `non-flex element: display ${plain.display}`;
+  });
+
+  await check("16.2 shorthands and unlisted keywords: flex-flow splits into two targets, place-items is read-only, `start` can be replaced", async () => {
+    await loadActive(cdp, STORY.hanko);
+    const from = "  flex-direction: column;\n  align-items: center;\n  justify-content: center;\n  max-inline-size: 70%;";
+    assert.equal(sealBefore.split(from).length, 2, "the content rule is where the check expects it");
+    await withFileEdit(
+      BADGE_CSS(),
+      (text) => text.replace(from, "  flex-flow: column wrap;\n  place-items: center;\n  justify-content: start;\n  max-inline-size: 70%;"),
+      async () => {
+        await waitIndex(cdp, `(index) => index.css.files.some((f) => f.file.endsWith("BadgeSeal.css") && f.rules.some((r) => r.declarations.some((d) => d.property === "flex-flow")))`, "the index has the edited rule");
+        const trace = await traceOf(cdp, SEAL_CONTENT, { fresh: true });
+        const target = (id) => {
+          const row = rowOf(trace, id);
+          return [row.readOnly?.reason ?? null, row.scopes[0]?.target.type ?? null, row.scopes[0]?.target.property ?? null, row.scopes[0]?.target.component ?? null, row.layout?.declared ?? null];
+        };
+        assert.deepEqual(target("direction"), [null, "set-keyword", "flex-flow", 0, "column"]);
+        assert.deepEqual(target("wrap"), [null, "set-keyword", "flex-flow", 1, "wrap"]);
+        assert.deepEqual(target("alignItems"), ["unsupported-shorthand", null, null, null, null]);
+        assert.deepEqual(target("justifyContent"), [null, "set-keyword", "justify-content", 0, "start"]);
+        assert.ok(!rowOf(trace, "justifyContent").layout.options.includes("start"));
+        // The popover says the source holds a value that is not offered, and offers the six that are.
+        const options = await openLayoutRow(cdp, "justifyContent");
+        assert.match(options.unlisted ?? "", /目前寫的是 start，不在選項裡/);
+        assert.deepEqual([options.options.length, options.options.filter((o) => o.current === "true").length], [6, 0]);
+        const locked = await layoutRow(cdp, "alignItems");
+        assert.deepEqual([locked.editable, locked.readonly], ["false", "unsupported-shorthand"]);
+        await key(cdp, "Escape");
+      },
+    );
+    await waitIndex(cdp, `(index) => index.css.files.some((f) => f.file.endsWith("BadgeSeal.css") && f.rules.some((r) => r.declarations.some((d) => d.property === "flex-direction" && d.value === "column")))`, "the index is back");
+    assert.equal(fs.readFileSync(BADGE_CSS(), "utf8"), sealBefore, "the stylesheet is back to its bytes");
+  });
+
+  await check("16.3 options of a declared row: highlight previews, Escape leaves nothing, a choice stages, the original value un-stages, the keyboard works", async () => {
+    await clearDrafts(cdp);
+    await loadActive(cdp, STORY.hanko);
+    await traceOf(cdp, SEAL_CONTENT, { fresh: true });
+    const animations = await inPreview(cdp, `return d.getAnimations().length`);
+    const ruleBefore = await sealRuleText(cdp, SEAL_CONTENT);
+    const diskBefore = sha(BADGE_CSS());
+    const opened = await openLayoutRow(cdp, "direction");
+    assert.deepEqual(opened.options.map((o) => [o.keyword, o.current, o.disabled]), [["row", "false", "false"], ["column", "true", "false"], ["row-reverse", "false", "false"], ["column-reverse", "false", "false"]]);
+    assert.deepEqual(opened.options.map((o) => o.text), ["橫向row", "直向✓", "橫向（反向）row-reverse", "直向（反向）column-reverse"]);
+    assert.deepEqual([opened.adds, opened.property, opened.scopes, opened.stepper, opened.picker, opened.unset], ["false", "flex-direction", false, false, false, false]);
+    assert.match(opened.where, /會改 \.md-badge-seal__content 的 flex-direction。/);
+    // The probe left the rule as it was and started nothing.
+    assert.equal(await sealRuleText(cdp, SEAL_CONTENT), ruleBefore);
+    assert.equal(await inPreview(cdp, `return d.getAnimations().length`), animations);
+
+    // Highlight: the page shows it, nothing is staged, nothing is written.
+    const row = await managerRect(cdp, optionAt("direction", "row"));
+    await mouse(cdp, "mouseMoved", row.x, row.y);
+    await waitComputed(cdp, SEAL_CONTENT, "flex-direction", "row");
+    assert.deepEqual([(await layoutDrafts(cdp)).length, sha(BADGE_CSS())], [0, diskBefore]);
+    await key(cdp, "Escape");
+    await waitFor(async () => !(await layoutOptionsState(cdp, "direction")), { label: "popover closed" });
+    await waitComputed(cdp, SEAL_CONTENT, "flex-direction", "column");
+    assert.equal((await layoutDrafts(cdp)).length, 0, "nothing was added to the changes list");
+
+    // Choice: one staged change, the row shows it, the popover closes.
+    await openLayoutRow(cdp, "direction");
+    await clickIn(cdp, optionAt("direction", "row"));
+    const staged = await waitLayoutDrafts(cdp, (list) => list.length === 1 && list[0].status === "previewing", "one change staged");
+    assert.deepEqual([staged[0].type, staged[0].from, staged[0].to, staged[0].text.replace(/\s+/g, "")], ["set-keyword", "column", "row", "方向column→row"]);
+    assert.equal(await layoutOptionsState(cdp, "direction"), null, "choosing closed the popover");
+    const stagedRow = await layoutRow(cdp, "direction");
+    assert.deepEqual([stagedRow.keyword, stagedRow.icon, stagedRow.text, stagedRow.isDefault], ["row", "row", "方向橫向", "false"]);
+    assert.match(stagedRow.title, /原本：column/);
+    await waitComputed(cdp, SEAL_CONTENT, "flex-direction", "row");
+    assert.equal(sha(BADGE_CSS()), diskBefore, "staging wrote nothing");
+
+    // Choosing what the source holds is not a change.
+    const again = await openLayoutRow(cdp, "direction");
+    assert.deepEqual(again.options.filter((o) => o.current === "true").map((o) => o.keyword), ["row"], "the staged keyword is the one in effect");
+    await clickIn(cdp, optionAt("direction", "column"));
+    await waitLayoutDrafts(cdp, (list) => list.length === 0, "the change is gone");
+    await waitComputed(cdp, SEAL_CONTENT, "flex-direction", "column");
+
+    // Keyboard: the arrows walk the list and preview, Enter stages.
+    await openLayoutRow(cdp, "direction");
+    for (let i = 0; i < 3; i += 1) await key(cdp, "ArrowDown");
+    await waitSeen(() => layoutOptionsState(cdp, "direction"), (state) => state.options[2].active === "true", "the third option is highlighted");
+    await waitComputed(cdp, SEAL_CONTENT, "flex-direction", "row-reverse");
+    await key(cdp, "Enter");
+    const byKeyboard = await waitLayoutDrafts(cdp, (list) => list.length === 1, "staged with the keyboard");
+    assert.deepEqual([byKeyboard[0].from, byKeyboard[0].to], ["column", "row-reverse"]);
+    await clickAction(cdp, "remove-draft");
+    await waitLayoutDrafts(cdp, (list) => list.length === 0, "removed");
+    await waitComputed(cdp, SEAL_CONTENT, "flex-direction", "column");
+  });
+
+  await check("16.4 a row nothing declares: the popover says which rule gets a new line; the staged addition can be discarded there", async () => {
+    await clearDrafts(cdp);
+    await loadActive(cdp, STORY.hanko);
+    await traceOf(cdp, ROOT, { fresh: true });
+    const animations = await inPreview(cdp, `return d.getAnimations().length`);
+    const ruleBefore = await sealRuleText(cdp, ".md-badge-seal");
+    const diskBefore = sha(BADGE_CSS());
+    const opened = await openLayoutRow(cdp, "wrap");
+    assert.deepEqual(opened.options.map((o) => [o.keyword, o.current]), [["nowrap", "true"], ["wrap", "false"]]);
+    assert.deepEqual([opened.adds, opened.scopes, opened.stepper, opened.unset], ["true", false, false, false]);
+    assert.match(opened.where, /\.md-badge-seal 還沒有設定 flex-wrap，會在這條規則新增一行。/);
+    assert.equal(await sealRuleText(cdp, ".md-badge-seal"), ruleBefore, "the probe added the property and took it away again");
+    assert.equal(await inPreview(cdp, `return d.getAnimations().length`), animations);
+
+    await clickIn(cdp, optionAt("wrap", "wrap"));
+    const staged = await waitLayoutDrafts(cdp, (list) => list.length === 1 && list[0].status === "previewing", "the addition is staged");
+    assert.deepEqual([staged[0].type, staged[0].from, staged[0].to, staged[0].text.replace(/\s+/g, "")], ["add-declaration", "", "wrap", "換行未設定→wrap"]);
+    await waitComputed(cdp, ROOT, "flex-wrap", "wrap");
+    const stagedRow = await layoutRow(cdp, "wrap");
+    assert.deepEqual([stagedRow.keyword, stagedRow.text, stagedRow.isDefault], ["wrap", "換行換行", "false"]);
+    assert.match(stagedRow.title, /原本：未設定/);
+    assert.equal(sha(BADGE_CSS()), diskBefore);
+
+    // Open again: the staged keyword is marked, and the addition can be dropped from here.
+    const reopened = await openLayoutRow(cdp, "wrap");
+    assert.deepEqual([reopened.options.filter((o) => o.current === "true").map((o) => o.keyword), reopened.unset], [["wrap"], true]);
+    await clickIn(cdp, '[data-code-layer-action="layout-unset"]');
+    await waitLayoutDrafts(cdp, (list) => list.length === 0, "discarded");
+    await waitComputed(cdp, ROOT, "flex-wrap", "nowrap");
+    assert.equal(await sealRuleText(cdp, ".md-badge-seal"), ruleBefore, "no preview left on the rule");
+  });
+
+  await check("16.5 a keyword, an added line and a token re-bind in one apply: staged is not written, survives a reload, is verified, and undo is exact", async () => {
+    await clearDrafts(cdp);
+    await loadActive(cdp, STORY.hanko);
+    await clickBadge(cdp);
+    await openLayoutRow(cdp, "justifyContent");
+    await clickIn(cdp, optionAt("justifyContent", "space-between"));
+    await waitLayoutDrafts(cdp, (list) => list.length === 1, "distribution staged");
+    await openLayoutRow(cdp, "wrap");
+    await clickIn(cdp, optionAt("wrap", "wrap"));
+    await waitLayoutDrafts(cdp, (list) => list.length === 2, "wrapping staged");
+    const option = await pickToken(cdp, "radius", "corner-md", "--md-sys-shape-corner-md");
+    await click(cdp, option.x, option.y);
+    const staged = await waitLayoutDrafts(cdp, (list) => list.length === 3 && list.every((d) => d.status === "previewing"), "three changes previewing");
+    assert.deepEqual(staged.map((d) => [d.type, d.from, d.to]), [["set-keyword", "center", "space-between"], ["add-declaration", "", "wrap"], ["rebind-declaration", "--md-sys-shape-corner-sm", "--md-sys-shape-corner-md"]]);
+    assert.deepEqual(staged.slice(0, 2).map((d) => d.text.replace(/\s+/g, "")), ["分布center→space-between", "換行未設定→wrap"]);
+    assert.deepEqual(governedHashes(), start, "three staged changes, no file changed");
+    assert.deepEqual(await computedOf(cdp, ROOT, ["justify-content", "flex-wrap", "border-top-left-radius"]), ["space-between", "wrap", "8px"]);
+
+    // A reload keeps the staged changes and their previews.
+    await loadActive(cdp, STORY.hanko);
+    await waitLayoutDrafts(cdp, (list) => list.length === 3 && list.every((d) => d.status === "previewing"), "three changes after the reload");
+    assert.deepEqual(await computedOf(cdp, ROOT, ["justify-content", "flex-wrap", "border-top-left-radius"]), ["space-between", "wrap", "8px"]);
+    assert.deepEqual(governedHashes(), start);
+
+    await clickBadge(cdp);
+    await clickAction(cdp, "apply");
+    const report = await waitReport(cdp, "apply", ["verified"], 40000);
+    assert.deepEqual(report.items, ["verified", "verified", "verified"]);
+    const written = fs.readFileSync(BADGE_CSS(), "utf8");
+    assert.equal(
+      written,
+      sealBefore
+        .replace("  justify-content: center;\n  min-inline-size", "  justify-content: space-between;\n  min-inline-size")
+        .replace("  text-align: center;\n}", "  text-align: center;\n  flex-wrap: wrap;\n}")
+        .replace("  background: var(--md-comp-badge-seal-hanko-container-color);\n  border-radius: var(--md-sys-shape-corner-sm);", "  background: var(--md-comp-badge-seal-hanko-container-color);\n  border-radius: var(--md-sys-shape-corner-md);"),
+      "exactly the keyword, the new line at the end of the rule, and the token name",
+    );
+    assert.deepEqual([line(BADGE_CSS(), 7), line(BADGE_CSS(), 15), line(BADGE_CSS(), 16)], ["  justify-content: space-between;", "  flex-wrap: wrap;", "}"]);
+    assert.deepEqual(await computedOf(cdp, ROOT, ["justify-content", "flex-wrap", "border-top-left-radius"]), ["space-between", "wrap", "8px"]);
+    assert.equal(await inPreview(cdp, `return w.__CODE_LAYER__.live.hasPreviews()`), false, "the values come from the files now");
+    assert.equal((await layoutDrafts(cdp)).length, 0, "applied changes left the list");
+    // Each layout change left one entry for a person to look at, with its keywords.
+    const state = await serverState();
+    const layoutEntries = state.pendingDocs.filter((e) => e.newValue).map((e) => [e.kind, e.reason, e.property, e.oldValue, e.newValue, e.line]);
+    assert.deepEqual(layoutEntries, [["declaration", "declaration-not-documented", "justify-content", "center", "space-between", 7], ["declaration", "declaration-not-documented", "flex-wrap", null, "wrap", 15]]);
+    // The rows now read from the source: declared, not defaults.
+    await waitSeen(() => layoutRow(cdp, "wrap"), (row) => row.keyword === "wrap" && row.isDefault === "false", "the wrapping row is declared now");
+    await waitPostApply();
+
+    await clickAction(cdp, "undo");
+    await waitReport(cdp, "undo", ["verified"], 40000);
+    await waitPostApply();
+    assert.equal(fs.readFileSync(BADGE_CSS(), "utf8"), sealBefore, "undo restored the stylesheet to its bytes");
+    assert.deepEqual(await computedOf(cdp, ROOT, ["justify-content", "flex-wrap", "border-top-left-radius"]), ["center", "nowrap", "4px"]);
+    assert.equal(await inPreview(cdp, `return w.__CODE_LAYER__.live.hasPreviews()`), false, "undo did not bring previews back");
+    assert.equal((await serverState()).pendingDocs.length, 0, "undo cleared what the apply left pending");
+  });
+
+  await check("16.6 a staged keyword: compare shows the original while held; it survives a hot update of an unchanged file and turns into a conflict when the source changes under it", async () => {
+    await clearDrafts(cdp);
+    await loadActive(cdp, STORY.hanko);
+    await traceOf(cdp, SEAL_CONTENT, { fresh: true });
+    await openLayoutRow(cdp, "direction");
+    await clickIn(cdp, optionAt("direction", "row"));
+    await waitLayoutDrafts(cdp, (list) => list.length === 1 && list[0].status === "previewing", "staged");
+    // Holding "compare" shows the page without the staged keyword; releasing puts it back.
+    const compare = await managerRect(cdp, '[data-code-layer-action="compare"]');
+    await mouse(cdp, "mouseMoved", compare.x, compare.y);
+    await mouse(cdp, "mousePressed", compare.x, compare.y);
+    await waitComputed(cdp, SEAL_CONTENT, "flex-direction", "column");
+    await mouse(cdp, "mouseReleased", compare.x, compare.y);
+    await waitComputed(cdp, SEAL_CONTENT, "flex-direction", "row");
+    // The same bytes written again: the page takes the hot update and the preview is put back.
+    fs.writeFileSync(BADGE_CSS(), fs.readFileSync(BADGE_CSS()));
+    await delayMs(900);
+    await waitLayoutDrafts(cdp, (list) => list.length === 1 && list[0].status === "previewing", "still previewing after the hot update");
+    await waitComputed(cdp, SEAL_CONTENT, "flex-direction", "row");
+    // Someone changes the keyword in the source: the staged change no longer applies to what is there.
+    await withFileEdit(
+      BADGE_CSS(),
+      (text) => text.replace("  flex-direction: column;\n  align-items: center;\n  justify-content: center;\n  max-inline-size: 70%;", "  flex-direction: column-reverse;\n  align-items: center;\n  justify-content: center;\n  max-inline-size: 70%;"),
+      async () => {
+        const conflict = await waitLayoutDrafts(cdp, (list) => list.length === 1 && list[0].status === "conflict", "conflict");
+        assert.match(conflict[0].text, /來源已變更/);
+        await waitComputed(cdp, SEAL_CONTENT, "flex-direction", "column-reverse");
+      },
+    );
+    await waitLayoutDrafts(cdp, (list) => list.length === 1 && list[0].status === "previewing", "previewing again once the source is back");
+    await clickAction(cdp, "remove-draft");
+    await waitLayoutDrafts(cdp, (list) => list.length === 0, "removed");
+    assert.equal(fs.readFileSync(BADGE_CSS(), "utf8"), sealBefore);
+  });
+
+  await check("16.7 with locale en the layout rows, options and notes are in English", async () => {
+    await clearDrafts(cdp);
+    await patchIndex(cdp, (json) => {
+      json.locale = "en";
+    });
+    try {
+      await loadActive(cdp, STORY.hanko);
+      await traceOf(cdp, ROOT, { fresh: true });
+      const rows = {};
+      for (const id of LAYOUT_ROWS) rows[id] = await waitFor(() => layoutRow(cdp, id), { label: `row ${id}` });
+      assert.deepEqual(LAYOUT_ROWS.map((id) => rows[id].text), ["DirectionHorizontal", "AlignCenter", "JustifyCenter", "WrapNo wrap"]);
+      const direction = await openLayoutRow(cdp, "direction");
+      assert.deepEqual(direction.options.map((o) => o.text), ["Horizontal✓", "Verticalcolumn", "Horizontal, reversedrow-reverse", "Vertical, reversedcolumn-reverse"]);
+      assert.match(direction.where, /\.md-badge-seal does not set flex-direction yet; a line is added to that rule\./);
+      assert.doesNotMatch(direction.text, /[㐀-鿿]/, "no Chinese text in the popover");
+      await key(cdp, "Escape");
+      // Start and end are named by the side they are on: this container runs left to right.
+      const justify = await openLayoutRow(cdp, "justifyContent");
+      assert.deepEqual(justify.options.map((o) => o.text), ["Leftflex-start", "Center✓", "Rightflex-end", "Space betweenspace-between", "Space aroundspace-around", "Space evenlyspace-evenly"]);
+      await key(cdp, "Escape");
+      const align = await openLayoutRow(cdp, "alignItems");
+      assert.deepEqual(align.options.map((o) => o.text), ["Topflex-start", "Center✓", "Bottomflex-end", "Stretchstretch", "Text baselinebaseline"]);
+      await key(cdp, "Escape");
+    } finally {
+      await patchIndex(cdp, null);
+    }
+  });
+
+  await check("16.8 the object reference names the layout rows, their options and where a change goes; a column container names its sides the other way round", async () => {
+    await clearDrafts(cdp);
+    await loadActive(cdp, STORY.hanko);
+    await clickBadge(cdp);
+    const text = await copyFromOutline(cdp);
+    const lineOf = (label) => text.split("\n").find((l) => l.startsWith(label)) ?? "";
+    assert.match(lineOf("排列方向"), /flex-direction = row · 尚未宣告；可設為 row \| column \| row-reverse \| column-reverse 之一（會在 \.md-badge-seal 新增一行，storybook\/src\/components\/badge-seal\/BadgeSeal\.css:3）/);
+    assert.match(lineOf("交叉軸對齊"), /align-items（storybook\/src\/components\/badge-seal\/BadgeSeal\.css:6） = center · 可改成 flex-start \| center \| flex-end \| stretch \| baseline 之一（改 \.md-badge-seal 的這個宣告，storybook\/src\/components\/badge-seal\/BadgeSeal\.css:6）/);
+    assert.match(lineOf("顯示方式"), /唯讀：display 只供檢視/);
+    // The content box stacks its children: its main axis is vertical, so distribution runs top to bottom and alignment left to right.
+    await traceOf(cdp, SEAL_CONTENT, { fresh: true });
+    const justify = await openLayoutRow(cdp, "justifyContent");
+    assert.deepEqual(justify.options.slice(0, 3).map((o) => o.text), ["靠上flex-start", "置中✓", "靠下flex-end"]);
+    await key(cdp, "Escape");
+    const align = await openLayoutRow(cdp, "alignItems");
+    assert.deepEqual(align.options.slice(0, 3).map((o) => o.text), ["靠左flex-start", "置中✓", "靠右flex-end"]);
+    await key(cdp, "Escape");
+  });
+
+  await check("16.9 the stage left the project as it found it", async () => {
+    assert.deepEqual(governedHashes(), start);
+    const state = await serverState();
+    assert.deepEqual([state.undoStack.length, state.pendingDocs.length], [0, 0]);
+    return `${Object.keys(start).length} governed files unchanged`;
+  });
+}
+
 async function main() {
   const chrome = await launchChrome({ headless: !headed });
   chrome.closeTarget = async (page) => {
@@ -3132,6 +3513,7 @@ async function main() {
     if (stages.includes(13)) await stage13(cdp, chrome);
     if (stages.includes(14)) await stage14(cdp, chrome);
     if (stages.includes(15)) await stage15(cdp, chrome);
+    if (stages.includes(16)) await stage16(cdp, chrome);
   } finally {
     cdp.close();
     await chrome.close();

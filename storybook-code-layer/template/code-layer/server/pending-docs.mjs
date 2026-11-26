@@ -218,7 +218,16 @@ export function collectPending({ config, index, specFiles, results, skipped, new
     seen.add(key);
     entries.push(entry);
   };
-  const change = (result) => ({ operation: result.id, token: result.token ?? null, property: result.property ?? null, oldToken: result.fromToken, newToken: result.toToken });
+  const LAYOUT = new Set(["set-keyword", "add-declaration"]);
+  const change = (result) => ({
+    operation: result.id,
+    token: result.token ?? null,
+    property: result.property ?? null,
+    oldToken: result.fromToken ?? null,
+    newToken: result.toToken ?? null,
+    // A layout operation has keywords instead of tokens; an added declaration has no old one.
+    ...(LAYOUT.has(result.type) ? { oldValue: result.fromKeyword ?? null, newValue: result.toKeyword ?? null } : {}),
+  });
 
   for (const result of results) {
     const base = change(result);
@@ -229,7 +238,7 @@ export function collectPending({ config, index, specFiles, results, skipped, new
       // A system token feeds every component that uses the role: no single document can be named.
       push({ ...base, kind: "system-token", reason: "system-token-changed", file: relW(result.file), line: result.line, excerpt: declarationLine.trim().slice(0, 200) });
     }
-    if (result.type === "rebind-declaration") {
+    if (result.type === "rebind-declaration" || LAYOUT.has(result.type)) {
       // Component stylesheet declarations are not tabulated anywhere.
       push({ ...base, kind: "declaration", reason: "declaration-not-documented", file: relW(result.file), line: result.line, excerpt: declarationLine.trim().slice(0, 200) });
     }
@@ -254,6 +263,8 @@ export function collectPending({ config, index, specFiles, results, skipped, new
   if (config.governance.proseScan) {
     for (const result of results) {
       if (result.type === "rebind-token" && result.tier !== "comp") continue;
+      // Keywords such as `row` and `center` are ordinary words: prose is never searched for them.
+      if (LAYOUT.has(result.type)) continue;
       const term = shortNameOf(result.fromToken, prefix, componentIds);
       if (!searchable(term)) continue;
       const base = change(result);

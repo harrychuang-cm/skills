@@ -6,7 +6,7 @@
 //   arm time) or, without an arm measurement, the target token's live value.
 //   "Verified" also requires that the value actually changed (A != expected).
 import { findRootDeclaration, normalizeValue } from "../shared/value-refs.mjs";
-import type { Descriptor, Draft, IndexJson } from "../shared/protocol";
+import { isLayoutOp, type Descriptor, type Draft, type IndexJson } from "../shared/protocol";
 import { toHex } from "./color";
 import { resolve } from "./descriptor";
 import { withFreeze } from "./freeze";
@@ -93,6 +93,8 @@ function level1(draft: Draft, request: VerifyRequest, index: IndexJson | null): 
 
 /** The value a draft's witness should show after the write (or after the undo). */
 function expectedFromTokens(draft: Draft, mode: "apply" | "undo"): string | null {
+  // A layout keyword is its own computed value; before an added declaration there is nothing to name.
+  if (isLayoutOp(draft.op)) return mode === "apply" ? draft.op.toKeyword : draft.op.type === "set-keyword" ? draft.op.fromKeyword : null;
   const token = mode === "apply" ? draft.op.toToken : draft.op.fromToken;
   const value = getComputedStyle(document.documentElement).getPropertyValue(token).trim();
   return value || null;

@@ -1,7 +1,8 @@
 // The panel's property table. A group lists the logical longhands ("slots",
 // see sides.mjs) it covers; the tracer finds, per slot, the declaration
 // component that sets it, and reports one row per set of slots that share a
-// winner. Structural layout groups are shown for context and never edited.
+// winner. The display group is shown for context and never edited; the four
+// flex container groups are edited by keyword (shared/layout.mjs), not re-bound.
 
 export type SectionId = "layout" | "spacing" | "size" | "appearance" | "fill" | "stroke" | "typography";
 
@@ -23,6 +24,8 @@ export type GroupDef = {
   split: "single" | "sides" | "corners" | "axes";
   /** Slots to use instead on SVG graphics, where the property means something else (fill). */
   svgSlots?: string[];
+  /** Edited by choosing a keyword of a fixed list (shared/layout.mjs), on a flex container only. Never re-bound. */
+  layout?: boolean;
 };
 
 const SIDES = ["block-start", "inline-end", "block-end", "inline-start"];
@@ -32,10 +35,10 @@ const LENGTH = ["dimension", "zero", "percentage"];
 export const GROUPS: GroupDef[] = [
   // Layout
   { id: "display", section: "layout", slots: ["display"], kinds: [], editable: false, inherited: false, split: "single" },
-  { id: "direction", section: "layout", slots: ["flex-direction"], kinds: [], editable: false, inherited: false, split: "single" },
-  { id: "alignItems", section: "layout", slots: ["align-items"], kinds: [], editable: false, inherited: false, split: "single" },
-  { id: "justifyContent", section: "layout", slots: ["justify-content"], kinds: [], editable: false, inherited: false, split: "single" },
-  { id: "wrap", section: "layout", slots: ["flex-wrap"], kinds: [], editable: false, inherited: false, split: "single" },
+  { id: "direction", section: "layout", slots: ["flex-direction"], kinds: [], editable: false, inherited: false, split: "single", layout: true },
+  { id: "alignItems", section: "layout", slots: ["align-items"], kinds: [], editable: false, inherited: false, split: "single", layout: true },
+  { id: "justifyContent", section: "layout", slots: ["justify-content"], kinds: [], editable: false, inherited: false, split: "single", layout: true },
+  { id: "wrap", section: "layout", slots: ["flex-wrap"], kinds: [], editable: false, inherited: false, split: "single", layout: true },
   { id: "gap", section: "layout", slots: ["row-gap", "column-gap"], kinds: LENGTH, editable: true, inherited: false, split: "axes" },
   // Spacing
   { id: "padding", section: "spacing", slots: sides("padding"), kinds: LENGTH, editable: true, inherited: false, split: "sides" },

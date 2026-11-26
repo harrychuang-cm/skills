@@ -77,6 +77,19 @@ export function overriddenByLater(property, components, laterProperties) {
   return { components: flags, declaration: judged.length > 0 && judged.every(Boolean) };
 }
 
+/**
+ * Whether a declaration can be appended to a rule without touching any other
+ * byte: it has a declaration to copy the indentation from, that declaration
+ * ends with a semicolon, and nothing but declarations and comments is inside.
+ */
+export function appendability(rule) {
+  const nodes = rule.nodes ?? [];
+  if (!nodes.some((node) => node.type === "decl")) return { ok: false, reason: "empty-rule" };
+  if (nodes.some((node) => node.type !== "decl" && node.type !== "comment")) return { ok: false, reason: "nested-content" };
+  if (rule.raws.semicolon !== true) return { ok: false, reason: "no-trailing-semicolon" };
+  return { ok: true, reason: null };
+}
+
 export function buildCssIndex({ config, postcss, tokens }) {
   const relP = (abs) => relativePosix(config.projectRoot, abs);
   const relW = (abs) => relativePosix(config.workspaceRoot, abs);
@@ -155,6 +168,7 @@ export function buildCssIndex({ config, postcss, tokens }) {
           occurrence,
           line: rule.source.start.line,
           nested: rule.parent?.type === "rule",
+          append: appendability(rule),
           declarations,
         });
         ordinal += 1;

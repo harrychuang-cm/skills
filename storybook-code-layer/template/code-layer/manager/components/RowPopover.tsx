@@ -2,12 +2,13 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 
 import { t, tCode, tMaybe } from "../../shared/i18n";
 import { fieldLabel, prettyToken, rowLabel, scopeLabel, shortToken, sideGlyph } from "../../shared/labels";
-import type { ElementTrace, IndexJson, RowScope, RowTrace } from "../../shared/protocol";
+import { opTo, type ElementTrace, type IndexJson, type RowScope, type RowTrace } from "../../shared/protocol";
 import { cancelScopeConfirm, chooseScope, previewTransient, requestProbe, requestScope, selectDescriptor, stageDraft } from "../actions";
 import { candidatesFor, currentScope, draftOfRow, rowKey, scaleFor } from "../drafts";
 import { CheckIcon, CloseIcon, MinusIcon, PlusIcon } from "../icons";
 import { store, useStore } from "../store";
 import { Button, DevBlock, IconButton, LinkButton, Note, Option, Options, PopHead, PopTitle, Search, Segment, Segmented, StepRow, Swatch, Warn } from "../styles";
+import { LayoutOptions } from "./LayoutOptions";
 
 type Props = { trace: ElementTrace; row: RowTrace; index: IndexJson; editable: boolean; dev: boolean; onClose: () => void };
 
@@ -39,7 +40,7 @@ export function RowPopover({ trace, row, index, editable: modeEditable, dev, onC
   const unconfirmed = probe === "unconfirmed";
   const offered = modeEditable && !row.readOnly && scope !== null && scope.available;
   const editable = offered && !unconfirmed;
-  const boundToken = draft ? draft.op.toToken : scope?.fromToken ?? row.tokenName;
+  const boundToken = draft ? opTo(draft.op) : scope?.fromToken ?? row.tokenName;
   const scale = editable && scope ? scaleFor(row, scope, index, tokenValues) : [];
   const at = scale.findIndex((token) => token.name === boundToken);
   const pending = confirm ? row.scopes.find((s) => s.id === confirm.scope) ?? null : null;
@@ -90,7 +91,7 @@ export function RowPopover({ trace, row, index, editable: modeEditable, dev, onC
         </Note>
       ) : null}
 
-      {!row.readOnly && row.scopes.length > 0 ? (
+      {!row.readOnly && row.scopes.length > 0 && !row.layout ? (
         <div data-code-layer-scopes>
           <Segmented role="radiogroup" aria-label={t("reach.title")}>
             {row.scopes.map((option) => {
@@ -153,7 +154,8 @@ export function RowPopover({ trace, row, index, editable: modeEditable, dev, onC
         </StepRow>
       ) : null}
 
-      {editable && scope && boundToken ? <TokenList trace={trace} row={row} scope={scope} index={index} currentToken={boundToken} onClose={onClose} /> : null}
+      {editable && scope && row.layout ? <LayoutOptions trace={trace} row={row} scope={scope} onClose={onClose} /> : null}
+      {editable && scope && boundToken && !row.layout ? <TokenList trace={trace} row={row} scope={scope} index={index} currentToken={boundToken} onClose={onClose} /> : null}
 
       {dev ? (
         <DevBlock data-code-layer-dev>

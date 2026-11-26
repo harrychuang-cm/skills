@@ -44,5 +44,6 @@ export function findVarRefs(text: string): VarRef[];
 export function splitTopLevel(text: string): TopLevelPart[];
 export function classifyValue(text: string): ValueShape;
 export function replaceVarName(text: string, refIndex: number, fromName: string, toName: string): string;
+export function replaceComponent(text: string, index: number, expected: string, replacement: string): string;
 export function scanDeclarations(text: string): ScannedDeclaration[];
 export function findRootDeclaration(text: string, name: string): ScannedDeclaration | "ambiguous" | null;

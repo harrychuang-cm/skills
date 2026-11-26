@@ -39,6 +39,11 @@ function rowNotes(row: RowTrace): string[] {
   }
   if (row.readOnly) {
     notes.push(t("reference.readOnly", { reason: tMaybe(`readonly.${row.readOnly.reason}`, { detail: row.readOnly.detail }) ?? row.readOnly.reason }));
+  } else if (row.layout && row.scopes.length > 0) {
+    // A layout row is set to one of a fixed list of keywords, by changing its declaration or by adding one.
+    const scope = row.scopes[0];
+    const selector = scope.target.type === "rebind-token" ? "" : scope.target.selector;
+    notes.push(t(scope.target.type === "add-declaration" ? "reference.layoutAdds" : "reference.layoutEdits", { selector, file: scope.writes.files[0], line: scope.writes.line, options: row.layout.options.join(" | ") }));
   } else if (row.scopes.length > 0) {
     const scopes = row.scopes.map((scope) => {
       const name = scopeLabel(scope.id);
@@ -53,7 +58,7 @@ function rowNotes(row: RowTrace): string[] {
 
 /** Rows worth describing: everything that was traced to a declaration, an attribute or an ancestor. */
 export function referenceRows(trace: ElementTrace): RowTrace[] {
-  return trace.rows.filter((row) => row.source !== "none" || (row.inheritedFrom !== null && row.inheritedFrom.kind !== "default"));
+  return trace.rows.filter((row) => row.source !== "none" || row.layout !== null || (row.inheritedFrom !== null && row.inheritedFrom.kind !== "default"));
 }
 
 export function buildReference(trace: ElementTrace, onlyRowIds: string[] | null = null): string {

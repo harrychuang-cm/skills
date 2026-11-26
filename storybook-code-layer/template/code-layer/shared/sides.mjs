@@ -108,6 +108,8 @@ function parseProperty(property) {
   if (property === "background") return { type: "background" };
   if (property === "font") return { type: "font" };
   if (property === "flex-flow") return { type: "flex-flow" };
+  if (property === "place-items") return { type: "place", slots: ["align-items"] };
+  if (property === "place-content") return { type: "place", slots: ["justify-content"] };
   return null;
 }
 
@@ -186,6 +188,8 @@ export function affectedSlots(property, writingMode = "horizontal-tb", direction
       return ["font-family", "font-size", "font-weight", "line-height"];
     case "flex-flow":
       return ["flex-direction", "flex-wrap"];
+    case "place":
+      return parsed.slots;
     default:
       return null;
   }
@@ -203,7 +207,7 @@ export function affectedSlots(property, writingMode = "horizontal-tb", direction
  * Returns { ok: false, reason, affected } when the mapping cannot be decided:
  *   "unknown-property", "unsupported-writing-mode", "unsupported-value"
  *   (wrong number or kind of components, slash-separated radius) or
- *   "unsupported-shorthand" (font). `affected` lists the slots the declaration
+ *   "unsupported-shorthand" (font, place-items, place-content). `affected` lists the slots the declaration
  *   still overrides, so a row can say why it is read-only.
  */
 export function sidesOf(property, components, writingMode = "horizontal-tb", direction = "ltr") {
@@ -266,6 +270,8 @@ export function sidesOf(property, components, writingMode = "horizontal-tb", dir
       return { ok: true, slots: affected.map((slot) => ({ slot, component: found[slot] })) };
     }
     case "font":
+    // place-items / place-content: the first value is the align-* half, the second the justify-* half.
+    case "place":
       return failure("unsupported-shorthand", affected);
     default:
       return failure("unknown-property", []);

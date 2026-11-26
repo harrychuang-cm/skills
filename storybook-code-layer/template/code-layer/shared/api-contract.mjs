@@ -6,7 +6,9 @@ export const SESSION_HEADER = "x-code-layer-session";
 export const ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
 export const TOKEN_NAME_PATTERN = /^--[A-Za-z0-9_-]{1,200}$/;
 
-export const OPERATION_TYPES = ["rebind-token", "rebind-declaration"];
+export const OPERATION_TYPES = ["rebind-token", "rebind-declaration", "set-keyword", "add-declaration"];
+/** Built only by the server, as the inverse of an add-declaration it journaled. Never accepted from a request. */
+export const INTERNAL_OPERATION_TYPES = ["remove-declaration"];
 
 /** Every refusal code. `lane: "agent"` marks problems a person or an agent could resolve. */
 export const ERROR_CODES = {
@@ -25,6 +27,8 @@ export const ERROR_CODES = {
   "type-mismatch": { status: 422, lane: "agent" },
   "no-op": { status: 422 },
   "unsupported-value-shape": { status: 422, lane: "agent" },
+  "keyword-not-allowed": { status: 422 },
+  "rule-not-eligible": { status: 422, lane: "agent" },
   "duplicate-token-declaration": { status: 422, lane: "agent" },
   "duplicate-target": { status: 422 },
   "stale-before": { status: 409 },

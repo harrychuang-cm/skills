@@ -1,9 +1,9 @@
 import React from "react";
 
 import { t, tMaybe } from "../../shared/i18n";
-import { draftRowLabel, groupLabel, prettyToken, scopeLabel, shortToken } from "../../shared/labels";
+import { changeEnds, draftRowLabel, groupLabel, prettyToken, scopeLabel, shortToken } from "../../shared/labels";
 import { pairingReport, type PairingEntry } from "../../shared/pairing.mjs";
-import type { Draft, IndexJson } from "../../shared/protocol";
+import { isLayoutOp, opFrom, opTo, type Draft, type IndexJson } from "../../shared/protocol";
 import { discardAll, removeDraft, setCompare, stageOffer } from "../actions";
 import { CloseIcon, WarnIcon } from "../icons";
 import { useStore } from "../store";
@@ -80,15 +80,18 @@ export function ChangesBar({ index, applyEnabled, applyHint, onApply, applying, 
         const where = `${scopeLabel(draft.scope)} · ${writes} · ${impactText({ declarations: draft.writesTo.declarations, components: draft.writesTo.components })}`;
         const details = [`${draftRowLabel(draft)} · ${draft.elementLabel}`, t(`reach.${draft.scope}` as "reach.declaration"), draft.inheritedFrom ? t("changes.inherited", { label: draft.inheritedFrom }) : "", message].filter(Boolean).join(" · ");
         const label = tMaybe(`field.${draft.group}`) ?? groupLabel(draft.group);
+        const ends = changeEnds(draft.op, prefix);
+        // Layout keywords are shown as written; token names lose the prefix and the component.
+        const shown = isLayoutOp(draft.op) ? ends : { from: prettyToken(draft.op.fromToken, prefix), to: prettyToken(draft.op.toToken, prefix) };
         return (
-          <ChangeRow key={draft.id} data-code-layer-draft={draft.id} data-scope={draft.scope} data-status={status?.status ?? ""} data-to={draft.op.toToken} data-from={draft.op.fromToken}>
-            <ChangeMain title={`${details}\n${shortToken(draft.op.fromToken, prefix)} → ${shortToken(draft.op.toToken, prefix)}\n${where}`}>
+          <ChangeRow key={draft.id} data-code-layer-draft={draft.id} data-scope={draft.scope} data-status={status?.status ?? ""} data-to={opTo(draft.op)} data-from={opFrom(draft.op)} data-type={draft.op.type}>
+            <ChangeMain title={`${details}\n${ends.from} → ${ends.to}\n${where}`}>
               <Dot tone={status?.status ?? ""} />
               <ChangeText>
                 <i>{label}</i>
-                <s>{prettyToken(draft.op.fromToken, prefix)}</s>
+                <s>{shown.from}</s>
                 {" → "}
-                <b>{prettyToken(draft.op.toToken, prefix)}</b>
+                <b>{shown.to}</b>
                 {status && status.status !== "previewing" ? <Chip tone={status.status}>{t(`draft.status.${status.status}` as "draft.status.previewing")}</Chip> : null}
               </ChangeText>
               <IconButton type="button" aria-label={t("changes.remove", { row: draftRowLabel(draft) })} title={t("changes.remove", { row: draftRowLabel(draft) })} onClick={() => removeDraft(draft.id)} disabled={applying} data-code-layer-action="remove-draft" style={{ width: 20, height: 20 }}>

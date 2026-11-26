@@ -6,7 +6,7 @@ Open the visual guide at [`docs/skills-guide.html`](docs/skills-guide.html) for 
 
 For designers, [`docs/designer-guide-storybook-to-production.html`](docs/designer-guide-storybook-to-production.html)（「從 Storybook 到上線」, Traditional Chinese）is an interactive walkthrough of how a Storybook prototype or the component library becomes production code: a scenario wizard that picks the route and the exact prompt to say, a six-station user journey, and simulated approval-gate dialogues. It is also published online at <https://claude.ai/code/artifact/392505bf-6e24-4299-9d4a-1e536a329a4b> (private to the owner until shared from the artifact's share menu).
 
-For people who use Code Layer, [`docs/code-layer-guide.html`](docs/code-layer-guide.html)（「Code Layer 使用指南」, Traditional Chinese）is an interactive guide: a working simulator of the inspector that walks through five user journeys, an annotated tour of every control, the three scopes of a change, why a row is locked, how to read the result of an apply, an FAQ and a changelog. It is the one guide for the tool and is updated in the same change whenever the tool gains a feature.
+For people who use Code Layer, [`docs/code-layer-guide.html`](docs/code-layer-guide.html)（「Code Layer 使用指南」, Traditional Chinese）is an interactive guide: a working simulator of the inspector that walks through six user journeys, an annotated tour of every control, the three scopes of a change, why a row is locked, how to read the result of an apply, an FAQ and a changelog. It is the one guide for the tool and is updated in the same change whenever the tool gains a feature.
 
 ## Skills
 
@@ -248,11 +248,11 @@ Developer-facing install & usage guide (zh-TW): `storybook-tools-install/README.
 Install, check, update and remove Code Layer — a Figma-like design mode inside a Vite-based Storybook:
 
 1. A toolbar toggle turns on a selection mode: click a rendered element, drill in with a double-click or Enter, and read its layout, spacing, size, appearance, fill, stroke and typography in an inspector that floats over the canvas (draggable, collapsible, and it leaves Storybook's own panels alone). Each property is one compact row — icon, value, token — traced to the declaration and the token chain that sets it; explanations and file locations are on demand.
-2. Click a value to re-bind it to another existing token at the reach you choose (only here, this component, or — when the project opens it — the whole system), with a live preview; nothing is written until Apply.
+2. Click a value to re-bind it to another existing token at the reach you choose (only here, this component, or — when the project opens it — the whole system), with a live preview; nothing is written until Apply. On a flex container, the direction, alignment, distribution and wrapping rows open a fixed list of options instead: these are CSS keywords, not tokens, so the chosen keyword replaces the declared one, or one declaration is appended to the rule that declares the element's `display`.
 3. Apply writes the token source of truth and its mirror, the component stylesheet and the matching Token Contract row of the component specification in one journaled transaction, runs the project's token checks on a candidate tree first, then verifies that the page shows what the files say. Undo restores the exact bytes; a reverse apply handles files edited since.
 4. The installer derives a project binding from evidence for a person to confirm, copies a versioned template, wires `.storybook/main` with one array element, and tracks everything in a receipt so `--update` never overwrites local changes and `--uninstall` removes only what it added.
 
-Use this when a design-system Storybook (three-tier `ref → sys → comp` tokens) should let designers adjust token bindings on the rendered component and have the change land in source. It only re-binds existing tokens; it never invents values. Requires Chromium for the panel; exists only in `storybook dev`.
+Use this when a design-system Storybook (three-tier `ref → sys → comp` tokens) should let designers adjust token bindings on the rendered component and have the change land in source. For values, colors and type it only re-binds existing tokens and never invents a value; for layout it writes only keywords from a fixed list. Requires Chromium for the panel; exists only in `storybook dev`.
 
 Usage guide (zh-TW): `storybook-code-layer/README.md`.
 

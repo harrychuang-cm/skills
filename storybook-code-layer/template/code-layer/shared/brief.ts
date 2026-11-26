@@ -16,6 +16,9 @@ export type PendingEntry = {
   property: string | null;
   oldToken: string | null;
   newToken: string | null;
+  /** A layout change: the keywords instead of tokens (no old one when a declaration was added). */
+  oldValue?: string | null;
+  newValue?: string | null;
   term?: string;
   actual?: string | null;
 };
@@ -31,9 +34,11 @@ export function pendingBrief(applyId: string, entries: PendingEntry[], reference
   lines.push("", t("brief.intro"));
   const changes = new Map<string, string>();
   for (const entry of entries) {
-    if (!entry.oldToken || !entry.newToken) continue;
+    const to = entry.newToken ?? entry.newValue ?? null;
+    const from = entry.oldToken ?? entry.oldValue ?? (entry.newValue ? t("layout.unset") : null);
+    if (!from || !to) continue;
     const subject = entry.token ?? entry.property ?? "";
-    changes.set(`${subject}|${entry.oldToken}|${entry.newToken}`, t("brief.change", { subject, from: entry.oldToken, to: entry.newToken }));
+    changes.set(`${subject}|${from}|${to}`, t("brief.change", { subject, from, to }));
   }
   for (const change of changes.values()) lines.push(`- ${change}`);
   lines.push("", t("brief.places"));

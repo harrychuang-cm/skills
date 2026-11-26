@@ -281,6 +281,21 @@ export function replaceVarName(text, refIndex, fromName, toName) {
 }
 
 /**
+ * Replace the index-th top-level component of a value (as splitTopLevel lists
+ * them) with other text. The component must hold `expected`; comments and
+ * whitespace around it are kept.
+ */
+export function replaceComponent(text, index, expected, replacement) {
+  const part = splitTopLevel(text)[index];
+  if (!part || part.separator || part.text !== expected) {
+    const error = new Error(`component ${index} is not ${expected}`);
+    error.code = "locator-mismatch";
+    throw error;
+  }
+  return text.slice(0, part.start) + replacement + text.slice(part.end);
+}
+
+/**
  * Declarations found anywhere in a stylesheet text. Used by the browser to
  * read the token sheet's textContent (which Vite produced from an @import
  * entry) without trusting the CSSOM.

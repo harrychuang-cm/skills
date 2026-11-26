@@ -2,7 +2,7 @@
 // Classification reads only <style> textContent (never the CSSOM we edit):
 //   before -> apply the preview;  after -> already in source;  else -> conflict.
 // Removing previews from a sheet = re-assigning its own text (rebuilds it).
-import { findRootDeclaration, findVarRefs, normalizeValue, replaceVarName } from "../shared/value-refs.mjs";
+import { findRootDeclaration, findVarRefs, normalizeValue, replaceComponent, replaceVarName } from "../shared/value-refs.mjs";
 import type { Draft, DraftStatus, IndexJson, PreviewStatePayload, SyncPayload } from "../shared/protocol";
 import { resolve } from "./descriptor";
 import { withFreeze } from "./freeze";
@@ -13,9 +13,14 @@ type Params = Record<string, string>;
 type Located = { style: HTMLStyleElement | null; state: "before" | "after" | "other" | "missing"; message: string | null; params?: Params; base?: string };
 type StatusEntry = { status: DraftStatus; message: string | null; params?: Params };
 
-/** Drafts on one declaration are previewed together: one text with every staged reference replaced. */
+/**
+ * Drafts on one declaration are previewed together: one text with every staged
+ * reference and keyword replaced. A declaration that is added has a key of its own.
+ */
 function declarationKey(draft: Draft): string | null {
-  return draft.op.type === "rebind-declaration" ? `${draft.op.file}#${draft.op.ordinal}#${draft.op.property}` : null;
+  const op = draft.op;
+  if (op.type === "rebind-token") return null;
+  return `${op.file}#${op.ordinal}#${op.type === "add-declaration" ? "+" : ""}${op.property}`;
 }
 
 export class LivePreview {
@@ -126,7 +131,19 @@ export class LivePreview {
     if (!rule || rule.selector !== op.selector) return { style, state: "other", message: "draft.message.ruleMoved" };
     const decls = rule.declarations.filter((d) => d.property === op.property);
     const decl = decls[decls.length - 1];
+    if (op.type === "add-declaration") {
+      // Nothing declares it yet: stage. It reads as written: in source. Anything else was put there by someone.
+      if (!decl) return { style, state: "before", message: null, base: "" };
+      if (decl.value === op.toKeyword) return { style, state: "after", message: null };
+      return { style, state: "other", message: "draft.message.currentValue", params: { value: decl.value } };
+    }
     if (!decl) return { style, state: "other", message: "draft.message.declarationGone" };
+    if (op.type === "set-keyword") {
+      const held = decl.components[op.component]?.text ?? null;
+      if (held === op.fromKeyword) return { style, state: "before", message: null, base: decl.value };
+      if (held === op.toKeyword) return { style, state: "after", message: null };
+      return { style, state: "other", message: "draft.message.currentValue", params: { value: decl.value } };
+    }
     // Only the staged reference decides: a sibling reference of the same value may change independently.
     const name = findVarRefs(decl.value)[op.refIndex]?.name ?? null;
     if (name === op.fromToken) return { style, state: "before", message: null, base: decl.value };
@@ -153,18 +170,24 @@ export class LivePreview {
     }
     for (const group of declarations.values()) {
       const op = group[0].draft.op;
-      if (op.type !== "rebind-declaration") continue;
+      if (op.type === "rebind-token") continue;
       const rule = ruleAt(style, op.ordinal);
+      if (op.type === "add-declaration") {
+        // The preview of an added declaration is the property itself; resetting the sheet removes it.
+        if (rule) rule.style.setProperty(op.property, op.toKeyword);
+        else for (const { draft } of group) failed.add(draft.id);
+        continue;
+      }
       let text = group[0].base;
       if (!rule || text === null) {
         for (const { draft } of group) failed.add(draft.id);
         continue;
       }
-      // Same replacement as the server: the name of the refIndex-th var(), nothing else.
+      // Same replacements as the server: the name of the refIndex-th var(), the keyword of a component, nothing else.
       for (const { draft } of group) {
-        if (draft.op.type !== "rebind-declaration") continue;
         try {
-          text = replaceVarName(text, draft.op.refIndex, draft.op.fromToken, draft.op.toToken);
+          if (draft.op.type === "rebind-declaration") text = replaceVarName(text, draft.op.refIndex, draft.op.fromToken, draft.op.toToken);
+          else if (draft.op.type === "set-keyword") text = replaceComponent(text, draft.op.component, draft.op.fromKeyword, draft.op.toKeyword);
         } catch {
           failed.add(draft.id);
         }

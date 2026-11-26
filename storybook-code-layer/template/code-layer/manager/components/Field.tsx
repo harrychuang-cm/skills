@@ -3,21 +3,26 @@ import React, { useRef, useState } from "react";
 import { t, tCode, tMaybe } from "../../shared/i18n";
 import { fieldLabel, physicalSize, prettyToken, rowLabel, sideGlyph } from "../../shared/labels";
 import { GROUP_BY_ID } from "../../shared/properties";
-import type { ElementTrace, IndexJson, RowTrace } from "../../shared/protocol";
+import { opFrom, opTo, type ElementTrace, type IndexJson, type RowTrace } from "../../shared/protocol";
 import { previewTransient, requestProbe, stageDraft } from "../actions";
 import { currentScope, draftOfRow, rowKey, scaleFor } from "../drafts";
-import { InheritIcon, LockIcon, PROPERTY_ICONS, WarnIcon } from "../icons";
+import { InheritIcon, LayoutIcon, LockIcon, PROPERTY_ICONS, WarnIcon } from "../icons";
 import { store, useStore } from "../store";
 import { Row, RowIcon, RowLabel, RowState, RowValue, Swatch, TokenPill, ValueText } from "../styles";
+import { flowOf, layoutLabel } from "./LayoutOptions";
 
 /** Pixels of horizontal drag per step on the scale. */
 const DRAG_STEP = 24;
 
 type Props = { trace: ElementTrace; row: RowTrace; index: IndexJson; editable: boolean };
 
-/** Does a row have anything of its own to show (a declaration, an attribute, or a value inherited from an element)? */
+/**
+ * Does a row have anything of its own to show (a declaration, an attribute, or
+ * a value inherited from an element)? The layout rows of a flex container
+ * always do: they are how its children are arranged, declared or not.
+ */
 export function hasSource(row: RowTrace): boolean {
-  return row.source !== "none" || (row.inheritedFrom !== null && row.inheritedFrom.kind !== "default");
+  return row.source !== "none" || row.layout !== null || (row.inheritedFrom !== null && row.inheritedFrom.kind !== "default");
 }
 
 /**
@@ -45,9 +50,12 @@ export function Field({ trace, row, index, editable: modeEditable }: Props) {
   const unconfirmed = probe === "unconfirmed";
   const offered = modeEditable && !row.readOnly && scope !== null && scope.available;
   const editable = offered && !unconfirmed;
-  const boundToken = draft ? draft.op.toToken : scope?.fromToken ?? row.tokenName;
+  const boundToken = draft ? opTo(draft.op) : scope?.fromToken ?? row.tokenName;
   const shownToken = step ?? boundToken;
-  const liveValue = step ? tokenValues[step] ?? "" : draft ? tokenValues[draft.op.toToken] ?? "" : row.computedDisplay;
+  // A layout row shows a keyword: the staged one, the declared one, or the computed default.
+  const layoutKeyword = row.layout ? (draft ? opTo(draft.op) : row.layout.declared ?? row.computed) : null;
+  const layoutDefault = Boolean(row.layout) && !draft && !row.layout?.declared;
+  const liveValue = step ? tokenValues[step] ?? "" : draft ? tokenValues[opTo(draft.op)] ?? "" : row.computedDisplay;
   const value = liveValue || row.computedDisplay;
   const isColor = Boolean(group?.kinds.includes("color"));
   const scale = editable && scope ? scaleFor(row, scope, index, tokenValues) : [];
@@ -134,15 +142,19 @@ export function Field({ trace, row, index, editable: modeEditable }: Props) {
       : conflict
         ? tMaybe(status?.message ?? "", status?.params) ?? t("draft.status.conflict")
         : draft
-          ? t("row.original", { token: prettyToken(draft.op.fromToken, prefix, trace.componentId) })
-          : inherited
-            ? t("pop.inherited", { label: inherited.label ?? "" })
-            : canStep
-              ? t("row.dragHint")
-              : "";
+          ? row.layout
+            ? t("row.originalValue", { value: opFrom(draft.op) || t("layout.unset") })
+            : t("row.original", { token: prettyToken(opFrom(draft.op), prefix, trace.componentId) })
+          : layoutDefault
+            ? t("layout.default")
+            : inherited
+              ? t("pop.inherited", { label: inherited.label ?? "" })
+              : canStep
+                ? t("row.dragHint")
+                : "";
   const size = physicalSize(row.group, trace.writingMode);
   const glyph = sideGlyph(row);
-  const pill = shownToken ? prettyToken(shownToken, prefix, trace.componentId) : null;
+  const pill = shownToken && !row.layout ? prettyToken(shownToken, prefix, trace.componentId) : null;
 
   return (
     <Row
@@ -160,7 +172,9 @@ export function Field({ trace, row, index, editable: modeEditable }: Props) {
       data-probe={probe ?? ""}
       data-steps={canStep ? scale.length : 0}
       data-step-token={step ?? ""}
-      data-token={boundToken ?? ""}
+      data-token={row.layout ? "" : boundToken ?? ""}
+      data-layout={layoutKeyword ?? ""}
+      data-layout-default={layoutDefault ? "true" : "false"}
       data-inherited={row.inheritedFrom?.kind ?? ""}
       data-open={open ? "true" : "false"}
       data-status={status?.status ?? ""}
@@ -174,7 +188,12 @@ export function Field({ trace, row, index, editable: modeEditable }: Props) {
         {glyph ? ` ${glyph}` : ""}
       </RowLabel>
       <RowValue>
-        {pill ? (
+        {row.layout && layoutKeyword ? (
+          <TokenPill tone={draft ? "staged" : editable ? "token" : "muted"} title={`${row.layout.property}: ${layoutKeyword}${layoutDefault ? ` (${t("layout.default")})` : ""}`} data-code-layer-layout-value={layoutKeyword} style={layoutDefault ? { opacity: 0.62 } : undefined}>
+            <LayoutIcon property={row.layout.property} keyword={layoutKeyword} flow={row.layout.property === "flex-direction" ? { ...flowOf(trace, row), direction: layoutKeyword } : flowOf(trace, row)} size={12} />
+            <span>{layoutLabel(row.layout.property, layoutKeyword, row.layout.property === "flex-direction" ? { ...flowOf(trace, row), direction: layoutKeyword } : flowOf(trace, row))}</span>
+          </TokenPill>
+        ) : pill ? (
           <>
             {isColor ? null : <ValueText data-code-layer-value>{value}</ValueText>}
             <TokenPill tone={draft || step ? "staged" : editable ? "token" : "muted"} title={`${shownToken}${value ? ` = ${value}` : ""}`}>

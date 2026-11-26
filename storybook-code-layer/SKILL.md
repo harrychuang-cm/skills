@@ -3,9 +3,11 @@ name: storybook-code-layer
 description: >-
   Install, check, update and remove Code Layer in a Vite-based Storybook
   project: a Figma-like design mode inside Storybook where a person selects a
-  rendered element, re-binds its design tokens in an inspector floating over
-  the canvas with a live preview, and applies the change to the real token files, component
-  stylesheets and component specification tables, with verification and undo.
+  rendered element, re-binds its design tokens or sets the layout of a flex
+  container (direction, alignment, distribution, wrapping) in an inspector
+  floating over the canvas with a live preview, and applies the change to the
+  real token files, component stylesheets and component specification tables,
+  with verification and undo.
   Use when a Storybook project should get this design inspector, when an existing
   Code Layer installation must be checked, upgraded to the current template or
   removed, or when its project binding (token tiers, component roots, checks,
@@ -19,6 +21,23 @@ Code Layer is a local Storybook addon. This skill carries its template and the
 scripts that put it into a project, keep it current and take it out again. The
 skill does not edit design tokens itself: people do that in the running
 Storybook, through the inspector.
+
+What the inspector can write is narrow on purpose, and worth saying when a
+person asks what they are installing:
+
+- Values, colors and type: only swapping the token a `var(--…)` references for
+  another existing token of the same kind. It never invents a number or a
+  color and never creates a token.
+- Layout (since 1.2.0): on a flex container, the direction, alignment,
+  distribution and wrapping can be set to one of a fixed list of CSS keywords.
+  These are not tokens, so they are written straight into the component
+  stylesheet: an existing keyword is replaced, or one declaration is appended
+  to the rule that declares the element's `display`. `display` itself, grid
+  layout and resizing are not editable.
+
+Anything else (changing a hard-coded number, adding a token, restructuring
+markup) is for a person or an AI assistant to do in the source; the inspector's
+"copy object reference" produces the text to hand over.
 
 Paths below are relative to this skill's folder (`<skill-root>`). The scripts
 read the template that sits next to them, so they work from the repository and
@@ -175,7 +194,7 @@ Frequent issue codes: `binding-missing`, `binding-invalid`, `binding-path-missin
 
 1. `--check` reports `complete`.
 2. Start Storybook; its log shows `[code-layer] ready at /__code-layer`. A line saying writes are disabled names the reason (for example a check script that does not exist): fix the binding.
-3. Open a component story, turn on "Code Layer" in the toolbar, click the component: the inspector over the canvas lists its properties, each as an icon, a value and a token; clicking a value opens the token picker beside it.
+3. Open a component story, turn on "Code Layer" in the toolbar, click the component: the inspector over the canvas lists its properties, each as an icon, a value and a token; clicking a value opens the token picker beside it. On a flex container the Layout section also lists direction, alignment, distribution and wrapping; clicking one opens its options.
 4. Do not apply a change to the user's files as a test unless they ask; if they do, undo it from the report and confirm the files are back.
 
 `README.md` (Traditional Chinese) explains the inspector for the people who use it. The interactive guide for users is `docs/code-layer-guide.html` at the root of the skills repository (a working simulator, user journeys, every control explained, FAQ, changelog); when a feature or an interface text of the tool changes, update that same file in the same change instead of writing a new document.

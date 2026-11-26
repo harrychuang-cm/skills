@@ -1,14 +1,20 @@
 // Operation schema, semantic validation, and resolution to byte edits.
 // Every decision uses an index built fresh from disk inside the transaction.
-import { ApiError, ID_PATTERN, OPERATION_TYPES, TOKEN_NAME_PATTERN } from "../shared/api-contract.mjs";
+import { ApiError, ID_PATTERN, INTERNAL_OPERATION_TYPES, OPERATION_TYPES, TOKEN_NAME_PATTERN } from "../shared/api-contract.mjs";
 import { isRebindTarget } from "../shared/candidates.mjs";
 import { kindsCompatible } from "../shared/kinds.mjs";
-import { normalizeValue, replaceVarName } from "../shared/value-refs.mjs";
+import { KEYWORD_PATTERN, isFlexDisplay, isLayoutKeyword, isLayoutProperty, settersOf } from "../shared/layout.mjs";
+import { SUPPORTED_FLOWS, sidesOf } from "../shared/sides.mjs";
+import { normalizeValue, replaceComponent, replaceVarName } from "../shared/value-refs.mjs";
 import { walkStyleRules } from "./css-index.mjs";
 import { readCssSource } from "./css-source.mjs";
+import { planInsertion } from "./patcher.mjs";
 
 /** A value has far fewer var() references than this; the bound keeps a hostile index out of the scanner. */
 const MAX_REF_INDEX = 63;
+
+const LAYOUT_TYPES = ["set-keyword", "add-declaration", "remove-declaration"];
+const PROPERTY_PATTERN = /^-{0,2}[a-z][a-z0-9-]*$/;
 
 function fail(code, message, details) {
   throw new ApiError(code, message, details);
@@ -34,8 +40,61 @@ function integer(value, where) {
   return value;
 }
 
-/** Exact-key validation of an apply / validate body. */
-export function validateBatch(body, limits) {
+function validateRule(op, where, limits) {
+  string(op.file, `${where}.file`, limits, /^[A-Za-z0-9_][A-Za-z0-9_./-]*\.css$/);
+  if (op.file.split("/").some((part) => part === ".." || part === ".")) fail("schema-invalid", `${where}.file is malformed`);
+  exactKeys(op.rule, ["ordinal", "selector", "atRules", "occurrence"], [], `${where}.rule`);
+  integer(op.rule.ordinal, `${where}.rule.ordinal`);
+  integer(op.rule.occurrence, `${where}.rule.occurrence`);
+  string(op.rule.selector, `${where}.rule.selector`, limits);
+  if (!Array.isArray(op.rule.atRules) || op.rule.atRules.length > 8) fail("schema-invalid", `${where}.rule.atRules must be an array`);
+  op.rule.atRules.forEach((at, j) => {
+    exactKeys(at, ["name", "params"], [], `${where}.rule.atRules[${j}]`);
+    string(at.name, `${where}.rule.atRules[${j}].name`, limits);
+    if (typeof at.params !== "string") fail("schema-invalid", `${where}.rule.atRules[${j}].params must be a string`);
+  });
+  exactKeys(op.declaration, ["property"], [], `${where}.declaration`);
+  string(op.declaration.property, `${where}.declaration.property`, limits, PROPERTY_PATTERN);
+}
+
+function validateReason(op, where, limits) {
+  if (op.reason === undefined) return;
+  exactKeys(op.reason, [], ["storyId", "element", "cssProperty"], `${where}.reason`);
+  for (const key of Object.keys(op.reason)) string(op.reason[key], `${where}.reason.${key}`, limits);
+}
+
+/** The layout operations: a keyword replaced, a declaration added, and (server only) a declaration removed again. */
+function validateLayoutOperation(op, where, limits) {
+  if (op.type === "set-keyword") {
+    exactKeys(op, ["id", "type", "file", "rule", "declaration", "component", "fromKeyword", "toKeyword", "before", "after"], ["reason"], where);
+    integer(op.component, `${where}.component`);
+    if (op.component > MAX_REF_INDEX) fail("schema-invalid", `${where}.component is too large`);
+    string(op.fromKeyword, `${where}.fromKeyword`, limits, KEYWORD_PATTERN);
+    string(op.toKeyword, `${where}.toKeyword`, limits);
+    exactKeys(op.before, ["value"], ["fileHash"], `${where}.before`);
+    string(op.before.value, `${where}.before.value`, limits);
+    exactKeys(op.after, ["value"], [], `${where}.after`);
+    string(op.after.value, `${where}.after.value`, limits);
+  } else if (op.type === "add-declaration") {
+    exactKeys(op, ["id", "type", "file", "rule", "declaration", "toKeyword", "after"], ["reason"], where);
+    string(op.toKeyword, `${where}.toKeyword`, limits);
+    exactKeys(op.after, ["value"], [], `${where}.after`);
+    string(op.after.value, `${where}.after.value`, limits);
+  } else {
+    exactKeys(op, ["id", "type", "file", "rule", "declaration", "fromKeyword", "inserted"], [], where);
+    string(op.fromKeyword, `${where}.fromKeyword`, limits, KEYWORD_PATTERN);
+    string(op.inserted, `${where}.inserted`, limits);
+  }
+  validateRule(op, where, limits);
+  validateReason(op, where, limits);
+}
+
+/**
+ * Exact-key validation of an apply / validate body. `internal` is set only
+ * for a batch the server built itself (a reverse apply): it may carry the
+ * operation that removes a declaration.
+ */
+export function validateBatch(body, limits, { internal = false } = {}) {
   exactKeys(body, ["schemaVersion", "batchId", "indexRevision", "operations"], ["dryRun", "client"], "body");
   if (body.schemaVersion !== 1) fail("schema-invalid", "schemaVersion must be 1");
   string(body.batchId, "batchId", limits, ID_PATTERN);
@@ -51,7 +110,14 @@ export function validateBatch(body, limits) {
   body.operations.forEach((op, i) => {
     const where = `operations[${i}]`;
     if (!op || typeof op !== "object") fail("schema-invalid", `${where} must be an object`);
-    if (!OPERATION_TYPES.includes(op.type)) fail("schema-invalid", `${where}.type is unknown`);
+    if (!OPERATION_TYPES.includes(op.type) && !(internal && INTERNAL_OPERATION_TYPES.includes(op.type))) fail("schema-invalid", `${where}.type is unknown`);
+    if (LAYOUT_TYPES.includes(op.type)) {
+      string(op.id, `${where}.id`, limits, ID_PATTERN);
+      if (ids.has(op.id)) fail("schema-invalid", `${where}.id is duplicated`);
+      ids.add(op.id);
+      validateLayoutOperation(op, where, limits);
+      return;
+    }
     const common = ["id", "type", "fromToken", "toToken", "before", "after"];
     if (op.type === "rebind-token") exactKeys(op, [...common, "token"], ["reason"], where);
     else exactKeys(op, [...common, "file", "rule", "declaration", "replacements"], ["reason"], where);
@@ -124,7 +190,7 @@ function findTokenDecl(root, name) {
  * Resolve validated operations against a fresh index.
  * Returns { files: Map<absPath, { role, source, root, edits[] }>, results: [...] }.
  */
-export function resolveOperations(batch, { config, postcss, index }) {
+export function resolveOperations(batch, { config, postcss, index, internal = false }) {
   const tokens = index.tokenIndex.tokens;
   const prefix = config.tokens.prefix;
   const files = new Map();
@@ -139,8 +205,128 @@ export function resolveOperations(batch, { config, postcss, index }) {
     return files.get(absPath);
   };
 
+  /** The indexed rule and its PostCSS node for a declaration operation. */
+  const locateRule = (op, where) => {
+    const file = index.cssIndex.files.find((f) => f.file === op.file);
+    if (!file) fail("locator-mismatch", `${where}: ${op.file} is not an indexed component stylesheet`);
+    const rule = file.rules[op.rule.ordinal];
+    if (
+      !rule ||
+      rule.selector !== op.rule.selector ||
+      JSON.stringify(rule.atRules) !== JSON.stringify(op.rule.atRules) ||
+      rule.occurrence !== op.rule.occurrence
+    ) {
+      fail("locator-mismatch", `${where}: rule #${op.rule.ordinal} is not ${op.rule.selector}`, { actual: rule?.selector ?? null });
+    }
+    const entry = sourceFor(file.devId, "component-css");
+    let ruleNode = null;
+    let ordinal = 0;
+    walkStyleRules(entry.root, (node) => {
+      if (ordinal === op.rule.ordinal) ruleNode = node;
+      ordinal += 1;
+    });
+    if (!ruleNode) fail("locator-mismatch", `${where}: the rule moved`);
+    return { file, rule, entry, ruleNode, locator: { ordinal: rule.ordinal, selector: rule.selector, atRules: rule.atRules, occurrence: rule.occurrence } };
+  };
+
+  /** Which layout slot a component of a declaration sets, the same under every writing mode; null when it sets none or several. */
+  const layoutSlotOf = (decl, component) => {
+    const slots = new Set();
+    for (const { writingMode, direction } of SUPPORTED_FLOWS) {
+      const result = sidesOf(decl.property, decl.components.map((c) => ({ text: c.text })), writingMode, direction);
+      if (!result.ok) return null;
+      for (const entry of result.slots) if (entry.component === component) slots.add(entry.slot);
+    }
+    return slots.size === 1 ? [...slots][0] : null;
+  };
+
+  const resolveLayout = (op, where) => {
+    const property = op.declaration.property;
+    const { file, rule, entry, ruleNode, locator } = locateRule(op, where);
+    const base = { id: op.id, type: op.type, file: file.devId, mirror: null, cssFile: file.file, rule: locator, property };
+
+    if (op.type === "set-keyword") {
+      const matching = rule.declarations.filter((d) => d.property === property);
+      const decl = matching[matching.length - 1];
+      if (!decl) fail("locator-mismatch", `${where}: ${property} is not declared in ${rule.selector}`);
+      if (decl.duplicateInRule) fail("unsupported-value-shape", `${where}: ${property} is declared more than once in its rule`);
+      if (decl.important) fail("unsupported-value-shape", `${where}: !important declarations are not supported`);
+      const component = decl.components[op.component];
+      const slot = component ? layoutSlotOf(decl, op.component) : null;
+      if (!slot || !isLayoutProperty(slot)) fail("unsupported-value-shape", `${where}: ${property} is not a layout property that can be set by keyword`);
+      if (component.shape !== "keyword" || !KEYWORD_PATTERN.test(component.text)) {
+        fail("unsupported-value-shape", `${where}: component ${op.component} of ${property} is not a single keyword`, { shape: component.shape });
+      }
+      if (component.overridden || decl.overriddenInRule) fail("unsupported-value-shape", `${where}: the declaration is overridden inside its rule`);
+      const before = normalizeValue(op.before.value);
+      if (decl.value !== before || component.text !== op.fromKeyword) fail("stale-before", `${where}: the declaration is now ${decl.value}`, { actual: decl.value });
+      if (op.fromKeyword === op.toKeyword) fail("no-op", `${where}: nothing to change`);
+      // A reverse apply may put back a keyword that is not offered (the file held it before); a request may not.
+      if (internal ? !KEYWORD_PATTERN.test(op.toKeyword) : !isLayoutKeyword(slot, op.toKeyword)) {
+        fail("keyword-not-allowed", `${where}: ${op.toKeyword} is not a keyword ${slot} can be set to`, { property: slot });
+      }
+      const expectedAfter = replaceComponent(before, op.component, op.fromKeyword, op.toKeyword);
+      if (normalizeValue(op.after.value) !== expectedAfter) fail("after-value-mismatch", `${where}: after.value should be ${expectedAfter}`);
+      const key = `component:${file.file}#${rule.ordinal}#${decl.index}#${op.component}`;
+      if (targets.has(key)) fail("duplicate-target", `${where}: the component is targeted twice`);
+      targets.add(key);
+      const declNode = (ruleNode.nodes ?? []).filter((n) => n.type === "decl")[decl.index];
+      if (!declNode || declNode.prop !== property) fail("locator-mismatch", `${where}: the declaration moved`);
+      entry.edits.push({ kind: "component", decl: declNode, component: op.component, fromText: op.fromKeyword, toText: op.toKeyword, opId: op.id });
+      results.push({ ...base, line: declNode.source.start.line, before, after: expectedAfter, slot, component: op.component, fromKeyword: op.fromKeyword, toKeyword: op.toKeyword });
+      return;
+    }
+
+    if (!isLayoutProperty(property)) fail("unsupported-value-shape", `${where}: ${property} is not a layout property`);
+    const declared = rule.declarations.filter((d) => d.property === property);
+
+    if (op.type === "remove-declaration") {
+      // The inverse of an add: the declaration must still be exactly what was written.
+      const decl = declared.length === 1 ? declared[0] : null;
+      if (!decl || decl.value !== op.fromKeyword || decl.important) {
+        fail("stale-before", `${where}: ${property} of ${rule.selector} no longer holds what the apply added`, { actual: decl?.value ?? null });
+      }
+      const declNode = (ruleNode.nodes ?? []).filter((n) => n.type === "decl")[decl.index];
+      if (!declNode || declNode.prop !== property) fail("locator-mismatch", `${where}: the declaration moved`);
+      const key = `add:${file.file}#${rule.ordinal}#${property}`;
+      if (targets.has(key)) fail("duplicate-target", `${where}: the declaration is targeted twice`);
+      targets.add(key);
+      entry.edits.push({ kind: "remove", decl: declNode, inserted: op.inserted, opId: op.id });
+      results.push({ ...base, line: declNode.source.start.line, before: op.fromKeyword, after: null, slot: property, fromKeyword: op.fromKeyword, toKeyword: null });
+      return;
+    }
+
+    if (!isLayoutKeyword(property, op.toKeyword)) fail("keyword-not-allowed", `${where}: ${op.toKeyword} is not a keyword ${property} can be set to`, { property });
+    if (normalizeValue(op.after.value) !== op.toKeyword) fail("after-value-mismatch", `${where}: after.value should be ${op.toKeyword}`);
+    // Only into the rule that makes the element a flex container, and only when nothing there sets the property yet.
+    const display = rule.declarations.filter((d) => d.property === "display").at(-1);
+    if (!display || display.important || !isFlexDisplay(display.value)) {
+      fail("rule-not-eligible", `${where}: ${rule.selector} does not declare a flex display`, { reason: "not-flex", display: display?.value ?? null });
+    }
+    const setter = rule.declarations.find((d) => settersOf(property).includes(d.property));
+    if (setter) fail("rule-not-eligible", `${where}: ${rule.selector} already sets ${property} (${setter.property})`, { reason: "already-declared", declaration: setter.property });
+    if (!rule.append?.ok) fail("rule-not-eligible", `${where}: a declaration cannot be added to ${rule.selector} safely`, { reason: rule.append?.reason ?? "unknown" });
+    const key = `add:${file.file}#${rule.ordinal}#${property}`;
+    if (targets.has(key)) fail("duplicate-target", `${where}: ${property} is added twice`);
+    targets.add(key);
+    let plan;
+    try {
+      plan = planInsertion(entry.source.text, ruleNode, property, op.toKeyword);
+    } catch (error) {
+      fail("rule-not-eligible", `${where}: ${error.message}`, { reason: "format" });
+    }
+    entry.edits.push({ kind: "insert", rule: ruleNode, property, value: op.toKeyword, opId: op.id });
+    // The line the new declaration lands on: the one after the rule's last node.
+    const line = entry.source.text.slice(0, plan.at).split("\n").length + (plan.text.includes("\n") ? 1 : 0);
+    results.push({ ...base, line, before: null, after: op.toKeyword, slot: property, fromKeyword: null, toKeyword: op.toKeyword, inserted: plan.text });
+  };
+
   for (const op of batch.operations) {
     const where = `operation ${op.id}`;
+    if (LAYOUT_TYPES.includes(op.type)) {
+      resolveLayout(op, where);
+      continue;
+    }
     if (op.fromToken === op.toToken) fail("no-op", `${where}: nothing to change`);
     const to = designToken(index, op.toToken, where);
     const fromToken = tokens.get(op.fromToken);

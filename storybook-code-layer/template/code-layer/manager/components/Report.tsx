@@ -2,7 +2,7 @@ import React from "react";
 
 import { pendingBrief, pendingReason, type PendingEntry } from "../../shared/brief";
 import { t, tCode, tMaybe } from "../../shared/i18n";
-import { draftRowLabel, shortToken } from "../../shared/labels";
+import { changeEnds, draftRowLabel, shortToken } from "../../shared/labels";
 import { buildReference } from "../../shared/reference";
 import { resolvePending } from "../actions";
 import { reloadPreviewAndVerify, retryVerification, reverseApplied, skipApplied, undoApplied } from "../apply";
@@ -91,7 +91,7 @@ export function Report({ prefix }: { prefix: string }) {
   const pendingDocs = useStore((s) => s.server?.pendingDocs ?? NO_PENDING);
   if (state.phase === "idle") return null;
   const busy = state.phase === "arming" || state.phase === "writing" || state.phase === "verifying" || state.phase === "undoing";
-  const labels = Object.fromEntries(state.drafts.map((d) => [d.id, `${draftRowLabel(d)} · ${d.elementLabel}${t("reference.colon")}${shortToken(d.op.fromToken, prefix)} → ${shortToken(d.op.toToken, prefix)}`]));
+  const labels = Object.fromEntries(state.drafts.map((d) => [d.id, `${draftRowLabel(d)} · ${d.elementLabel}${t("reference.colon")}${changeEnds(d.op, prefix).from} → ${changeEnds(d.op, prefix).to}`]));
   const outcome = state.result ? t(`report.${state.mode}.${state.result.status}` as "report.apply.verified") : "";
   const headline = state.error
     ? t(state.phase === "done" && state.applyId ? "report.notUndone" : "report.notApplied", { reason: tCode("error", state.error.code, "error.unknown") })

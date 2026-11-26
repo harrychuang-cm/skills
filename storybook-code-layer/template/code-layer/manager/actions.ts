@@ -1,6 +1,6 @@
 // Store mutations that must also reach the preview (drafts, transient
 // preview, compare, navigation) or be persisted.
-import { EVENTS, PROTOCOL_VERSION, draftId, scopeDraftId, type Descriptor, type Draft, type ElementTrace, type RowScope, type RowTrace, type ScopeId } from "../shared/protocol";
+import { EVENTS, PROTOCOL_VERSION, draftId, isLayoutOp, opFrom, opTo, scopeDraftId, type Descriptor, type Draft, type ElementTrace, type RowScope, type RowTrace, type ScopeId } from "../shared/protocol";
 import { fetchIndex, fetchState, postJson } from "./api";
 import { emitToPreview } from "./channel";
 import { currentScope, draftOfRow, makeDraft, rowKey, translateTarget } from "./drafts";
@@ -49,7 +49,8 @@ export function stageDraft(trace: ElementTrace, row: RowTrace, scope: RowScope, 
   const siblings = new Set(row.scopes.map((other) => scopeDraftId(other.target)));
   const others = s.drafts.filter((d) => !siblings.has(d.id));
   const settled = s.settled.filter((settledId) => settledId !== draft.id);
-  const drafts = draft.op.toToken === draft.op.fromToken ? others : [...others, draft];
+  // Choosing what the source already holds is not a change.
+  const drafts = opTo(draft.op) === opFrom(draft.op) ? others : [...others, draft];
   store.set({ drafts, transient: null, settled });
   persist();
   syncPreview();
@@ -117,7 +118,8 @@ export function chooseScope(trace: ElementTrace, row: RowTrace, scopeId: ScopeId
   const staged = draftOfRow(row, s.drafts);
   if (!staged || staged.scope === scopeId) return;
   const from = row.scopes.find((scope) => scope.id === staged.scope) ?? previous;
-  const translated = from ? translateTarget(s.index, from, next, staged.op.toToken) : null;
+  // A layout row has one scope, so only token changes are ever moved.
+  const translated = from && !isLayoutOp(staged.op) ? translateTarget(s.index, from, next, staged.op.toToken) : null;
   if (translated) stageDraft(trace, row, next, translated);
   else removeDraft(staged.id);
 }

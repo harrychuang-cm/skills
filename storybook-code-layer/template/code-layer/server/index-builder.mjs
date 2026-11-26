@@ -133,6 +133,7 @@ export function serializeIndex(index, config) {
           occurrence: r.occurrence,
           line: r.line,
           nested: r.nested,
+          append: r.append,
           declarations: r.declarations.map((d) => ({
             index: d.index,
             property: d.property,

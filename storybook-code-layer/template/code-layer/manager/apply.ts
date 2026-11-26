@@ -2,7 +2,7 @@
 // in the panel. The preview measures and verifies; the server writes.
 import type { PairingEntry } from "../shared/pairing.mjs";
 import { EVENTS, type Draft, type Envelope, type IndexJson } from "../shared/protocol";
-import { normalizeValue, replaceVarName } from "../shared/value-refs.mjs";
+import { normalizeValue, replaceComponent, replaceVarName } from "../shared/value-refs.mjs";
 import { refreshServer, settle } from "./actions";
 import { getJson, postJson } from "./api";
 import { emitToPreview, onPreview } from "./channel";
@@ -100,12 +100,28 @@ export function buildApplyBatch(drafts: Draft[], index: IndexJson) {
     const op = draft.op;
     const rule = index.css.files.find((f) => f.file === op.file)?.rules[op.ordinal];
     const declared = rule?.declarations.filter((d) => d.property === op.property).at(-1)?.value;
+    const locator = { ordinal: op.ordinal, selector: rule?.selector ?? op.selector, atRules: rule?.atRules ?? [], occurrence: rule?.occurrence ?? 0 };
+    if (op.type === "add-declaration") {
+      return { id, type: op.type, file: op.file, rule: locator, declaration: { property: op.property }, toKeyword: op.toKeyword, after: { value: op.toKeyword }, reason };
+    }
+    if (op.type === "set-keyword") {
+      // The value the file holds now with this keyword replaced; the staged values when the source has moved on.
+      let values = { before: draft.before, after: draft.after };
+      if (declared != null) {
+        try {
+          values = { before: declared, after: replaceComponent(declared, op.component, op.fromKeyword, op.toKeyword) };
+        } catch {
+          // the server answers that the source changed
+        }
+      }
+      return { id, type: op.type, file: op.file, rule: locator, declaration: { property: op.property }, component: op.component, fromKeyword: op.fromKeyword, toKeyword: op.toKeyword, before: { value: values.before }, after: { value: values.after }, reason };
+    }
     const values = currentValues(declared ?? null, op.refIndex, draft);
     return {
       id,
       type: op.type,
       file: op.file,
-      rule: { ordinal: op.ordinal, selector: rule?.selector ?? op.selector, atRules: rule?.atRules ?? [], occurrence: rule?.occurrence ?? 0 },
+      rule: locator,
       declaration: { property: op.property },
       replacements: [{ refIndex: op.refIndex, fromToken: op.fromToken, toToken: op.toToken }],
       fromToken: op.fromToken,
@@ -127,7 +143,7 @@ export function buildApplyBatch(drafts: Draft[], index: IndexJson) {
  * the source changed.
  */
 function currentValues(declared: string | null, refIndex: number, draft: Draft): { before: string; after: string } {
-  if (declared !== null) {
+  if (declared !== null && (draft.op.type === "rebind-token" || draft.op.type === "rebind-declaration")) {
     try {
       return { before: declared, after: replaceVarName(declared, refIndex, draft.op.fromToken, draft.op.toToken) };
     } catch {

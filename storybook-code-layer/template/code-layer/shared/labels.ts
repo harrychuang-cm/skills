@@ -1,6 +1,6 @@
 // Names of rows, sides and scopes in the interface language.
 import { tCode, tMaybe, t } from "./i18n";
-import type { EffectiveState, RowSide, ScopeId } from "./protocol";
+import { isLayoutOp, opFrom, opTo, type DraftOp, type EffectiveState, type RowSide, type ScopeId } from "./protocol";
 
 /** Why the tool is suspended, in words; missing browser features are named. */
 export function suspendText(effective: Extract<EffectiveState, { state: "suspended" }>): string {
@@ -99,4 +99,13 @@ export function prettyToken(name: string, prefix: string, componentId: string | 
   if (componentId && short.startsWith(`comp-${componentId}-`)) return short.slice(componentId.length + 6);
   if (short.startsWith("comp-")) return short.slice(5);
   return short;
+}
+
+/**
+ * The two ends of a change in short form: token names without the prefix, or
+ * the keywords of a layout change ("not set" before an added declaration).
+ */
+export function changeEnds(op: DraftOp, prefix: string): { from: string; to: string } {
+  if (isLayoutOp(op)) return { from: opFrom(op) || t("layout.unset"), to: opTo(op) };
+  return { from: shortToken(op.fromToken, prefix), to: shortToken(op.toToken, prefix) };
 }

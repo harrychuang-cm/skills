@@ -7,6 +7,7 @@
 // assignments, the last one in cascade order wins each slot, and slots that
 // share a winner are reported as one row.
 import { inferKind } from "../shared/kinds.mjs";
+import { KEYWORD_PATTERN, isFlexDisplay, layoutOptions, layoutSentinel } from "../shared/layout.mjs";
 import { GROUPS, rowIdFor, sentinelFor, slotPart, type GroupDef } from "../shared/properties";
 import type {
   ChainLink,
@@ -22,7 +23,7 @@ import type {
   TokenItem,
 } from "../shared/protocol";
 import { physicalSideOf, sidesOf } from "../shared/sides.mjs";
-import { findVarRefs } from "../shared/value-refs.mjs";
+import { findVarRefs, replaceComponent } from "../shared/value-refs.mjs";
 import { toHex } from "./color";
 import { candidatesFor, collectSheetEntries, declarationsOf, inlineDeclarations, type Candidate, type Decl, type SheetEntry } from "./cascade";
 import { describe, pathText } from "./descriptor";
@@ -280,7 +281,51 @@ export function buildScopes(args: {
 
 type Traced = { winner: SlotWinner; element: Element; inherited: InheritedFrom | null };
 
-function buildRow(element: Element, group: GroupDef, slots: string[], traced: Traced | null, noSource: InheritedFrom | null, ctx: TraceContext, flow: { writingMode: string; direction: string }): RowTrace {
+/** What the layout rows need to know about the element: whether it is a flex container, how its children run, and what makes it one. */
+type LayoutContext = { flex: boolean; display: string; direction: string; wrap: string; displayWinner: SlotWinner | null };
+
+/** The one scope of a layout row: its declaration, or the rule a declaration is added to. */
+function layoutScope(target: ScopeTarget & { type: "set-keyword" | "add-declaration" }, declared: string, value: string, ctx: TraceContext): RowScope {
+  const problem = ctx.unwritable.has(target.workspacePath) ? "file-not-writable" : null;
+  return {
+    id: "declaration",
+    available: problem === null,
+    reason: problem,
+    detail: problem ? target.workspacePath : null,
+    target,
+    fromToken: declared,
+    before: value,
+    targetTier: "sys",
+    writes: { files: [target.workspacePath], line: target.line },
+    impact: { declarations: 1, components: 1, excludesInlineStyles: false },
+  };
+}
+
+/**
+ * A layout row of a flex container that no declaration sets: it is edited by
+ * adding a declaration to the rule that declares the element's display.
+ */
+function undeclaredLayoutRow(base: RowTrace, slot: string, layout: LayoutContext, ctx: TraceContext): RowTrace {
+  const row: RowTrace = { ...base, layout: { property: slot, options: layoutOptions(slot), declared: null, direction: layout.direction, wrap: layout.wrap } };
+  const winner = layout.displayWinner;
+  if (!winner) return readOnlyRow(row, "display-not-traced");
+  if (winner.source !== "declaration") return readOnlyRow(row, winner.source);
+  const candidate = winner.candidate!;
+  const decl = winner.decl!;
+  const identity = candidate.entry.identity;
+  if (!identity) return readOnlyRow(row, "unknown-source", candidate.entry.label);
+  if (!identity.ok) return readOnlyRow(row, "identity-mismatch", identity.reason);
+  if (candidate.uncertain) return readOnlyRow(row, "uncertain-condition");
+  if (decl.important) return readOnlyRow(row, "important");
+  const file = identity.file;
+  const rule = file.rules[candidate.flat.index];
+  if (!rule || !isFlexDisplay(decl.value)) return readOnlyRow(row, "display-not-traced", decl.value);
+  if (!rule.append?.ok) return readOnlyRow(row, "rule-not-appendable", rule.selector);
+  const scope = layoutScope({ type: "add-declaration", file: file.file, workspacePath: file.workspacePath, ordinal: rule.ordinal, selector: rule.selector, property: slot, line: rule.line }, "", "", ctx);
+  return { ...row, scopes: [scope], defaultScope: scope.available ? "declaration" : null };
+}
+
+function buildRow(element: Element, group: GroupDef, slots: string[], traced: Traced | null, noSource: InheritedFrom | null, ctx: TraceContext, flow: { writingMode: string; direction: string }, layout: LayoutContext): RowTrace {
   const style = getComputedStyle(element);
   const values = slots.map((slot) => style.getPropertyValue(slot).trim());
   const sides: RowSide[] = slots.map((slot) => ({ slot, part: slotPart(group, slot), physical: physicalOf(group, slot, flow.writingMode, flow.direction) }));
@@ -303,8 +348,10 @@ function buildRow(element: Element, group: GroupDef, slots: string[], traced: Tr
     defaultScope: null,
     inheritedFrom: traced?.inherited ?? noSource,
     warnings: [],
+    layout: null,
   };
   if (sides.some((side) => animatedNames(group, side.slot, side.physical).some((name) => isAnimating(element, name)))) return readOnlyRow(base, "animated");
+  if (!traced && group.layout && layout.flex) return undeclaredLayoutRow(base, slots[0], layout, ctx);
   if (!traced) return readOnlyRow(base, noSource ? "inherited-default" : "no-declaration");
 
   const { winner, inherited } = traced;
@@ -351,6 +398,21 @@ function buildRow(element: Element, group: GroupDef, slots: string[], traced: Tr
   if (!identity.ok) return readOnlyRow(row, "identity-mismatch", identity.reason);
   if (candidate.uncertain) return readOnlyRow(row, "uncertain-condition");
   if (decl.important) return readOnlyRow(row, "important");
+  if (group.layout) {
+    // Direction, wrapping, alignment, distribution: a keyword of a fixed list, on a flex container only.
+    if (!layout.flex) return readOnlyRow(row, "not-flex-container", layout.display);
+    if (winner.failure) return readOnlyRow(row, winner.failure);
+    if (decl.indexed!.duplicateInRule) return readOnlyRow(row, "duplicate-declaration", decl.property);
+    if (!component || winner.component === null) return readOnlyRow(row, "reset-by-shorthand", decl.property);
+    if (component.shape !== "keyword" || !KEYWORD_PATTERN.test(component.text)) return readOnlyRow(row, "layout-not-keyword", component.text);
+    const scope = layoutScope(
+      { type: "set-keyword", file: identity.file.file, workspacePath: identity.file.workspacePath, ordinal, selector, property: decl.property, component: winner.component, line: decl.indexed!.line },
+      component.text,
+      decl.value,
+      ctx,
+    );
+    return { ...row, layout: { property: slots[0], options: layoutOptions(slots[0]), declared: component.text, direction: layout.direction, wrap: layout.wrap }, scopes: [scope], defaultScope: scope.available ? "declaration" : null };
+  }
   if (!group.editable) return readOnlyRow(row, "structural");
   if (winner.failure) return readOnlyRow(row, winner.failure);
   const indexed = decl.indexed!;
@@ -387,6 +449,7 @@ export function traceElement(element: Element, ctx: TraceContext, meta: TraceMet
   const flow = { writingMode: style.writingMode, direction: style.direction };
   const candidates = candidatesFor(element, ctx.entries);
   const winners = collectWinners(element, candidates, ctx);
+  const layout: LayoutContext = { flex: isFlexDisplay(style.display), display: style.display, direction: style.flexDirection, wrap: style.flexWrap, displayWinner: winners.get("display") ?? null };
   // Ancestors are traced only when an inherited row needs them, once each.
   const ancestorWinners = new Map<Element, Map<string, SlotWinner>>();
   const winnersOf = (node: Element) => {
@@ -420,7 +483,7 @@ export function traceElement(element: Element, ctx: TraceContext, meta: TraceMet
       part.slots.push(slot);
       parts.set(key, part);
     }
-    for (const part of parts.values()) rows.push(buildRow(element, group, part.slots, part.traced, part.noSource, ctx, flow));
+    for (const part of parts.values()) rows.push(buildRow(element, group, part.slots, part.traced, part.noSource, ctx, flow, layout));
   }
 
   // The rule that carries the element's own declarations: the highest-priority indexed rule that matches it.
@@ -469,7 +532,50 @@ export function editTarget(target: ScopeTarget, ctx: { index: IndexJson }): Edit
   const file = ctx.index.css.files.find((f) => f.file === target.file);
   const style = file ? styleByDevId(file.devId) : null;
   const rule = style ? ruleAt(style, target.ordinal) : null;
-  return style && rule ? { rule, property: target.property, style, refIndex: target.refIndex } : null;
+  return style && rule ? { rule, property: target.property, style, refIndex: target.type === "rebind-declaration" ? target.refIndex : null } : null;
+}
+
+/**
+ * Probe of a layout row: another keyword of the row's list, put where the
+ * keyword is (or added to the rule when nothing declares the property), must
+ * change the element's computed value and leave no trace.
+ */
+function probeLayout(element: Element, row: RowTrace, scope: RowScope, target: EditTarget): ProbeResult {
+  const slot = row.cssProperty;
+  const { rule, property } = target;
+  const cssTextBefore = rule.style.cssText;
+  let result: ProbeResult = "unconfirmed";
+  withFreeze(element, () => {
+    const read = () => getComputedStyle(element).getPropertyValue(slot).trim();
+    const before = read();
+    const sentinel = layoutSentinel(slot, before);
+    if (!sentinel) return;
+    if (scope.target.type === "add-declaration") {
+      rule.style.setProperty(slot, sentinel);
+      const during = read();
+      rule.style.removeProperty(slot);
+      result = during !== before && read() === before ? "confirmed" : "unconfirmed";
+      return;
+    }
+    if (scope.target.type !== "set-keyword") return;
+    let probeValue: string;
+    try {
+      probeValue = replaceComponent(scope.before, scope.target.component, scope.fromToken, sentinel);
+    } catch {
+      return;
+    }
+    const original = rule.style.getPropertyValue(property);
+    const priority = rule.style.getPropertyPriority(property);
+    rule.style.setProperty(property, probeValue, priority);
+    const during = read();
+    rule.style.setProperty(property, original, priority);
+    result = during !== before && read() === before ? "confirmed" : "unconfirmed";
+  });
+  if (rule.style.cssText !== cssTextBefore) {
+    // Serialisation drifted: rebuild the sheet from its own text (previews are re-applied by the caller).
+    target.style.textContent = target.style.textContent ?? "";
+  }
+  return result;
 }
 
 /** `value` with its refIndex-th var() replaced by `replacement`; null when there is no such reference. */
@@ -489,6 +595,7 @@ export function probeScope(element: Element, row: RowTrace, scope: RowScope, ctx
   const group = GROUPS.find((g) => g.id === row.group);
   const target = editTarget(scope.target, ctx);
   if (!group || !target) return "no-target";
+  if (scope.target.type === "set-keyword" || scope.target.type === "add-declaration") return probeLayout(element, row, scope, target);
   const { rule, property } = target;
   const original = rule.style.getPropertyValue(property);
   const priority = rule.style.getPropertyPriority(property);
