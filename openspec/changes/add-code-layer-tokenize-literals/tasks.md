@@ -1,0 +1,35 @@
+## 1. 共用基礎
+
+- [ ] 1.1 伺服器與瀏覽器讀同一份屬性表：依 design「屬性表改成伺服器與瀏覽器共用」，把 `shared/properties.ts` 的 `GROUPS` 資料移到新的 storybook-code-layer/template/code-layer/shared/property-table.mjs（附 `.d.mts`），`properties.ts` 改為匯入後加型別再匯出，並提供「slot 接受哪些 token 型別」的查詢給伺服器。行為不變。驗證：新增 storybook-code-layer/test/test_literals.test.mjs 的第一組測試，斷言表中每個 slot 都查得到型別、`GROUP_OF_SLOT` 的鍵集合與搬移前相同（以搬移前的清單寫死在測試中比對）；既有的 `node --test 'storybook-code-layer/test/*.test.mjs'` 全數通過；addon 的 `tsc -p` 通過。
+- [ ] 1.2 [after: 1.1] 寫死分量的判定、替換與數值比較有單一實作：依 design「可以換成 token 的字面值是值的最上層、以空白分隔的一個分量」，新增 shared/literals.mjs（附 `.d.mts`），提供：判定一個宣告值的第 n 個分量能不能換成 token 及不能時的原因代碼、把第 n 個分量換成指定文字、判斷兩個值是否數值相同。驗證：test_literals.test.mjs 新增並通過 code-layer-style-tracing「Value shapes and verdicts」範例表中與字面值有關的每一列（`0 0 var(--gap)`、`12px`、`1px solid #000`、`70%`、`calc(100% - 16px)`、`"Noto Sans", sans-serif`、`fit-content`）；替換後再換回原文字，字串與原值完全相同（含值內有註解、多行、CRLF 的案例）；數值比較的案例：`8px` 與 `8px` 相同、`#FFF` 與 `rgb(255, 255, 255)` 相同、`0` 與 `0px` 相同、`1em` 與 `16px` 不同、`8px` 與 `8` 不同。
+
+## 2. 伺服器寫入
+
+- [ ] 2.1 [after: 1.2] 伺服器接受第三種操作並自己驗證型別：依 design「操作 tokenize-literal 以分量位置定址，伺服器自己驗證型別」修改 shared/api-contract.mjs 與 server/operations.mjs。完成時成立 spec「Operations」。驗證：test_transaction.test.mjs 與 test_write_routes.test.mjs 新增並通過（全部在暫存目錄的 fixture 專案）：`margin: 0 12px` 的第 1 個分量換成 spacing token 後宣告為 `margin: 0 var(<token>)`，檔案其餘位元組不變；規格拒絕碼表中新增的五列各有一個案例，每個被拒的案例檔案雜湊、mtime 與 inode 都不變；`margin: 0` 換成沒有單位的數字 token 以 `type-mismatch` 被拒；請求中的 `literal` 與檔案不同時以 `stale-before` 被拒；來自 HTTP 的 `restore-literal` 以 `schema-invalid` 被拒。
+- [ ] 2.2 [after: 2.1] 寫入前證明只有那個分量的位元組改變：依 design「位元組證明從 token 名稱擴大為一個分量」修改 server/patcher.mjs。完成時成立 spec「Byte-exact patching」。驗證：test_patcher.test.mjs 新增並通過：分量緊鄰註解（`8px /* tight */ 16px`）、BOM、CRLF、分量前有非 ASCII 文字、多行的值、同一個宣告兩筆編輯；以獨立的位元組比對確認新檔只在預期區間不同；替換文字會改變節點數時（測試直接呼叫 patcher 注入）以 `proof-failed` 失敗；對試驗場 7 個元件樣式表中落在屬性表內的每個字面分量，在記憶體內換成 token 再換回，位元組與原檔完全相同（唯讀，不寫入試驗場）。
+- [ ] 2.3 [after: 2.2] 同一個宣告上的改綁與換 token 可以同批套用：依 design「同一個宣告上的改綁與換 token 可以同批」，journal 的宣告操作多記分量位置，反向套用優先以它定位。驗證：test_transaction.test.mjs 新增並通過：一批同時把 `margin: 0 var(--gap)` 的第 0 個分量換成 token 並改綁 `--gap`，結果兩處都寫入、回應各自列出舊值與新值；沒有分量位置的 1.1.0 journal 紀錄（fixture）仍可反向套用。
+- [ ] 2.4 [after: 2.3] 還原與反向套用涵蓋換 token：依 design「反向套用寫回伺服器自己記下的字面值」修改 server/transaction.mjs。完成時成立 spec「Undo」。驗證：test_transaction.test.mjs 新增並通過：套用後直接還原，檔案位元組與套用前相同；套用後改同檔另一行，整檔還原以 `undo-conflict` 被拒，反向套用把那一行改回原本的字面值並保留另一行的修改；2.3 的混合批次在同樣情況下反向套用後宣告回到 `margin: 0 var(--gap)`；套用後有人把該分量手動改成另一個 token，反向套用以 `stale-before` 被拒且檔案不變；把 journal 中的字面值改成含分號的文字後，反向套用失敗且檔案不變。
+- [ ] 2.5 [after: 2.1] 換 token 留下一條待同步文件，不搜尋字面值：依 design「文件待同步只記宣告本身」修改 server/pending-docs.mjs。完成時成立 spec「Documents pending sync」。驗證：test_governance.test.mjs 新增並通過：`max-inline-size: 70%` 換成 token、規格檔有多行出現 `70%` 時，該操作恰好一條待同步文件，指向宣告的檔案與行號，帶有舊值 `70%` 與新 token；宣告同一行有註解時多一條；還原後這些條目消失。
+
+## 3. 追蹤、預覽與驗證（preview 端）
+
+- [ ] 3.1 [after: 1.2] 寫死的分量在符合條件時被判為可以換成 token，而且只有宣告一個範圍：依 design「可以換成 token 的字面值是值的最上層、以空白分隔的一個分量」修改 runtime/tracer.ts 與 shared/protocol.ts。完成時成立 spec「Value shapes and verdicts」與「Edit scopes」。驗證：storybook-code-layer/test/run_core_loop_browser.mjs 新增一組檢查並通過（CDP 真實輸入，試驗場）：Ribbon Banner 的 margin 列（`margin: 0`）為可編輯、只有「宣告」一個範圍且為預設；Hero Title Lockup 的 `margin: 0 0 var(…)` 分成三列，其中兩列可以換 token、一列可以改綁；Badge Seal 的 display 列仍為唯讀且原因是版面結構；以 `new CSSStyleSheet()` 載入的測試樣式中 `calc(100% - 16px)` 與字體清單的列為唯讀並顯示各自的原因。
+- [ ] 3.2 [after: 3.1] 預覽與 probe 在原始碼的值上替換分量：依 design「預覽與 probe 用原始碼的值替換分量」修改 runtime/tracer.ts 與 runtime/livePreview.ts。驗證：run_core_loop_browser.mjs 新增並通過：打開 `margin: 0` 那一列的選擇器後 probe 為已確認，probe 前後該規則的 `cssText` 相同、`document.getAnimations().length` 不變；滑過候選時計算值改變而磁碟上的檔案雜湊不變；在同一個宣告上同時暫存一筆換 token 與一筆改綁，兩者的預覽同時生效；原樣重存該樣式表觸發熱更新後預覽仍在；外部改掉那個字面值時草稿顯示衝突。
+- [ ] 3.3 [after: 3.2] 換成數值相同的 token 回報「已驗證，外觀不變」：依 design「驗證多一種結果：已驗證、外觀不變」修改 runtime/verify.ts 與 shared/protocol.ts。完成時成立 spec「Post-apply verification」。驗證：run_core_loop_browser.mjs 新增並通過：在試驗場把 `margin: 0` 換成解析值為 8px 的 spacing token 並套用，結果為已驗證，移除預覽後計算值為 8px，還原後檔案雜湊等於套用前、計算值回到 0；在暫存目錄的 fixture 專案（有數值相同的 token）把 `8px` 換成解析值 8px 的 token 並套用，結果為 `verified-same`；同一個 fixture 上改綁到數值相同的 token，結果仍是「此頁看不到效果」；以 CDP 封鎖樣式表更新時結果是逾時而不是 `verified-same`。
+
+## 4. 檢視器
+
+- [ ] 4.1 [after: 3.1] 寫死值的列看起來可以編輯，點開是選擇器：依 design「檢視器上的呈現」修改 manager/components/Field.tsx 與 RowPopover.tsx。完成時成立 spec「Property rows in the panel」。驗證：run_core_loop_browser.mjs 新增並通過：`margin: 0` 的列有「未綁定」記號、沒有鎖頭、沒有範圍切換，點開的選擇器第一行是字面值 `0`；關鍵字的列仍有鎖頭，tooltip 與浮層說明原因且沒有選擇器；暫存後該列同時顯示選的 token 與原本的字面值。
+- [ ] 4.2 [after: 4.1] 選擇器在寫死值的列上依三組排序：依 design「候選是屬性接受的型別，依數值相同、這個屬性用過的類別、其他類別排序」，排序邏輯放在 shared/literals.mjs，由 manager/drafts.ts 使用。完成時成立 spec「Token picker」。驗證：test_literals.test.mjs 新增並通過 code-layer-panel 規格的三個排序情境（`8px` 的範例表、零值 margin 不配到圓角 token、size 列借用同區段的類別），輸入是測試中建立的索引；run_core_loop_browser.mjs 新增並通過：試驗場 `margin: 0` 的選擇器前 8 個候選都是 spacing token，`--md-sys-shape-corner-none` 排在它們之後；`max-inline-size` 的選擇器前 2 個候選是 size token。
+- [ ] 4.3 [after: 4.2] 變更清單、報告與逐級調整涵蓋換 token：修改 manager/actions.ts、apply.ts、components/ChangesBar.tsx、Report.tsx 與 shared/reference.ts。完成時成立 spec「Changes list」與「Scale stepping」。驗證：run_core_loop_browser.mjs 新增並通過：暫存 `70%` 換成 token 後變更清單該行顯示 `70%` 為舊值、該 token 為新值，磁碟上的樣式表仍是 `70%`；重新整理後草稿與預覽仍在；聚焦寫死值的列按 ArrowUp 沒有預覽也沒有暫存，浮層沒有步進鈕；套用並驗證後該列成為一般的 token 列並可以逐級調整；報告對 `verified-same` 顯示「外觀不變」；複製物件參照的文字中該列在套用後列出 token 鏈。
+- [ ] 4.4 [after: 4.3] 新增的介面文字兩種語言都有：新字串加入 shared/messages.zh-Hant.ts 與 messages.en.ts（未綁定的記號、選擇器標題、三組的標題、「數值相同」、新的唯讀原因三種、`verified-same`）。驗證：test_i18n.test.mjs 的鍵集合檢查通過；run_core_loop_browser.mjs 在英文介面下重跑 4.1 的檢查，畫面上沒有中文字串。
+
+## 5. 試驗場端對端
+
+- [ ] 5.1 [after: 4.4] 在試驗場走完整流程而且不留痕跡：開始前記錄新的雜湊基準與還原堆疊（試驗場有使用者自己的兩筆套用，測試不得還原它們），以安裝器 `--update` 升級試驗場並重啟 6006 上的 Storybook。驗證：`node storybook-code-layer/test/run_core_loop_browser.mjs --stage all` 全數通過（含 3.x、4.x 新增的檢查）；`node storybook-code-layer/test/run_live_api.mjs` 新增並通過一筆 `tokenize-literal` 的 validate、apply、undo；結束時還原堆疊與開始時相同，token、鏡像、元件樣式表、規格文件的雜湊與開始時的基準相同；`run_build_check.mjs` 通過（build 產物不含 addon）。
+
+## 6. 版本與文件
+
+- [ ] 6.1 [after: 5.1] 1.1.0 的專案可以直接升級到 1.2.0：模板版本改為 1.2.0，重建 TEMPLATE_MANIFEST.json 並把 1.2.0 加入 KNOWN_MANIFESTS.json。驗證：`node storybook-code-layer/scripts/build_template_manifest.mjs --check` 通過；test_installer_update.test.mjs 新增並通過「1.1.0 的 fixture 專案 `--update` 到 1.2.0，專案綁定不變、使用者改過的檔不被覆蓋」；試驗場 `install_code_layer.mjs --check` 回報完整。
+- [ ] 6.2 [after: 6.1] 使用者與 agent 從文件知道這項功能與它的界線：更新 storybook-code-layer/README.md（能換與不能換的值、候選排序、「數值相同」只對目前主題成立、寫入端點能力範圍的變動）、SKILL.md、repo 的 docs/skills-usage.md，以及 docs/code-layer-guide.html（`GUIDE_VERSION` 1.2.0、更新紀錄、「遇到鎖住的列」旅程改寫為換 token 的旅程並保留一個仍然鎖住的例子、常見問題「有哪些事還不能做」、模擬器加入一列寫死的值與三組候選、`L.zh`／`L.en` 與 messages 檔一致），維持亮色、簡潔的版面，並重新發布到同一個 artifact。驗證：說明文件以 headless 瀏覽器檢查通過（每段旅程以「幫我做這一步」走到最後、沒有 script 錯誤、1280 與 400 寬都沒有水平捲動）；README 與 SKILL.md 中每個指令可照抄執行；在新檔案中搜尋不到舊的 tools installer skill 名稱。
+- [ ] 6.3 [after: 6.2] 提案與實作一致：驗證：`spectra validate add-code-layer-tokenize-literals` 通過；`spectra analyze add-code-layer-tokenize-literals` 沒有 Critical；`node --test 'storybook-code-layer/test/*.test.mjs'` 全數通過；在 apply-log.md 記下各項檢查的實際結果與試驗場的最終狀態。
