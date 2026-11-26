@@ -250,7 +250,8 @@ Install, check, update and remove Code Layer — a Figma-like design mode inside
 1. A toolbar toggle turns on a selection mode: click a rendered element, drill in with a double-click or Enter, and read its layout, spacing, size, appearance, fill, stroke and typography in an inspector that floats over the canvas (draggable, collapsible, and it leaves Storybook's own panels alone). Each property is one compact row — icon, value, token — traced to the declaration and the token chain that sets it; explanations and file locations are on demand.
 2. Click a value to re-bind it to another existing token at the reach you choose (only here, this component, or — when the project opens it — the whole system), with a live preview; nothing is written until Apply. On a flex container, the direction, alignment, distribution and wrapping rows open a fixed list of options instead: these are CSS keywords, not tokens, so the chosen keyword replaces the declared one, or one declaration is appended to the rule that declares the element's `display`.
 3. Apply writes the token source of truth and its mirror, the component stylesheet and the matching Token Contract row of the component specification in one journaled transaction, runs the project's token checks on a candidate tree first, then verifies that the page shows what the files say. Undo restores the exact bytes; a reverse apply handles files edited since.
-4. The installer derives a project binding from evidence for a person to confirm, copies a versioned template, wires `.storybook/main` with one array element, and tracks everything in a receipt so `--update` never overwrites local changes and `--uninstall` removes only what it added.
+4. Optionally (off until a person enables it for the project and the machine), a dialog beside the inspector sends a plain-language request about the selected element to a local agent CLI (Claude Code by default, Codex as an opt-in fallback) through `agent-automation-orchestrate`. Every request is approved outside the browser (a native macOS dialog whose default is deny, or a one-time code printed in the Storybook terminal), the agent works on a copy of the workspace, and a scope gate accepts only modifications of existing files in the allowed set (writable token sources, component files, component specifications); an accepted result is imported as one undoable apply, anything else leaves the project unchanged. Request text is never written to the journal or returned by any route.
+5. The installer derives a project binding from evidence for a person to confirm, copies a versioned template, wires `.storybook/main` with one array element, and tracks everything in a receipt so `--update` never overwrites local changes and `--uninstall` removes only what it added.
 
 Use this when a design-system Storybook (three-tier `ref → sys → comp` tokens) should let designers adjust token bindings on the rendered component and have the change land in source. For values, colors and type it only re-binds existing tokens and never invents a value; for layout it writes only keywords from a fixed list. Requires Chromium for the panel; exists only in `storybook dev`.
 
@@ -514,6 +515,14 @@ node storybook-code-layer/scripts/derive_binding.mjs --project-root <storybook-r
 node storybook-code-layer/scripts/install_code_layer.mjs --project-root <storybook-root> --dry-run
 node storybook-code-layer/scripts/install_code_layer.mjs --project-root <storybook-root>
 node storybook-code-layer/scripts/install_code_layer.mjs --project-root <storybook-root> --check
+```
+
+Allow Code Layer's AI requests on this machine (only after the person has agreed: each request starts a paid CLI after an approval outside the browser; the binding also needs `"agent": { "enabled": true }`), or stop allowing them:
+
+```sh
+node storybook-code-layer/scripts/enable_agent.mjs --project-root <storybook-root> --dry-run
+node storybook-code-layer/scripts/enable_agent.mjs --project-root <storybook-root>
+node storybook-code-layer/scripts/enable_agent.mjs --project-root <storybook-root> --disable
 ```
 
 When invoking the visual comparison skill, provide the most specific target pair available. For example, prefer:

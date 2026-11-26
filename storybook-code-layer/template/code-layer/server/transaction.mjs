@@ -20,7 +20,7 @@ import { replaceComponent, replaceVarName } from "../shared/value-refs.mjs";
 import { resolveOperations, validateBatch } from "./operations.mjs";
 import { patchFile } from "./patcher.mjs";
 import { pairingReport } from "./pairing.mjs";
-import { isInside, listCssFiles, realpathChain, relativePosix, writableProblems } from "./paths.mjs";
+import { isInside, listCssFiles, listFiles, realpathChain, relativePosix, writableProblems } from "./paths.mjs";
 import { PendingDocs, collectPending, contractDrift } from "./pending-docs.mjs";
 import { createPostApply } from "./post-apply.mjs";
 import { acquireLock, recoverUnfinished } from "./recovery.mjs";
@@ -28,7 +28,7 @@ import { listSpecFiles, patchSpec, planSpecEdits } from "./spec-rows.mjs";
 
 // Write order: files the dev server does not watch first (the source of truth
 // and the specification), then the ones whose change reaches the page.
-const ROLE_ORDER = { "token-source": 0, "spec": 1, "token-mirror": 2, "component-css": 3 };
+const ROLE_ORDER = { "token-source": 0, "spec": 1, "token-mirror": 2, "component-css": 3, "component-file": 3 };
 
 export function createEngine({ config, postcss, log = { info() {}, warn() {}, error() {} }, notifyChanged = () => {}, port = null }) {
   const journal = new Journal(config.stateDir);
@@ -66,6 +66,25 @@ export function createEngine({ config, postcss, log = { info() {}, warn() {}, er
       // missing file: not writable
     }
   }
+  // An AI run may also change the other files under the component roots
+  // (sources, stories). They are enumerated now, like the rest of the set, and
+  // are writable only by an AI import and its undo.
+  const agentChains = new Map();
+  if (config.agent?.enabled) {
+    for (const root of config.components.roots) {
+      for (const file of listFiles(root)) {
+        if (chains.has(file)) continue;
+        try {
+          if (fs.statSync(path.dirname(file)).dev !== stateDev) continue;
+          agentChains.set(file, realpathChain(file));
+        } catch {
+          // gone
+        }
+      }
+    }
+  }
+  /** The AI run that holds the write lock, if any. */
+  let agentRunId = null;
   for (const dir of [config.stateDir, tmpDir, stageRoot]) {
     if (fs.lstatSync(dir).isSymbolicLink()) readOnly.push({ code: "state-dir-symlink", message: `${dir} must not be a symlink` });
   }
@@ -119,9 +138,10 @@ export function createEngine({ config, postcss, log = { info() {}, warn() {}, er
     setTimeout(() => notifyChanged(watched), 60).unref?.();
   }
 
-  function assertWritable(abs) {
-    if (!chains.has(abs)) throw new ApiError("read-only", `${relW(abs)} is not in the writable set`);
-    const problems = writableProblems(abs, chains.get(abs));
+  function assertWritable(abs, { agent = false } = {}) {
+    const chain = chains.get(abs) ?? (agent ? agentChains.get(abs) : undefined);
+    if (!chain) throw new ApiError("read-only", `${relW(abs)} is not in the writable set`, { file: relW(abs) });
+    const problems = writableProblems(abs, chain);
     if (problems.length) throw new ApiError("read-only", `${relW(abs)} cannot be written: ${problems.join(", ")}`, { file: relW(abs), problems });
   }
 
@@ -230,6 +250,11 @@ export function createEngine({ config, postcss, log = { info() {}, warn() {}, er
 
   function requireWritable() {
     if (readOnly.length) throw new ApiError("read-only", readOnly.map((r) => r.message).join(" "), { reasons: readOnly });
+  }
+
+  /** While an AI run is between approval and its final state, nothing else writes. */
+  function requireNoAgentRun() {
+    if (agentRunId) throw new ApiError("agent-run-active", "an AI run is in progress; try again when it has finished", { runId: agentRunId });
   }
 
   /**
@@ -350,7 +375,78 @@ export function createEngine({ config, postcss, log = { info() {}, warn() {}, er
   }
 
   async function apply(body, options = {}) {
-    return serialize(() => runBatch(body, { dryRun: options.dryRun === true }));
+    return serialize(() => {
+      if (options.dryRun !== true) requireNoAgentRun();
+      return runBatch(body, { dryRun: options.dryRun === true });
+    });
+  }
+
+  /** Take the write lock for an AI run (waits for a write in progress). */
+  async function lockForAgent(runId) {
+    return serialize(async () => {
+      requireWritable();
+      requireNoAgentRun();
+      agentRunId = runId;
+    });
+  }
+
+  function unlockAgent(runId) {
+    if (agentRunId === runId) agentRunId = null;
+  }
+
+  /**
+   * Import what an AI run changed in its working copy, as one transaction:
+   * every real file must still equal the snapshot taken when it was copied, a
+   * changed token source is copied to its mirror, token checks run on a
+   * candidate tree first, then backups, journal, rename-writes, hot update and
+   * the post-apply commands. Undone like any apply (whole files); never reversed.
+   * changes: [{ path (workspace-relative), role }] from the scope gate.
+   * snapshot: Map<path, sha256 hex> of the copy at creation.
+   */
+  async function importAgentChanges({ runId, copyRoot, snapshot, changes }) {
+    return serialize(async () => {
+      requireWritable();
+      if (agentRunId !== runId) throw new ApiError("agent-run-active", "this AI run does not hold the write lock", { runId: agentRunId });
+      const index = buildIndex({ config, postcss });
+      const drift = mirrorDrift(index);
+      if (drift) throw new ApiError("mirror-drift", "the source of truth and its mirror differ; nothing was imported", { mirrors: drift });
+      const plain = (bytes) => crypto.createHash("sha256").update(bytes).digest("hex");
+      const plans = [];
+      for (const change of changes) {
+        const abs = path.join(config.workspaceRoot, change.path);
+        assertWritable(abs, { agent: true });
+        const current = fs.readFileSync(abs);
+        if (plain(current) !== snapshot.get(change.path)) {
+          throw new ApiError("stale-base", `${change.path} changed in the project while the AI was working; nothing was imported`, { file: change.path });
+        }
+        const newBytes = fs.readFileSync(path.join(copyRoot, change.path));
+        const role = change.role === "spec" ? "spec" : change.role;
+        plans.push({ abs, role, beforeBytes: current, beforeHash: diskHash(current), newBytes, afterHash: diskHash(newBytes), spans: [] });
+        if (role === "token-source") {
+          const mirror = config.tokens.tiers.find((t) => t.source === abs)?.mirror ?? null;
+          if (!mirror) continue;
+          assertWritable(mirror);
+          const mirrorBytes = fs.readFileSync(mirror);
+          if (!mirrorBytes.equals(current)) throw new ApiError("mirror-drift", "the mirror differs from the source of truth; nothing was imported", { mirrors: [{ mirror: relW(mirror) }] });
+          plans.push({ abs: mirror, role: "token-mirror", beforeBytes: mirrorBytes, beforeHash: diskHash(mirrorBytes), newBytes, afterHash: diskHash(newBytes), spans: [] });
+        }
+      }
+      plans.sort((a, b) => ROLE_ORDER[a.role] - ROLE_ORDER[b.role]);
+      const checks = await runTokenChecks(plans, index);
+      const applyId = newApplyId("agent");
+      const fileRecords = plans.map((p, i) => ({ path: p.abs, rel: relW(p.abs), role: p.role, beforeHash: p.beforeHash, afterHash: p.afterHash, backup: journal.backup(applyId, i, p.beforeBytes) }));
+      journal.append({ type: "pending", applyId, kind: "agent-import", runId, files: fileRecords });
+      writePlans(applyId, plans);
+      journal.append({ type: "committed", applyId, checks: checks.map((c) => ({ id: c.id, ok: c.ok, durationMs: c.durationMs })) });
+      scheduleNotify(plans.map((p) => p.abs));
+      log.info(`imported AI run ${runId} as ${applyId}: ${fileRecords.map((f) => f.rel).join(", ")}`);
+      return {
+        applyId,
+        files: fileRecords.map((f) => ({ file: f.rel, role: f.role, beforeHash: f.beforeHash, afterHash: f.afterHash })),
+        checks: checks.map((c) => ({ id: c.id, ok: c.ok })),
+        postApply: postApply.schedule(applyId),
+      };
+    });
   }
 
   /** The latest apply that can still be undone, or an ApiError. */
@@ -383,6 +479,7 @@ export function createEngine({ config, postcss, log = { info() {}, warn() {}, er
   async function reverse(body) {
     return serialize(async () => {
       requireWritable();
+      requireNoAgentRun();
       const tx = latestUndoable(body?.applyId, "reverse");
       const recorded = tx.pending.operations;
       if (!reversible(recorded)) {
@@ -455,6 +552,7 @@ export function createEngine({ config, postcss, log = { info() {}, warn() {}, er
   async function undo(body) {
     return serialize(async () => {
       requireWritable();
+      requireNoAgentRun();
       const tx = latestUndoable(body?.applyId, "undo");
       const top = tx.applyId;
       const conflicts = [];
@@ -475,7 +573,7 @@ export function createEngine({ config, postcss, log = { info() {}, warn() {}, er
       }
       const plans = tx.pending.files.map((file) => {
         const current = fs.readFileSync(file.path);
-        assertWritable(file.path);
+        assertWritable(file.path, { agent: tx.pending.kind === "agent-import" });
         return { abs: file.path, role: file.role, beforeBytes: current, beforeHash: file.afterHash, newBytes: journal.readBackup(file.backup), afterHash: file.beforeHash, spans: [] };
       });
       const index = buildIndex({ config, postcss });
@@ -503,6 +601,7 @@ export function createEngine({ config, postcss, log = { info() {}, warn() {}, er
   async function skip(body) {
     return serialize(async () => {
       requireWritable();
+      requireNoAgentRun();
       const stack = journal.undoStack();
       const top = stack[stack.length - 1];
       if (!top) throw new ApiError("nothing-to-undo", "there is no apply to skip");
@@ -515,6 +614,7 @@ export function createEngine({ config, postcss, log = { info() {}, warn() {}, er
   async function syncMirror({ dryRun = false } = {}) {
     return serialize(async () => {
       requireWritable();
+      if (!dryRun) requireNoAgentRun();
       const pairs = [config.tokens.entry, ...config.tokens.tiers].filter((t) => t.mirror);
       const plans = [];
       for (const pair of pairs) {
@@ -616,11 +716,12 @@ export function createEngine({ config, postcss, log = { info() {}, warn() {}, er
       governance: { componentSpecsDir: config.governance.componentSpecsDir ? relW(config.governance.componentSpecsDir) : null, drift: contractDrift({ config, index: current, specFiles }) },
       undoStack: journal.undoStack().map((id) => {
         const tx = transactions.get(id);
-        return { applyId: id, committedAt: tx.committed?.at ?? null, operations: tx.pending.operations ?? [], files: tx.pending.files.map((f) => f.rel), verification: tx.verification };
+        return { applyId: id, kind: tx.pending.kind, committedAt: tx.committed?.at ?? null, operations: tx.pending.operations ?? [], files: tx.pending.files.map((f) => f.rel), verification: tx.verification };
       }),
+      agentRunId,
       baseline: baseline && { ok: baseline.ok, problems: baseline.problems, ranAt: baseline.ranAt ?? null, results: baseline.results.map((r) => ({ id: r.id, ok: r.ok })) },
     };
   }
 
-  return { apply, undo, reverse, skip, syncMirror, resolvePending, applyReport, postApply, recordVerification, state, journal, readOnly, ensureBaseline: () => ensureBaseline(buildIndex({ config, postcss })) };
+  return { apply, undo, reverse, skip, syncMirror, resolvePending, applyReport, postApply, recordVerification, state, journal, readOnly, lockForAgent, unlockAgent, importAgentChanges, agentRunId: () => agentRunId, ensureBaseline: () => ensureBaseline(buildIndex({ config, postcss })) };
 }

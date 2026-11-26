@@ -99,3 +99,28 @@ export function listCssFiles(root) {
   walk(root);
   return out.sort();
 }
+
+/** All regular files below root, sorted; symlinks, dot folders and node_modules skipped. */
+export function listFiles(root) {
+  const out = [];
+  const walk = (dir) => {
+    let entries;
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (entry.isSymbolicLink()) continue;
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name === "node_modules" || entry.name.startsWith(".")) continue;
+        walk(full);
+      } else if (entry.isFile()) {
+        out.push(full);
+      }
+    }
+  };
+  walk(root);
+  return out.sort();
+}

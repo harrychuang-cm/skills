@@ -54,6 +54,25 @@ function finish(base, result, extra = {}) {
 const hasErrors = (issues) => issues.some((issue) => issue.severity === "error");
 
 /**
+ * AI requests on this machine, from files only: the binding's `agent` key and
+ * the runner file written by enable_agent.mjs. No command is started (the
+ * running Storybook also checks the tools' versions and options). Never an
+ * installation problem: AI requests are optional.
+ */
+async function agentReadiness(config) {
+  const { readRunnerFile, staticProblems } = await import(pathToFileURL(path.join(TEMPLATE_DIR, "server", "agent", "runners.mjs")).href);
+  const read = readRunnerFile(config.stateDir);
+  const problems = staticProblems(config, read);
+  return {
+    enabled: config.agent.enabled,
+    ready: problems.length === 0,
+    runners: read.state === "ok" ? read.data.runners.map((runner) => runner.label) : [],
+    confirm: config.agent.confirm ?? null,
+    problems,
+  };
+}
+
+/**
  * Run one installer mode.
  * options: { projectRoot, mode: "install" | "check" | "update" | "uninstall", config?, dryRun?, forceManaged?, failAfter? }
  * `failAfter` is a test hook: fail after that many file operations (the run is rolled back).
@@ -234,6 +253,7 @@ export async function run({ projectRoot, mode = "install", config = null, dryRun
     else if (!receiptCurrent) issues.push(error("receipt-mismatch", `${relative(receiptFile)} records template ${receipt.version}${receipt.sourceSchema === 1 ? " (receipt format 1)" : ""}; it does not describe this installation (run --update)`, { path: relative(receiptFile) }));
     if (mainPending) issues.push(error("wiring-missing", `${mainRelative} does not list the Code Layer preset in its addons array`, { path: mainRelative }));
     if (tsconfigPending) issues.push(error("wiring-missing", `tsconfig.json includes ${INSTALL_AT}/ in the project's own type check; it should exclude "${tsconfigPending.entry}"`, { path: "tsconfig.json" }));
+    if (bindingConfig) base.agent = await agentReadiness(bindingConfig);
     return finish(base, hasErrors(issues) ? "incomplete" : "complete");
   }
 
@@ -310,6 +330,12 @@ export function formatText(outcome) {
   if (outcome.issues?.length > 0) {
     lines.push(`issues (${outcome.issues.length}):`);
     for (const issue of outcome.issues) lines.push(`  ${issue.severity.padEnd(7)} ${issue.code}: ${issue.message}`);
+  }
+  if (outcome.agent) {
+    const agent = outcome.agent;
+    if (!agent.enabled) lines.push("AI requests: off (the binding has no \"agent\": { \"enabled\": true })");
+    else if (agent.ready) lines.push(`AI requests: ready as far as files go (${agent.runners.join(" → ")}; confirmation ${agent.confirm ?? "default"}); the running Storybook also checks each tool's version and options`);
+    else lines.push(`AI requests: not ready — ${agent.problems.map((p) => `${p.code}${p.runner ? ` (${p.runner})` : ""}: ${p.detail ?? ""}`).join("; ")}`);
   }
   lines.push(`result: ${outcome.result} — ${RESULT_TEXT[outcome.result] ?? outcome.result}`);
   if (outcome.restartRequired) lines.push("Restart Storybook: changes to the preset, the dev server and the manager are not hot-updated.");

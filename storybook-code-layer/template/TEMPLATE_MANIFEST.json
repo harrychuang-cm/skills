@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "name": "storybook-code-layer",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "installDir": ".storybook/code-layer",
   "projectOwned": [
     "INSTALL_RECEIPT.json",
@@ -15,13 +15,13 @@
     },
     {
       "path": "manager.tsx",
-      "sha256": "sha256:4bf0c1240fe1df4481c337d796f66f7803709e8c8b8c154ab3f9e7752da19724",
-      "bytes": 5111
+      "sha256": "sha256:b9f5c3b33b672b3829d7d01645b491640aa7d17c9c8f3cc60a6694ce702547f4",
+      "bytes": 5489
     },
     {
       "path": "manager/Inspector.tsx",
-      "sha256": "sha256:24b46ff5abc8b0822ef5ef950cea7fad9561503b4abad7db13a594b80630c2bb",
-      "bytes": 22603
+      "sha256": "sha256:edac0ff5277d0abd68e0fbc678e93f768b901615835e5b7ec191525bf60c7925",
+      "bytes": 25279
     },
     {
       "path": "manager/Tool.tsx",
@@ -32,6 +32,11 @@
       "path": "manager/actions.ts",
       "sha256": "sha256:d46d795fb2821eeec35550e3b0e6f72f89e8b67c33c8207f2730fb3f2386a0e2",
       "bytes": 9430
+    },
+    {
+      "path": "manager/agent.ts",
+      "sha256": "sha256:9e85ccd5ed542cdd64c973590cdf8ba8f8fca22d28834a29a4f3f7dde6f2adee",
+      "bytes": 10094
     },
     {
       "path": "manager/api.ts",
@@ -49,9 +54,19 @@
       "bytes": 1174
     },
     {
+      "path": "manager/components/AgentDialog.tsx",
+      "sha256": "sha256:6349e76929b5dc8882221e310f09ed1b726f5a561c3a8290bfe5cee82e57c2a1",
+      "bytes": 9960
+    },
+    {
+      "path": "manager/components/AgentRunReport.tsx",
+      "sha256": "sha256:f745f5f2f78ec8c4eba7ad67d457ccd1e37304fdf4f625bbee0bb6b31a1a457a",
+      "bytes": 6698
+    },
+    {
       "path": "manager/components/ChangesBar.tsx",
-      "sha256": "sha256:ae58255da840a292c2e513460d49227a46c05ead7783da6049ed0bd92cd98135",
-      "bytes": 8885
+      "sha256": "sha256:9684205c42eba5f7b8306ec41fa32d387d3e60bb145ce59dab8dbe49c1a64137",
+      "bytes": 8956
     },
     {
       "path": "manager/components/Field.tsx",
@@ -65,13 +80,13 @@
     },
     {
       "path": "manager/components/Notices.tsx",
-      "sha256": "sha256:bfc5a81ea23e1b79f2b8cd64c6ee2e3d559ec95cc3e811c72065c44816f31261",
-      "bytes": 5568
+      "sha256": "sha256:8ca17fbb277acc3db90253e6e450926509fa0035ba0653ed09fc044b304c691e",
+      "bytes": 5714
     },
     {
       "path": "manager/components/Report.tsx",
-      "sha256": "sha256:1ef979b65226dc142fe84ec28f22d59c3aae98c93ef64fc7e2dac1287de25a70",
-      "bytes": 11711
+      "sha256": "sha256:6d180df7c4c2382679f9f8b154c93d35a42e7ec43d113a5a77e5086a57aa35b9",
+      "bytes": 12000
     },
     {
       "path": "manager/components/RowPopover.tsx",
@@ -85,8 +100,8 @@
     },
     {
       "path": "manager/icons.tsx",
-      "sha256": "sha256:6d26709d4aa05141159d23b746c6526a544e70ee8f5618b6821f9ceab536dc9e",
-      "bytes": 10423
+      "sha256": "sha256:5e3998db82a3756100bafbe2450523caac0479320ee88cdb8d40af9722b785f6",
+      "bytes": 10653
     },
     {
       "path": "manager/persist.ts",
@@ -95,17 +110,17 @@
     },
     {
       "path": "manager/store.ts",
-      "sha256": "sha256:65c5c1d38a3d3a4cb801ad64022715132f1e24c907864241cf7640ed3b198d4c",
-      "bytes": 6136
+      "sha256": "sha256:558476d78211edc49c01d138b3c13c6a53a918fbe832fb3862732bd0e76f9c87",
+      "bytes": 8307
     },
     {
       "path": "manager/styles.ts",
-      "sha256": "sha256:56df6b4b81c54e23c3373b6efbc8d17bc557a3c92e319a1d325dcecde51ba413",
-      "bytes": 19585
+      "sha256": "sha256:2fe12e7c1f8eb57a3a7244343af1f969ca451c03d0e6396adb86098cc582e0b7",
+      "bytes": 20930
     },
     {
       "path": "package.json",
-      "sha256": "sha256:e2972f5a84312329314242bef703095cc1ca3db239920cca601467bcefcaa408",
+      "sha256": "sha256:7d072abcde22a5393f61fdbcc58f1202620f52ec80b890c75c8a61f43a86bb3a",
       "bytes": 64
     },
     {
@@ -160,8 +175,8 @@
     },
     {
       "path": "runtime/index.ts",
-      "sha256": "sha256:80c8ccb1f1a29ba4d19e0544b390da188ab7755257e92de10c16ce6b674ef877",
-      "bytes": 25656
+      "sha256": "sha256:9b118f645536d8bcdecb7fa4e6952b46af2147140bb47571a66734c0ec619f77",
+      "bytes": 26078
     },
     {
       "path": "runtime/inherit.ts",
@@ -180,8 +195,8 @@
     },
     {
       "path": "runtime/overlay.ts",
-      "sha256": "sha256:b29fdcd27492b8761129728b1ed1c4a9bead049391310b1156ddaf2a591ce6b0",
-      "bytes": 8788
+      "sha256": "sha256:d2cad23a4ed89f9356c337567f6f0e56cbe2bd58f7303135871c0b6cf2f0237e",
+      "bytes": 9650
     },
     {
       "path": "runtime/sheets.ts",
@@ -204,6 +219,61 @@
       "bytes": 7782
     },
     {
+      "path": "server/agent/check-result.mjs",
+      "sha256": "sha256:027ea3aa3da9b2e21f9c4c773292215d501ed0c0eb3a7b54e3c0759b4456d4ad",
+      "bytes": 981
+    },
+    {
+      "path": "server/agent/confirm.mjs",
+      "sha256": "sha256:aa2f200ff54fa147c66972d1315e5a36cccd3605f102db4f7135a1a59e46861f",
+      "bytes": 9098
+    },
+    {
+      "path": "server/agent/contract.mjs",
+      "sha256": "sha256:3fa922923e5e9ee903a7074e56509f0005ce9485bf90e9f887e2d4605293cc60",
+      "bytes": 2593
+    },
+    {
+      "path": "server/agent/launcher.mjs",
+      "sha256": "sha256:c961fa6f4f0ec4637ef5c0ceccc9caffa47f22546eb493c3240e26c58a1e760e",
+      "bytes": 2614
+    },
+    {
+      "path": "server/agent/messages.confirm.mjs",
+      "sha256": "sha256:754ee6cc7c1771b90b62d48be96f25b08ca0a0cd60c74cd17618eb8bf6b97ccd",
+      "bytes": 1698
+    },
+    {
+      "path": "server/agent/request-file.mjs",
+      "sha256": "sha256:a57f52e6b29f79dac266a63ae6e5528631109b9c93b145314a40037cc5fcd210",
+      "bytes": 7258
+    },
+    {
+      "path": "server/agent/routes.mjs",
+      "sha256": "sha256:4f5f36e7710a7fdee5ed830e4112457f8b3d8c4bf2923a855777d1c1f36f5b78",
+      "bytes": 2204
+    },
+    {
+      "path": "server/agent/runners.mjs",
+      "sha256": "sha256:9dfe9e2df8adc885fd2d7421f32c0871d8fd95ec97c6b8a86eaf80fca9855c49",
+      "bytes": 10432
+    },
+    {
+      "path": "server/agent/runs.mjs",
+      "sha256": "sha256:1970baea9472382ab10e1972024786d8aa16a9a5b003fe9ccf3ecceb371eb1c3",
+      "bytes": 25797
+    },
+    {
+      "path": "server/agent/scope-gate.mjs",
+      "sha256": "sha256:f1399fd964b6b88568b5dee158c8bc0e6a487bb5b1d5e525f7633d2139b4e1e0",
+      "bytes": 5279
+    },
+    {
+      "path": "server/agent/workcopy.mjs",
+      "sha256": "sha256:82cf1c1568eb99d166a1d984c37e4e8b3dee77469c29e10b569d45b2efc908ec",
+      "bytes": 5308
+    },
+    {
       "path": "server/app.mjs",
       "sha256": "sha256:77629cc6501eb240aad439f7c58093590864b4654f305aee1e5b8e2b3ac05f3f",
       "bytes": 6844
@@ -220,8 +290,8 @@
     },
     {
       "path": "server/config.mjs",
-      "sha256": "sha256:b215552f735dd923ef61cfe653615d4b24efa4797a597705e17d102b092c4de9",
-      "bytes": 8510
+      "sha256": "sha256:fcbf510aa8abb59d7840cf19769e04b27a2be70b350439def091bc377234c609",
+      "bytes": 11535
     },
     {
       "path": "server/css-index.mjs",
@@ -250,8 +320,8 @@
     },
     {
       "path": "server/journal.mjs",
-      "sha256": "sha256:73a75207cfedcb9f3dc2518f4e15809797bdc305c556f5e047d6cc35790564b2",
-      "bytes": 3445
+      "sha256": "sha256:c2539aaceb9cc80db2d1ca101832d6324bd9c944b70c1cb011788ed3a186bdc6",
+      "bytes": 3502
     },
     {
       "path": "server/operations.mjs",
@@ -270,8 +340,8 @@
     },
     {
       "path": "server/paths.mjs",
-      "sha256": "sha256:095bc4ee314e8497583bbf25b8d0373acd98765432ee89b16c2f2151461a5741",
-      "bytes": 2740
+      "sha256": "sha256:b7b079e56d86c6fd880c585a926ef461f1eb74890813c617442c8ed61b3ca074",
+      "bytes": 3412
     },
     {
       "path": "server/pending-docs.mjs",
@@ -310,8 +380,8 @@
     },
     {
       "path": "server/transaction.mjs",
-      "sha256": "sha256:46b31444fba425cb655fbcd87010c8b89f28fb40a8c530092f2eb69ad998534b",
-      "bytes": 33556
+      "sha256": "sha256:ce80020064549db4b0081c6da0eba49b21e91ea170a76c1ab80bcec03ff92005",
+      "bytes": 38914
     },
     {
       "path": "server/type-infer.mjs",
@@ -320,8 +390,8 @@
     },
     {
       "path": "server/write-routes.mjs",
-      "sha256": "sha256:c5c06263cce1c7efb5640900c41cc8108782be9c245d79c84bc80d31d6f698db",
-      "bytes": 4104
+      "sha256": "sha256:e26df5415159627fcfbc690888c21a17d2cd660900d58415bc72216fe4f6f4a1",
+      "bytes": 4421
     },
     {
       "path": "shared/api-contract.d.mts",
@@ -330,8 +400,8 @@
     },
     {
       "path": "shared/api-contract.mjs",
-      "sha256": "sha256:331785d6ea9df4917a28b89e580d39b7e5b566d54b09b30072354992cac6f2cc",
-      "bytes": 2667
+      "sha256": "sha256:7eb2b0aa701be96fa38cc33c59b0780ce13c3b105559a1ee1f61f5f477d20287",
+      "bytes": 3025
     },
     {
       "path": "shared/brief.ts",
@@ -400,13 +470,13 @@
     },
     {
       "path": "shared/messages.en.ts",
-      "sha256": "sha256:9dab6c3e5cc8437db8231e7a62d28c90b0d2f6ab27120e856662883354513b40",
-      "bytes": 28385
+      "sha256": "sha256:9d7c16f0107c5afd1faf66b3b8570928f8cbdc6daa2061ce8570511ad7051ec5",
+      "bytes": 35421
     },
     {
       "path": "shared/messages.zh-Hant.ts",
-      "sha256": "sha256:1584708bede1c4edcb6b6a092d6d35fd143e86d1bf5a8fa6b46af43337095752",
-      "bytes": 26998
+      "sha256": "sha256:6dd674a4bcb780b9ea5b9c42988182aa220a03b4f67ea779c55a1a698182fade",
+      "bytes": 33760
     },
     {
       "path": "shared/pairing.d.mts",
@@ -425,8 +495,8 @@
     },
     {
       "path": "shared/protocol.ts",
-      "sha256": "sha256:a69f0b17abaf522ae740736223d9ca3b7a15668b717d94aa37f77b4b50ee094f",
-      "bytes": 16111
+      "sha256": "sha256:1e1f2aa783c75ceb7eb09ed040cd88bc82ea299375b3702351af52dec7326018",
+      "bytes": 16249
     },
     {
       "path": "shared/reference.ts",

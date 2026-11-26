@@ -258,9 +258,10 @@ test("binding: a proof-phase configuration resolves as before; the v1 keys are o
       },
       components: { roots: ["/ws/sb/src/components"], classPrefixes: ["t-"] },
       checks: [],
-      limits: { maxOperations: 50, maxApplyBodyBytes: 262144, maxOtherBodyBytes: 16384, maxStringLength: 512 },
+      limits: { maxOperations: 50, maxApplyBodyBytes: 262144, maxOtherBodyBytes: 16384, maxStringLength: 512, maxAgentTextChars: 2000, maxAgentReferenceBytes: 16384 },
     },
   );
+  assert.equal(config.agent.enabled, false, "AI runs are off without the agent key");
   // The v1 keys default to "off".
   assert.equal(config.locale, null);
   assert.deepEqual(config.governance, { componentSpecsDir: null, pairing: { containerSuffix: "-container-color", contentSuffix: "-text-color" }, proseScan: true });
@@ -287,7 +288,9 @@ test("binding: a proof-phase configuration resolves as before; the v1 keys are o
   assert.throws(() => resolve({ governance: { specs: "x" } }), /unknown key "specs"/);
   assert.throws(() => resolve({ governance: { pairing: { containerSuffix: "container" } } }), /must start with "-"/);
   assert.throws(() => resolve({ governance: { proseScan: "yes" } }), /proseScan must be boolean/);
-  assert.throws(() => resolve({ agent: {} }), /unknown key "agent"/, "an unknown key is still an error");
+  assert.throws(() => resolve({ assistant: {} }), /unknown key "assistant"/, "an unknown key is still an error");
+  // The agent key (AI runs) is known and validated; without enabled it is an error.
+  assert.throws(() => resolve({ agent: {} }), /agent\.enabled must be true or false/);
 });
 
 test("index: the governance summary lists the bound specifications; names outside the binding never become tokens", async () => {

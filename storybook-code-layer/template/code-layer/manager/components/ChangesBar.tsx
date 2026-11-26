@@ -63,11 +63,12 @@ export function ChangesBar({ index, applyEnabled, applyHint, onApply, applying, 
   const previewState = useStore((s) => s.previewState);
   const compare = useStore((s) => s.compare);
   const reporting = useStore((s) => s.applyState.phase !== "idle");
+  const agentRun = useStore((s) => s.agent.run !== null);
   const prefix = index?.tokens.prefix ?? "";
   const pairing = pairingFor(drafts, index);
   const holdOn = () => setCompare(true);
   const holdOff = () => setCompare(false);
-  if (drafts.length === 0 && !reporting) return null;
+  if (drafts.length === 0 && !reporting && !agentRun) return null;
 
   return (
     <ChangesBox data-code-layer-changes={drafts.length} onClick={(event) => event.stopPropagation()}>

@@ -2,6 +2,7 @@
 // Every POST has already passed the guard (loopback, Host, Origin,
 // Sec-Fetch-Site, JSON content type, session header) before reaching here.
 import { ApiError, ID_PATTERN } from "../shared/api-contract.mjs";
+import { registerAgentRoutes } from "./agent/routes.mjs";
 import { createEngine } from "./transaction.mjs";
 
 function applyIdBody(body) {
@@ -13,7 +14,8 @@ function applyIdBody(body) {
   return body;
 }
 
-export async function extendWithWrites(app) {
+/** agentOptions: test doubles for the AI routes (confirmer, launchImpl, probeImpl). */
+export async function extendWithWrites(app, agentOptions = {}) {
   if (!app.config || !app.postcss || app.readOnlyReasons.length > 0) return;
   const engine = createEngine({ config: app.config, postcss: app.postcss, log: app.log, notifyChanged: app.notifyChanged });
   app.engine = engine;
@@ -77,4 +79,6 @@ export async function extendWithWrites(app) {
       return engine.recordVerification(params.id, body);
     },
   });
+  // AI runs: answer "disabled" with the reason unless the binding and this machine both enable them.
+  registerAgentRoutes(app, engine, agentOptions);
 }

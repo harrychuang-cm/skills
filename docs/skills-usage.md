@@ -49,7 +49,7 @@ Read <cm-skills path>/frontend-product-implementation/SKILL.md and follow that w
 | 判斷 Figma 端修改要不要同步回 Storybook | `$figma-sync-back` | 三方比對分辨 Figma 改了／程式碼改了／兩邊都改，產出分流報告；只判斷、不動程式碼。 |
 | 把重複性流程變成自動化 | `$agent-automation-orchestrate` | 自動化的起始點：建立專案契約，之後用它執行、續跑、查狀態。 |
 | 在 Storybook 專案安裝通用工具頁（覆蓋率、元件時間軸） | `$storybook-tools-install` | 帶入「UI 圖片/PRD → 覆蓋率報告 → 審查 → 實作」工具、Component Timeline 頁面和配套 skills。 |
-| 在 Storybook 裡像 Figma 一樣選取元件、改綁 token、調整排列，並寫回原始碼 | `$storybook-code-layer` | 安裝、檢查、更新或移除 Code Layer：選取畫面上的元素 → 在畫布上的檢視器點數值換 token，或調整 flex 容器的方向、對齊、分布、換行，即時預覽 → 套用到 token 檔、元件樣式表與規格表，可還原。 |
+| 在 Storybook 裡像 Figma 一樣選取元件、改綁 token、調整排列，並寫回原始碼 | `$storybook-code-layer` | 安裝、檢查、更新或移除 Code Layer：選取畫面上的元素 → 在畫布上的檢視器點數值換 token，或調整 flex 容器的方向、對齊、分布、換行，即時預覽 → 套用到 token 檔、元件樣式表與規格表，可還原。也可以選擇啟用「請 AI 修改」：每次在瀏覽器外允許，結果通過範圍檢查才寫入、可還原。 |
 | 在其他專案安裝 Figma 清理自動化 | `$design-automation-hub-install` | 安裝 Figma plugin、本機 coordinator 和 figma-cleanup task。 |
 | 讓 iOS App 適配 iPhone Duo（摺疊機）並自動化截圖驗證 | `$iphone-duo-adaptation` | 盤點寫死螢幕尺寸 → 設計師答 10 題問卷 → 版面規則 → Lego 開關或 UIKit 做法 → 模擬器自動開合截圖 → Before／After 報告。Lego 與非 Lego App 都能用。 |
 
@@ -551,6 +551,8 @@ Use $storybook-tools-install to install only the component timeline into ./apps/
 
 它只改綁既有的 token，不會新增 token 或寫入任意數值。只在 `storybook dev` 存在；面板需要 Chromium 系瀏覽器。
 
+選用的「請 AI 修改」（1.3.0 起，預設關閉）：在檢視器旁的對話框用文字描述檢視器做不到的修改，由你電腦上的 AI 命令列工具（預設 Claude Code）經 `$agent-automation-orchestrate` 在專案的複本上完成。每次請求都會使用你自己的額度，而且要你在瀏覽器外按允許（macOS 系統對話框，或終端機的確認碼）；只有「修改既有檔案、而且在允許範圍內」的結果會寫進專案，整筆可以還原，其他結果專案完全不變。要啟用時請 AI 先說明這些事，你同意後它才會執行 `enable_agent.mjs`。
+
 範例：
 
 ```text
@@ -559,6 +561,10 @@ Use $storybook-code-layer to set up Code Layer in ./apps/web: propose the bindin
 
 ```text
 Use $storybook-code-layer to update the Code Layer installation in ./apps/web to the current template, dry run first.
+```
+
+```text
+Use $storybook-code-layer to explain what enabling AI requests in ./apps/web would allow, then enable them if I agree (dry run first).
 ```
 
 操作說明（面板怎麼用、套用與還原、已知限制）：`storybook-code-layer/README.md`。

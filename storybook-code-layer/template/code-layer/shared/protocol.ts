@@ -32,6 +32,8 @@ export const EVENTS = {
   children: "code-layer/children",
   /** preview → manager: where the story's components are, so the inspector can keep out of their way. */
   layout: "code-layer/layout",
+  /** manager → preview: whether AI runs are ready (the selection label shows its AI button only then). */
+  agent: "code-layer/agent",
 } as const;
 
 /** Version of the channel payloads, of the trace and of stored drafts. */

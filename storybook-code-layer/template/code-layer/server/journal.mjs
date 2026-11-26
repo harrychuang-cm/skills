@@ -81,10 +81,10 @@ export class Journal {
     return map;
   }
 
-  /** Committed applies that can still be undone, oldest first. */
+  /** Committed applies (and AI imports) that can still be undone, oldest first. */
   undoStack() {
     return [...this.transactions().values()]
-      .filter((t) => t.pending?.kind === "apply" && t.committed && !t.terminal && !t.undoneBy && !t.skipped)
+      .filter((t) => (t.pending?.kind === "apply" || t.pending?.kind === "agent-import") && t.committed && !t.terminal && !t.undoneBy && !t.skipped)
       .map((t) => t.applyId);
   }
 

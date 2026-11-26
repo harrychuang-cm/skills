@@ -10,7 +10,7 @@ import { formatText, run } from "../scripts/install_code_layer.mjs";
 import { wireMain } from "../scripts/lib/wire_main.mjs";
 import { parseJsonc, wireTsconfig } from "../scripts/lib/wire_tsconfig.mjs";
 import { ENTRY, MAIN_ESM, MAIN_NO_IMPORT, TSCONFIG, cli, codes, copySkill, makeProject, sha, treeHash } from "./installer_helpers.mjs";
-import { fixtureConfig } from "./helpers.mjs";
+import { addon, fixtureConfig } from "./helpers.mjs";
 
 // ---- wiring (pure) ---------------------------------------------------------------
 
@@ -300,6 +300,37 @@ test("check is read-only and judges the installation, not the project's own bind
   assert.ok(codes(await run({ projectRoot: fresh.project, mode: "check" })).includes("binding-missing"));
   fs.rmSync(path.join(project, ".storybook/code-layer/INSTALL_RECEIPT.json"));
   assert.ok(codes(await run({ projectRoot: project, mode: "check" })).includes("receipt-missing"));
+});
+
+test("check says whether AI requests could run, from files only, and never fails because of it", async () => {
+  const { ws, project, binding, stateDir } = makeProject();
+  await run({ projectRoot: project, config: binding });
+  const bindingFile = path.join(project, ".storybook/code-layer/code-layer.config.json");
+  let health = await run({ projectRoot: project, mode: "check" });
+  assert.equal(health.result, "complete");
+  assert.deepEqual([health.agent.enabled, health.agent.ready, health.agent.problems.map((p) => p.code)], [false, false, ["binding-disabled"]]);
+  assert.match(formatText(health), /AI requests: off/);
+
+  // The project allows them; this machine has not been set up.
+  fs.writeFileSync(bindingFile, `${JSON.stringify({ ...JSON.parse(fs.readFileSync(bindingFile, "utf8")), agent: { enabled: true } }, null, 2)}\n`);
+  health = await run({ projectRoot: project, mode: "check" });
+  assert.equal(health.result, "complete", "not ready is not an installation problem");
+  assert.deepEqual(health.agent.problems.map((p) => p.code), ["runner-file-missing"]);
+  assert.match(formatText(health), /AI requests: not ready — runner-file-missing/);
+
+  // A runner file whose paths exist: ready as far as files go. Nothing is started and nothing is written.
+  const { writeRunnerFile } = await addon("server/agent/runners.mjs");
+  const runner = { id: "fake", label: "Fake runner", command: process.execPath, args: ["runner.mjs", "{workspace}", "{prompt}"], timeoutMs: 60000, version: process.version, flags: [] };
+  writeRunnerFile(stateDir, { schemaVersion: 1, node: process.execPath, orchestratorRunTask: process.execPath, runners: [runner], createdAt: new Date().toISOString() });
+  const before = treeHash(ws);
+  health = await run({ projectRoot: project, mode: "check" });
+  assert.deepEqual([health.agent.ready, health.agent.runners, health.agent.problems], [true, ["Fake runner"], []]);
+  assert.match(formatText(health), /AI requests: ready as far as files go \(Fake runner/);
+  writeRunnerFile(stateDir, { schemaVersion: 1, node: process.execPath, orchestratorRunTask: path.join(ws, "missing", "run-task.mjs"), runners: [{ ...runner, command: path.join(ws, "missing", "claude") }], createdAt: new Date().toISOString() });
+  health = await run({ projectRoot: project, mode: "check" });
+  assert.deepEqual(health.agent.problems.map((p) => p.code), ["orchestrator-missing", "runner-missing"]);
+  assert.equal(health.result, "complete");
+  assert.notEqual(treeHash(ws), before, "the second runner file was written by the test");
 });
 
 test("an existing binding is kept even when --config differs; an install directory that is a symbolic link is refused", async () => {

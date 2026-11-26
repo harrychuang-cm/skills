@@ -44,6 +44,11 @@
         "name": "design-system-extractor",
         "role": "support",
         "reason": "The project binding can point its token checks at the extractor's scripts/audit_tokens.mjs and its post-apply commands at generate_docs_html.mjs and generate_review_html.mjs; without it the check list may be empty and token changes are written without an audit, which the skill tells the person."
+      },
+      {
+        "name": "agent-automation-orchestrate",
+        "role": "support",
+        "reason": "Optional AI requests run through its scripts/run-task.mjs, unmodified, with a contract written inside a copy of the workspace; without it AI requests stay off and every other feature works."
       }
     ]
   }

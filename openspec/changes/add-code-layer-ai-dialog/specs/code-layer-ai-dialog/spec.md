@@ -6,21 +6,21 @@ Define the in-page experience of asking an AI agent to change the selected eleme
 
 ### Requirement: AI entry points
 
-While the tool is active and agent runs are ready, the label of the hover outline, the label of the selection outline and the panel header SHALL each carry an AI control. Activating a control SHALL select its element and open the prompt dialog for it. The hover outline SHALL stay on its element while the pointer is over that outline's label, so the control can be reached. When agent runs are not ready the outline labels SHALL carry no AI control, and the panel header SHALL state that AI editing is unavailable and why.
+While the tool is active, an element is selected and agent runs are ready, the label of the selection outline and the inspector header SHALL each carry an AI control. Activating either control SHALL open the prompt dialog for the selected element. The control on the outline label SHALL only notify the inspector, carrying no text. When agent runs are not ready the outline label SHALL carry no AI control, and the inspector header's AI control SHALL be disabled with the reason as its tooltip.
 
-#### Scenario: From hover to dialog
+#### Scenario: From the selection to the dialog
 
-- **WHEN** a person points at a component, moves onto the AI control in its hover label and activates it
-- **THEN** that component is selected and the prompt dialog opens beside it
+- **WHEN** a person selects a component and activates the AI control on its selection label
+- **THEN** the prompt dialog opens beside the inspector and names that component
 
 #### Scenario: Not ready is explained, not hidden
 
 - **WHEN** agent runs are disabled for the project
-- **THEN** no AI control appears on the outlines and the panel header says AI editing is unavailable with the reason
+- **THEN** no AI control appears on the outline label, and the inspector header's AI control is disabled and says AI editing is unavailable with the reason
 
 ### Requirement: Prompt dialog
 
-The prompt dialog SHALL be anchored to the selected element, SHALL name that element, and SHALL let the person expand and read the object reference that will be sent as context. It SHALL show which runner will be used and a notice that each request takes time and has a cost on the person's own account. Enter SHALL submit, Shift+Enter SHALL insert a line break, and Escape SHALL close the dialog keeping the typed text for that element. Keys typed in the dialog SHALL NOT reach the story or Storybook's shortcuts. An empty request SHALL NOT be submittable.
+The prompt dialog SHALL open beside the inspector, in the place where a row's popover opens, and SHALL replace an open row popover. It SHALL name the selected element and SHALL let the person expand and read the object reference that will be sent as context. When the selection changes the dialog SHALL follow it, and the typed text SHALL be kept per element. It SHALL show which runner will be used and a notice that each request takes time and has a cost on the person's own account. Enter SHALL submit, Shift+Enter SHALL insert a line break, and Escape SHALL close the dialog keeping the typed text for that element. Keys typed in the dialog SHALL NOT reach the story or Storybook's shortcuts. An empty request SHALL NOT be submittable.
 
 #### Scenario: Closing keeps the draft
 
@@ -30,7 +30,7 @@ The prompt dialog SHALL be anchored to the selected element, SHALL name that ele
 #### Scenario: Typing does not trigger shortcuts
 
 - **WHEN** a person types the letter M in the dialog
-- **THEN** Storybook's measure tool does not toggle
+- **THEN** Storybook's measure tool does not toggle and the story receives no key event
 
 ### Requirement: Confirmation prompt
 
@@ -43,16 +43,16 @@ After a request is submitted the dialog SHALL say that approval is needed outsid
 
 ### Requirement: Progress and cancellation
 
-From approval until a final state the dialog and the panel SHALL show the run's state, the runner name and the elapsed time, and SHALL offer to cancel. The same state SHALL be shown again after a browser reload. While a run is active, the controls that apply, undo or synchronize SHALL be disabled with the reason.
+From approval until a final state the dialog and the inspector's report area SHALL show the run's state, the runner name and the elapsed time, and SHALL offer to cancel. The same state SHALL be shown again after a browser reload, together with the request text, which the page keeps itself because the server never returns it. While a run is active, the controls that apply, undo or synchronize SHALL be disabled with the reason.
 
 #### Scenario: Progress survives a reload
 
 - **WHEN** the browser tab is reloaded while the agent is working
-- **THEN** after the reload the panel shows the run as running with its elapsed time and the cancel action
+- **THEN** after the reload the inspector shows the run as running with its elapsed time, the request text and the cancel action
 
 ### Requirement: Result review
 
-When a run ends as imported, the panel SHALL show the agent's own summary as plain text, the list of changed files with the number of changed lines in each, the checks that ran, and for the selected element which traced rows have a different computed value than before the run. It SHALL offer to revert the import, which uses the undo of the write-back capability. When a run ends as rejected or failed, the panel SHALL show every reason, SHALL state that the project was not changed, and SHALL offer to copy the object reference as the manual fallback. Text produced by the agent SHALL never be rendered as markup.
+When a run ends as imported, the inspector's report area SHALL show the agent's own summary as plain text, the list of changed files with the number of changed lines in each, the checks that ran, and for the selected element which traced rows have a different computed value than before the run. It SHALL offer to revert the import, which uses the undo of the write-back capability; the reverse apply of the write-back capability SHALL NOT be offered for an import. When a run ends as rejected or failed, the report area SHALL show every reason, SHALL state that the project was not changed, and SHALL offer to copy the object reference as the manual fallback. Text produced by the agent SHALL never be rendered as markup.
 
 #### Scenario: Reverting an imported result
 
@@ -62,7 +62,7 @@ When a run ends as imported, the panel SHALL show the agent's own summary as pla
 #### Scenario: A rejected run says why and that nothing changed
 
 - **WHEN** a run is rejected because the agent created a file
-- **THEN** the panel names the created file, states that the project was not changed, and offers to copy the object reference
+- **THEN** the report area names the created file, states that the project was not changed, and offers to copy the object reference
 
 ### Requirement: Decision follow-up
 

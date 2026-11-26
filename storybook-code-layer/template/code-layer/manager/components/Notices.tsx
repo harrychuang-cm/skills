@@ -23,6 +23,7 @@ export function Notices({ dev }: { dev: boolean }) {
   const lost = useStore((s) => s.lostSelection);
   const reloadRequired = useStore((s) => s.reloadRequired);
   const sync = useStore((s) => s.mirrorSync);
+  const agentBusy = useStore((s) => Boolean(s.agent.run && !s.agent.run.final));
   const drifting = (server?.mirrors ?? []).filter((m) => !m.inSync);
   const drift = server?.governance.drift ?? null;
   const refused = server?.postApply.refused ?? [];
@@ -87,7 +88,7 @@ export function Notices({ dev }: { dev: boolean }) {
             </div>
           ) : (
             <div>
-              <Button type="button" disabled={busy} onClick={() => void checkMirrorSync()} data-code-layer-action="sync-mirror">
+              <Button type="button" disabled={busy || agentBusy} title={agentBusy ? t("agent.busyHint") : undefined} onClick={() => void checkMirrorSync()} data-code-layer-action="sync-mirror">
                 {busy ? t("mirror.working") : t("mirror.action")}
               </Button>
             </div>

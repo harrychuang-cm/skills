@@ -123,6 +123,10 @@ export class Runtime {
         this.overlay?.setHighlight(element, element ? labelFor(element, this.prefixes) : "");
       }),
       onManager<SyncPayload>(c, EVENTS.sync, (p) => this.live.sync(p)),
+      onManager<{ ready: boolean }>(c, EVENTS.agent, (p) => {
+        this.agentReady = Boolean(p.ready);
+        this.overlay?.setAgentReady(this.agentReady);
+      }),
       onManager<{ armId: string; draftIds: string[] }>(c, EVENTS.applyArm, (p) => void this.arm(p.armId, p.draftIds)),
       onManager<{ armId: string; draftIds: string[] }>(c, EVENTS.applyCancel, (p) => {
         this.live.unsettleLocal(p.draftIds);
@@ -236,7 +240,11 @@ export class Runtime {
   private activate(): void {
     if (this.active) return;
     this.active = true;
-    this.overlay ??= new Overlay(() => void this.copyReference());
+    this.overlay ??= new Overlay(
+      () => void this.copyReference(),
+      () => emitToManager(this.channel, EVENTS.request, { action: "agent" }),
+    );
+    this.overlay.setAgentReady(this.agentReady);
     this.guards ??= new Guards({
       onMove: (x, y) => this.onMove(x, y),
       onClick: (info) => this.onClick(info),
@@ -508,6 +516,9 @@ export class Runtime {
     emitToManager(this.channel, EVENTS.selection, { trace, reason });
     if (trace) emitToManager(this.channel, EVENTS.children, this.relatives(element, trace.traceId));
   }
+
+  /** Whether the manager said agent runs are ready (the label's AI control). */
+  private agentReady = false;
 
   /** The last text handed to the clipboard (kept for scripted checks). */
   lastCopied: string | null = null;

@@ -16,6 +16,7 @@ import {
   type StatusPayload,
 } from "./shared/protocol";
 import { hydrate, refreshServer, syncPreview } from "./manager/actions";
+import { agentSelectionArrived, announceAgentReadiness, openAgentDialog, resumeAgentRun } from "./manager/agent";
 import { restoreLastApply, resumePending } from "./manager/apply";
 import { fetchIndex, fetchSession, fetchState } from "./manager/api";
 import { emitToPreview, onPreview } from "./manager/channel";
@@ -34,6 +35,7 @@ async function boot(): Promise<void> {
   void fetchState();
   if (session?.projectId) hydrate(session.projectId);
   restoreLastApply();
+  void resumeAgentRun();
 }
 
 function restoreSelectionFor(storyId: string | null): void {
@@ -48,6 +50,7 @@ if (!scope[FLAG]) {
     onPreview(EVENTS.ready, () => {
       syncPreview();
       resumePending();
+      announceAgentReadiness();
     });
     onPreview<{ applyId: string; message: string }>(EVENTS.verifyProgress, (payload) => {
       const apply = store.get().applyState;
@@ -77,6 +80,7 @@ if (!scope[FLAG]) {
       if (storyId && payload.reason !== "story-change" && payload.reason !== "lost") {
         rememberSelection(storyId, payload.trace?.descriptor ?? null);
       }
+      agentSelectionArrived(payload.trace);
     });
     onPreview<{ revision: string; values: Record<string, string> }>(EVENTS.tokenValues, (payload) =>
       store.set({ tokenValues: payload.values }),
@@ -91,6 +95,8 @@ if (!scope[FLAG]) {
     });
     onPreview<{ action: string; text?: string }>(EVENTS.request, (payload) => {
       if (payload.action === "copy" && payload.text) void navigator.clipboard.writeText(payload.text).catch(() => undefined);
+      // The selection label's AI control: it carries no text, it only opens the inspector's dialog.
+      else if (payload.action === "agent") openAgentDialog();
     });
 
     addons.add(TOOL_ID, {

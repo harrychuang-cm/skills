@@ -13,16 +13,19 @@ import { SECTIONS } from "../shared/properties";
 import { GLOBAL_KEY, type ElementTrace, type IndexJson, type LayoutPayload } from "../shared/protocol";
 import { buildReference } from "../shared/reference";
 import { highlight, selectDescriptor } from "./actions";
+import { closeAgentDialog, fetchAgentStatus, openAgentDialog } from "./agent";
 import { fetchState } from "./api";
 import { applyDrafts } from "./apply";
 import { isManagerFramed } from "./channel";
+import { AgentDialog, agentUnavailable } from "./components/AgentDialog";
+import { AgentRunReport } from "./components/AgentRunReport";
 import { ChangesBar } from "./components/ChangesBar";
 import { Field, hasSource } from "./components/Field";
 import { Notices } from "./components/Notices";
 import { Report } from "./components/Report";
 import { RowPopover } from "./components/RowPopover";
 import { rowKey } from "./drafts";
-import { CheckIcon, ChevronIcon, CodeIcon, CopyIcon, GripIcon } from "./icons";
+import { CheckIcon, ChevronIcon, CodeIcon, CopyIcon, GripIcon, SparkleIcon } from "./icons";
 import { DEFAULT_INSPECTOR_PREFS, loadInspectorPrefs, saveInspectorPrefs, type InspectorPrefs } from "./persist";
 import { store, useLocale, useStore } from "./store";
 import { Body, Crumb, Crumbs, DevLine, Grip, Guide, HEADER_HEIGHT, HeaderBar, IconButton, Key, Message, Meta, MoreButton, Nav, POP_WIDTH, Pop, Root, Section, SectionHead, TitleText, WIDTH } from "./styles";
@@ -148,6 +151,9 @@ function Inspector() {
   const phase = useStore((s) => s.applyState.phase);
   const drifting = useStore((s) => (s.server?.mirrors ?? []).some((mirror) => !mirror.inSync));
   const layout = useStore((s) => s.layout);
+  const agentDialog = useStore((s) => s.agent.dialog);
+  const agentStatus = useStore((s) => s.agent.status);
+  const agentBusy = useStore((s) => Boolean(s.agent.run && !s.agent.run.final));
   const [prefs, setPrefs] = useState<InspectorPrefs>(DEFAULT_INSPECTOR_PREFS);
   const [dragging, setDragging] = useState(false);
   const [more, setMore] = useState<Record<string, boolean>>({});
@@ -178,11 +184,19 @@ function Inspector() {
   // Mirrors, pending documents and drift can change outside the page: ask the server again every few seconds.
   useEffect(() => {
     void fetchState();
+    void fetchAgentStatus();
     const timer = window.setInterval(() => {
-      if (document.visibilityState === "visible") void fetchState();
+      if (document.visibilityState !== "visible") return;
+      void fetchState();
+      void fetchAgentStatus();
     }, STATE_REFRESH_MS);
     return () => window.clearInterval(timer);
   }, []);
+
+  // A row's popover and the AI dialog open in the same place: opening a row closes the dialog.
+  useEffect(() => {
+    if (openKey && agentDialog) closeAgentDialog();
+  }, [openKey]);
 
   // A click elsewhere in the manager closes the popover (clicks in the preview select, which closes it too).
   useEffect(() => {
@@ -198,17 +212,19 @@ function Inspector() {
   const active = effective?.state === "active";
   const readOnly = Boolean(status?.serverReadOnly);
   const openRow = trace && openKey ? trace.rows.find((row) => rowKey(trace, row) === openKey) ?? null : null;
+  const showAgent = agentDialog && Boolean(trace) && Boolean(index) && active;
+  const popKey = showAgent ? "agent" : openRow ? openKey : null;
   const position = canvas ? place(prefs.placed ? prefs : { ...prefs, right: clearSide(canvas, layout) }, canvas) : null;
 
-  // Put the popover beside the inspector, level with its row, and keep it inside the canvas.
+  // Put the popover beside the inspector, level with its row (the AI dialog: with the top of the body), and keep it inside the canvas.
   useLayoutEffect(() => {
-    if (!openRow || !canvas || !root.current || prefs.collapsed) {
+    if (!popKey || !canvas || !root.current || prefs.collapsed) {
       placedFor.current = null;
       setPop(null);
       return;
     }
     const rootRect = root.current.getBoundingClientRect();
-    const rowElement = root.current.querySelector<HTMLElement>('[data-code-layer-row][data-open="true"]');
+    const rowElement = showAgent ? null : root.current.querySelector<HTMLElement>('[data-code-layer-row][data-open="true"]');
     const rowTop = rowElement ? rowElement.getBoundingClientRect().top : rootRect.top + HEADER_HEIGHT;
     const height = popover.current?.offsetHeight ?? 0;
     const maxHeight = Math.max(160, canvas.bottom - canvas.top - MARGIN * 2);
@@ -216,20 +232,20 @@ function Inspector() {
     let top = clamp(rowTop - 6, canvas.top + MARGIN, lowest) - rootRect.top;
     // While it stays open for the same row it only ever moves up (to stay inside the canvas when it grows):
     // a list that gets shorter as the person types must not slide away from under the pointer.
-    const anchor = `${openKey}|${trace?.traceId ?? ""}`;
+    const anchor = `${popKey}|${trace?.traceId ?? ""}`;
     if (placedFor.current?.anchor === anchor) top = Math.min(placedFor.current.top, top);
     placedFor.current = { anchor, top };
     const roomLeft = rootRect.left - canvas.left;
     const roomRight = canvas.right - rootRect.right;
     const side = roomLeft >= POP_WIDTH + MARGIN + 6 || roomLeft >= roomRight ? "left" : "right";
     setPop((previous) => (previous && previous.top === top && previous.side === side && previous.maxHeight === maxHeight ? previous : { top, side, maxHeight }));
-  }, [openRow, openKey, canvas, prefs, layout, tick, trace?.traceId]);
+  }, [popKey, showAgent, openRow, openKey, canvas, prefs, layout, tick, trace?.traceId]);
   useEffect(() => {
-    if (!openRow || !popover.current || typeof ResizeObserver !== "function") return undefined;
+    if (!popKey || !popover.current || typeof ResizeObserver !== "function") return undefined;
     const observer = new ResizeObserver(() => setTick((n) => n + 1));
     observer.observe(popover.current);
     return () => observer.disconnect();
-  }, [openRow, pop !== null]);
+  }, [popKey, pop !== null]);
 
   // Where it was put is kept per project: nothing to show before the project is known.
   if (!booted || !canvas || !position) return null;
@@ -273,7 +289,9 @@ function Inspector() {
 
   const writable = Boolean(session?.capabilities.write) && !session?.readOnly;
   const applying = phase === "arming" || phase === "writing" || phase === "verifying" || phase === "undoing";
-  const hint = !writable ? t("apply.hintReadOnly") : drifting ? t("apply.hintDrift") : t("apply.hint");
+  const hint = !writable ? t("apply.hintReadOnly") : agentBusy ? t("agent.busyHint") : drifting ? t("apply.hintDrift") : t("apply.hint");
+  const agentReason = agentUnavailable(agentStatus);
+  const agentOffered = Boolean(trace) && active && !agentReason;
 
   let content: React.ReactNode;
   if (!effective || effective.state === "off") content = <Message>{t("panel.indexLoading")}</Message>;
@@ -359,6 +377,25 @@ function Inspector() {
         <IconButton type="button" pressed={prefs.dev} aria-pressed={prefs.dev} aria-label={t("inspector.dev")} title={t("inspector.dev")} onClick={() => update({ dev: !prefs.dev })} data-code-layer-action="toggle-dev">
           <CodeIcon />
         </IconButton>
+        <IconButton
+          type="button"
+          // Not `disabled`: a disabled button shows no tooltip, and the tooltip says why AI editing is unavailable.
+          aria-disabled={!agentOffered}
+          pressed={showAgent}
+          aria-pressed={showAgent}
+          aria-label={agentReason ? t("agent.unavailable", { reason: agentReason }) : t("agent.open")}
+          title={agentReason ? t("agent.unavailable", { reason: agentReason }) : !trace ? t("agent.selectFirst") : t("agent.open")}
+          style={agentOffered ? undefined : { opacity: 0.45, cursor: "not-allowed" }}
+          onClick={() => {
+            if (!agentOffered) return;
+            if (showAgent) closeAgentDialog();
+            else openAgentDialog();
+          }}
+          data-code-layer-action="agent"
+          data-ready={agentReason ? "false" : "true"}
+        >
+          <SparkleIcon />
+        </IconButton>
         <IconButton type="button" disabled={!trace} aria-label={t("header.copyTitle")} title={t("header.copyTitle")} onClick={() => void copy()} data-code-layer-action="copy-reference" data-copied={copied ? "true" : "false"}>
           {copied ? <CheckIcon /> : <CopyIcon />}
         </IconButton>
@@ -372,12 +409,27 @@ function Inspector() {
             <Notices dev={prefs.dev} />
             {content}
           </Body>
-          <ChangesBar index={index} applyEnabled={writable && !drifting && active && !readOnly} applyHint={hint} onApply={() => void applyDrafts()} applying={applying} dev={prefs.dev}>
+          <ChangesBar index={index} applyEnabled={writable && !drifting && active && !readOnly && !agentBusy} applyHint={hint} onApply={() => void applyDrafts()} applying={applying} dev={prefs.dev}>
+            <AgentRunReport />
             <Report prefix={index?.tokens.prefix ?? ""} />
           </ChangesBar>
         </>
       )}
-      {openRow && trace && index && !prefs.collapsed ? (
+      {showAgent && trace && !prefs.collapsed ? (
+        <Pop
+          ref={popover}
+          data-code-layer-popover="agent"
+          data-side={pop?.side ?? "left"}
+          style={{ top: pop?.top ?? HEADER_HEIGHT, maxHeight: pop?.maxHeight, opacity: pop ? 1 : 0, pointerEvents: pop ? "auto" : "none", ...(pop?.side === "right" ? { left: WIDTH + 4 } : { right: WIDTH + 4 }) }}
+          onClick={(event) => event.stopPropagation()}
+          onKeyDown={(event) => {
+            event.stopPropagation();
+            if (event.key === "Escape") closeAgentDialog();
+          }}
+        >
+          <AgentDialog trace={trace} onClose={closeAgentDialog} />
+        </Pop>
+      ) : openRow && trace && index && !prefs.collapsed ? (
         <Pop
           ref={popover}
           data-code-layer-popover={openRow.id}

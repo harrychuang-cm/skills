@@ -14,6 +14,7 @@
   4. 介面導覽：script 裡的 FIGURES（每個編號對應 sel 與說明）。
   5. 模擬器的介面文字：script 裡的 L.zh／L.en，要和工具的 shared/messages.*.ts 一致。
      排列的四個屬性與選項：script 裡的 LAYOUT，要和工具的 shared/layout.mjs 一致。
+     電腦跳出的確認視窗（模擬）：script 裡的 CONFIRM，要和工具的 server/agent/messages.confirm.mjs 一致。
   6. 其餘章節（範圍、記號、結果、滑鼠與鍵盤、常見問題）是一般 HTML，直接改。
   視覺：只有亮色。白色與淺灰的區塊交替，強調色只有一個藍色。
   發佈：artifact:start 與 artifact:end 之間（去掉 </head> 與 <body> 兩行）就是發佈用的內容。
@@ -205,6 +206,7 @@
   .sel-label span { padding: 2px 7px; }
   .sel-label span + span { font-weight: 400; padding-left: 0; }
   .sel-label button { border: 0; border-left: 1px solid rgb(255 255 255 / 0.45); background: none; color: inherit; font-size: 11.5px; font-weight: 600; padding: 2px 7px; }
+  .sel-label:has(.coach-hit) { overflow: visible; }
   .sim-below { background: var(--canvas); padding: 0 12px 12px; }
   .sim-below:empty { display: none; }
   .sim.is-narrow .sim-canvas { height: 210px; position: sticky; top: calc(var(--nav) + env(safe-area-inset-top, 0px)); z-index: 5; border-bottom: 1px solid var(--hair); }
@@ -326,6 +328,52 @@
   .part-body { display: grid; gap: 5px; padding: 4px 4px 2px 20px; color: var(--tool-dim); overflow-wrap: anywhere; }
   .part-body .acts { display: flex; flex-wrap: wrap; gap: 5px; }
   .part-line { padding: 1px 4px 1px 20px; color: var(--tool-dim); }
+
+  /* ask AI: the dialog beside the inspector, the run and its result at the bottom */
+  .i-btn[aria-disabled="true"] { opacity: 0.4; cursor: not-allowed; }
+  .i-btn[aria-disabled="true"]:hover { background: none; color: var(--tool-dim); }
+  .ai-dialog { overflow: auto; }
+  .ai-input {
+    display: block; width: 100%; min-height: 76px; max-height: 220px; resize: vertical; padding: 6px 8px; border: 0; border-radius: 7px;
+    box-shadow: inset 0 0 0 1px var(--tool-line); background: var(--tool-bg); color: var(--tool-fg); font: inherit; font-size: 12px; line-height: 1.5;
+  }
+  .ai-input::placeholder { color: var(--tool-dim); }
+  .ai-meta { display: flex; gap: 8px; }
+  .ai-meta span:first-child { margin-right: auto; }
+  .ai-link { border: 0; background: none; padding: 0; font-size: 11.5px; color: var(--tool-accent); text-align: left; }
+  .ai-link:hover { text-decoration: underline; }
+  .ai-ref {
+    margin: 0; max-height: 160px; overflow: auto; padding: 6px 8px; border-radius: 6px; background: var(--tool-raise);
+    font-family: var(--mono); font-size: 10.5px; line-height: 1.45; white-space: pre-wrap; word-break: break-all; color: var(--tool-dim);
+  }
+  .ai-plain { padding: 6px 8px; border-radius: 6px; background: var(--tool-raise); white-space: pre-wrap; overflow-wrap: anywhere; font-size: 11.5px; line-height: 1.5; color: var(--tool-fg); }
+  .pop.is-inline .ai-plain, .pop.is-inline .ai-ref { background: var(--tool-bg); }
+  .ai-actions { display: flex; justify-content: flex-end; gap: 6px; }
+  .ai-run { display: grid; gap: 6px; }
+  .ai-run-state { display: flex; align-items: center; gap: 8px; }
+  .ai-run-state strong { font-weight: 600; }
+  .ai-report .ai-plain { margin: 0 4px; }
+  .ai-detail { padding: 0 4px; font-size: 11.5px; color: var(--tool-dim); overflow-wrap: anywhere; }
+  .ai-warn { color: var(--tool-warn); }
+  .ai-unchanged { display: flex; align-items: center; gap: 6px; padding: 0 4px; font-size: 11.5px; color: var(--tool-dim); }
+  .rep-ic.bad { background: var(--tool-warn); font-size: 10px; font-weight: 700; line-height: 1; }
+  .rep-head .rep-x { width: 20px; height: 20px; }
+  @media (pointer: coarse) { .ai-input { font-size: 16px; } }
+
+  /* the approval the computer asks for, outside the browser: a labelled stand-in */
+  .sys-dialog { position: absolute; z-index: 6; width: 320px; max-width: calc(100% - 24px); display: grid; justify-items: start; gap: 8px; text-align: left; }
+  .sys-dialog.is-static { position: relative; width: auto; max-width: none; margin-top: 12px; }
+  .sys-tag { padding: 2px 10px; border-radius: 980px; background: var(--ink); color: var(--bg); font-size: 11px; font-weight: 600; }
+  .sys-win { justify-self: stretch; overflow: hidden; border-radius: 12px; background: var(--bg); color: var(--ink); box-shadow: var(--shadow-pop); }
+  .sys-title { padding: 7px 12px; border-bottom: 1px solid var(--hair); background: var(--bg-soft); font-size: 12px; font-weight: 600; text-align: center; color: var(--ink-2); }
+  .sys-body { display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 12px; padding: 14px 16px 6px; }
+  .sys-icon { color: var(--warn); }
+  .sys-text { max-height: 340px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 11.5px; line-height: 1.55; }
+  .sys-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 8px 16px 14px; }
+  .sys-btn { min-width: 68px; border: 0; border-radius: 6px; padding: 3px 14px; background: var(--bg); box-shadow: inset 0 0 0 1px var(--line); color: var(--ink); font-size: 12px; }
+  .sys-btn:hover { background: var(--bg-soft); }
+  .sys-btn.is-default { background: var(--accent); color: var(--on-accent); box-shadow: none; }
+  .sys-btn.is-default:hover { background: var(--accent-hover); }
 
   /* files under the canvas */
   .sim-files { padding: 14px 16px 16px; background: var(--bg-soft); border-top: 1px solid var(--hair); }
@@ -503,7 +551,7 @@
   <div class="inner wide">
     <div class="head">
       <h2 id="h-journeys">跟著旅程走一遍。</h2>
-      <p>下面的模擬器和真的工具一樣可以操作，但不會動到任何檔案。選一段旅程，照著步驟做；卡住時按「幫我做這一步」。</p>
+      <p>下面的模擬器和真的工具一樣可以操作，但不會動到任何檔案，也不會真的呼叫 AI。選一段旅程，照著步驟做；卡住時按「幫我做這一步」。</p>
     </div>
     <div class="chips" role="tablist" aria-label="選一段旅程" id="jtabs"></div>
     <div class="journey">
@@ -605,12 +653,15 @@
     </div>
     <div class="rows">
       <div class="row label-row"><span>為什麼鎖住</span><span>例子</span><span>想改的話</span></div>
-      <div class="row"><span>顯示方式，只供檢視</span><span data-label="例子"><code>display</code>（把區塊改成 flex 或 grid、隱藏）</span><span data-label="想改的話">用「複製參照」貼給 AI，請它改</span></div>
+      <div class="row"><span>顯示方式，只供檢視</span><span data-label="例子"><code>display</code>（把區塊改成 flex 或 grid、隱藏）</span><span data-label="想改的話">用「請 AI 修改」，或用「複製參照」貼給 AI，請它改</span></div>
       <div class="row"><span>不是 flex 容器</span><span data-label="例子">一般區塊上的方向、對齊、分布、換行</span><span data-label="想改的話">這些設定對它沒有作用；要排列先請 AI 改成 flex</span></div>
-      <div class="row"><span>沒有綁 token</span><span data-label="例子">寫死的數值（<code>100%</code>、<code>12px</code>）、關鍵字、<code>calc()</code></span><span data-label="想改的話">貼給 AI：只用一次就請它改數值；別處也會用就請它新增 token</span></div>
+      <div class="row"><span>沒有綁 token</span><span data-label="例子">寫死的數值（<code>100%</code>、<code>12px</code>）、關鍵字、<code>calc()</code></span><span data-label="想改的話">只用一次就請 AI 改數值；別處也會用，就用「複製參照」貼給 AI，請它新增 token</span></div>
       <div class="row"><span>值來自元件外面</span><span data-label="例子">字體繼承自整個頁面、來自另一個元件</span><span data-label="想改的話">選到來源的元件再改</span></div>
       <div class="row"><span>無法確認規則在作用</span><span data-label="例子">被別的規則蓋過、行內樣式、<code>!important</code>、動畫中</span><span data-label="想改的話">請工程師看一下</span></div>
     </div>
+    <ul class="notes">
+      <li>「請 AI 修改」是選用的功能，專案啟用之後才有：在檢視器旁邊直接請 AI 改。它只能修改既有的檔案，不能新增 token 或檔案；需要新 token 時，用「複製參照」貼給 AI 對話，或請工程師新增。</li>
+    </ul>
     <ul class="marks">
       <li><span class="glyph" data-icon="lock"></span><div><strong>鎖頭</strong><span>只供檢視。停上去看原因。</span></div></li>
       <li><span class="glyph" data-icon="up"></span><div><strong>向上箭頭</strong><span>值從上層繼承來。可以改，改的是上層。</span></div></li>
@@ -647,6 +698,19 @@
       <li>「還原」會把這次寫過的檔案完整放回去。</li>
       <li>套用之後檔案又被別人改過時，工具不會整份蓋回去，而是讓你選「只改回這次的變更」或「略過這一筆」。</li>
     </ul>
+    <p class="sub-head">請 AI 修改的結果</p>
+    <div class="rows">
+      <div class="row label-row"><span>你會看到</span><span>意思</span><span>要做什麼</span></div>
+      <div class="row"><span class="st ok">AI 已修改專案</span><span data-label="意思">通過檢查的修改已經寫入，算一次套用。下面有 AI 的說明、改了哪些檔和幾行、這個元素哪些屬性變了。</span><span data-label="要做什麼">不要的話按「還原」，改過的檔案整份放回去。</span></div>
+      <div class="row"><span class="st warn">AI 需要你決定</span><span data-label="意思">AI 有問題要問你，專案還沒有改。</span><span data-label="要做什麼">按「回答」，打你的回答再送出；一樣要允許。</span></div>
+      <div class="row"><span class="st bad">結果沒有通過檢查</span><span data-label="意思">AI 改了不允許的東西，例如新增檔案或 token。整個結果都沒有採用。</span><span data-label="要做什麼">照列出的原因改寫請求再送，或按「複製物件參照」自己交給 AI。</span></div>
+      <div class="row"><span class="st bad">沒有得到確認、已取消</span><span data-label="意思">你按了拒絕或取消，或是沒有在時限內允許。</span><span data-label="要做什麼">打的字還在輸入框裡，可以修改後再送。</span></div>
+      <div class="row"><span class="st bad">沒有完成、已中斷</span><span data-label="意思">AI 沒有啟動、超過時間上限、表示做不到，或 Storybook 停了。</span><span data-label="要做什麼">看列出的原因，改寫請求再送，或按「複製物件參照」。</span></div>
+    </div>
+    <ul class="notes">
+      <li>除了「AI 已修改專案」，其他結果都會寫「專案沒有任何改變。」</li>
+      <li>進行中，檢視器底部會依序顯示等待確認、準備工作副本、AI 修改中、檢查並匯入中和經過的秒數，可以按「取消」。重新整理頁面後進度還在。這段時間不能套用、還原或同步鏡像。</li>
+    </ul>
   </div>
 </section>
 
@@ -665,6 +729,7 @@
       <div class="row"><span>取消選取</span><span><kbd>Esc</kbd>，或點空白處</span></div>
       <div class="row"><span>沿著刻度調大、調小</span><span>選到那一列後按 <kbd>↑</kbd>／<kbd>↓</kbd>，<kbd>Enter</kbd> 暫存、<kbd>Esc</kbd> 取消；也可以左右拖曳列的名稱</span></div>
       <div class="row"><span>關掉浮層</span><span><kbd>Esc</kbd></span></div>
+      <div class="row"><span>在「請 AI 修改」裡</span><span><kbd>Enter</kbd> 送出，<kbd>Shift</kbd> <kbd>Enter</kbd> 換行，<kbd>Esc</kbd> 關閉（打的字會留著）</span></div>
       <div class="row"><span>移動檢視器</span><span>拖曳標題列，位置會記住</span></div>
     </div>
   </div>
@@ -680,7 +745,32 @@
       </details>
       <details>
         <summary>套用需要經過 AI 嗎？</summary>
-        <div class="a"><p>不需要。工具自己把 token 換好、寫進檔案、檢查畫面。只有兩種情況會用到 AI：報告裡出現「文件待同步」，或你想改有鎖頭的列。</p></div>
+        <div class="a"><p>不需要。「套用到檔案」是工具自己把 token 換好、寫進檔案、檢查畫面，不會用到 AI。只有你主動交給 AI 時才會用到：報告裡出現「文件待同步」、你想改有鎖頭的列，或你按了「請 AI 修改」。</p></div>
+      </details>
+      <details>
+        <summary>看不到 AI 按鈕，或按鈕是灰的？</summary>
+        <div class="a"><p>「請 AI 修改」預設是關的，要兩件事都做了才會打開：專案的 Code Layer 設定加上 <code>"agent": { "enabled": true }</code>（這是專案的決定，改完要重新啟動 Storybook），而且你的電腦執行過啟用腳本（這是你這台電腦的決定）。</p><p>還沒打開時，標題列的 ✦ 是灰的，滑鼠停上去會說明原因，例如「AI 修改目前不能用：這個專案還沒有啟用 AI 修改。」；選取框的標籤上也不會有「AI」。想用的話，請你的 AI 助理說明並幫你啟用：它會先講清楚費用、每次都要你允許這些事，你同意了才會設定。</p></div>
+      </details>
+      <details>
+        <summary>要花錢嗎？</summary>
+        <div class="a"><p>會。每次請求都由你電腦上的 AI 命令列工具（預設是 Claude Code）執行，費用算在你自己的帳號，也需要一些時間。工具不會自動重試。</p><p>只用檢視器換 token、按「套用到檔案」，完全不會用到 AI，也不會花錢。</p></div>
+      </details>
+      <details>
+        <summary>為什麼要在瀏覽器外按允許？</summary>
+        <div class="a"><p>因為頁面上的程式（包括 story 裡的程式碼）也能送出請求。允許這一步放在瀏覽器外，只有坐在電腦前的你按得到，而且每一次都要按。</p><p>macOS 會跳出系統確認視窗，寫著專案、元素、要用的工具、AI 可以改的檔案和你的請求；預設的按鈕是「拒絕」，60 秒沒有回應就當作拒絕。沒辦法顯示視窗時，執行 Storybook 的終端機會印出六位數確認碼，把它輸入在對話框裡；打錯三次就作廢，3 分鐘後失效。</p></div>
+      </details>
+      <details>
+        <summary>AI 會改到哪些檔？</summary>
+        <div class="a"><p>只會改三種<strong>既有</strong>的檔案：可以寫入的 token 檔、元件資料夾裡的檔案、元件規格檔。確認視窗會列出確切的範圍。</p><p>AI 在專案的複本上工作，做完之後工具逐一檢查。只要有一項不合規定，整個結果都不採用，專案完全不變：</p><ul>
+          <li>新增或刪除檔案，或改到範圍以外的檔案。</li>
+          <li>直接改 token 的同步複本，或新增、刪除 token。</li>
+          <li>改完的 CSS 不是有效的寫法。</li>
+          <li>AI 工作期間，你自己也改了同一個檔。</li>
+        </ul><p>通過檢查的修改會像一次「套用到檔案」一樣寫入，token 的同步複本由工具一起寫；按結果上的「還原」可以整份放回去。</p></div>
+      </details>
+      <details>
+        <summary>AI 問我問題怎麼辦？</summary>
+        <div class="a"><p>結果會顯示「AI 需要你決定」。按「回答」，對話框的標題變成「回答 AI 的問題」，下面照原文顯示它的問題。打你的回答，按「送出回答」：回答是一筆新的請求，一樣要你在瀏覽器外允許。</p><p>回答不能放寬規則。例如 AI 問要不要新增 token，你回答「可以」，結果還是會因為新增了 token 而不被採用；需要新 token 時，請先由人新增，再請 AI 換上去。</p></div>
       </details>
       <details>
         <summary>會寫到哪些檔案？</summary>
@@ -688,7 +778,7 @@
       </details>
       <details>
         <summary>改壞了怎麼辦？</summary>
-        <div class="a"><p>還沒套用：按「捨棄」，或按每一筆右邊的 ✕。已經套用：按報告上的「還原」。</p><p>寫入之前工具會先跑專案的檢查，沒通過就不會動任何檔案。每次寫入都有備份和紀錄。</p></div>
+        <div class="a"><p>還沒套用：按「捨棄」，或按每一筆右邊的 ✕。已經套用：按報告上的「還原」。AI 的修改也一樣，按 AI 結果上的「還原」。</p><p>寫入之前工具會先跑專案的檢查，沒通過就不會動任何檔案。每次寫入都有備份和紀錄。</p></div>
       </details>
       <details>
         <summary>可以一次改很多項嗎？</summary>
@@ -713,7 +803,7 @@
           <li>改寫死的數值、把它換成 token，或新增一個原本沒有的 token。</li>
           <li>選取或修改 <code>::before</code>／<code>::after</code> 這類裝飾，以及滑鼠移上去、聚焦時才出現的樣式。</li>
           <li>只改畫面上的某一顆元件，而不影響同款的其他顆。</li>
-        </ul><p>這些可以用「複製參照」交給 AI 處理。</p></div>
+        </ul><p>這些可以交給 AI：專案啟用了「請 AI 修改」時，直接在檢視器旁請它改；也可以用「複製參照」貼給 AI 對話。「請 AI 修改」只能修改既有的檔案，不能新增 token 或檔案。</p></div>
       </details>
       <details>
         <summary>工具列的 Code Layer 亮著，但選不到東西？</summary>
@@ -742,6 +832,17 @@
       <p>工具有新功能時，這份文件會一起更新。</p>
     </div>
     <div class="log">
+      <article>
+        <div class="v">1.3.0<small>2026-11-26</small></div>
+        <ul>
+          <li>新增「請 AI 修改」（選用，預設關閉）：按選取框標籤上的「AI」或標題列的 ✦，在檢視器旁邊打開對話框，用一句話描述想要的修改，交給你電腦上的 AI 命令列工具。</li>
+          <li>每一次請求都要你在瀏覽器外允許：macOS 的系統確認視窗（預設是「拒絕」），或執行 Storybook 的終端機印出的六位數確認碼。</li>
+          <li>AI 在專案的複本上工作。只有「修改既有檔案、而且在允許範圍內」的結果會匯入，算一次可以還原的套用；其他結果一律不進專案，並列出每個原因。</li>
+          <li>AI 需要你決定時會提出問題；你的回答是一筆新的請求，一樣要允許。</li>
+          <li>費用算在你自己的帳號。進行中不能套用、還原或同步鏡像；重新整理頁面後進度還在。</li>
+          <li>沒有啟用時，標題列的 ✦ 是灰的，滑鼠停上去會說明原因；其他操作和 1.2.0 一樣。</li>
+        </ul>
+      </article>
       <article>
         <div class="v">1.2.0<small>2026-11-25</small></div>
         <ul>
@@ -789,8 +890,8 @@
 <script>
 (() => {
   "use strict";
-  const GUIDE_VERSION = "1.2.0";
-  const GUIDE_UPDATED = "2026-11-25";
+  const GUIDE_VERSION = "1.3.0";
+  const GUIDE_UPDATED = "2026-11-26";
 
   const $ = (sel, root = document) => root.querySelector(sel);
   const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -824,6 +925,8 @@
     fill: svg('<rect x="3" y="3" width="10" height="10" rx="2"/>'),
     fontSize: svg('<path d="M2.5 4.5h7M6 4.5v8M10 8h4M12 8v4.5"/>'),
     color: svg('<path d="m4.5 11 3.5-8 3.5 8M5.8 8.2h4.4M3 13.5h10"/>'),
+    sparkle: svg('<path d="M8 2.5 9.3 6.7 13.5 8 9.3 9.3 8 13.5 6.7 9.3 2.5 8 6.7 6.7Z"/><path d="M12.5 2.5v2.4M11.3 3.7h2.4" stroke-width="1.1"/>'),
+    caution: svg('<path d="M8 2.5 14 13H2L8 2.5Z"/><path d="M8 6.5v3M8 11.3v.2"/>', 30),
   };
 
   /* ------------------------------------------------------- mock design system */
@@ -896,6 +999,16 @@
       pendingReason: "元件樣式表的宣告沒有任何表格記載，請確認規格的敘述是否需要更新",
       more: (n) => `＋${n}`, less: "收起", dev: "開發者資訊：顯示檔案位置與 token 鏈", collapse: "收合", expand: "展開", close: "關閉", remove: (row) => `移除 ${row} 的變更`,
       writes: (file) => `寫入 ${file}`, mirror: "（＋鏡像）", compareTitle: "按住時暫時顯示原本的樣子",
+      copied: "已複製",
+      ai: "AI", aiLabelTitle: "請 AI 修改這個元素", aiOpen: "請 AI 修改選取的元素", aiUnavailable: (reason) => `AI 修改目前不能用：${reason}`, aiSelectFirst: "先在畫面上選取一個元素",
+      aiBusyHint: "AI 正在修改專案；結束之前不能套用、還原、略過或同步鏡像。", aiTitle: "請 AI 修改", aiElement: (label) => `對象：${label}`,
+      aiPlaceholder: "想怎麼改？例如：底色改成次要色，圓角大一級", aiSubmitHint: "Enter 送出，Shift+Enter 換行", aiCounter: (count, max) => `${count} / ${max}`,
+      aiReference: "一併送出的物件參照", aiRunner: (runner) => `由 ${runner} 執行`, aiCost: "每次請求需要一些時間，費用算在你自己的帳號。", aiSubmit: "送出",
+      aiYourRequest: "你的請求", aiElapsed: (n) => `${n} 秒`, aiCancel: "取消", aiConfirmNative: "請在電腦跳出的確認視窗按「允許」，按了才會開始。", aiSeeReport: "結果顯示在檢視器下方。",
+      aiState: { "awaiting-confirmation": "等待確認", preparing: "準備工作副本", running: "AI 修改中", checking: "檢查並匯入中", imported: "AI 已修改專案", rejected: "結果沒有通過檢查", failed: "沒有完成", denied: "沒有得到確認", cancelled: "已取消" },
+      aiReasons: { "binding-disabled": "這個專案還沒有啟用 AI 修改。", "confirmation-denied": "請求被拒絕了。", "agent-cannot": "AI 表示做不到，說明在上面。", "no-changes": "AI 沒有修改任何檔案。", "token-set-changed": (path) => `AI 在 ${path} 新增或刪除了 token；只允許改既有 token 的值。` },
+      aiReverted: "已還原 AI 的修改", aiRevert: "還原", aiSummary: "AI 的說明", aiFiles: (n) => `修改了 ${n} 個檔案`, aiFile: (file, added, removed) => `${file}（+${added} −${removed} 行）`,
+      aiRows: (n) => `這個元素有 ${n} 個屬性改變`, aiRow: (row, from, to) => `${row}：${from} → ${to}`, aiUnchanged: "專案沒有任何改變。", aiCopyReference: "複製物件參照", aiDismiss: "關閉",
     },
     en: {
       toggle: "Code Layer", guide: [["Click", "Select a component"], ["Double-click", "Go one level in"], ["Click a value", "Swap it for another token"]],
@@ -916,6 +1029,65 @@
       pendingReason: "No table documents component stylesheet declarations; check whether the specification needs an update",
       more: (n) => `+${n}`, less: "Less", dev: "Developer details: show file locations and token chains", collapse: "Collapse", expand: "Expand", close: "Close", remove: (row) => `Remove the change to ${row}`,
       writes: (file) => `Writes ${file}`, mirror: " (+ mirror)", compareTitle: "While held, shows the page without your changes",
+      copied: "Copied",
+      ai: "AI", aiLabelTitle: "Ask AI to change this element", aiOpen: "Ask AI to change the selected element", aiUnavailable: (reason) => `AI editing is unavailable: ${reason}`, aiSelectFirst: "Select an element on the canvas first",
+      aiBusyHint: "An AI request is changing the project; apply, undo, skip and mirror sync wait until it ends.", aiTitle: "Ask AI", aiElement: (label) => `Element: ${label}`,
+      aiPlaceholder: "What should change? For example: use the secondary color for the fill, one step larger corners", aiSubmitHint: "Enter sends, Shift+Enter adds a line", aiCounter: (count, max) => `${count} / ${max}`,
+      aiReference: "Object reference sent with the request", aiRunner: (runner) => `Runs with ${runner}`, aiCost: "Each request takes a while and is billed to your own account.", aiSubmit: "Send",
+      aiYourRequest: "Your request", aiElapsed: (n) => `${n} s`, aiCancel: "Cancel", aiConfirmNative: "Approve the request in the dialog your computer shows; nothing runs until you do.", aiSeeReport: "The result is shown at the bottom of the inspector.",
+      aiState: { "awaiting-confirmation": "Waiting for approval", preparing: "Preparing a work copy", running: "AI is working", checking: "Checking and importing", imported: "AI changed the project", rejected: "The result did not pass the checks", failed: "Not completed", denied: "Not approved", cancelled: "Cancelled" },
+      aiReasons: { "binding-disabled": "AI editing is not enabled for this project.", "confirmation-denied": "The request was denied.", "agent-cannot": "The AI says it cannot do this; its explanation is above.", "no-changes": "The AI changed no files.", "token-set-changed": (path) => `The AI added or removed tokens in ${path}; only values of existing tokens may change.` },
+      aiReverted: "The AI's change was undone", aiRevert: "Undo", aiSummary: "The AI's summary", aiFiles: (n) => `${n} files changed`, aiFile: (file, added, removed) => `${file} (+${added} −${removed} lines)`,
+      aiRows: (n) => `${n} properties of this element changed`, aiRow: (row, from, to) => `${row}: ${from} → ${to}`, aiUnchanged: "The project was not changed.", aiCopyReference: "Copy object reference", aiDismiss: "Close",
+    },
+  };
+
+  /* -------------- ask AI: the approval dialog the computer shows (keep in step with server/agent/messages.confirm.mjs) */
+  const CONFIRM = {
+    zh: {
+      title: "Code Layer：允許 AI 修改？", colon: "：", allow: "允許", deny: "拒絕",
+      intro: "Storybook 裡有人請 AI 修改這個專案。只有你在這裡按「允許」，AI 才會開始。",
+      project: "專案", element: "元件", runner: "使用", allowed: "AI 只能修改", request: "需求",
+      cost: "每次請求會使用你自己帳號的額度。AI 在專案的複本上工作，結果通過檢查才會寫入，而且可以還原。",
+    },
+    en: {
+      title: "Code Layer: allow an AI edit?", colon: ": ", allow: "Allow", deny: "Deny",
+      intro: "Someone in Storybook asked an AI agent to change this project. Nothing starts unless you allow it here.",
+      project: "Project", element: "Element", runner: "Runner", allowed: "The agent may only change", request: "Request",
+      cost: "Each request uses your own account's quota. The agent works on a copy of the project; its result is written only after it passes the checks, and it can be undone.",
+    },
+  };
+  /* The made-up project, its allowed set and the one runner set up on this pretend machine. */
+  const AI_PROJECT = "example-ui";
+  const AI_ALLOWED = ["tokens/tokens-sys.css", "tokens/tokens-comp.css", "src/components/**", "design-system/components/badge.md"];
+  const AI_RUNNER = "Claude Code";
+  const AI_MAX = 2000;
+  const AI_EXAMPLE = "改成圓形";
+  /* The simulated agent only understands a few words: a property it can change, or a request to add something (which the scope gate refuses). */
+  const AI_ROUND = /圓形|正圓|circle/i;
+  const AI_PROPS = [
+    ["radius", /圓角|圓形|正圓|radius|corner|round|circle/i],
+    ["fill", /底色|填色|背景|次要色|fill|background|secondary/i],
+    ["padding", /內距|padding/i],
+    ["fontSize", /字級|字體|font/i],
+  ];
+  const AI_ADDS = /新增|\badd\b|create/i;
+  const AI_FILES = [["tok:", "tokens/tokens-comp.css"], ["css:", "src/components/badge/Badge.css"], ["spec:", "design-system/components/badge.md"]];
+  /* What the simulated agent writes back, in the language of the request (shown as plain text, like the real one). */
+  const AI_WORDS = {
+    zh: {
+      changed: (prop, viaComp, from, to) => (viaComp
+        ? `把 ${PROPS[prop].comp} 從 --sys-${from} 換成 --sys-${to}（${VALUE[from]} → ${VALUE[to]}），規格表的那一列也一起改了。`
+        : `把 .badge--seal 的 ${PROPS[prop].css} 從 --sys-${from} 換成 --sys-${to}（${VALUE[from]} → ${VALUE[to]}）。`),
+      added: "照你的要求新增了一個元件 token，並讓 .badge--seal 改用它。",
+      cannot: "（模擬器）這裡的 AI 只會調整圓角、填色、內距和字級。請在請求裡提到其中一項。",
+    },
+    en: {
+      changed: (prop, viaComp, from, to) => (viaComp
+        ? `Changed ${PROPS[prop].comp} from --sys-${from} to --sys-${to} (${VALUE[from]} → ${VALUE[to]}) and its row in the specification.`
+        : `Changed ${PROPS[prop].css} of .badge--seal from --sys-${from} to --sys-${to} (${VALUE[from]} → ${VALUE[to]}).`),
+      added: "Added a new component token as asked and made .badge--seal use it.",
+      cannot: "(Simulator) The AI here only adjusts the corner radius, fill, padding and font size. Mention one of them in the request.",
     },
   };
 
@@ -927,7 +1099,10 @@
       fontSize: { decl: "comp", comp: "typescale-label-size" }, color: { decl: "comp", comp: "color-on-primary" },
     },
     lay: { direction: null, alignItems: "center", justifyContent: "center", wrap: null }, added: [],
-    history: [], report: null, busy: false, dev: false, collapsed: false, more: {}, lockShown: null, query: "", written: [], flags: {}, pos: { right: 14, top: 14 }, applies: 0,
+    history: [], report: null, busy: false, dev: false, collapsed: false, more: {}, lockShown: null, query: "", written: [], reverted: false, flags: {}, pos: { right: 14, top: 14 }, applies: 0,
+    // Ask AI: off unless the project and this machine enabled it. drafts: the text typed, per element; run: the last request.
+    aiReady: false,
+    ai: { dialog: false, drafts: {}, showRef: false, run: null, undone: false, busy: false, undo: null, seq: 0 },
   });
   const clone = (value) => JSON.parse(JSON.stringify(value));
   const applied = (s, prop) => (s.bind[prop].decl === "comp" ? s.bind[prop].comp : s.bind[prop].decl);
@@ -1010,14 +1185,36 @@
   };
   const lineNumber = (key) => ({ "css:display": 9, "css:alignItems": 10, "css:justifyContent": 11, "css:direction": 17, "css:wrap": 18, "tok:padding": 4, "tok:fill": 5, "tok:fontSize": 6, "tok:color": 7, "css:padding": 12, "css:radius": 13, "css:fill": 14, "css:fontSize": 15, "css:color": 16, "spec:padding": 21, "spec:fill": 22, "spec:fontSize": 23, "spec:color": 24 }[key]);
 
+  /* ------------------------------------------------------------ ask AI helpers */
+  const aiRunning = (st) => Boolean(st.ai.run && !st.ai.run.final);
+  /** The dialog shows while it is open and an element is selected (it follows the selection). */
+  const aiShown = (st) => st.on && st.aiReady && st.ai.dialog && Boolean(st.selection) && !st.collapsed;
+  /** Seconds count from the moment the agent starts working, not while it waits for approval. */
+  const aiElapsed = (T, run) => (run.startedAt ? ` · ${T.aiElapsed(Math.max(0, Math.round(((run.finishedAt ?? Date.now()) - run.startedAt) / 1000)))}` : "");
+  const aiReasonText = (T, reason) => {
+    const text = T.aiReasons[reason.code];
+    return typeof text === "function" ? text(reason.path ?? "") : text ?? reason.code;
+  };
+  /** What a row of an element shows, for "what changed" after an AI run. */
+  const elementValues = (st, key) => Object.fromEntries((ROWS[key] ?? []).filter((row) => row.prop).map((row) => [row.id, PROPS[row.prop] ? VALUE[applied(st, row.prop)] : st.lay[row.prop] ?? LAYOUT[row.prop].initial]));
+  const aiRows = (st, T, run) => {
+    if (!run.before || st.ai.undone || st.selection !== run.before.element) return [];
+    const now = elementValues(st, run.before.element);
+    return Object.keys(run.before.values).filter((id) => now[id] !== run.before.values[id]).map((id) => ({ label: T.fields[id], from: run.before.values[id], to: now[id] }));
+  };
+
   /* --------------------------------------------------------------- HTML pieces */
   const rowsFor = (s) => ROWS[s.selection] ?? [];
   function headerHTML(s, T) {
     const title = s.selection ? EL[s.selection] : "Code Layer";
+    // Not `disabled` while AI editing is off: the tooltip says why.
+    const aiTip = !s.aiReady ? T.aiUnavailable(T.aiReasons["binding-disabled"]) : s.selection ? T.aiOpen : T.aiSelectFirst;
+    const aiOffered = s.aiReady && Boolean(s.selection);
     return `<div class="i-head" data-part="head">
       <span class="i-grip" data-part="grip" title="拖曳移動">${ICON.grip}</span>
       <span class="i-title" data-part="title">${esc(title)}</span>
       <button type="button" class="i-btn" data-act="dev" data-part="dev" aria-pressed="${s.dev}" aria-label="${esc(T.dev)}" title="${esc(T.dev)}">${ICON.code}</button>
+      <button type="button" class="i-btn" data-act="ai-toggle" data-part="ai" aria-pressed="${aiShown(s)}" aria-disabled="${!aiOffered}" aria-label="${esc(s.aiReady ? T.aiOpen : aiTip)}" title="${esc(aiTip)}">${ICON.sparkle}</button>
       <button type="button" class="i-btn" data-act="copy" data-part="copy" ${s.selection ? "" : "disabled"} aria-label="${esc(T.copyRef)}" title="${esc(T.copyRef)}">${s.flags.justCopied ? ICON.check : ICON.copy}</button>
       <button type="button" class="i-btn" data-act="collapse" data-part="collapse" aria-expanded="${!s.collapsed}" aria-label="${esc(s.collapsed ? T.expand : T.collapse)}" title="${esc(s.collapsed ? T.expand : T.collapse)}">${s.collapsed ? ICON.down : ICON.up}</button>
     </div>`;
@@ -1138,7 +1335,7 @@
     }).join("");
     return `<div class="i-changes" data-part="changes">${lines}
       <div class="i-state" data-part="chg-state"><span class="dot"></span>${esc(T.previewOnly(s.drafts.length))}</div>
-      <div class="i-actions"><button type="button" class="tbtn" data-act="compare" data-part="chg-compare" title="${esc(T.compareTitle)}">${esc(T.compare)}</button><button type="button" class="tbtn" data-act="discard" data-part="chg-discard">${esc(T.discard)}</button><button type="button" class="tbtn primary" data-act="apply" data-part="chg-apply" ${s.busy ? "disabled" : ""}>${esc(T.apply)}</button></div>
+      <div class="i-actions"><button type="button" class="tbtn" data-act="compare" data-part="chg-compare" title="${esc(T.compareTitle)}">${esc(T.compare)}</button><button type="button" class="tbtn" data-act="discard" data-part="chg-discard">${esc(T.discard)}</button><button type="button" class="tbtn primary" data-act="apply" data-part="chg-apply" ${s.busy || aiRunning(s) ? "disabled" : ""}${aiRunning(s) ? ` title="${esc(T.aiBusyHint)}"` : ""}>${esc(T.apply)}</button></div>
     </div>`;
   }
   function reportHTML(s, T) {
@@ -1156,12 +1353,78 @@
     const docs = report.docs.map((doc) => `<div>design-system/components/badge.md:${doc.line}：sys-${esc(doc.from)} → sys-${esc(doc.to)}</div>`).join("");
     const pending = report.pending.map((entry) => `<div>src/components/badge/Badge.css:${entry.line} — ${esc(T.pendingReason)}</div>`).join("") + `<div class="acts"><button type="button" class="tbtn" data-act="copy-brief" data-part="rep-copy-ai">${esc(T.copyForAi)}</button><button type="button" class="tbtn" data-act="resolve" data-part="rep-resolve">${esc(T.resolve)}</button></div>`;
     return `<div class="i-report" data-part="report">
-      <div class="rep-head" data-part="rep-head"><span class="rep-ic">${ICON.check}</span><strong>${esc(T.verified)}</strong><button type="button" class="tbtn" data-act="undo" data-part="rep-undo" ${s.busy ? "disabled" : ""}>${esc(T.undo)}</button></div>
+      <div class="rep-head" data-part="rep-head"><span class="rep-ic">${ICON.check}</span><strong>${esc(T.verified)}</strong><button type="button" class="tbtn" data-act="undo" data-part="rep-undo" ${s.busy || aiRunning(s) ? "disabled" : ""}${aiRunning(s) ? ` title="${esc(T.aiBusyHint)}"` : ""}>${esc(T.undo)}</button></div>
       ${part("items", T.items(report.items.length), items)}
       ${report.docs.length ? part("docs", T.docs(report.docs.length), docs) : ""}
       ${report.pending.length ? part("pending", T.pending(report.pending.length), pending) : ""}
       <div class="part-line" data-part="rep-derived">▸ ${esc(T.derived)}</div>
     </div>`;
+  }
+  /** Where a request is, inside the dialog: the text sent, the state (and how to approve it), or where its result is. */
+  function aiRunHTML(st, T, run) {
+    const waiting = run.state === "awaiting-confirmation";
+    const cancel = !run.final && run.state !== "checking" ? `<button type="button" class="chip-btn" data-act="ai-cancel">${esc(T.aiCancel)}</button>` : "";
+    return `<div class="ai-run" data-part="ai-run" data-state="${run.state}">
+      ${run.final ? "" : `<div class="pop-note">${esc(T.aiYourRequest)}</div><div class="ai-plain">${esc(run.text)}</div>`}
+      <div class="ai-run-state"><strong>${esc(T.aiState[run.state])}<span data-ai-elapsed>${esc(aiElapsed(T, run))}</span></strong>${cancel}</div>
+      ${waiting ? `<div class="pop-note" data-part="ai-confirm-note">${esc(T.aiConfirmNative)}</div>` : ""}
+      ${run.final ? `<div class="pop-note">${esc(T.aiSeeReport)}</div>` : ""}
+    </div>`;
+  }
+  /** Ask AI: beside the inspector, where a row's popover opens. The text is kept per element. */
+  function aiDialogHTML(st, T, mode = "") {
+    if (!aiShown(st)) return "";
+    const text = st.ai.drafts[st.selection] ?? "";
+    const run = st.ai.run;
+    const form = run && !run.final ? "" : `
+      <textarea class="ai-input" data-part="ai-input" rows="3" maxlength="${AI_MAX}" placeholder="${esc(T.aiPlaceholder)}" aria-label="${esc(T.aiTitle)}">${esc(text)}</textarea>
+      <div class="pop-note ai-meta"><span>${esc(T.aiSubmitHint)}</span><span data-part="ai-counter">${esc(T.aiCounter([...text].length, AI_MAX))}</span></div>
+      <div class="pop-note"><button type="button" class="ai-link" data-act="ai-ref" data-part="ai-ref" aria-expanded="${st.ai.showRef}">${st.ai.showRef ? "▾" : "▸"} ${esc(T.aiReference)}</button></div>
+      ${st.ai.showRef ? `<pre class="ai-ref" data-part="ai-ref-text">${esc(referenceText(st))}</pre>` : ""}
+      <div class="pop-note" data-part="ai-runner">${esc(T.aiRunner(AI_RUNNER))}</div>
+      <div class="pop-note" data-part="ai-cost">${esc(T.aiCost)}</div>
+      <div class="ai-actions"><button type="button" class="tbtn primary" data-act="ai-send" data-part="ai-send" title="${esc(T.aiSubmitHint)}" ${text.trim() && !st.busy ? "" : "disabled"}>${esc(T.aiSubmit)}</button></div>`;
+    return `<div class="pop ai-dialog ${mode}" data-pop="ai" data-part="ai-dialog">
+      <div class="pop-head"><span>${esc(T.aiTitle)}</span><button type="button" class="i-btn" data-act="ai-close" data-part="ai-close" aria-label="${esc(T.close)}" title="${esc(T.close)}">${ICON.close}</button></div>
+      <div class="pop-note" data-part="ai-element">${esc(T.aiElement(EL[st.selection]))}</div>
+      ${run ? aiRunHTML(st, T, run) : ""}${form}
+    </div>`;
+  }
+  /** The run at the bottom of the inspector: its progress, then one of two endings — imported (undoable) or not changed, with every reason. */
+  function aiReportHTML(st, T) {
+    const run = st.ai.run;
+    if (!run) return "";
+    const imported = run.state === "imported";
+    const icon = !run.final ? `<span class="rep-ic busy"></span>` : imported ? `<span class="rep-ic">${ICON.check}</span>` : `<span class="rep-ic bad">!</span>`;
+    const buttons = [
+      !run.final && run.state !== "checking" ? `<button type="button" class="tbtn" data-act="ai-cancel" data-part="ai-report-cancel">${esc(T.aiCancel)}</button>` : "",
+      imported && !st.ai.undone ? `<button type="button" class="tbtn" data-act="ai-revert" data-part="ai-revert" ${st.ai.busy || st.busy ? "disabled" : ""}>${esc(T.aiRevert)}</button>` : "",
+      run.final ? `<button type="button" class="i-btn rep-x" data-act="ai-dismiss" aria-label="${esc(T.aiDismiss)}" title="${esc(T.aiDismiss)}">${ICON.close}</button>` : "",
+    ].join("");
+    const part = (id, label, body) => `<div class="part"><button type="button" data-act="ai-part" data-part-id="${id}" data-part="ai-${id}" aria-expanded="${Boolean(run.open[id])}"><span>${run.open[id] ? "▾" : "▸"}</span><span>${esc(label)}</span></button>${run.open[id] ? `<div class="part-body">${body}</div>` : ""}</div>`;
+    const rows = imported ? aiRows(st, T, run) : [];
+    const copied = st.flags.justCopied ? T.copied : T.aiCopyReference;
+    return `<div class="i-report ai-report" data-part="ai-report" data-state="${run.state}">
+      <div class="rep-head" data-part="ai-head">${icon}<strong>${esc(imported && st.ai.undone ? T.aiReverted : T.aiState[run.state])}</strong>${buttons}</div>
+      <div class="ai-detail" data-part="ai-progress">${esc(EL[run.element])} · ${esc(AI_RUNNER)}<span data-ai-elapsed>${esc(aiElapsed(T, run))}</span></div>
+      ${run.final ? "" : `<div class="ai-detail">${esc(T.aiYourRequest)}</div><div class="ai-plain" data-part="ai-report-text">${esc(run.text)}</div>`}
+      ${run.summary ? `<div class="ai-detail">${esc(T.aiSummary)}</div><div class="ai-plain" data-part="ai-summary">${esc(run.summary)}</div>` : ""}
+      ${imported && run.changes ? part("files", T.aiFiles(run.changes.length), run.changes.map((c) => `<div>${esc(T.aiFile(c.file, c.added, c.removed))}</div>`).join("")) : ""}
+      ${rows.length ? part("rows", T.aiRows(rows.length), rows.map((r) => `<div>${esc(T.aiRow(r.label, r.from, r.to))}</div>`).join("")) : ""}
+      ${run.final && !imported ? run.reasons.map((reason) => `<div class="ai-detail ai-warn" data-part="ai-reason">${esc(aiReasonText(T, reason))}</div>`).join("") : ""}
+      ${run.final && !imported ? `<div class="ai-unchanged" data-part="ai-unchanged"><span>${esc(T.aiUnchanged)}</span>${run.state === "rejected" || run.state === "failed" ? `<button type="button" class="chip-btn" data-act="copy" data-part="ai-copy-ref">${esc(copied)}</button>` : ""}</div>` : ""}
+    </div>`;
+  }
+  /** The computer's approval dialog, drawn inside the simulator and labelled as a stand-in. Its default button is "deny". */
+  function sysDialogHTML(st, run) {
+    const c = CONFIRM[st.lang];
+    const text = [c.intro, "", `${c.project}${c.colon}${AI_PROJECT}`, `${c.element}${c.colon}${EL[run.element]}`, `${c.runner}${c.colon}${AI_RUNNER}`, `${c.allowed}${c.colon}${AI_ALLOWED.join(", ")}`, "", `${c.request}${c.colon}`, run.text, "", c.cost].join("\n");
+    return `<span class="sys-tag" title="真的視窗由電腦跳出，在瀏覽器外面">（模擬）系統確認視窗</span>
+      <div class="sys-win" data-part="sys-win">
+        <div class="sys-title" id="sys-title">${esc(c.title)}</div>
+        <div class="sys-body"><span class="sys-icon">${ICON.caution}</span><div class="sys-text" id="sys-text">${esc(text)}</div></div>
+        <div class="sys-actions"><button type="button" class="sys-btn is-default" data-act="ai-deny" data-part="sys-deny">${esc(c.deny)}</button><button type="button" class="sys-btn" data-act="ai-allow" data-part="sys-allow">${esc(c.allow)}</button></div>
+      </div>`;
   }
 
   /* ================================================================ simulator */
@@ -1181,10 +1444,19 @@
   const hovBox = document.createElement("div");
   hovBox.className = "hov";
   canvas.append(hovBox, selBox, selLabel);
+  // The approval the computer asks for: attached only while a request waits for it.
+  const sysBox = document.createElement("div");
+  sysBox.className = "sys-dialog";
+  sysBox.setAttribute("role", "alertdialog");
+  sysBox.setAttribute("aria-labelledby", "sys-title");
+  sysBox.setAttribute("aria-describedby", "sys-text");
 
   let s = freshState();
   let narrow = false;
   let timers = [];
+  let labelHTML = "";
+  let sysKey = "";
+  let pendingFocus = null;
   const T = () => L[s.lang];
   const later = (ms, fn) => timers.push(setTimeout(fn, ms));
   const elementOf = (key) => (key === "content" ? $('[data-el="content"]', badge) : badge);
@@ -1220,7 +1492,9 @@
     if (placed) {
       s.size = `${placed.w} × ${placed.h}`;
       selLabel.hidden = false;
-      selLabel.innerHTML = `<span>${esc(EL[s.selection])}</span><span>${placed.w} × ${placed.h}</span><button type="button" data-act="copy">${esc(T().copyRef)}</button>`;
+      // The AI button is on the label only while AI editing is ready. Redrawn only when it changes, so a button under the pointer stays.
+      const html = `<span>${esc(EL[s.selection])}</span><span>${placed.w} × ${placed.h}</span><button type="button" data-act="copy">${esc(T().copyRef)}</button>${s.aiReady ? `<button type="button" data-act="ai-open" title="${esc(T().aiLabelTitle)}">${esc(T().ai)}</button>` : ""}`;
+      if (html !== labelHTML) (selLabel.innerHTML = html), (labelHTML = html);
       selLabel.style.left = `${Math.max(4, placed.rect.left - placed.frame.left)}px`;
       selLabel.style.top = `${Math.max(4, placed.rect.top - placed.frame.top - 26)}px`;
     } else {
@@ -1242,9 +1516,13 @@
     if (insp.parentElement !== home) home.append(insp);
     insp.classList.toggle("is-collapsed", s.collapsed);
     const scroll = $(".i-body", insp)?.scrollTop ?? 0;
-    insp.innerHTML = headerHTML(s, T()) + (s.collapsed ? "" : `<div class="i-body">${bodyHTML(s, T(), { inlinePop: narrow })}</div>${changesHTML(s, T())}${reportHTML(s, T())}${narrow ? "" : popoverHTML(s, T())}`);
+    // Someone typing for the AI keeps the caret when anything else redraws the inspector.
+    const typing = document.activeElement instanceof HTMLTextAreaElement && insp.contains(document.activeElement) ? [document.activeElement.selectionStart, document.activeElement.selectionEnd] : null;
+    insp.innerHTML = headerHTML(s, T()) + (s.collapsed ? "" : `<div class="i-body">${narrow ? aiDialogHTML(s, T(), "is-inline") : ""}${bodyHTML(s, T(), { inlinePop: narrow })}</div>${changesHTML(s, T())}${aiReportHTML(s, T())}${reportHTML(s, T())}${narrow ? "" : popoverHTML(s, T()) + aiDialogHTML(s, T())}`);
     const body = $(".i-body", insp);
     if (body) body.scrollTop = scroll;
+    const box = typing ? $(".ai-input", insp) : null;
+    if (box) box.focus({ preventScroll: true }), box.setSelectionRange(...typing);
     placeInspector();
     placePopover();
   }
@@ -1261,6 +1539,8 @@
   function placePopover() {
     const pop = $(".pop:not(.is-inline)", insp);
     if (!pop) return;
+    // The AI dialog opens level with the top of the body and scrolls inside the canvas.
+    if (pop.classList.contains("ai-dialog")) pop.style.maxHeight = `${canvas.clientHeight - 16}px`;
     const row = $(`.i-row[data-open="true"]`, insp);
     const root = insp.getBoundingClientRect();
     const frame = canvas.getBoundingClientRect();
@@ -1279,16 +1559,62 @@
   function renderFiles() {
     const will = new Set(s.drafts.flatMap((draft) => targets(draft.prop, draft.scope)));
     const wrote = new Set(s.written);
-    const status = s.drafts.length ? ["preview", `檔案沒有變動（${s.drafts.length} 項只是預覽）`] : wrote.size ? ["written", s.report && s.report.mode === "undo" ? `已還原 ${wrote.size} 行` : `剛寫入 ${wrote.size} 行`] : ["idle", "檔案沒有變動"];
-    filesEl.innerHTML = `<div class="files-head"><strong>檔案</strong><span>只有「套用到檔案」會改變這裡。</span><span class="fstatus" data-kind="${status[0]}">${esc(status[1])}</span></div>
-      <div class="files-grid">${fileModel(s).map((file) => `<div class="file"><div class="file-name">${esc(file.file)}<small>${esc(file.note)}</small></div><div class="file-lines">${file.lines.map((line) => `<div class="fline${will.has(line.key) ? " will" : wrote.has(line.key) ? " wrote" : ""}${line.added ? " is-new" : ""}" data-line="${line.key}"><span class="tag">${will.has(line.key) ? "預覽中" : wrote.has(line.key) ? (s.report && s.report.mode === "undo" ? "已還原" : "已寫入") : ""}</span><span>${esc(line.text)}</span></div>`).join("")}</div></div>`).join("")}</div>`;
+    const status = s.drafts.length ? ["preview", `檔案沒有變動（${s.drafts.length} 項只是預覽）`] : wrote.size ? ["written", s.reverted ? `已還原 ${wrote.size} 行` : `剛寫入 ${wrote.size} 行`] : ["idle", "檔案沒有變動"];
+    filesEl.innerHTML = `<div class="files-head"><strong>檔案</strong><span>${s.aiReady ? "只有「套用到檔案」和 AI 的修改會改變這裡。" : "只有「套用到檔案」會改變這裡。"}</span><span class="fstatus" data-kind="${status[0]}">${esc(status[1])}</span></div>
+      <div class="files-grid">${fileModel(s).map((file) => `<div class="file"><div class="file-name">${esc(file.file)}<small>${esc(file.note)}</small></div><div class="file-lines">${file.lines.map((line) => `<div class="fline${will.has(line.key) ? " will" : wrote.has(line.key) ? " wrote" : ""}${line.added ? " is-new" : ""}" data-line="${line.key}"><span class="tag">${will.has(line.key) ? "預覽中" : wrote.has(line.key) ? (s.reverted ? "已還原" : "已寫入") : ""}</span><span>${esc(line.text)}</span></div>`).join("")}</div></div>`).join("")}</div>`;
+  }
+  /** The stand-in for the computer's approval dialog: over the free part of the canvas, or above the inspector when narrow. */
+  function renderSys() {
+    const run = s.ai.run;
+    if (!run || run.state !== "awaiting-confirmation") {
+      sysBox.remove();
+      sysKey = "";
+      return;
+    }
+    const home = narrow ? below : canvas;
+    if (sysBox.parentElement !== home) home.prepend(sysBox);
+    const key = `${s.lang}|${run.id}|${narrow}`;
+    if (key !== sysKey) {
+      sysKey = key;
+      sysBox.innerHTML = sysDialogHTML(s, run);
+      sysBox.classList.toggle("is-static", narrow);
+    }
+    placeSysDialog();
+  }
+  function placeSysDialog() {
+    if (narrow) return void (sysBox.style.left = sysBox.style.top = "");
+    const frame = canvas.getBoundingClientRect();
+    // The widest stretch of the canvas that the inspector and its dialog leave free.
+    const taken = [insp, $(".pop:not(.is-inline)", insp)].filter((el) => el && el.isConnected).map((el) => {
+      const r = el.getBoundingClientRect();
+      return [r.left - frame.left, r.right - frame.left];
+    }).sort((a, b) => a[0] - b[0]);
+    let best = [0, 0];
+    let from = 0;
+    for (const [left, right] of [...taken, [frame.width, frame.width]]) {
+      if (left - from > best[1] - best[0]) best = [from, left];
+      from = Math.max(from, right);
+    }
+    const w = sysBox.offsetWidth;
+    sysBox.style.left = `${Math.max(12, Math.min(best[0] + (best[1] - best[0] - w) / 2, frame.width - w - 12))}px`;
+    sysBox.style.top = `${Math.max(12, (canvas.clientHeight - sysBox.offsetHeight) / 2)}px`;
   }
   function render() {
     renderCanvas();
     renderInspector();
+    renderSys();
     renderCanvas(); // the inspector may have changed the label's language
     renderFiles();
     coach.sync();
+    if (pendingFocus) {
+      // Like the tool: the text box takes the focus when the dialog opens, the approval's default button when it appears.
+      const el = $(pendingFocus, sim);
+      pendingFocus = null;
+      if (el && !(narrow && el instanceof HTMLTextAreaElement)) {
+        el.focus({ preventScroll: true });
+        if (el instanceof HTMLTextAreaElement) el.setSelectionRange(el.value.length, el.value.length);
+      }
+    }
   }
 
   /* ----------------------------------------------------------------- actions */
@@ -1309,6 +1635,7 @@
       s.openRow = s.openRow === prop ? null : prop;
       s.query = "";
       s.transient = null;
+      s.ai.dialog = false; // a row's popover and the AI dialog open in the same place
       render();
     },
     closePop() {
@@ -1364,9 +1691,9 @@
       if (!on) coach.sync();
     },
     apply() {
-      if (!s.drafts.length || s.busy) return;
+      if (!s.drafts.length || s.busy || aiRunning(s)) return;
       const changes = clone(s.drafts);
-      Object.assign(s, { busy: true, openRow: null, report: { mode: "apply", phase: "writing" } });
+      Object.assign(s, { busy: true, openRow: null, reverted: false, report: { mode: "apply", phase: "writing" } });
       render();
       later(600, () => {
         s.history.push(clone({ bind: s.bind, lay: s.lay, added: s.added }));
@@ -1393,10 +1720,10 @@
       });
     },
     undo() {
-      if (!s.history.length || s.busy) return;
+      if (!s.history.length || s.busy || aiRunning(s)) return;
       const before = clone(s.bind);
       const layBefore = clone(s.lay);
-      Object.assign(s, { busy: true, report: { mode: "undo", phase: "writing" } });
+      Object.assign(s, { busy: true, reverted: true, report: { mode: "undo", phase: "writing" } });
       render();
       later(500, () => {
         Object.assign(s, s.history.pop());
@@ -1425,7 +1752,152 @@
         coach.sync();
       });
     },
+    /* ---- ask AI (simulated: nothing is sent anywhere) */
+    aiOpen() {
+      if (!s.on || !s.aiReady || !s.selection) return;
+      Object.assign(s, { openRow: null, query: "", transient: null });
+      s.ai.dialog = true;
+      pendingFocus = ".ai-input";
+      render();
+    },
+    aiToggle() {
+      if (!s.on || !s.aiReady || !s.selection) return;
+      if (aiShown(s)) act.aiClose();
+      else act.aiOpen();
+    },
+    aiClose() {
+      s.ai.dialog = false; // the text stays
+      render();
+    },
+    aiType(text) {
+      if (!s.selection) return;
+      s.ai.drafts[s.selection] = text;
+      pendingFocus = ".ai-input";
+      render();
+    },
+    aiSend() {
+      const text = (s.ai.drafts[s.selection] ?? "").trim();
+      if (!s.on || !s.aiReady || !s.selection || !text || aiRunning(s) || s.busy) return;
+      s.ai.seq += 1;
+      s.ai.run = { id: s.ai.seq, element: s.selection, text, lang: s.lang, state: "awaiting-confirmation", final: false, step: 0, startedAt: null, finishedAt: null, reasons: [], summary: null, changes: null, keys: [], before: null, open: { files: true, rows: true } };
+      Object.assign(s.ai, { undone: false, busy: false, undo: null });
+      pendingFocus = '[data-act="ai-deny"]';
+      render();
+    },
+    aiConfirm(ok) {
+      const run = s.ai.run;
+      if (!run || run.state !== "awaiting-confirmation") return;
+      if (!ok) return aiEnd(run, "denied", { reasons: [{ code: "confirmation-denied" }] });
+      s.flags.aiAllowed = true;
+      aiPhase(run, "preparing", 900, () => {
+        run.startedAt = Date.now();
+        aiTick(run);
+        // An agent that says it cannot do it stops before the checks.
+        aiPhase(run, "running", 3000, () => (aiOutcome(run.text).state === "failed" ? aiFinish(run) : aiPhase(run, "checking", 1000, () => aiFinish(run))));
+      });
+    },
+    aiHurry() {
+      const run = s.ai.run;
+      if (!run || run.final) return;
+      if (run.state === "awaiting-confirmation") act.aiConfirm(true);
+      run.step += 1; // the phases still to come are dropped
+      if (!run.startedAt) {
+        run.startedAt = Date.now() - 3000;
+        aiTick(run);
+      }
+      aiPhase(run, "checking", 500, () => aiFinish(run));
+    },
+    aiCancel() {
+      const run = s.ai.run;
+      if (!run || run.final || run.state === "checking") return;
+      run.step += 1;
+      aiEnd(run, "cancelled");
+    },
+    aiRevert() {
+      const run = s.ai.run;
+      if (!run || run.state !== "imported" || s.ai.undone || s.ai.busy || s.busy) return;
+      s.ai.busy = true;
+      render();
+      later(600, () => {
+        if (s.ai.run !== run) return;
+        // Every byte back: the bindings as they were before the import.
+        Object.assign(s.bind, clone(s.ai.undo));
+        Object.assign(s, { written: run.keys, reverted: true });
+        Object.assign(s.ai, { busy: false, undone: true });
+        s.flags.aiReverted = true;
+        render();
+      });
+    },
+    aiDismiss() {
+      s.ai.run = null;
+      Object.assign(s.ai, { undone: false, undo: null, busy: false });
+      render();
+    },
   };
+  /* The simulated run: approval, then a work copy, the agent, the checks, and one ending. */
+  function aiPhase(run, state, ms, next) {
+    run.state = state;
+    render();
+    const step = run.step;
+    later(ms, () => {
+      if (s.ai.run === run && !run.final && run.step === step) next();
+    });
+  }
+  /** The seconds go up without redrawing anything else (buttons under the pointer stay put). */
+  function aiTick(run) {
+    later(1000, () => {
+      if (s.ai.run !== run || run.final) return;
+      const text = aiElapsed(T(), run);
+      $$("[data-ai-elapsed]", sim).forEach((el) => (el.textContent = text));
+      aiTick(run);
+    });
+  }
+  function aiEnd(run, state, extra = {}) {
+    Object.assign(run, { state, final: true, finishedAt: run.startedAt ? Date.now() : null }, extra);
+    render();
+  }
+  function aiOutcome(text) {
+    if (AI_ADDS.test(text)) return { state: "rejected", reasons: [{ code: "token-set-changed", path: "tokens/tokens-comp.css" }], words: "added" };
+    const props = AI_PROPS.filter(([, test]) => test.test(text)).map(([prop]) => prop);
+    if (!props.length) return { state: "failed", reasons: [{ code: "agent-cannot" }], words: "cannot" };
+    return { state: "imported", props };
+  }
+  /** One step up the scale (one down at the top), a circle when asked for one; the fill goes to the secondary color. */
+  function aiNext(prop, from, text) {
+    if (prop === "fill") return from === "color-secondary" ? "color-tertiary" : "color-secondary";
+    if (prop === "radius" && AI_ROUND.test(text)) return "shape-corner-full";
+    const scale = TOKENS[PROPS[prop].kind].map(([name]) => name);
+    const at = scale.indexOf(from);
+    return scale[at + 1] ?? scale[at - 1];
+  }
+  function aiFinish(run) {
+    const outcome = aiOutcome(run.text);
+    const words = AI_WORDS[run.lang];
+    if (outcome.state !== "imported") return aiEnd(run, outcome.state, { reasons: outcome.reasons, summary: words[outcome.words] });
+    // Asked for what is already there: the agent changes nothing, and that is not imported either.
+    const props = outcome.props.filter((prop) => aiNext(prop, applied(s, prop), run.text) !== applied(s, prop));
+    if (!props.length) return aiEnd(run, "failed", { reasons: [{ code: "no-changes" }] });
+    const before = { element: run.element, values: elementValues(s, run.element) };
+    const undo = {};
+    const keys = [];
+    const said = [];
+    for (const prop of props) {
+      const viaComp = s.bind[prop].decl === "comp";
+      const from = applied(s, prop);
+      const to = aiNext(prop, from, run.text);
+      undo[prop] = clone(s.bind[prop]);
+      s.bind[prop][viaComp ? "comp" : "decl"] = to;
+      keys.push(...targets(prop, viaComp ? "component" : "declaration"));
+      said.push(words.changed(prop, viaComp, from, to));
+    }
+    const changes = AI_FILES.map(([prefix, file]) => [file, keys.filter((key) => key.startsWith(prefix)).length]).filter(([, n]) => n).map(([file, n]) => ({ file, added: n, removed: n }));
+    // Imported as one undoable change; the request was used, so its box is empty again.
+    Object.assign(s, { written: keys, reverted: false });
+    Object.assign(s.ai, { undo, undone: false });
+    delete s.ai.drafts[run.element];
+    s.flags.aiImported = true;
+    aiEnd(run, "imported", { summary: said.join(run.lang === "zh" ? "" : " "), changes, keys, before });
+  }
   function showCopied(title, text) {
     $("#sim-copied").hidden = false;
     $("#sim-copied-title").textContent = title;
@@ -1436,20 +1908,20 @@
       // The box shows the text: it can be selected by hand.
     }
   }
-  function referenceText() {
+  function referenceText(st = s) {
     const line = (prop) => {
       const meta = PROPS[prop];
-      const token = applied(s, prop);
-      const viaComp = s.bind[prop].decl === "comp";
+      const token = applied(st, prop);
+      const viaComp = st.bind[prop].decl === "comp";
       return `${L.zh.fields[prop]}：${meta.css} → ${viaComp ? `${meta.comp}（tokens/tokens-comp.css:${lineNumber(`tok:${prop}`)}）→ ` : ""}--sys-${token} = ${VALUE[token]}`;
     };
-    const rows = rowsFor(s);
+    const rows = rowsFor(st);
     return [
       "[Code Layer 物件參照 v2]",
       "Story：components-badge--seal（Components/Badge › Seal）",
-      `元件：badge · variant：seal · 元素：${EL[s.selection]}`,
+      `元件：badge · variant：seal · 元素：${EL[st.selection]}`,
       "CSS：src/components/badge/Badge.css · .badge--seal（規則 #2，第 11 行）",
-      ...rows.filter((row) => LAYOUT[row.prop]).map((row) => `${L.zh.fields[row.id]}：${LAYOUT[row.prop].css} = ${s.lay[row.prop] ?? LAYOUT[row.prop].initial} · ${s.lay[row.prop] === null ? "尚未宣告；可設為" : "可改成"} ${LAYOUT[row.prop].options.join(" | ")} 之一`),
+      ...rows.filter((row) => LAYOUT[row.prop]).map((row) => `${L.zh.fields[row.id]}：${LAYOUT[row.prop].css} = ${st.lay[row.prop] ?? LAYOUT[row.prop].initial} · ${st.lay[row.prop] === null ? "尚未宣告；可設為" : "可改成"} ${LAYOUT[row.prop].options.join(" | ")} 之一`),
       ...rows.filter((row) => PROPS[row.prop]).map((row) => line(row.prop) + (row.inherited ? ` · 繼承自 ${EL.root}` : "")),
       ...rows.filter((row) => row.lock && !row.unset).map((row) => `${L.zh.fields[row.id]}：${row.value} · 唯讀：${L.zh.lock[row.lock]}`),
     ].join("\n");
@@ -1489,6 +1961,24 @@
       s.flags.briefCopied = true;
       coach.sync();
     } else if (name === "reverify") coach.sync();
+    else if (name === "ai-open") act.aiOpen();
+    else if (name === "ai-toggle") act.aiToggle();
+    else if (name === "ai-close") act.aiClose();
+    else if (name === "ai-ref") (s.ai.showRef = !s.ai.showRef), render();
+    else if (name === "ai-send") act.aiSend();
+    else if (name === "ai-allow") act.aiConfirm(true);
+    else if (name === "ai-deny") act.aiConfirm(false);
+    else if (name === "ai-cancel") act.aiCancel();
+    else if (name === "ai-revert") act.aiRevert();
+    else if (name === "ai-dismiss") act.aiDismiss();
+    else if (name === "ai-part" && s.ai.run) (s.ai.run.open[target.dataset.partId] = !s.ai.run.open[target.dataset.partId]), render();
+  });
+  // The approval stand-in: Esc is its cancel button, which denies.
+  sysBox.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    event.preventDefault();
+    event.stopPropagation();
+    act.aiConfirm(false);
   });
   // Selecting on the canvas: a click takes the outermost component, a double-click goes one level in.
   const hit = (event) => (event.target instanceof Element ? event.target.closest("[data-el]") : null);
@@ -1512,7 +2002,7 @@
     if (s.on && hit(event)) act.select("content");
   });
   canvas.addEventListener("keydown", (event) => {
-    if (!s.on || (event.target instanceof Node && insp.contains(event.target))) return;
+    if (!s.on || (event.target instanceof Node && (insp.contains(event.target) || sysBox.contains(event.target)))) return;
     if (event.key === "Escape") s.openRow ? act.closePop() : act.select(null);
     else if (event.key === "Enter" && event.shiftKey && s.selection === "content") act.select("root");
     else if (event.key === "Enter" && s.selection === "root") act.select("content");
@@ -1532,6 +2022,18 @@
     if (s.transient) (s.transient = null), renderCanvas();
   });
   insp.addEventListener("input", (event) => {
+    if (event.target instanceof HTMLTextAreaElement && event.target.classList.contains("ai-input")) {
+      // Typing for the AI: kept per element; only the counter and the send button follow, so the caret stays.
+      const value = event.target.value;
+      if (value) s.ai.drafts[s.selection] = value;
+      else delete s.ai.drafts[s.selection];
+      const box = event.target.closest(".ai-dialog");
+      const counter = $('[data-part="ai-counter"]', box);
+      if (counter) counter.textContent = T().aiCounter([...value].length, AI_MAX);
+      const send = $('[data-act="ai-send"]', box);
+      if (send) send.disabled = !value.trim() || s.busy;
+      return coach.sync();
+    }
     if (!(event.target instanceof HTMLInputElement) || !event.target.classList.contains("pop-search")) return;
     s.query = event.target.value;
     const list = $(".opts", event.target.closest(".pop"));
@@ -1552,9 +2054,25 @@
     button.addEventListener("pointercancel", stop);
   });
   insp.addEventListener("keydown", (event) => {
-    const button = event.target instanceof Element ? event.target.closest('[data-act="compare"]') : null;
+    const el = event.target instanceof Element ? event.target : null;
+    if (el && el.matches("textarea.ai-input")) {
+      // Typing stays in the box (the canvas never sees these keys).
+      // Enter sends (not while an input method is composing), Shift+Enter breaks the line, Esc closes and keeps the text.
+      event.stopPropagation();
+      if (event.key === "Enter" && !event.shiftKey && !event.isComposing && event.keyCode !== 229) {
+        event.preventDefault();
+        act.aiSend();
+      } else if (event.key === "Escape") {
+        event.preventDefault();
+        act.aiClose();
+      }
+      return;
+    }
+    const button = el ? el.closest('[data-act="compare"]') : null;
     if (button && (event.key === " " || event.key === "Enter") && !event.repeat) act.compare(true);
-    if (event.key === "Escape" && s.openRow) act.closePop();
+    // Closing redraws the inspector, so the canvas would no longer see the key as the inspector's and clear the selection: stop it here.
+    if (event.key === "Escape" && s.openRow) event.stopPropagation(), act.closePop();
+    else if (event.key === "Escape" && el && el.closest(".ai-dialog")) event.stopPropagation(), act.aiClose();
   });
   insp.addEventListener("keyup", (event) => {
     if (s.comparing && (event.key === " " || event.key === "Enter")) act.compare(false);
@@ -1599,6 +2117,20 @@
   };
   const applyDone = () => Boolean(s.report && s.report.mode === "apply" && s.report.phase === "done");
   const row = (id) => `.i-row[data-id="${id}"]`;
+  const aiDraft = () => (s.selection ? s.ai.drafts[s.selection] ?? "" : "");
+  const aiWaiting = () => Boolean(s.ai.run && s.ai.run.state === "awaiting-confirmation");
+  /** For "do this step for me": the badge selected, the dialog open, a request typed (the journey's own one when asked). */
+  const aiPrepare = (example = false) => {
+    Object.assign(s, { on: true, selection: s.selection ?? "root", openRow: null, collapsed: false });
+    s.ai.dialog = true;
+    if (example || !aiDraft().trim()) s.ai.drafts[s.selection] = AI_EXAMPLE;
+  };
+  /** Skip the wait; after a request that ended without a change, send the journey's request again first. */
+  const aiSkipWait = () => {
+    const run = s.ai.run;
+    if (!run || (run.final && run.state !== "imported")) (aiPrepare(true), act.aiSend());
+    act.aiHurry();
+  };
   const JOURNEYS = [
     {
       id: "color", title: "換一個顏色", sub: "最常走的一趟",
@@ -1660,7 +2192,22 @@
       steps: [
         { do: "點一下有鎖頭的「最小寬」", see: "出現原因：這個數值是寫死的，沒有綁 token。真的工具是滑鼠停著就會顯示。", target: row("minWidth"), done: () => Boolean(s.flags.lockSeen), auto: () => ((s.lockShown = "minWidth"), (s.flags.lockSeen = true), render()) },
         { do: "按標題列的複製圖示", see: "一段文字複製到剪貼簿，寫明是哪個元件、哪個檔案、哪些 token。", target: '.i-head [data-act="copy"]', done: () => Boolean(s.flags.copied), auto: () => act.copy() },
-        { do: "貼到 AI 對話，加一句你要的修改", see: "只用這一次的數值，就說「把最小寬改成 96px」。別處也會用到，就說「新增一個 token 並把這裡換成它」。", target: "#sim-copied", done: () => Boolean(s.flags.pasted), auto: () => ((s.flags.pasted = true), coach.sync()), manual: "我知道了" },
+        { do: "貼到 AI 對話，加一句你要的修改", see: "只用這一次的數值，就說「把最小寬改成 96px」。別處也會用到，就說「新增一個 token 並把這裡換成它」。專案啟用了「請 AI 修改」的話，前者也可以直接按「AI」交給它；它不能新增 token。", target: "#sim-copied", done: () => Boolean(s.flags.pasted), auto: () => ((s.flags.pasted = true), coach.sync()), manual: "我知道了" },
+      ],
+    },
+    {
+      id: "ai", title: "請 AI 修改", sub: "用一句話交給 AI",
+      who: "想把方形的印章改成圓形，但不知道要改哪一列、哪個 token，想直接用一句話請 AI 改。這個專案已經啟用了「請 AI 修改」。",
+      preset: () => ({ on: true, aiReady: true }),
+      steps: [
+        { do: "點一下印章", see: "選取框的標籤上多了「AI」。檢視器標題列的 ✦ 是同一個功能。", target: '[data-el="root"]', done: () => Boolean(s.selection), auto: () => act.select("root") },
+        { do: "按標籤上的「AI」", see: "檢視器旁邊打開「請 AI 修改」，第一行寫著對象是哪個元素。", target: '.sel-label [data-act="ai-open"]', done: () => aiShown(s) || Boolean(s.ai.run), auto: () => (Object.assign(s, { selection: s.selection ?? "root", collapsed: false }), act.aiOpen()) },
+        { do: "寫下想要的修改，例如「改成圓形」", see: "Enter 送出，Shift+Enter 換行。展開「一併送出的物件參照」，可以看到 AI 會一起收到什麼。", target: ".ai-input", done: () => Boolean(aiDraft().trim()) || Boolean(s.ai.run), auto: () => (aiPrepare(), act.aiType(AI_EXAMPLE)) },
+        { do: "按「送出」", see: "電腦會跳出確認視窗。真的視窗在瀏覽器外面，這裡用模擬的。", target: '[data-act="ai-send"]', done: () => Boolean(s.ai.run), auto: () => (aiPrepare(), act.aiSend()) },
+        { do: "在確認視窗按「允許」", see: "預設的按鈕是「拒絕」，60 秒沒有回應也算拒絕。按了拒絕也沒關係：打的字還在，可以再送一次。", target: '.sys-dialog [data-act="ai-allow"], #sim [data-act="ai-send"]', done: () => Boolean(s.flags.aiAllowed), auto: () => (aiWaiting() || (aiPrepare(), act.aiSend()), act.aiConfirm(true)) },
+        { do: "等 AI 改完", see: "檢視器底部依序顯示準備工作副本、AI 修改中、檢查並匯入中，和經過的秒數。這段時間不能「套用到檔案」或「還原」。", target: '[data-part="ai-report"]', done: () => Boolean(s.flags.aiImported), auto: aiSkipWait, manual: "跳過等待" },
+        { do: "看結果", see: "印章變成圓形了。「AI 的說明」是 AI 自己的話；下面列出改了哪個檔、幾行，以及這個元素哪個屬性變了：圓角從 4px 變成 999px。", target: '[data-part="ai-report"]', done: () => Boolean(s.flags.aiRead || s.flags.aiReverted), auto: () => ((s.flags.aiRead = true), coach.sync()), manual: "我看懂了" },
+        { do: "想反悔的話，按「還原」", see: "AI 改過的檔案整份放回去，印章變回方形，結果改成「已還原 AI 的修改」。", target: '[data-act="ai-revert"]', done: () => Boolean(s.flags.aiReverted), auto: () => act.aiRevert() },
       ],
     },
     {
@@ -1734,11 +2281,12 @@
   const FIGURES = [
     {
       title: "檢視器", intro: "選到元件之後的樣子。",
-      html: (T) => { const st = figureState({}); return `<div class="insp is-static">${headerHTML(st, T)}<div class="i-body">${bodyHTML(st, T)}</div></div>`; },
+      html: (T) => { const st = figureState({ aiReady: true }); return `<div class="insp is-static">${headerHTML(st, T)}<div class="i-body">${bodyHTML(st, T)}</div></div>`; },
       parts: [
         { sel: '[data-part="grip"]', at: "top", t: "拖曳把手", d: "按住標題列，把檢視器拖到任何位置。位置會記住。" },
         { sel: '[data-part="title"]', at: "top", t: "目前選到的東西", d: "元件名稱和它的款式。" },
         { sel: '[data-part="dev"]', at: "top", t: "開發者資訊", d: "打開後會多顯示每個值來自哪個檔案的哪一行。設計時不需要開。" },
+        { sel: '[data-part="ai"]', at: "top", t: "請 AI 修改", d: "打開「請 AI 修改」的對話框，和選取框標籤上的「AI」一樣。專案沒有啟用時是灰的，滑鼠停上去會說明原因。" },
         { sel: '[data-part="copy"]', at: "top", t: "複製參照", d: "把這個元件的描述複製起來，貼給 AI 就知道你指的是哪裡。" },
         { sel: '[data-part="collapse"]', at: "top", t: "收合", d: "收成只剩標題列，不擋畫面。" },
         { sel: '[data-part="crumb"]', at: "left", t: "所在層級", d: "◆ 是元件的根。選到內層時，點上層可以往回選。" },
@@ -1800,6 +2348,20 @@
         { sel: '[data-part="rep-pending"]', at: "left", t: "文件待同步", d: "工具不確定怎麼改的地方。只有這一項需要你或 AI 接手。" },
         { sel: '[data-part="rep-copy-ai"]', at: "right", t: "複製給 AI", d: "把待同步的清單複製成一段說明，貼給 AI 處理。" },
         { sel: '[data-part="rep-derived"]', at: "left", t: "衍生文件", d: "設計系統的文件頁已自動更新。" },
+      ],
+    },
+    {
+      title: "請 AI 修改", intro: "按選取框標籤上的「AI」或標題列的 ✦，在檢視器旁邊打開。專案啟用之後才有。",
+      html: (T) => aiDialogHTML(figureState({ aiReady: true, ai: Object.assign(freshState().ai, { dialog: true, drafts: { root: AI_EXAMPLE } }) }), T, "is-static"),
+      parts: [
+        { sel: '[data-part="ai-element"]', at: "left", t: "對象", d: "你選取的元素。換選別的元素，對話框會跟著換；每個元素打的字分開保留。" },
+        { sel: '[data-part="ai-input"]', at: "left", t: "想要的修改", d: "用一句話描述。Enter 送出，Shift+Enter 換行。" },
+        { sel: '[data-part="ai-counter"]', at: "right", t: "字數", d: "最多 2000 字。" },
+        { sel: '[data-part="ai-ref"]', at: "left", t: "一併送出的物件參照", d: "點了展開，看 AI 會一起收到什麼：元件、檔案和每個屬性用的 token。和「複製參照」是同一段文字。" },
+        { sel: '[data-part="ai-runner"]', at: "left", t: "由誰執行", d: "你的電腦上設定好的 AI 命令列工具，預設是 Claude Code。" },
+        { sel: '[data-part="ai-cost"]', at: "left", t: "時間與費用", d: "每次請求都要等一下，費用算在你自己的帳號。" },
+        { sel: '[data-part="ai-send"]', at: "bottom", t: "送出", d: "沒打字時按不了。送出之後，要在瀏覽器外按「允許」，AI 才會開始。" },
+        { sel: '[data-part="ai-close"]', at: "top", t: "關閉", d: "也可以按 Esc。打的字會留著，下次打開還在。" },
       ],
     },
   ];
@@ -1867,7 +2429,8 @@
   figuresEl.addEventListener("click", (event) => {
     if (event.target instanceof Element && event.target.closest(".fig-stage") && !event.target.closest(".pin")) event.preventDefault();
   });
-  $$(".fig-stage button:not(.pin), .fig-stage input", figuresEl).forEach((el) => el.setAttribute("tabindex", "-1"));
+  $$(".fig-stage button:not(.pin), .fig-stage input, .fig-stage textarea", figuresEl).forEach((el) => el.setAttribute("tabindex", "-1"));
+  $$(".fig-stage textarea", figuresEl).forEach((el) => (el.readOnly = true));
   $$(".fig", figuresEl).forEach((fig) => highlight(fig, 0));
   placePins();
   if (typeof ResizeObserver === "function") new ResizeObserver(placePins).observe(figuresEl);

@@ -74,6 +74,58 @@ export const IDLE_APPLY: ApplyState = {
   postApply: null,
 };
 
+/** GET /agent/status */
+export type AgentStatus = {
+  enabled: boolean;
+  ready: boolean;
+  reasons: Array<{ code: string; detail?: string | null; runner?: string }>;
+  runners: Array<{ id: string; label: string }>;
+  confirm: { mode: string; unconfirmed: boolean };
+  activeRunId: string | null;
+  limits: { maxTextChars: number; maxReferenceBytes: number };
+};
+
+/** GET /agent/runs/:id — never carries the request text. */
+export type AgentRunView = {
+  runId: string;
+  state: string;
+  final: boolean;
+  runner: string;
+  element: { label: string; storyId: string | null };
+  createdAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+  elapsedMs: number;
+  confirm: { mode: string; fallback: boolean };
+  result: { status: string; summary: string; question: string | null } | null;
+  changes: Array<{ file: string; role: string; added: number; removed: number }> | null;
+  checks: Array<{ id: string; ok: boolean }> | null;
+  reasons: Array<{ code: string; path?: string | null; detail?: string | null }> | null;
+  applyId: string | null;
+  followUpOf: string | null;
+};
+
+export type AgentState = {
+  status: AgentStatus | null;
+  /** The prompt dialog is open beside the inspector. */
+  dialog: boolean;
+  /** The current or last run, as the server reports it. */
+  run: AgentRunView | null;
+  /** The text of that run: the page keeps it, the server never sends it back. */
+  text: string | null;
+  /** Typed, not yet sent text per element. */
+  drafts: Record<string, string>;
+  /** The selected element's values when the request was sent, to show what the run changed. */
+  before: { key: string; rows: Record<string, string> } | null;
+  error: { code: string; message: string; details?: unknown } | null;
+  codeError: { code: string; remaining: number | null } | null;
+  /** The run's import was undone from the report. */
+  undone: boolean;
+  busy: boolean;
+};
+
+export const IDLE_AGENT: AgentState = { status: null, dialog: false, run: null, text: null, drafts: {}, before: null, error: null, codeError: null, undone: false, busy: false };
+
 export type MirrorSync = {
   phase: "idle" | "checking" | "confirm" | "syncing" | "error";
   files: Array<{ mirror: string; source: string; diffLines: number }>;
@@ -118,6 +170,8 @@ export type ManagerState = {
   layout: LayoutPayload | null;
   /** Bumped when the interface language changes, so every subscriber re-renders. */
   localeTick: number;
+  /** AI runs: readiness, the dialog, the current run. */
+  agent: AgentState;
 };
 
 let state: ManagerState = {
@@ -148,6 +202,7 @@ let state: ManagerState = {
   inspectorHosted: false,
   layout: null,
   localeTick: 0,
+  agent: IDLE_AGENT,
 };
 const listeners = new Set<() => void>();
 

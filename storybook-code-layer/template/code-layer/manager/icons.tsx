@@ -205,6 +205,13 @@ export const WarnIcon = () => (
     <path d="M8 2.5 14 13H2zM8 6.5v3M8 11.3v.2" />
   </Svg>
 );
+/** The AI entry: a small spark. */
+export const SparkleIcon = () => (
+  <Svg>
+    <path d="M8 2.5 9.3 6.7 13.5 8 9.3 9.3 8 13.5 6.7 9.3 2.5 8 6.7 6.7Z" />
+    <path d="M12.5 2.5v2.4M11.3 3.7h2.4" strokeWidth="1.1" />
+  </Svg>
+);
 export const MinusIcon = () => (
   <Svg>
     <path d="M4 8h8" />

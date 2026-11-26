@@ -7,11 +7,16 @@ description: >-
   container (direction, alignment, distribution, wrapping) in an inspector
   floating over the canvas with a live preview, and applies the change to the
   real token files, component stylesheets and component specification tables,
-  with verification and undo.
+  with verification and undo. Optionally (off until a person enables it), a
+  dialog beside the inspector asks a local AI command line tool to make a
+  change the inspector cannot; each request is approved outside the browser,
+  runs on a copy of the workspace, passes a scope gate and is imported as one
+  undoable apply.
   Use when a Storybook project should get this design inspector, when an existing
   Code Layer installation must be checked, upgraded to the current template or
-  removed, or when its project binding (token tiers, component roots, checks,
-  governance) has to be derived or reviewed. Requires a three-tier
+  removed, when its project binding (token tiers, component roots, checks,
+  governance) has to be derived or reviewed, or when AI requests must be
+  enabled, checked or disabled for a project. Requires a three-tier
   ref → sys → comp token system referenced through CSS custom properties.
 ---
 
@@ -35,9 +40,15 @@ person asks what they are installing:
   to the rule that declares the element's `display`. `display` itself, grid
   layout and resizing are not editable.
 
-Anything else (changing a hard-coded number, adding a token, restructuring
-markup) is for a person or an AI assistant to do in the source; the inspector's
-"copy object reference" produces the text to hand over.
+- AI requests (since 1.3.0, off until enabled, see section 6): the person
+  describes a change in a dialog beside the inspector; a local agent command
+  line tool makes it on a copy of the workspace. Only modifications of
+  existing files in an allowed set are imported, as one apply that undo puts
+  back byte for byte.
+
+Anything else (adding a token, creating files, restructuring markup) is for a
+person or an AI assistant to do in the source; the inspector's "copy object
+reference" produces the text to hand over.
 
 Paths below are relative to this skill's folder (`<skill-root>`). The scripts
 read the template that sits next to them, so they work from the repository and
@@ -54,7 +65,8 @@ from any installed copy of the skill.
       code-layer.config.json     the project binding — the project's file
       INSTALL_RECEIPT.json       what the installer did
   tsconfig.json                  ".storybook/code-layer/**" in `exclude` (only when its include list covers the addon)
-<workspace root>/.code-layer/    journal, backups, pending documents (location set by the binding; outside the Storybook root)
+<workspace root>/.code-layer/    journal, backups, pending documents (location set by the binding; outside the Storybook root);
+                                 with AI requests also agent-runners.json (this machine's runners) and agent/<runId>/ (the last 20 runs)
 ```
 
 In `storybook dev` a toolbar toggle named "Code Layer" turns on a selection
@@ -71,6 +83,7 @@ output contains nothing of it.
 | `INSTALL_RECEIPT.json` | the installer | writes it last on install and update, deletes it last on uninstall |
 | the `addons` element, the `resolve` import, the tsconfig entry | the project's files | adds them; removes only what the receipt says it added |
 | the state directory | Code Layer at run time | never touches it |
+| `<stateDir>/agent-runners.json` | the person, through `enable_agent.mjs` | never touches it; `--check` reads it |
 
 ## Safety boundary
 
@@ -78,9 +91,9 @@ output contains nothing of it.
 - Run every writing mode with `--dry-run` first and show the plan before running it for real.
 - Stop the project's Storybook dev server before `--update` or `--uninstall`. The installer refuses while Code Layer's write lock is held or its journal has an unfinished write; do not delete the lock to get past that.
 - Never edit files in `.storybook/code-layer/` by hand, and never pass `--force-managed` unless the person has seen which files it would overwrite and agreed.
-- Never write or rewrite `code-layer.config.json` except through `derive_binding.mjs --write` with a binding the person confirmed.
+- Never write or rewrite `code-layer.config.json` except through `derive_binding.mjs --write` with a binding the person confirmed, or by adding its `agent` key when the person asked for AI requests and agreed to what section 6 says.
 - Do not commit, push or open a pull request unless asked.
-- Nothing in this skill starts an AI agent process or makes a network request. Do not add one to a check or post-apply command on your own initiative.
+- None of the scripts starts an AI agent process or makes a network request: `enable_agent.mjs` runs the command line tools with `--version` and their help only. An agent process starts only when a person submits a request in the running Storybook and approves it outside the browser. Never submit or approve a request yourself, and never add an agent to a check or post-apply command.
 - A conflict or a failed prerequisite means zero writes. Report it; do not work around it by editing the project.
 
 ## Prerequisites
@@ -175,9 +188,41 @@ node <skill-root>/scripts/install_code_layer.mjs --project-root <storybook root>
 
 Removes the preset element, the import and the tsconfig entry only when the receipt records that the installer added them, the managed files that are unchanged, and the receipt last. It keeps the binding and the state directory (journal and backups). With a receipt written by 0.1.0 only the preset element is removed, and the output says what is left to review.
 
+## 6. AI requests (optional)
+
+Off unless both are true: the project binding has `"agent": { "enabled": true }` (the project's policy) and this machine has a runner file written by `enable_agent.mjs` (`<stateDir>/agent-runners.json`, the machine's decision). Requires the `agent-automation-orchestrate` skill and at least one command line tool: Claude Code (default) or Codex. The runner file holds this machine's absolute paths, so check that the state directory is in `.gitignore` before enabling; otherwise it would be shared with the project.
+
+Before enabling, tell the person in plain language and wait for their agreement. Never enable it on their behalf:
+
+- The dialog in their browser will be able to start a paid command line tool that edits this project. Each request uses their own account and takes a while.
+- Every request waits for their approval outside the browser: a macOS dialog whose default button is "deny" and that shows the request, the element, the tool and the files the agent may change; or, where no dialog can be shown, a six-digit code printed in the terminal that runs Storybook. Unanswered requests are denied (60 s for the dialog, 180 s for a code).
+- The agent works on a copy of the workspace. Claude Code is started with file tools only (no shell, no MCP servers: their claude.ai connectors such as Gmail or Drive are not loaded); Codex keeps a shell inside its sandbox, and it also starts the MCP servers listed in the person's own Codex configuration (`~/.codex/config.toml`), which run outside that sandbox. That is why Codex is not used unless they ask for it; when their configuration lists MCP servers, name them and say that those servers would be available to the agent.
+- Only modifications of existing files in the allowed set reach the project: the writable token sources, files under the component roots and the component specifications, narrowed by `agent.allowedGlobs` when set. New or deleted files, added or removed tokens, edits to token mirrors and CSS that does not parse make the whole result refused, and the project is not changed.
+- An accepted result is one apply: the inspector lists each changed file with its line counts, and undo puts every byte back.
+- To stop: `enable_agent.mjs --disable`, or `"enabled": false` in the binding.
+
+Then run, showing the dry run first:
+
+```sh
+node <skill-root>/scripts/enable_agent.mjs --project-root <storybook root> --dry-run
+node <skill-root>/scripts/enable_agent.mjs --project-root <storybook root>
+```
+
+It finds node, `agent-automation-orchestrate` (its `scripts/run-task.mjs`, looked up in this order: `--orchestrator-root <dir>`, `.agents/skills` in the Storybook root and in the workspace root, the user's `~/.agents`, `~/.claude` and `~/.codex` skill folders, then next to this skill) and the tool, checks the tool with `--version` and its help, and writes the runner file (mode 0600). `--runners claude,codex --codex-model <id>` adds Codex after Claude Code; `--claude <path>` and `--codex <path>` pick a binary; `--timeout-ms <n>` sets each runner's limit (default 300000). The runner file is read on every request, so running the script again needs no restart. When a tool updates itself to a new version, AI requests stop being ready until the script runs again.
+
+The binding key (the person adds it, or you add only this key after their agreement and show the result):
+
+```json
+"agent": { "enabled": true }
+```
+
+Optional: `confirm` (`"native-dialog"`, the default on macOS; `"terminal-code"`, the default elsewhere; `"off"` only when the person asks for it and accepts that requests then run without approval: the inspector says so on every request), `allowedGlobs`, `workcopy.exclude`, `workcopy.maxFiles` (20000), `workcopy.maxBytes` (500 MB), `timeoutMs`. Restart Storybook after changing the binding.
+
+Readiness: `--check` prints an "AI requests" line (from files only; never a reason for `incomplete`); the Storybook log says `[code-layer] AI runs ready (…)` or names what is missing; in the inspector, the header's AI button is disabled with the reason as its tooltip.
+
 ## Output and result codes
 
-Add `--json` for one object: `ok`, `result`, `actions[]` (`action`, `path`), `issues[]` (`severity`, `code`, `message`), `written[]`, `restartRequired`. The text output carries the same information. The exit status is 0 only when `ok` is true; 2 is a usage error.
+Add `--json` for one object: `ok`, `result`, `actions[]` (`action`, `path`), `issues[]` (`severity`, `code`, `message`), `written[]`, `restartRequired`; `--check` adds `agent` (`enabled`, `ready`, `runners`, `confirm`, `problems[]`). The text output carries the same information. The exit status is 0 only when `ok` is true; 2 is a usage error.
 
 | `result` | Meaning |
 | --- | --- |
@@ -196,6 +241,7 @@ Frequent issue codes: `binding-missing`, `binding-invalid`, `binding-path-missin
 2. Start Storybook; its log shows `[code-layer] ready at /__code-layer`. A line saying writes are disabled names the reason (for example a check script that does not exist): fix the binding.
 3. Open a component story, turn on "Code Layer" in the toolbar, click the component: the inspector over the canvas lists its properties, each as an icon, a value and a token; clicking a value opens the token picker beside it. On a flex container the Layout section also lists direction, alignment, distribution and wrapping; clicking one opens its options.
 4. Do not apply a change to the user's files as a test unless they ask; if they do, undo it from the report and confirm the files are back.
+5. With AI requests enabled: the log says `AI runs ready` and the inspector header's AI button is enabled once an element is selected. Do not send a request as a test: it costs the person money and needs them at the machine to approve it.
 
 `README.md` (Traditional Chinese) explains the inspector for the people who use it. The interactive guide for users is `docs/code-layer-guide.html` at the root of the skills repository (a working simulator, user journeys, every control explained, FAQ, changelog); when a feature or an interface text of the tool changes, update that same file in the same change instead of writing a new document.
 
@@ -213,3 +259,5 @@ State, without embellishment: the result code of each command you ran; which fil
 ## Companion skill
 
 `design-system-extractor` (support): the binding may point its checks at that skill's `scripts/audit_tokens.mjs` and its post-apply commands at `generate_docs_html.mjs` / `generate_review_html.mjs`. Without it the check list may be empty; token changes are then written without an audit, and the person should know.
+
+`agent-automation-orchestrate` (support, AI requests only): each request runs through its `scripts/run-task.mjs`, unmodified, with a contract written inside the copy of the workspace; the real project never gets an `.agent-automation` folder. Without it AI requests stay off and everything else works.

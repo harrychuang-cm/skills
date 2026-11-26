@@ -25,6 +25,7 @@ const STYLE = `
 .select-label button { all: unset; cursor: pointer; font: inherit; color: #fff; padding: 0 0 0 6px;
   border-left: 1px solid rgba(255,255,255,.45); }
 .select-label button:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
+.select-label button[hidden] { display: none; }
 .toast { position: fixed; right: 12px; bottom: 12px; display: none; pointer-events: none;
   font: 500 12px/18px system-ui, -apple-system, sans-serif; color: #fff; background: rgba(20,20,20,.88);
   padding: 6px 10px; border-radius: 6px; }
@@ -67,13 +68,15 @@ export class Overlay {
   private readonly highlightBox: HTMLDivElement;
   private readonly highlightLabel: HTMLDivElement;
   private readonly copyButton: HTMLButtonElement;
+  private readonly agentButton: HTMLButtonElement;
   private highlighted: Element | null = null;
   private hovered: Element | null = null;
   private selected: Element | null = null;
   private frame = 0;
   private toastTimer = 0;
 
-  constructor(onCopy: () => void) {
+  /** onAgent only tells the inspector to open its AI dialog; nothing typed passes through the page. */
+  constructor(onCopy: () => void, onAgent: () => void) {
     this.host = document.createElement("div");
     this.host.setAttribute(CHROME_ATTRIBUTE, "");
     this.host.setAttribute("popover", "manual");
@@ -101,7 +104,16 @@ export class Overlay {
       event.preventDefault();
       onCopy();
     });
-    this.selectLabel.append(this.selectName, this.selectSize, copy);
+    const agent = Object.assign(document.createElement("button"), { type: "button", hidden: true });
+    this.agentButton = agent;
+    agent.setAttribute(UI_ATTRIBUTE, "");
+    agent.setAttribute("data-code-layer-action", "agent");
+    agent.addEventListener("click", (event) => {
+      event.stopPropagation();
+      event.preventDefault();
+      onAgent();
+    });
+    this.selectLabel.append(this.selectName, this.selectSize, copy, agent);
     this.toast = Object.assign(document.createElement("div"), { className: "toast" });
     root.append(style, this.shield, this.highlightBox, this.hoverBox, this.selectBox, this.highlightLabel, this.hoverLabel, this.selectLabel, this.toast);
     this.relabel();
@@ -111,6 +123,13 @@ export class Overlay {
   relabel(): void {
     this.copyButton.textContent = t("overlay.copy");
     this.copyButton.title = t("overlay.copyTitle");
+    this.agentButton.textContent = t("overlay.ai");
+    this.agentButton.title = t("overlay.aiTitle");
+  }
+
+  /** The AI control appears on the label only while agent runs are ready. */
+  setAgentReady(ready: boolean): void {
+    this.agentButton.hidden = !ready;
   }
 
   /** Outline an element the panel points at (a breadcrumb entry, a child). */

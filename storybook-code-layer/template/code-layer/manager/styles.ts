@@ -259,6 +259,33 @@ export const Note = styled.div(({ theme }) => ({ padding: "0 10px 8px", color: t
 
 export const Warn = styled.span({ color: "#E8590C" });
 
+/** Multi-line input of the AI dialog. */
+export const TextArea = styled.textarea(({ theme }) => ({
+  appearance: "none",
+  display: "block",
+  width: "calc(100% - 20px)",
+  minHeight: 76,
+  maxHeight: 220,
+  margin: "0 10px 4px",
+  padding: "6px 8px",
+  borderRadius: 6,
+  border: `1px solid ${theme.appBorderColor}`,
+  background: (theme as { input?: { background?: string } }).input?.background ?? theme.background.app,
+  color: theme.color.defaultText,
+  font: "inherit",
+  lineHeight: 1.5,
+  resize: "vertical",
+  outline: "none",
+  "&:focus": { borderColor: ACCENT, boxShadow: `0 0 0 1px ${ACCENT}` },
+  "&::placeholder": { color: theme.textMutedColor },
+}));
+
+/** Text produced by the agent or typed by the person: always plain text, line breaks kept. */
+export const Plain = styled.div(({ theme }) => ({ margin: "0 10px 8px", padding: "6px 8px", borderRadius: 6, background: subtle(theme, false), whiteSpace: "pre-wrap", wordBreak: "break-word", fontSize: 11.5, lineHeight: 1.5 }));
+
+/** The object reference shown on demand in the AI dialog. */
+export const Pre = styled.pre(({ theme }) => ({ margin: "0 10px 8px", padding: "6px 8px", maxHeight: 160, overflow: "auto", borderRadius: 6, background: subtle(theme, false), fontSize: 10.5, lineHeight: 1.45, whiteSpace: "pre-wrap", wordBreak: "break-all", color: theme.textMutedColor }));
+
 export const LinkButton = styled.button({
   appearance: "none",
   border: "none",

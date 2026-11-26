@@ -25,7 +25,7 @@ const NO_PENDING: PendingEntry[] = [];
  * document (hidden while closed), so what arrives later takes its place
  * without moving anything.
  */
-function Part({ id, label, tone, startOpen = false, extra, children }: { id: string; label: string; tone?: "attention"; startOpen?: boolean; extra?: React.ReactNode; children: React.ReactNode }) {
+export function Part({ id, label, tone, startOpen = false, extra, children }: { id: string; label: string; tone?: "attention"; startOpen?: boolean; extra?: React.ReactNode; children: React.ReactNode }) {
   const [open, setOpen] = React.useState(startOpen);
   return (
     <div data-code-layer-part={id} data-open={open ? "true" : "false"}>
@@ -89,6 +89,7 @@ function PendingPart({ applyId, entries }: { applyId: string; entries: PendingEn
 export function Report({ prefix }: { prefix: string }) {
   const state = useStore((s) => s.applyState);
   const pendingDocs = useStore((s) => s.server?.pendingDocs ?? NO_PENDING);
+  const agentBusy = useStore((s) => Boolean(s.agent.run && !s.agent.run.final));
   if (state.phase === "idle") return null;
   const busy = state.phase === "arming" || state.phase === "writing" || state.phase === "verifying" || state.phase === "undoing";
   const labels = Object.fromEntries(state.drafts.map((d) => [d.id, `${draftRowLabel(d)} · ${d.elementLabel}${t("reference.colon")}${changeEnds(d.op, prefix).from} → ${changeEnds(d.op, prefix).to}`]));
@@ -118,7 +119,7 @@ export function Report({ prefix }: { prefix: string }) {
           {headline}
         </Headline>
         {state.applyId && !busy && state.mode === "apply" && !state.undone && !state.skipped ? (
-          <Button type="button" onClick={() => void undoApplied()} data-code-layer-action="undo">
+          <Button type="button" disabled={agentBusy} title={agentBusy ? t("agent.busyHint") : undefined} onClick={() => void undoApplied()} data-code-layer-action="undo">
             {t("report.undo")}
           </Button>
         ) : null}
@@ -144,11 +145,11 @@ export function Report({ prefix }: { prefix: string }) {
       {state.applyId && !busy && state.error?.code === "undo-conflict" && !state.skipped ? (
         <ReportLine>
           {details?.canReverse ? (
-            <Button type="button" primary onClick={() => void reverseApplied()} data-code-layer-action="reverse" title={t("report.reverseTitle")}>
+            <Button type="button" primary disabled={agentBusy} onClick={() => void reverseApplied()} data-code-layer-action="reverse" title={agentBusy ? t("agent.busyHint") : t("report.reverseTitle")}>
               {t("report.reverse")}
             </Button>
           ) : null}
-          <Button type="button" onClick={() => void skipApplied()} data-code-layer-action="skip">
+          <Button type="button" disabled={agentBusy} title={agentBusy ? t("agent.busyHint") : undefined} onClick={() => void skipApplied()} data-code-layer-action="skip">
             {t("report.skip")}
           </Button>
         </ReportLine>

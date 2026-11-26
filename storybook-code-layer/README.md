@@ -1,6 +1,6 @@
 # Storybook Code Layer
 
-在 Storybook 上像用 Figma 一樣選取畫面上的元件，在浮在畫布上的檢視器裡點一下數值，把它換成另一個 token，或調整 flex 容器的排列（方向、對齊、分布、換行），即時看到結果；按「套用到檔案」後寫進真實的 token 檔、元件樣式表與元件規格表，寫完自動驗證畫面與檔案一致，也可以還原。
+在 Storybook 上像用 Figma 一樣選取畫面上的元件，在浮在畫布上的檢視器裡點一下數值，把它換成另一個 token，或調整 flex 容器的排列（方向、對齊、分布、換行），即時看到結果；按「套用到檔案」後寫進真實的 token 檔、元件樣式表與元件規格表，寫完自動驗證畫面與檔案一致，也可以還原。檢視器做不到的修改，可以在旁邊的對話框請 AI 做（1.3.0 起，預設關閉）：每次都要你在瀏覽器外按允許，AI 在專案的複本上工作，結果通過檢查才寫進專案，而且可以還原。
 
 這份文件給使用檢視器的人與維護專案的人。安裝、更新、移除的操作規則（給 AI agent）在 `SKILL.md`。
 
@@ -8,6 +8,7 @@
 
 - 數值、顏色、字級這些設計決定：只把樣式裡 `var(--…)` 引用的 token **換成另一個已經存在、型別相同的 token**。不新增 token、不寫入任意數值。
 - 排列方式（1.2.0 起）：flex 容器的方向、對齊、分布、換行可以從**固定的幾個選項**裡挑。這些值是 CSS 關鍵字，沒有 token 可綁，所以會直接寫進元件樣式表。`display` 本身、grid、拖曳調整大小不在範圍內。
+- 請 AI 修改（1.3.0 起，選用）：用文字描述想要的修改，由你電腦上的 AI 命令列工具（預設 Claude Code）在專案的複本上完成。只接受「修改既有檔案、而且在允許範圍內」的結果，整筆匯入、可以還原；其他結果一律不進專案。見下方〈請 AI 修改〉。
 - 只在 `storybook dev` 存在。`storybook build` 的產物裡沒有它的任何程式。
 - 介面語言依瀏覽器（中文或英文），也可以在專案綁定用 `locale` 固定。
 
@@ -89,9 +90,11 @@ node scripts/install_code_layer.mjs --project-root <storybook 根目錄> --unins
 
 從 1.1.0 升級到 1.2.0 同樣只需要 `--update` 與重新啟動，專案綁定不必修改。1.2.0 新增版面編輯；原本鎖住的方向、對齊、分布、換行四列，在 flex 容器上變成可以編輯。
 
+從 1.2.0 升級到 1.3.0 也只需要 `--update` 與重新啟動。不做任何其他設定時 AI 修改不會啟用，檢視器的行為與 1.2.0 相同（標題列多一個停用中的 AI 按鈕，滑鼠停上去會說明原因）。
+
 ## 使用
 
-互動版的說明在 [`docs/code-layer-guide.html`](../docs/code-layer-guide.html)（用瀏覽器開啟）：可以操作的模擬檢視器、六段使用者旅程、每個按鈕的說明、常見問題與更新紀錄。下面是文字版的摘要。
+互動版的說明在 [`docs/code-layer-guide.html`](../docs/code-layer-guide.html)（用瀏覽器開啟）：可以操作的模擬檢視器、七段使用者旅程（含請 AI 修改）、每個按鈕的說明、常見問題與更新紀錄。下面是文字版的摘要。
 
 1. 開啟任一個元件的 story，按工具列的 **Code Layer**。游標變成選取工具，畫布上出現**檢視器**。
    - 拖曳檢視器的標題列可以移到任何位置；右上角的箭頭可以收合。位置與收合狀態會記住。
@@ -122,6 +125,12 @@ node scripts/install_code_layer.mjs --project-root <storybook 根目錄> --unins
    - 「還原」把這次套用寫過的檔逐位元組放回去。套用之後檔案又被改過時不會整檔覆蓋，改為提供「只改回這次的變更」（保留其他修改）或「略過」。
 7. **開發者資訊**：標題列的 `</>` 按鈕。打開後會顯示每個值來自哪個檔案的哪一行、整條 token 鏈，以及每個範圍會寫入哪裡。預設關閉，會記住。
 8. **複製物件參照**：標題列的複製按鈕，或選取框標籤上的「複製參照」。貼到任何 AI 對話裡，AI 就知道你指的是哪個元素、哪些宣告與 token。
+9. **請 AI 修改**（已啟用時）：選取框標籤上的「AI」，或檢視器標題列的 ✦ 按鈕。對話框開在檢視器旁（取代列的浮層），寫出你選的元素。
+   - 打字描述想要的修改。Enter 送出，Shift+Enter 換行，Esc 關閉（文字會留著）；每個元素的文字分開保留。「一併送出的物件參照」可以展開看 AI 會收到什麼。
+   - 送出後要在**瀏覽器外**允許：macOS 會跳出系統對話框（預設按鈕是拒絕）；無法顯示對話框時，改到執行 Storybook 的終端機看六位數確認碼，輸入在對話框裡。
+   - 進行中，檢視器底部顯示狀態、經過時間與你的請求，可以取消；重新整理頁面後仍在。這段時間不能套用、還原或同步鏡像。
+   - 結束時只有兩種結果：「AI 已修改專案」（列出 AI 的說明、改了哪些檔與幾行、這個元素有哪些屬性改變，旁邊是「還原」），或「專案沒有任何改變」加上每個原因（可以改用「複製物件參照」自己交給 AI）。被拒絕、取消或失敗時，你打的文字還在輸入框裡，可以修改後再送。
+   - AI 需要你決定時，對話框顯示它的問題；回答後會成為新的請求，一樣要你允許。
 
 ### 哪些列可以改
 
@@ -154,12 +163,39 @@ node scripts/install_code_layer.mjs --project-root <storybook 根目錄> --unins
 - 改的是共用的規則：同一個元件的其他變體如果沒有自己覆寫，也會跟著變。浮層會寫出是哪條規則。
 - 排列的變更沒有對應的規格表，每一筆都會列進「文件待同步」，提醒更新元件規格裡描述版面的文字。
 
+## 請 AI 修改（選用）
+
+要同時滿足兩個條件才會啟用：
+
+1. 專案綁定 `code-layer.config.json` 有 `"agent": { "enabled": true }`。這是專案的決定，改完要重新啟動 Storybook。
+2. 這台電腦執行過啟用腳本（寫入狀態目錄的 `agent-runners.json`）。這是這台電腦的決定，之後重跑不必重啟。這個檔記錄的是這台電腦上的絕對路徑，請先確認狀態目錄已經加進 `.gitignore`，否則它會跟著專案一起被提交、分享出去。
+
+```sh
+node scripts/enable_agent.mjs --project-root <storybook 根目錄> --dry-run   # 先看會找到什麼、寫什麼
+node scripts/enable_agent.mjs --project-root <storybook 根目錄>
+node scripts/enable_agent.mjs --project-root <storybook 根目錄> --disable   # 停用
+```
+
+啟用腳本會找到 Node、`agent-automation-orchestrate` skill 與 Claude Code，只用 `--version` 與說明文字檢查它們，不會啟動 AI。要加入 Codex 作為第二順位：`--runners claude,codex --codex-model <模型>`。`install_code_layer.mjs --check` 會多一行「AI requests」說明目前是否就緒。
+
+Claude Code 或 Codex 自動更新版本之後，對話框會顯示「版本變了，需要重新設定」，AI 修改暫時不能用；重跑一次啟用腳本就會恢復，不必重啟 Storybook。
+
+**你需要知道的事**
+
+- **費用**：每次請求都會使用你自己帳號的額度，也需要一些時間（依工具與請求而定）。不會自動重試；第一個工具失敗時才會換下一個。
+- **每次都要你允許**：頁面上的程式（包括 story 裡的程式碼）也能送出請求，所以允許這一步一定在瀏覽器外。系統對話框會顯示專案、元素、要用的工具、AI 可以改的檔案範圍與請求文字；60 秒沒有回應視為拒絕。確認碼只對它那一筆請求有效、只能用一次，打錯三次就作廢，3 分鐘後失效。綁定可以設 `"confirm": "off"` 跳過確認，但檢視器會在每次送出前標示「不需確認」，不建議使用。
+- **AI 在複本上工作**：Storybook 把工作區（不含 `node_modules`、`.git`、建置輸出、狀態目錄與各 AI 工具的設定資料夾）複製一份給 AI。Claude Code 只拿到讀寫檔案的工具，沒有 shell，不載入任何 MCP 伺服器（你在 claude.ai 連接的 Gmail、Google Drive、Figma 等都不會出現），也讀不到環境變數；Codex 有 shell，寫入限制在它的 sandbox 與複本裡；但它會啟動你自己 Codex 設定（`~/.codex/config.toml`）裡列出的 MCP 伺服器，這些伺服器在 sandbox 之外執行。所以預設不使用 Codex；你的 Codex 設定裡有 MCP 伺服器時，加入 Codex 之前請先想清楚。
+- **範圍關卡**：AI 結束後，只有「修改既有檔案、而且每個檔都在允許範圍內」的結果會被接受。允許範圍是可寫的 token 真相檔、元件根目錄下的檔案、元件規格檔（綁定的 `agent.allowedGlobs` 可以再縮小）。下列任何一項都會讓整個結果被拒絕、專案完全不變：新增或刪除檔案、改到範圍外的檔案、直接改 token 鏡像、新增或刪除 token、改完不是有效的 CSS、AI 工作期間你自己也改了同一個檔。
+- **匯入是一筆可還原的套用**：通過關卡的結果和你按「套用到檔案」一樣寫入（token 真相檔與鏡像一起寫、先跑綁定的檢查、寫入前備份），可以從報告或還原堆疊還原，逐位元組放回去。AI 的修改沒有「只改回這次的變更」，套用後檔案又被改過時只能略過。
+- **紀錄**：請求文字只存在狀態目錄的 `agent/<代號>/request.txt`（只有你能讀）與 AI 的複本裡（結束即刪除）；紀錄、狀態與所有回應都不含它，頁面自己在這個分頁裡記住你送出的文字。用確認碼時，終端機會印出請求文字（那是給你核對的）。最近 20 次執行的資料夾會保留。
+
 ## 安全
 
 - 寫入入口只接受本機、同源、帶有每次啟動隨機產生的 session 的請求；區網與其他網站呼叫不到。Storybook 重新啟動後，已經開著的頁面會自己換成新的 session，不必重新整理；只有在檢視器本身的程式更新過時，才會出現「請重新整理頁面」的提示。
 - 同一台機器上的程式（story 裡的程式碼、瀏覽器擴充套件、其他本機程式）能做檢視器能做的事：在封閉的可寫檔案集合內，把 `var()` 裡的 token 換成另一個既有 token；把方向、對齊、分布、換行的關鍵字換成固定清單裡的另一個；在已經宣告 flex 的規則裡新增一行這四個屬性之一；或還原你最近的套用。不能建立檔案、不能寫任意文字：請求只能指名一個既有的 token，或固定清單裡的屬性與關鍵字。
 - 開著 ngrok、port 轉送等通道時不要啟用 Code Layer：拿到網址的人等同於本機。
 - 寫入前先在候選樹上跑綁定設定的檢查；檢查失敗時任何檔都不會被動到。每次寫入都有紀錄與備份（在狀態目錄），當機後重啟會自動復原。
+- 啟用 AI 修改後，同一台機器上的程式也能送出 AI 請求，但每一筆都要你在瀏覽器外允許；就算被允許，結果仍受範圍關卡限制、可以還原。允許之前請看清楚對話框裡的請求文字。
 
 ## 已知限制
 
@@ -176,7 +212,10 @@ node scripts/install_code_layer.mjs --project-root <storybook 根目錄> --unins
 - 排列只支援 flex 容器的四個屬性。不能改 `display`（把一般區塊變成 flex、改成 grid、隱藏）、不能調整子元素的順序或個別對齊、不能拖曳調整大小與位置。
 - 新增的排列宣告只有一個位置：宣告 `display` 的那條規則。要只對某個變體設定，目前要請 AI 或手動在該變體的規則裡寫。
 - 寫死的數值不能在檢視器裡改，也不能換成 token；請用「複製物件參照」交給 AI（改數值，或新增 token 後換上去）。
-- AI 對話框（在檢視器裡直接請 AI 修改）不在這一版；目前以「複製物件參照」與「複製給 AI」交接。
+- AI 修改一次只能有一筆在進行；進行中其他寫入會等它結束。
+- AI 的結果在匯入前只跑綁定的 token 檢查與 CSS 解析，不跑型別檢查或建置（複本沒有 `node_modules`）。改壞元件程式碼時，畫面會立刻反映，請用「還原」。
+- AI 不能新增 token 或檔案；需要新 token 時，請先由人新增，再請它改綁。
+- 原生確認對話框在某些啟動方式下可能不出現；這時會自動改用終端機確認碼，不會變成不需確認。
 
 ## 量測（試驗場 80sJP-Fable，Chrome，Apple Silicon）
 
@@ -214,6 +253,11 @@ CODE_LAYER_TEST_PROJECT=<storybook 根目錄> node --test 'test/*.test.mjs'
 # 對執行中的 Storybook（預設 http://localhost:6006）：API 與瀏覽器（Chrome DevTools Protocol，真實輸入）
 CODE_LAYER_TEST_PROJECT=<storybook 根目錄> node test/run_live_api.mjs
 CODE_LAYER_TEST_PROJECT=<storybook 根目錄> node test/run_core_loop_browser.mjs --stage all
+
+# AI 對話框（假的 AI 執行工具與測試用確認替身，不花費額度）：先 --setup，依它印出的變數重啟 Storybook；測完 --teardown，再正常重啟
+CODE_LAYER_TEST_PROJECT=<storybook 根目錄> node test/run_agent_browser.mjs --setup
+CODE_LAYER_TEST_PROJECT=<storybook 根目錄> node test/run_agent_browser.mjs --log <Storybook 的 log 檔>
+CODE_LAYER_TEST_PROJECT=<storybook 根目錄> node test/run_agent_browser.mjs --teardown
 
 # build 產物不含 Code Layer（執行前先停掉 dev server）
 CODE_LAYER_TEST_PROJECT=<storybook 根目錄> node test/run_build_check.mjs

@@ -19,7 +19,13 @@ const DEFAULT_LIMITS = {
   maxApplyBodyBytes: 262144,
   maxOtherBodyBytes: 16384,
   maxStringLength: 512,
+  // An AI request: the person's text, and the object reference sent with it as context.
+  maxAgentTextChars: 2000,
+  maxAgentReferenceBytes: 16384,
 };
+
+export const AGENT_CONFIRM_MODES = ["native-dialog", "terminal-code", "off"];
+const AGENT_DEFAULTS = { maxFiles: 20000, maxBytes: 500 * 1024 * 1024, timeoutMs: 300000 };
 
 export const LOCALES = ["zh-Hant", "en"];
 export const DEFAULT_PAIRING = { containerSuffix: "-container-color", contentSuffix: "-text-color" };
@@ -47,7 +53,7 @@ export function loadConfig({ projectRoot, configFile }) {
 
 export function resolveConfig(raw, { projectRoot, configFile = null }) {
   requireType(raw, "object", "config");
-  onlyKeys(raw, ["schemaVersion", "projectId", "apiPath", "workspaceRoot", "stateDir", "locale", "tokens", "components", "checks", "governance", "postApply", "limits"], "config");
+  onlyKeys(raw, ["schemaVersion", "projectId", "apiPath", "workspaceRoot", "stateDir", "locale", "tokens", "components", "checks", "governance", "postApply", "limits", "agent"], "config");
   if (raw.schemaVersion !== 1) throw new ConfigError("config.schemaVersion must be 1");
   requireType(raw.projectId, "string", "config.projectId");
   if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(raw.projectId)) throw new ConfigError("config.projectId must be kebab-case");
@@ -150,6 +156,8 @@ export function resolveConfig(raw, { projectRoot, configFile = null }) {
     };
   });
 
+  const agent = resolveAgent(raw.agent);
+
   return {
     configFile,
     projectRoot,
@@ -176,6 +184,56 @@ export function resolveConfig(raw, { projectRoot, configFile = null }) {
     checks,
     governance,
     postApply,
+    agent,
     limits: { ...DEFAULT_LIMITS, ...(raw.limits ?? {}) },
+  };
+}
+
+/**
+ * The optional `agent` key: whether this project allows AI runs at all, and the
+ * policy for them. Absent or `enabled: false` means no AI runs; the machine
+ * also needs a runner file (see server/agent/runners.mjs) before any run starts.
+ */
+function resolveAgent(raw) {
+  if (raw === undefined) return { enabled: false, confirm: null, allowedGlobs: null, workcopy: { exclude: [], maxFiles: AGENT_DEFAULTS.maxFiles, maxBytes: AGENT_DEFAULTS.maxBytes }, timeoutMs: AGENT_DEFAULTS.timeoutMs };
+  requireType(raw, "object", "config.agent");
+  onlyKeys(raw, ["enabled", "confirm", "allowedGlobs", "workcopy", "timeoutMs"], "config.agent");
+  if (typeof raw.enabled !== "boolean") throw new ConfigError("config.agent.enabled must be true or false");
+  if (raw.confirm !== undefined && !AGENT_CONFIRM_MODES.includes(raw.confirm)) {
+    throw new ConfigError(`config.agent.confirm must be one of ${AGENT_CONFIRM_MODES.join(", ")}`);
+  }
+  let allowedGlobs = null;
+  if (raw.allowedGlobs !== undefined) {
+    requireType(raw.allowedGlobs, "array", "config.agent.allowedGlobs");
+    allowedGlobs = raw.allowedGlobs.map((glob, i) => {
+      if (typeof glob !== "string" || glob === "" || glob.startsWith("/") || glob.split("/").includes("..")) {
+        throw new ConfigError(`config.agent.allowedGlobs[${i}] must be a path pattern relative to the workspace root`);
+      }
+      return glob;
+    });
+  }
+  const workcopyRaw = requireType(raw.workcopy ?? {}, "object", "config.agent.workcopy");
+  onlyKeys(workcopyRaw, ["exclude", "maxFiles", "maxBytes"], "config.agent.workcopy");
+  const positive = (value, fallback, where) => {
+    if (value === undefined) return fallback;
+    if (!Number.isInteger(value) || value <= 0) throw new ConfigError(`${where} must be a positive integer`);
+    return value;
+  };
+  const exclude = requireType(workcopyRaw.exclude ?? [], "array", "config.agent.workcopy.exclude").map((entry, i) => {
+    if (typeof entry !== "string" || entry === "" || entry.startsWith("/") || entry.split("/").includes("..")) {
+      throw new ConfigError(`config.agent.workcopy.exclude[${i}] must be a path relative to the workspace root`);
+    }
+    return entry.replace(/\/+$/, "");
+  });
+  return {
+    enabled: raw.enabled,
+    confirm: raw.confirm ?? null,
+    allowedGlobs,
+    workcopy: {
+      exclude,
+      maxFiles: positive(workcopyRaw.maxFiles, AGENT_DEFAULTS.maxFiles, "config.agent.workcopy.maxFiles"),
+      maxBytes: positive(workcopyRaw.maxBytes, AGENT_DEFAULTS.maxBytes, "config.agent.workcopy.maxBytes"),
+    },
+    timeoutMs: positive(raw.timeoutMs, AGENT_DEFAULTS.timeoutMs, "config.agent.timeoutMs"),
   };
 }

@@ -20,7 +20,7 @@ Agent runs SHALL be available only when the project binding explicitly enables t
 
 ### Requirement: Out-of-browser confirmation
 
-Before any agent process starts, the server SHALL obtain approval for that specific request through a channel that scripts in the page cannot operate. The default channel SHALL be a native operating-system dialog that shows the project, the selected element, the request text, the runner and the paths the agent is allowed to change. Where no native dialog is available the channel SHALL be a one-time code printed to the dev server's terminal together with the same summary, which the person types into the page; the code SHALL be bound to that request and SHALL approve no other. A denial, a wrong code or no answer within the time limit SHALL end the run as denied with no working copy created and no process started. Confirmation SHALL be skippable only when the binding says so explicitly, and the status route and the panel SHALL then state that runs are unconfirmed.
+Before any agent process starts, the server SHALL obtain approval for that specific request through a channel that scripts in the page cannot operate. The default channel SHALL be a native operating-system dialog that shows the project, the selected element, the request text, the runner and the paths the agent is allowed to change. Where no native dialog is available the channel SHALL be a one-time code printed to the dev server's terminal together with the same summary, which the person types into the page; the code SHALL be bound to that request and SHALL approve no other. A denial, a wrong code or no answer within the time limit SHALL end the run as denied with no working copy created and no process started. Confirmation SHALL be skippable only when the binding says so explicitly, and the status route and the inspector SHALL then state that runs are unconfirmed.
 
 #### Scenario: Denial starts nothing
 
@@ -44,7 +44,7 @@ The agent SHALL work on a copy of the workspace created for the run inside the s
 #### Scenario: An oversized workspace is refused before copying
 
 - **WHEN** the workspace has more files than the configured limit
-- **THEN** the run ends as refused with the count and the limit, and no agent process is started
+- **THEN** the run ends as rejected with the count and the limit, and no agent process is started
 
 ### Requirement: Runner launch
 
@@ -97,7 +97,7 @@ After the runner exits with a done result, the server SHALL compare the working 
 
 ### Requirement: Import as one undoable apply
 
-Accepted changes SHALL be imported into the real workspace as one transaction of the write-back capability: every file to be replaced SHALL still equal its snapshot, the project's checks SHALL pass against the working copy before any project file is written, each replaced file SHALL be backed up and journaled, a changed token source file SHALL be copied to its mirror in the same transaction, and written files SHALL be announced for hot update. The import SHALL appear on the undo stack and SHALL be undone exactly, by restoring the backed-up bytes. A failed check or a file that changed since the snapshot SHALL make the run rejected with zero writes. While a run is between confirmation and its final state, the server SHALL refuse every other apply, undo, reverse apply and mirror synchronization with a reason that names the active run.
+Accepted changes SHALL be imported into the real workspace as one transaction of the write-back capability: every file to be replaced SHALL still equal its snapshot, the project's checks SHALL pass against the working copy before any project file is written, each replaced file SHALL be backed up and journaled, a changed token source file SHALL be copied to its mirror in the same transaction, written files SHALL be announced for hot update, and the binding's post-apply commands SHALL run as after any apply. The import SHALL appear on the undo stack and SHALL be undone exactly, by restoring the backed-up bytes. A reverse apply SHALL NOT be offered for an import: when a file changed after the import, the entry can only be skipped. A failed check or a file that changed since the snapshot SHALL make the run rejected with zero writes. While a run is between confirmation and its final state, the server SHALL refuse every other apply, undo, reverse apply and mirror synchronization with a reason that names the active run.
 
 #### Scenario: An import is undone like any apply
 
@@ -116,7 +116,7 @@ Accepted changes SHALL be imported into the real workspace as one transaction of
 
 ### Requirement: Run lifecycle
 
-A run SHALL be in exactly one state at a time: awaiting confirmation, preparing, running, checking, and then one final state — imported, needs-decision, rejected, failed, denied or cancelled. At most one run SHALL be active per state directory. A person SHALL be able to cancel a run that is not final, which terminates the agent and discards the working copy. Every run SHALL have an overall time limit after which it is failed. When the dev server stops it SHALL terminate the agent of an active run, and at the next start a run that never reached a final state SHALL be marked interrupted and its working copy removed. The state of a run SHALL be queryable after a browser reload.
+A run SHALL be in exactly one state at a time: awaiting confirmation, preparing, running, checking, and then one final state — imported, needs-decision, rejected, failed, denied, cancelled or interrupted. At most one run SHALL be active per state directory. A person SHALL be able to cancel a run that is not final, which terminates the agent and discards the working copy. Every run SHALL have an overall time limit after which it is failed. When the dev server stops it SHALL terminate the agent of an active run, and at the next start a run that never reached a final state SHALL be marked interrupted and its working copy removed. The state of a run SHALL be queryable after a browser reload.
 
 #### Scenario: Cancelling discards everything
 
@@ -130,12 +130,12 @@ A run SHALL be in exactly one state at a time: awaiting confirmation, preparing,
 
 ### Requirement: Run records
 
-The journal SHALL record for every run its identifiers, runner, states with times, the hash of the request, the changed files with their hashes, and the outcome. The journal, the state route and every agent route response SHALL NOT contain the request text, expanded process arguments, raw agent output or environment values. The request text SHALL be kept only in the run's private directory with owner-only permissions. Output captured from the agent SHALL be held in memory only, for the failure message of the current run, and SHALL NOT be written to disk.
+The journal SHALL record for every run its identifiers, runner, states with times, the hash of the request, the changed files with their hashes, and the outcome. The journal, the state route and every agent route response SHALL NOT contain the request text, expanded process arguments, raw agent output or environment values. On the server the request text SHALL be kept only in the run's private directory with owner-only permissions and in the working copy's request file while the run lasts; a page that needs to show it again keeps its own copy. Output captured from the agent SHALL be held in memory only, for the failure message of the current run, and SHALL NOT be written to disk.
 
 #### Scenario: Records carry no request text
 
 - **WHEN** a run completes for a request containing a distinctive phrase
-- **THEN** that phrase appears in the run's private request file and nowhere else in the state directory
+- **THEN** after the run that phrase appears in the run's private request file and nowhere else in the state directory, and no route response has contained it
 
 ### Requirement: Request guard for agent routes
 

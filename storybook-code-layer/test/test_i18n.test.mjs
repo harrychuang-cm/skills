@@ -26,7 +26,7 @@ function sources(extensions) {
   return out.sort();
 }
 
-const isCatalog = (file) => /messages\.[A-Za-z-]+\.ts$/.test(file);
+const isCatalog = (file) => /messages\.[A-Za-z-]+\.(?:ts|mjs)$/.test(file);
 const CJK = /[　-〿㐀-鿿豈-﫿＀-￯]/;
 const placeholders = (text) => [...text.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort();
 
@@ -89,9 +89,19 @@ test("every message key the code uses exists, including the families built from 
     ...["popover", "adopted-stylesheets", "constructable-stylesheets", "web-crypto", "elements-from-point", "get-animations"].map((c) => `capability.${c}`),
     ...["row-not-found", "row-not-unique", "second-cell-mismatch", "no-spec-file", "spec-unreadable", "no-contract-heading", "contract-heading-not-unique", "declaration-not-documented", "comment-on-rewritten-line", "mentions-old-name", "system-token-changed", "too-many-entries"].map((r) => `pending.reason.${r}`),
     ...["same-component", "other-component", "outside"].map((k) => `inherit.${k}`),
+    ...["awaiting-confirmation", "preparing", "running", "checking", "imported", "needs-decision", "rejected", "failed", "denied", "cancelled", "interrupted"].map((s) => `agent.state.${s}`),
   ]) {
     assert.ok(key in zhHant, key);
   }
+
+  // Every reason an AI run or its readiness can give (written `code: "…"` in the agent server) has words.
+  const agentDir = path.join(ADDON_ROOT, "server", "agent");
+  const agentReasons = new Set(["confirmation-denied", "confirmation-timeout"]);
+  for (const file of fs.readdirSync(agentDir).filter((name) => name.endsWith(".mjs"))) {
+    for (const m of fs.readFileSync(path.join(agentDir, file), "utf8").matchAll(/\bcode: "([a-z0-9-]+)"/g)) agentReasons.add(m[1]);
+  }
+  assert.ok(agentReasons.size > 30, "the agent server's reason codes were found");
+  for (const code of agentReasons) assert.ok(`agent.reason.${code}` in zhHant, `agent.reason.${code}`);
 });
 
 test("the language follows the binding's locale, then the browser language, then English", () => {
@@ -130,4 +140,10 @@ test("the binding's locale reaches the page through the index", async () => {
   assert.equal(serializeIndex(buildIndex({ config: english.config, postcss }), english.config).locale, "en");
   const unset = await makeWorkspace({ fixture: "v1" });
   assert.equal(serializeIndex(buildIndex({ config: unset.config, postcss }), unset.config).locale, null);
+});
+
+test("the approval dialog's texts have the same keys in both languages", async () => {
+  const { CONFIRM_TEXT } = await addon("server/agent/messages.confirm.mjs");
+  assert.deepEqual(Object.keys(CONFIRM_TEXT).sort(), ["en", "zh-Hant"]);
+  assert.deepEqual(Object.keys(CONFIRM_TEXT.en).sort(), Object.keys(CONFIRM_TEXT["zh-Hant"]).sort());
 });
