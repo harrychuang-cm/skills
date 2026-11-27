@@ -1,0 +1,7 @@
+interface:
+  display_name: "UI/UX 設計總監"
+  short_description: "幫 PM 釐清 TA 與產品目的、定設計方向，並健檢體驗：不讓使用者迷路、不把重點功能藏太深"
+  default_prompt: "使用 $uiux-director 協助這個產品。先判斷要用哪個模式（discover、build、review、fix、feature-change），並把決定寫進 product-design/："
+
+policy:
+  allow_implicit_invocation: true

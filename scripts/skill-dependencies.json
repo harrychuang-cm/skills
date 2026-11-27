@@ -50,6 +50,18 @@
         "role": "support",
         "reason": "Optional AI requests run through its scripts/run-task.mjs, unmodified, with a contract written inside a copy of the workspace; without it AI requests stay off and every other feature works."
       }
+    ],
+    "uiux-director": [
+      {
+        "name": "anti-ai-style",
+        "role": "support",
+        "reason": "Generic AI-look judgment: prevent mode before build and review mode during UX review, using product-design/DESIGN_DIRECTION.md as the recorded direction; uiux-director falls back to its baseline rules when the skill is absent."
+      },
+      {
+        "name": "ds-governance",
+        "role": "support",
+        "reason": "Token and shared-component discovery and approval gates, including the Token Gate for a Material Design 3 starter token set; uiux-director reads the target's tokens directly and asks the PM when the skill is absent."
+      }
     ]
   }
 }

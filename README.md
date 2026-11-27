@@ -318,6 +318,29 @@ Invocation examples (append your topic or source material):
 
 You can also ask the agent to use `executive-presentation` by name. If a running session does not discover the newly installed skill, start a new session or reference its `SKILL.md` directly.
 
+### `uiux-director`
+
+A UI/UX design director for product managers. [Skill instructions](uiux-director/SKILL.md) clarify who the product is for and why, research comparable products with sources, and record a design direction and an experience map as durable documents in the target project's `product-design/` folder (`PRODUCT_BRIEF.md`, `DESIGN_DIRECTION.md`, `EXPERIENCE_MAP.md`, `DECISION_LOG.md`), so later sessions in any agent continue from them. A managed block in the target's `AGENTS.md` and `CLAUDE.md` points agents to those documents.
+
+Five modes, one per request:
+
+| Mode | For | Output |
+|---|---|---|
+| `discover` | Shaping a product from an idea | The four documents and `product-design/direction-comparison.html`, which renders the same screen in two or three candidate directions with real reference products and source links |
+| `build` | Making screens inside the recorded direction | The requested UI; guardrails add at most two sentences of advice and never block |
+| `review` | Checking a half-built or vibe-coded product | `product-design/reviews/<date>-review.md` with P0/P1/P2 findings; no UI source changes |
+| `fix` | Applying the findings the PM selected | UI-only changes; data structures, state, API calls, and event logic stay untouched |
+| `feature-change` | Adding, removing, parking, or moving a feature | An impact check on navigation and core-task depth before the change |
+
+Experience rules are checkable: a step is one navigation action from the entry screen to the screen where the task's primary action appears; core tasks allow at most two steps and secondary features three (overridable with a reason), and a core task reachable only through an overflow menu, settings, or a hover-only control fails. Breathing room is a density level derived from the audience, written as concrete values. Design tokens follow Google Material Design 3's method, not its look: `--md-ref-*` → `--md-sys-*` → `--md-comp-*` (matching `design-system-extractor`), palettes from evidence-backed key colors, named extension roles for domain meanings, no M3 baseline violet or Roboto without a recorded reason; an existing non-M3 token system is mapped rather than replaced. The document language is asked once, with Traditional Chinese as the default. Generic AI-look judgment goes to `anti-ai-style` and token and component gates to `ds-governance` (both registered as support dependencies); Storybook prototypes go to `storybook-product-prototype`. The step-count check script is deferred to a second phase; for now the agent counts steps by the rules in `uiux-director/references/experience-review.md` and lists each counted path.
+
+```sh
+node scripts/install_agent_skills.mjs --agent all --scope user --skill uiux-director --dry-run
+node scripts/install_agent_skills.mjs --agent all --scope user --skill uiux-director
+```
+
+Guide for PMs: [`uiux-director/README.md`](uiux-director/README.md) (zh-TW).
+
 ### `presentation-review`
 
 Review an existing deck against a versioned rule set instead of drafting one. [Skill instructions](presentation-review/SKILL.md) check every slide for three things: the title states one conclusion made of a viewpoint plus an action, the subtitle gives the reasons, and the slide carries one to three pieces of evidence that support that conclusion — which product did what, what growth or result it reported, and where the source is.
@@ -610,6 +633,12 @@ The generated report is a static HTML + CSS artifact, usually under `reports/des
 │   │   └── tells.md
 │   └── scripts/
 │       └── scan_ai_tells.mjs
+├── uiux-director/
+│   ├── SKILL.md
+│   ├── README.md
+│   ├── agents/
+│   ├── assets/
+│   └── references/
 ├── design-system-extractor/
 │   ├── SKILL.md
 │   ├── agents/

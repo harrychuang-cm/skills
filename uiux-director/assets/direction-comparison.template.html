@@ -1,0 +1,645 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>設計方向比較</title>
+<!--
+uiux-director › direction comparison page template.
+Copy to the target project as product-design/direction-comparison.html and fill it in.
+
+How to fill:
+- Write every visible text in the document language recorded in DECISION_LOG.md; set <html lang> to match. This template's text is Traditional Chinese.
+- Show two or three candidates. Delete the third <section class="candidate"> when there are two.
+- Each candidate is one CSS block (.candidate--a, .candidate--b, .candidate--c) holding its --md-sys-* values and the --md-comp-* slots that alias them. Change only those blocks to change how a candidate looks.
+- The demo markup between the "demo:start" and "demo:end" comments is identical in every candidate. It uses only var(--md-sys-*) and var(--md-comp-*): no hex values, no px literals, no --md-ref-*.
+- Replace the example demo with the PM's own core-task screen (existing product), or with the core-task screen drafted from PRODUCT_BRIEF.md using realistic, uneven domain content (0-to-1). Label sample data as sample data.
+- Every candidate lists at least two real reference products from the research, each with its source URL, what to borrow, and what not to borrow. Link to sources; embed third-party images only when the PM supplied them.
+- No external resources: no web fonts, no CDN scripts or styles. Use locally installed fonts and say in the candidate which family is intended when the demo shows a local substitute.
+- Do not use the M3 baseline primary color or the M3 default typeface unless the direction records evidence or the PM's choice (see references/md3-token-method.md).
+- Long names: the example truncates them with an ellipsis. For large-type or spacious candidates, wrap instead (white-space: normal) so enlarged text is never cut off.
+- The values in the three candidate blocks below are examples for a stock watchlist. Replace all of them.
+-->
+<style>
+  :root {
+    color-scheme: light;
+    --page-bg: #f4f4f1;
+    --page-surface: #ffffff;
+    --page-text: #1d1d1b;
+    --page-muted: #5b5b56;
+    --page-line: #deded8;
+    --page-notice-bg: #fff4d6;
+    --page-notice-text: #5a4300;
+    --page-font: "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", system-ui, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--page-bg);
+    color: var(--page-text);
+    font-family: var(--page-font);
+    font-size: 15px;
+    line-height: 1.6;
+  }
+
+  .page { max-width: 1440px; margin: 0 auto; padding: 32px 32px 48px; }
+
+  .page-header { max-width: 760px; margin-bottom: 24px; }
+  .page-header .eyebrow { margin: 0 0 4px; color: var(--page-muted); font-size: 13px; }
+  .page-header h1 { margin: 0 0 8px; font-size: 26px; line-height: 1.3; }
+  .page-header p { margin: 0 0 8px; }
+
+  .notice {
+    display: inline-block;
+    margin-top: 8px;
+    padding: 6px 12px;
+    border-radius: 6px;
+    background: var(--page-notice-bg);
+    color: var(--page-notice-text);
+    font-size: 14px;
+  }
+
+  .candidates {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
+    gap: 24px;
+    align-items: start;
+  }
+
+  .candidate {
+    background: var(--page-surface);
+    border-radius: 12px;
+    padding: 20px;
+    min-width: 0;
+  }
+
+  .candidate-head .label { margin: 0; color: var(--page-muted); font-size: 13px; }
+  .candidate-head h2 { margin: 2px 0 4px; font-size: 20px; line-height: 1.35; }
+  .candidate-head .summary { margin: 0 0 16px; }
+
+  .frame-label { margin: 0 0 8px; color: var(--page-muted); font-size: 13px; }
+
+  .demo-frame { margin-bottom: 20px; }
+
+  .facts { margin: 0 0 16px; }
+  .facts h3, .refs h3 {
+    margin: 0 0 8px;
+    font-size: 14px;
+    color: var(--page-muted);
+    font-weight: 600;
+  }
+  .facts dl {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 4px 12px;
+    margin: 0;
+    font-size: 14px;
+  }
+  .facts dt { color: var(--page-muted); }
+  .facts dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+
+  .swatches { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 16px; padding: 0; list-style: none; }
+  .swatches li { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+  .swatch { width: 20px; height: 20px; border-radius: 4px; box-shadow: inset 0 0 0 1px var(--page-line); }
+
+  .refs ul { margin: 0; padding: 0; list-style: none; }
+  .refs li { padding: 10px 0; border-top: 1px solid var(--page-line); font-size: 14px; }
+  .refs li:first-child { border-top: 0; padding-top: 0; }
+  .refs a { color: var(--page-text); font-weight: 600; }
+  .refs p { margin: 2px 0 0; color: var(--page-muted); }
+
+  .how-to-choose { max-width: 760px; margin-top: 32px; }
+  .how-to-choose h2 { font-size: 18px; margin: 0 0 8px; }
+  .how-to-choose p { margin: 0 0 8px; }
+
+  @media (max-width: 599px) {
+    .page { padding: 20px 16px 32px; }
+    .candidate { padding: 16px; }
+  }
+
+  /* ---------- Shared M3 scales (the same for every candidate) ---------- */
+  .candidate {
+    --md-sys-spacing-gap-stack-2xs: 4px;
+    --md-sys-spacing-gap-stack-xs: 8px;
+    --md-sys-spacing-gap-stack-sm: 12px;
+    --md-sys-spacing-gap-stack-md: 16px;
+    --md-sys-spacing-gap-stack-xl: 24px;
+    --md-sys-spacing-gap-stack-2xl: 32px;
+    --md-sys-spacing-gap-stack-3xl: 40px;
+    --md-sys-spacing-inset-vertical-xs: 8px;
+    --md-sys-spacing-inset-vertical-sm: 12px;
+    --md-sys-spacing-inset-vertical-md: 16px;
+    --md-sys-spacing-inset-vertical-lg: 20px;
+    --md-sys-spacing-inset-horizontal-md: 16px;
+    --md-sys-spacing-inset-horizontal-xl: 24px;
+    --md-sys-shape-corner-small: 8px;
+    --md-sys-shape-corner-medium: 12px;
+    --md-sys-shape-corner-large: 16px;
+    --md-sys-shape-corner-full: 999px;
+  }
+
+  /* ---------- Candidate A: example values, replace ---------- */
+  .candidate--a {
+    --md-sys-color-primary: #1f3a68;
+    --md-sys-color-on-primary: #ffffff;
+    --md-sys-color-surface: #fbfbfc;
+    --md-sys-color-surface-container: #eef0f4;
+    --md-sys-color-on-surface: #191c21;
+    --md-sys-color-on-surface-variant: #4a4f58;
+    --md-sys-color-outline-variant: #d3d6dd;
+    --md-sys-color-price-rise: #c62828;
+    --md-sys-color-price-fall: #1b7a3a;
+    --md-sys-typescale-plain-font: "PingFang TC", "Noto Sans TC", system-ui, sans-serif;
+    --md-sys-typescale-brand-font: "PingFang TC", "Noto Sans TC", system-ui, sans-serif;
+    --md-sys-typescale-title-large-size: 20px;
+    --md-sys-typescale-title-large-line-height: 28px;
+    --md-sys-typescale-headline-small-size: 22px;
+    --md-sys-typescale-headline-small-line-height: 28px;
+    --md-sys-typescale-body-medium-size: 14px;
+    --md-sys-typescale-body-medium-line-height: 20px;
+    --md-sys-typescale-label-medium-size: 12px;
+    --md-sys-typescale-label-medium-line-height: 16px;
+    --md-sys-typescale-label-large-size: 14px;
+    --md-sys-typescale-label-large-line-height: 20px;
+
+    --md-comp-screen-padding-horizontal: var(--md-sys-spacing-inset-horizontal-md);
+    --md-comp-section-gap: var(--md-sys-spacing-gap-stack-md);
+    --md-comp-list-item-padding-vertical: var(--md-sys-spacing-inset-vertical-xs);
+    --md-comp-list-item-gap: var(--md-sys-spacing-gap-stack-2xs);
+    --md-comp-list-item-text-size: var(--md-sys-typescale-body-medium-size);
+    --md-comp-list-item-text-line-height: var(--md-sys-typescale-body-medium-line-height);
+    --md-comp-filled-button-shape: var(--md-sys-shape-corner-small);
+    --md-comp-filled-button-padding-vertical: var(--md-sys-spacing-inset-vertical-xs);
+  }
+
+  /* ---------- Candidate B: example values, replace ---------- */
+  .candidate--b {
+    --md-sys-color-primary: #24525a;
+    --md-sys-color-on-primary: #ffffff;
+    --md-sys-color-surface: #fcfcfa;
+    --md-sys-color-surface-container: #eff1ee;
+    --md-sys-color-on-surface: #1b1d1b;
+    --md-sys-color-on-surface-variant: #4c514e;
+    --md-sys-color-outline-variant: #d5d9d5;
+    --md-sys-color-price-rise: #c3261f;
+    --md-sys-color-price-fall: #237a43;
+    --md-sys-typescale-plain-font: "PingFang TC", "Noto Sans TC", system-ui, sans-serif;
+    --md-sys-typescale-brand-font: "PingFang TC", "Noto Sans TC", system-ui, sans-serif;
+    --md-sys-typescale-title-large-size: 22px;
+    --md-sys-typescale-title-large-line-height: 28px;
+    --md-sys-typescale-headline-small-size: 24px;
+    --md-sys-typescale-headline-small-line-height: 32px;
+    --md-sys-typescale-body-medium-size: 16px;
+    --md-sys-typescale-body-medium-line-height: 24px;
+    --md-sys-typescale-label-medium-size: 13px;
+    --md-sys-typescale-label-medium-line-height: 18px;
+    --md-sys-typescale-label-large-size: 15px;
+    --md-sys-typescale-label-large-line-height: 20px;
+
+    --md-comp-screen-padding-horizontal: var(--md-sys-spacing-inset-horizontal-md);
+    --md-comp-section-gap: var(--md-sys-spacing-gap-stack-xl);
+    --md-comp-list-item-padding-vertical: var(--md-sys-spacing-inset-vertical-sm);
+    --md-comp-list-item-gap: var(--md-sys-spacing-gap-stack-xs);
+    --md-comp-list-item-text-size: var(--md-sys-typescale-body-medium-size);
+    --md-comp-list-item-text-line-height: var(--md-sys-typescale-body-medium-line-height);
+    --md-comp-filled-button-shape: var(--md-sys-shape-corner-full);
+    --md-comp-filled-button-padding-vertical: var(--md-sys-spacing-inset-vertical-sm);
+  }
+
+  /* ---------- Candidate C: example values, replace ---------- */
+  .candidate--c {
+    --md-sys-color-primary: #7a3e1d;
+    --md-sys-color-on-primary: #ffffff;
+    --md-sys-color-surface: #fdfbf8;
+    --md-sys-color-surface-container: #f3eee8;
+    --md-sys-color-on-surface: #201b17;
+    --md-sys-color-on-surface-variant: #52463e;
+    --md-sys-color-outline-variant: #ddd3ca;
+    --md-sys-color-price-rise: #b3261e;
+    --md-sys-color-price-fall: #1e6b39;
+    --md-sys-typescale-plain-font: "PingFang TC", "Noto Sans TC", system-ui, sans-serif;
+    --md-sys-typescale-brand-font: "Songti TC", "Noto Serif TC", serif;
+    --md-sys-typescale-title-large-size: 24px;
+    --md-sys-typescale-title-large-line-height: 32px;
+    --md-sys-typescale-headline-small-size: 28px;
+    --md-sys-typescale-headline-small-line-height: 36px;
+    --md-sys-typescale-body-medium-size: 18px;
+    --md-sys-typescale-body-medium-line-height: 28px;
+    --md-sys-typescale-label-medium-size: 15px;
+    --md-sys-typescale-label-medium-line-height: 20px;
+    --md-sys-typescale-label-large-size: 17px;
+    --md-sys-typescale-label-large-line-height: 24px;
+
+    --md-comp-screen-padding-horizontal: var(--md-sys-spacing-inset-horizontal-md);
+    --md-comp-section-gap: var(--md-sys-spacing-gap-stack-2xl);
+    --md-comp-list-item-padding-vertical: var(--md-sys-spacing-inset-vertical-md);
+    --md-comp-list-item-gap: var(--md-sys-spacing-gap-stack-sm);
+    --md-comp-list-item-text-size: var(--md-sys-typescale-body-medium-size);
+    --md-comp-list-item-text-line-height: var(--md-sys-typescale-body-medium-line-height);
+    --md-comp-filled-button-shape: var(--md-sys-shape-corner-medium);
+    --md-comp-filled-button-padding-vertical: var(--md-sys-spacing-inset-vertical-lg);
+  }
+
+  /* ---------- Demo: uses only var(--md-sys-*) and var(--md-comp-*) ---------- */
+  .swatch--primary { background: var(--md-sys-color-primary); }
+  .swatch--surface-container { background: var(--md-sys-color-surface-container); }
+  .swatch--on-surface { background: var(--md-sys-color-on-surface); }
+  .swatch--price-rise { background: var(--md-sys-color-price-rise); }
+  .swatch--price-fall { background: var(--md-sys-color-price-fall); }
+
+  .demo {
+    max-width: 360px;
+    background: var(--md-sys-color-surface);
+    color: var(--md-sys-color-on-surface);
+    font-family: var(--md-sys-typescale-plain-font);
+    border-radius: var(--md-sys-shape-corner-large);
+    padding: var(--md-comp-section-gap) var(--md-comp-screen-padding-horizontal);
+    display: flex;
+    flex-direction: column;
+    gap: var(--md-comp-section-gap);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .demo-bar { display: flex; align-items: baseline; justify-content: space-between; gap: var(--md-comp-list-item-gap); }
+  .demo-title {
+    margin: 0;
+    font-family: var(--md-sys-typescale-brand-font);
+    font-size: var(--md-sys-typescale-title-large-size);
+    line-height: var(--md-sys-typescale-title-large-line-height);
+    font-weight: 600;
+  }
+  .demo-text-button {
+    border: 0;
+    background: none;
+    padding: 0;
+    color: var(--md-sys-color-primary);
+    font: inherit;
+    font-size: var(--md-sys-typescale-label-large-size);
+    line-height: var(--md-sys-typescale-label-large-line-height);
+    font-weight: 600;
+  }
+
+  .demo-summary { display: flex; flex-direction: column; gap: var(--md-comp-list-item-gap); }
+  .demo-caption {
+    margin: 0;
+    color: var(--md-sys-color-on-surface-variant);
+    font-size: var(--md-sys-typescale-label-medium-size);
+    line-height: var(--md-sys-typescale-label-medium-line-height);
+  }
+  .demo-total {
+    margin: 0;
+    font-family: var(--md-sys-typescale-brand-font);
+    font-size: var(--md-sys-typescale-headline-small-size);
+    line-height: var(--md-sys-typescale-headline-small-line-height);
+    font-weight: 600;
+  }
+
+  .demo-list { margin: 0; padding: 0; list-style: none; }
+  .demo-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: var(--md-comp-list-item-gap);
+    padding: var(--md-comp-list-item-padding-vertical) 0;
+    border-top: 1px solid var(--md-sys-color-outline-variant);
+    font-size: var(--md-comp-list-item-text-size);
+    line-height: var(--md-comp-list-item-text-line-height);
+  }
+  .demo-row:first-child { border-top: 0; }
+  .demo-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+  .demo-symbol {
+    color: var(--md-sys-color-on-surface-variant);
+    font-size: var(--md-sys-typescale-label-medium-size);
+    line-height: var(--md-sys-typescale-label-medium-line-height);
+  }
+  .demo-price { text-align: right; font-weight: 600; }
+  .demo-change {
+    text-align: right;
+    font-size: var(--md-sys-typescale-label-medium-size);
+    line-height: var(--md-sys-typescale-label-medium-line-height);
+    color: var(--md-sys-color-on-surface-variant);
+  }
+  .demo-change--rise { color: var(--md-sys-color-price-rise); }
+  .demo-change--fall { color: var(--md-sys-color-price-fall); }
+
+  .demo-filled-button {
+    border: 0;
+    border-radius: var(--md-comp-filled-button-shape);
+    padding: var(--md-comp-filled-button-padding-vertical) var(--md-comp-screen-padding-horizontal);
+    background: var(--md-sys-color-primary);
+    color: var(--md-sys-color-on-primary);
+    font: inherit;
+    font-size: var(--md-sys-typescale-label-large-size);
+    line-height: var(--md-sys-typescale-label-large-line-height);
+    font-weight: 600;
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="page-header">
+    <p class="eyebrow">產品名稱 · 設計方向</p>
+    <h1>選一個設計方向</h1>
+    <p>主要使用者：＜一句話描述，來自 PRODUCT_BRIEF.md＞。核心任務：＜最重要的任務＞。</p>
+    <p>三個方向都用同一個畫面示範，只有配色、字級、密度與圓角不同。</p>
+    <p class="notice">這是方向示意，不是最終畫面。範例資料僅供比較。</p>
+  </header>
+
+  <main class="candidates">
+
+    <section class="candidate candidate--a" aria-labelledby="candidate-a-name">
+      <header class="candidate-head">
+        <p class="label">方向 A</p>
+        <h2 id="candidate-a-name">盤中速覽</h2>
+        <p class="summary">給盤中要快速比價的熟手：一屏看最多檔，數字優先。</p>
+      </header>
+
+      <div class="demo-frame">
+        <p class="frame-label">示範畫面</p>
+        <!-- demo:start -->
+        <div class="demo">
+          <div class="demo-bar">
+            <h3 class="demo-title">自選股</h3>
+            <button class="demo-text-button" type="button">編輯</button>
+          </div>
+          <div class="demo-summary">
+            <p class="demo-caption">今日損益（範例資料）</p>
+            <p class="demo-total">+NT$3,186</p>
+          </div>
+          <ul class="demo-list">
+            <li class="demo-row">
+              <span class="demo-name">台積電 <span class="demo-symbol">2330</span></span>
+              <span class="demo-price">1,085.00</span>
+              <span class="demo-symbol">半導體</span>
+              <span class="demo-change demo-change--rise">▲ 15.00（+1.40%）</span>
+            </li>
+            <li class="demo-row">
+              <span class="demo-name">鴻海 <span class="demo-symbol">2317</span></span>
+              <span class="demo-price">203.50</span>
+              <span class="demo-symbol">電子代工</span>
+              <span class="demo-change demo-change--fall">▼ 2.50（−1.21%）</span>
+            </li>
+            <li class="demo-row">
+              <span class="demo-name">元大台灣卓越50證券投資信託基金 <span class="demo-symbol">0050</span></span>
+              <span class="demo-price">186.35</span>
+              <span class="demo-symbol">ETF</span>
+              <span class="demo-change demo-change--rise">▲ 0.85（+0.46%）</span>
+            </li>
+            <li class="demo-row">
+              <span class="demo-name">聯發科 <span class="demo-symbol">2454</span></span>
+              <span class="demo-price">1,320.00</span>
+              <span class="demo-symbol">IC 設計</span>
+              <span class="demo-change">0.00（0.00%）</span>
+            </li>
+          </ul>
+          <button class="demo-filled-button" type="button">新增股票</button>
+        </div>
+        <!-- demo:end -->
+      </div>
+
+      <div class="facts">
+        <h3>密度</h3>
+        <dl>
+          <dt>密度等級</dt><dd>緊湊（M3 density −2）</dd>
+          <dt>相關元素間距</dt><dd>4–8px（gap-stack-2xs～xs）</dd>
+          <dt>區塊間距</dt><dd>16px（md）</dd>
+          <dt>內文</dt><dd>body-medium 14/20</dd>
+          <dt>首屏可見</dt><dd>15 檔以上（手機 375 寬）</dd>
+          <dt>版面邊距</dt><dd>16px（compact 視窗）</dd>
+        </dl>
+      </div>
+
+      <div class="facts">
+        <h3>配色與字型</h3>
+        <ul class="swatches">
+          <li><span class="swatch swatch--primary"></span>primary #1F3A68</li>
+          <li><span class="swatch swatch--surface-container"></span>surface-container</li>
+          <li><span class="swatch swatch--on-surface"></span>on-surface</li>
+          <li><span class="swatch swatch--price-rise"></span>price-rise</li>
+          <li><span class="swatch swatch--price-fall"></span>price-fall</li>
+        </ul>
+        <dl>
+          <dt>主色來源</dt><dd>＜品牌規範或受眾理由＞</dd>
+          <dt>字型</dt><dd>brand／plain：PingFang TC</dd>
+          <dt>圓角</dt><dd>按鈕 corner-small</dd>
+        </dl>
+      </div>
+
+      <div class="refs">
+        <h3>參考產品</h3>
+        <ul>
+          <li>
+            <a href="#replace-with-source-url">＜參考產品 1＞</a>
+            <p>借：＜具體借鏡的做法＞</p>
+            <p>不借：＜要避開的地方＞</p>
+          </li>
+          <li>
+            <a href="#replace-with-source-url">＜參考產品 2＞</a>
+            <p>借：＜具體借鏡的做法＞</p>
+            <p>不借：＜要避開的地方＞</p>
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="candidate candidate--b" aria-labelledby="candidate-b-name">
+      <header class="candidate-head">
+        <p class="label">方向 B</p>
+        <h2 id="candidate-b-name">日常理財</h2>
+        <p class="summary">給每天看一兩次的一般投資人：資訊和閱讀舒適度平衡。</p>
+      </header>
+
+      <div class="demo-frame">
+        <p class="frame-label">示範畫面</p>
+        <!-- demo:start -->
+        <div class="demo">
+          <div class="demo-bar">
+            <h3 class="demo-title">自選股</h3>
+            <button class="demo-text-button" type="button">編輯</button>
+          </div>
+          <div class="demo-summary">
+            <p class="demo-caption">今日損益（範例資料）</p>
+            <p class="demo-total">+NT$3,186</p>
+          </div>
+          <ul class="demo-list">
+            <li class="demo-row">
+              <span class="demo-name">台積電 <span class="demo-symbol">2330</span></span>
+              <span class="demo-price">1,085.00</span>
+              <span class="demo-symbol">半導體</span>
+              <span class="demo-change demo-change--rise">▲ 15.00（+1.40%）</span>
+            </li>
+            <li class="demo-row">
+              <span class="demo-name">鴻海 <span class="demo-symbol">2317</span></span>
+              <span class="demo-price">203.50</span>
+              <span class="demo-symbol">電子代工</span>
+              <span class="demo-change demo-change--fall">▼ 2.50（−1.21%）</span>
+            </li>
+            <li class="demo-row">
+              <span class="demo-name">元大台灣卓越50證券投資信託基金 <span class="demo-symbol">0050</span></span>
+              <span class="demo-price">186.35</span>
+              <span class="demo-symbol">ETF</span>
+              <span class="demo-change demo-change--rise">▲ 0.85（+0.46%）</span>
+            </li>
+            <li class="demo-row">
+              <span class="demo-name">聯發科 <span class="demo-symbol">2454</span></span>
+              <span class="demo-price">1,320.00</span>
+              <span class="demo-symbol">IC 設計</span>
+              <span class="demo-change">0.00（0.00%）</span>
+            </li>
+          </ul>
+          <button class="demo-filled-button" type="button">新增股票</button>
+        </div>
+        <!-- demo:end -->
+      </div>
+
+      <div class="facts">
+        <h3>密度</h3>
+        <dl>
+          <dt>密度等級</dt><dd>標準（M3 density 0）</dd>
+          <dt>相關元素間距</dt><dd>8–12px（gap-stack-xs～sm）</dd>
+          <dt>區塊間距</dt><dd>24px（xl）</dd>
+          <dt>內文</dt><dd>body-medium 調整為 16/24</dd>
+          <dt>首屏可見</dt><dd>8–10 檔（手機 375 寬）</dd>
+          <dt>版面邊距</dt><dd>16px（compact 視窗）</dd>
+        </dl>
+      </div>
+
+      <div class="facts">
+        <h3>配色與字型</h3>
+        <ul class="swatches">
+          <li><span class="swatch swatch--primary"></span>primary #24525A</li>
+          <li><span class="swatch swatch--surface-container"></span>surface-container</li>
+          <li><span class="swatch swatch--on-surface"></span>on-surface</li>
+          <li><span class="swatch swatch--price-rise"></span>price-rise</li>
+          <li><span class="swatch swatch--price-fall"></span>price-fall</li>
+        </ul>
+        <dl>
+          <dt>主色來源</dt><dd>＜品牌規範或受眾理由＞</dd>
+          <dt>字型</dt><dd>brand／plain：PingFang TC</dd>
+          <dt>圓角</dt><dd>按鈕 corner-full</dd>
+        </dl>
+      </div>
+
+      <div class="refs">
+        <h3>參考產品</h3>
+        <ul>
+          <li>
+            <a href="#replace-with-source-url">＜參考產品 1＞</a>
+            <p>借：＜具體借鏡的做法＞</p>
+            <p>不借：＜要避開的地方＞</p>
+          </li>
+          <li>
+            <a href="#replace-with-source-url">＜參考產品 2＞</a>
+            <p>借：＜具體借鏡的做法＞</p>
+            <p>不借：＜要避開的地方＞</p>
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="candidate candidate--c" aria-labelledby="candidate-c-name">
+      <header class="candidate-head">
+        <p class="label">方向 C</p>
+        <h2 id="candidate-c-name">安心存股</h2>
+        <p class="summary">給每週看一次的退休投資人：字大、留白足、一次只看重點。</p>
+      </header>
+
+      <div class="demo-frame">
+        <p class="frame-label">示範畫面</p>
+        <!-- demo:start -->
+        <div class="demo">
+          <div class="demo-bar">
+            <h3 class="demo-title">自選股</h3>
+            <button class="demo-text-button" type="button">編輯</button>
+          </div>
+          <div class="demo-summary">
+            <p class="demo-caption">今日損益（範例資料）</p>
+            <p class="demo-total">+NT$3,186</p>
+          </div>
+          <ul class="demo-list">
+            <li class="demo-row">
+              <span class="demo-name">台積電 <span class="demo-symbol">2330</span></span>
+              <span class="demo-price">1,085.00</span>
+              <span class="demo-symbol">半導體</span>
+              <span class="demo-change demo-change--rise">▲ 15.00（+1.40%）</span>
+            </li>
+            <li class="demo-row">
+              <span class="demo-name">鴻海 <span class="demo-symbol">2317</span></span>
+              <span class="demo-price">203.50</span>
+              <span class="demo-symbol">電子代工</span>
+              <span class="demo-change demo-change--fall">▼ 2.50（−1.21%）</span>
+            </li>
+            <li class="demo-row">
+              <span class="demo-name">元大台灣卓越50證券投資信託基金 <span class="demo-symbol">0050</span></span>
+              <span class="demo-price">186.35</span>
+              <span class="demo-symbol">ETF</span>
+              <span class="demo-change demo-change--rise">▲ 0.85（+0.46%）</span>
+            </li>
+            <li class="demo-row">
+              <span class="demo-name">聯發科 <span class="demo-symbol">2454</span></span>
+              <span class="demo-price">1,320.00</span>
+              <span class="demo-symbol">IC 設計</span>
+              <span class="demo-change">0.00（0.00%）</span>
+            </li>
+          </ul>
+          <button class="demo-filled-button" type="button">新增股票</button>
+        </div>
+        <!-- demo:end -->
+      </div>
+
+      <div class="facts">
+        <h3>密度</h3>
+        <dl>
+          <dt>密度等級</dt><dd>寬鬆（M3 density 0）</dd>
+          <dt>相關元素間距</dt><dd>12–16px（gap-stack-sm～md）</dd>
+          <dt>區塊間距</dt><dd>32–40px（2xl～3xl）</dd>
+          <dt>內文</dt><dd>body-large-plus 18/28</dd>
+          <dt>首屏可見</dt><dd>5–6 檔（手機 375 寬）</dd>
+          <dt>版面邊距</dt><dd>16px（compact 視窗）</dd>
+        </dl>
+      </div>
+
+      <div class="facts">
+        <h3>配色與字型</h3>
+        <ul class="swatches">
+          <li><span class="swatch swatch--primary"></span>primary #7A3E1D</li>
+          <li><span class="swatch swatch--surface-container"></span>surface-container</li>
+          <li><span class="swatch swatch--on-surface"></span>on-surface</li>
+          <li><span class="swatch swatch--price-rise"></span>price-rise</li>
+          <li><span class="swatch swatch--price-fall"></span>price-fall</li>
+        </ul>
+        <dl>
+          <dt>主色來源</dt><dd>＜品牌規範或受眾理由＞</dd>
+          <dt>字型</dt><dd>brand：Songti TC（標題）／plain：PingFang TC</dd>
+          <dt>圓角</dt><dd>按鈕 corner-medium</dd>
+        </dl>
+      </div>
+
+      <div class="refs">
+        <h3>參考產品</h3>
+        <ul>
+          <li>
+            <a href="#replace-with-source-url">＜參考產品 1＞</a>
+            <p>借：＜具體借鏡的做法＞</p>
+            <p>不借：＜要避開的地方＞</p>
+          </li>
+          <li>
+            <a href="#replace-with-source-url">＜參考產品 2＞</a>
+            <p>借：＜具體借鏡的做法＞</p>
+            <p>不借：＜要避開的地方＞</p>
+          </li>
+        </ul>
+      </div>
+    </section>
+
+  </main>
+
+  <section class="how-to-choose" aria-labelledby="how-to-choose-title">
+    <h2 id="how-to-choose-title">怎麼選</h2>
+    <p>直接告訴設計總監選哪一個方向，或混搭，例如「A 的密度＋B 的配色」。</p>
+    <p>選擇會寫進 product-design/DESIGN_DIRECTION.md 與 DECISION_LOG.md，之後做畫面都會照這個方向。</p>
+  </section>
+</div>
+</body>
+</html>
