@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "name": "storybook-code-layer",
-  "version": "1.3.1",
+  "version": "1.4.0",
   "installDir": ".storybook/code-layer",
   "projectOwned": [
     "INSTALL_RECEIPT.json",
@@ -45,8 +45,8 @@
     },
     {
       "path": "manager/apply.ts",
-      "sha256": "sha256:17c7a2feb98e00ee6fe0a7d0361f6d93cf60a3331cfefaadf080d2b69c33d250",
-      "bytes": 13383
+      "sha256": "sha256:6ad0eb3a0129e875e0cdb655ba83ceffb53bcd6b4f8c629b929aff3716d100e6",
+      "bytes": 14167
     },
     {
       "path": "manager/channel.ts",
@@ -65,13 +65,13 @@
     },
     {
       "path": "manager/components/ChangesBar.tsx",
-      "sha256": "sha256:9684205c42eba5f7b8306ec41fa32d387d3e60bb145ce59dab8dbe49c1a64137",
-      "bytes": 8956
+      "sha256": "sha256:44eefd2a93c77c6555abc703a3abdffac39f2c71a9ced7d63574f6a0a25f06a1",
+      "bytes": 9065
     },
     {
       "path": "manager/components/Field.tsx",
-      "sha256": "sha256:470205b544dcda27f95b574437aa81d7c2193673430f14def26f14a31320dbeb",
-      "bytes": 10054
+      "sha256": "sha256:2ef683c56b58b8e3de40e8e1d79ff10122db3acd2c1c82355bd51990a5132dd6",
+      "bytes": 10700
     },
     {
       "path": "manager/components/LayoutOptions.tsx",
@@ -85,18 +85,18 @@
     },
     {
       "path": "manager/components/Report.tsx",
-      "sha256": "sha256:6d180df7c4c2382679f9f8b154c93d35a42e7ec43d113a5a77e5086a57aa35b9",
-      "bytes": 12000
+      "sha256": "sha256:6e4fad29521fbd8a97a60ea0d53732f4824390de199a0a6029c8339999a4d670",
+      "bytes": 12091
     },
     {
       "path": "manager/components/RowPopover.tsx",
-      "sha256": "sha256:5f8fd03fcec975f0123198eaab1283f65dbb69f515388dc3bb2a65d10146ba13",
-      "bytes": 15151
+      "sha256": "sha256:ebf04fb2dd857d70d8d0659c703ee4cc08ba6f6e01427f823819050343dd25ee",
+      "bytes": 16491
     },
     {
       "path": "manager/drafts.ts",
-      "sha256": "sha256:b639915fdd3ed2726ce06a2da082e2b7d3be760787b56291f3fd84084c5de0fa",
-      "bytes": 7586
+      "sha256": "sha256:7159e01f2f5451a05f78a266ffcd2c25726055542fb7f3326839a5cbd9426ef5",
+      "bytes": 9903
     },
     {
       "path": "manager/icons.tsx",
@@ -120,7 +120,7 @@
     },
     {
       "path": "package.json",
-      "sha256": "sha256:e51df9c58c9f61a525b46a2fccb28241d5a6778a3e98dac5671320cd28692b77",
+      "sha256": "sha256:4b73462e64fe32e21bafa67317b2e07afacf5389b412dfe20e20752b730a3897",
       "bytes": 64
     },
     {
@@ -185,8 +185,8 @@
     },
     {
       "path": "runtime/livePreview.ts",
-      "sha256": "sha256:98b5fa4ad7b738ad8ec6695cb9a3a77ff02e9dbe7a668adc1f34f0954fcd315b",
-      "bytes": 12405
+      "sha256": "sha256:4515d269272ada36da0ff192f873b488404abf4bc9fa9e633e087d1bc8bae1d9",
+      "bytes": 13408
     },
     {
       "path": "runtime/navigate.ts",
@@ -210,13 +210,13 @@
     },
     {
       "path": "runtime/tracer.ts",
-      "sha256": "sha256:8ea68c3d418c7a7a85ddcfd0e9fc97004b8b5ef4d6eb9178f07bac2bfec43b56",
-      "bytes": 31726
+      "sha256": "sha256:fcf7da55ac65e64d6fba119b9a29c3ce0b936dccb4809e49cdabd5adcdc330b9",
+      "bytes": 34979
     },
     {
       "path": "runtime/verify.ts",
-      "sha256": "sha256:a814f7049219ca516fb3d0993c0a4f2d6141d812e76890cf126b93c11a756ce7",
-      "bytes": 7782
+      "sha256": "sha256:b5558af81228045a73778eafc4a4a876bf0cdb1b5b7af961d20ca48b1805c6d2",
+      "bytes": 8771
     },
     {
       "path": "server/agent/check-result.mjs",
@@ -325,8 +325,8 @@
     },
     {
       "path": "server/operations.mjs",
-      "sha256": "sha256:115ed613652079a3d2621dd6aad8b8c91c62865687f24b50ef6ad4e98f84fe55",
-      "bytes": 26687
+      "sha256": "sha256:cf2d39f7d820b8295bc8a76f3b4aa8660c01015e15ff68b08d8fdf2546ac16a0",
+      "bytes": 35492
     },
     {
       "path": "server/pairing.mjs",
@@ -335,8 +335,8 @@
     },
     {
       "path": "server/patcher.mjs",
-      "sha256": "sha256:12ad63f9ff278cbf855f449f9d6b9ee972c619e7c3403cdbad5ced90d9191136",
-      "bytes": 13736
+      "sha256": "sha256:44eee4a06143cca79a62eadbc41bf8623f204b1c9b612e7f2b25ab563ca24ae9",
+      "bytes": 14863
     },
     {
       "path": "server/paths.mjs",
@@ -345,8 +345,8 @@
     },
     {
       "path": "server/pending-docs.mjs",
-      "sha256": "sha256:1b6c8380883bed60573cf970b5444a3d9dfc2f382eaedf23a9760cc3f68b598d",
-      "bytes": 14806
+      "sha256": "sha256:f048f9896fa089f55c9e693c3efe22424d715e2715dd9be6cb4ef2b31716db57",
+      "bytes": 15354
     },
     {
       "path": "server/plugin.mjs",
@@ -380,8 +380,8 @@
     },
     {
       "path": "server/transaction.mjs",
-      "sha256": "sha256:ce80020064549db4b0081c6da0eba49b21e91ea170a76c1ab80bcec03ff92005",
-      "bytes": 38914
+      "sha256": "sha256:082778dbb030adf23d7cc158e18923d5ba87be0790b78734fbc470a964634041",
+      "bytes": 41133
     },
     {
       "path": "server/type-infer.mjs",
@@ -400,8 +400,8 @@
     },
     {
       "path": "shared/api-contract.mjs",
-      "sha256": "sha256:7eb2b0aa701be96fa38cc33c59b0780ce13c3b105559a1ee1f61f5f477d20287",
-      "bytes": 3025
+      "sha256": "sha256:1b64e6612d9b63fde4b6b444f30e88f8727dd2057411dc4e65924eccc49392a4",
+      "bytes": 3165
     },
     {
       "path": "shared/brief.ts",
@@ -455,8 +455,8 @@
     },
     {
       "path": "shared/labels.ts",
-      "sha256": "sha256:fdf6a34ddab8cee1297752c5d9185be5807beea101a2c8fe0cc9aa21b1108af7",
-      "bytes": 5377
+      "sha256": "sha256:0b972a5067366a63fa5182b090f9db889366c6a9b8b381ed04f487e03c6283e1",
+      "bytes": 5551
     },
     {
       "path": "shared/layout.d.mts",
@@ -469,14 +469,24 @@
       "bytes": 2447
     },
     {
+      "path": "shared/literals.d.mts",
+      "sha256": "sha256:5a5d18d9139a4b22419f66e2e27dfe654aafe925cf58e39078ba7861d4e37206",
+      "bytes": 1491
+    },
+    {
+      "path": "shared/literals.mjs",
+      "sha256": "sha256:10ffcb0dc3241881a1a21af43b3b598c3e38c2d760529181e65ab004c93eb401",
+      "bytes": 8754
+    },
+    {
       "path": "shared/messages.en.ts",
-      "sha256": "sha256:048e87c12cad97565d00ce7f0bc598cfa813344630a535c62ff1e05e1e885e39",
-      "bytes": 35554
+      "sha256": "sha256:00d88b96cae0d4217759b9b8afb18fa6e239829b7399fc97454ef74bab76b535",
+      "bytes": 36541
     },
     {
       "path": "shared/messages.zh-Hant.ts",
-      "sha256": "sha256:7dd574c11408cfd3f54def530ee0603dcc3be2a546d6df6723d10b35dca0b00f",
-      "bytes": 33889
+      "sha256": "sha256:283b626923d7b2a5b1712a158ce90d96817fc84a278a2c514c013b903c2dacb5",
+      "bytes": 34805
     },
     {
       "path": "shared/pairing.d.mts",
@@ -490,18 +500,28 @@
     },
     {
       "path": "shared/properties.ts",
-      "sha256": "sha256:ff50223df2e827caca7a7f2abda83e6f2d8a05d31784b69b8dadfdcc115307b0",
-      "bytes": 7765
+      "sha256": "sha256:6029ef2a3d5739e7db31ee416e5714bfa3363a7a4a898e2dab02d1c1540e22e0",
+      "bytes": 2163
+    },
+    {
+      "path": "shared/property-table.d.mts",
+      "sha256": "sha256:c2c0a5ead2c625f05f718c3f51a44884fe6a4ad115116bccada7fbe824d356a0",
+      "bytes": 1237
+    },
+    {
+      "path": "shared/property-table.mjs",
+      "sha256": "sha256:a21aeefef2a6273a398c7099a919dc30aa018e02fce53f6ad528d3682cb3b503",
+      "bytes": 5909
     },
     {
       "path": "shared/protocol.ts",
-      "sha256": "sha256:1e1f2aa783c75ceb7eb09ed040cd88bc82ea299375b3702351af52dec7326018",
-      "bytes": 16249
+      "sha256": "sha256:4b1e73ee02a5fb3c40d39029fa00708a327281a3bd188233df97e8905cc13f78",
+      "bytes": 17598
     },
     {
       "path": "shared/reference.ts",
-      "sha256": "sha256:37f9e5d531552b8aacb2e5696d374e55cb74622b751c2cbd49f5b36bd3fff27b",
-      "bytes": 4996
+      "sha256": "sha256:2139b3b7b9e0796ed617e42ac2931fe68e2cb57707f264bca94644570b6181a0",
+      "bytes": 5296
     },
     {
       "path": "shared/sides.d.mts",

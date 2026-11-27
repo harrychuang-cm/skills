@@ -19,7 +19,7 @@ import { loadPostcss, testProject } from "./helpers.mjs";
 const BASE = process.env.STORYBOOK_URL ?? "http://localhost:6006";
 const HANKO = "components-marks-badge-seal--hanko";
 const args = process.argv.slice(2);
-const ALL_STAGES = [6, 7, 11, 12, 13, 14, 15, 16];
+const ALL_STAGES = [6, 7, 11, 12, 13, 14, 15, 16, 17];
 const stageArg = args.includes("--stage") ? args[args.indexOf("--stage") + 1] : "6";
 const stages = stageArg === "all" ? ALL_STAGES : stageArg.split(",").map(Number);
 const headed = args.includes("--headed");
@@ -1517,7 +1517,8 @@ async function stage12(cdp) {
     // Literals, keywords and expressions.
     await loadActive(cdp, STORY.hanko);
     const content = await traceOf(cdp, ".md-badge-seal__content");
-    assert.deepEqual([rowOf(content, "maxInlineSize").readOnly?.reason, rowOf(content, "maxInlineSize").declaration.value], ["raw-value", "70%"]);
+    // A literal with tokens of an accepted kind (1.4.0): no longer read-only, replaced by a token at its declaration.
+    assert.deepEqual([rowOf(content, "maxInlineSize").readOnly, rowOf(content, "maxInlineSize").literal?.text, rowOf(content, "maxInlineSize").declaration.value], [null, "70%", "70%"]);
     await loadActive(cdp, STORY.highlightTag);
     const expression = rowOf(await traceOf(cdp, ROOT), "minBlockSize");
     assert.equal(expression.readOnly?.reason, "expression");
@@ -2153,8 +2154,9 @@ async function stage14(cdp) {
       let panel = await panelText(cdp);
       assert.doesNotMatch(panel, CJK, panel.slice(0, 400));
       assert.match(panel, /Layout.*Spacing.*Size.*Appearance.*Fill.*Stroke.*Typography/s);
-      assert.match(panel, /Padding12px/);
-      assert.match(panel, /Radius4px/);
+      // The values follow the trial ground's current tokens; what matters here is the English label before each.
+      assert.match(panel, /Padding\d+(?:\.\d+)?px/);
+      assert.match(panel, /Radius\d+(?:\.\d+)?px/);
       const chrome = await inManager(cdp, `return { tool: document.querySelector("[data-code-layer-tool]").getAttribute("aria-label"), tips: [...document.querySelectorAll("[data-code-layer-panel] [title]")].map((e) => e.getAttribute("title")) }`);
       assert.match(chrome.tool, /^Code Layer: on/);
       // Tooltips are interface text too.
@@ -2264,14 +2266,15 @@ async function stage14(cdp) {
     await waitTitle(cdp, "Badge Seal / hanko");
     assert.deepEqual(await inManager(cdp, `return [...document.querySelectorAll("[data-code-layer-section]")].map((e) => e.getAttribute("data-code-layer-section"))`), ["layout", "spacing", "size", "appearance", "fill", "stroke", "typography"]);
 
-    // A literal value: no picker, and the row says no token is bound.
+    // A literal value (1.4.0): editable by replacing it with a token, at the declaration only.
     await selectChild(cdp, "Badge Seal › content");
     const literal = await openRow(cdp, "maxInlineSize");
-    assert.deepEqual([literal.editable, literal.readonly, literal.picker, literal.reason], ["false", "raw-value", null, "寫死的數值，沒有綁定 token"]);
+    assert.deepEqual([literal.editable, literal.readonly, literal.reason], ["true", "", null]);
+    await waitRow(cdp, "maxInlineSize", (now) => now.picker === "confirmed", "literal picker confirmed");
     // max-inline-size is the width in horizontal writing and the height in vertical writing (the trial ground's hanko content is set tategaki).
     const contentVertical = await inPreview(cdp, `return getComputedStyle(d.querySelector(".md-badge-seal--hanko .md-badge-seal__content")).writingMode.startsWith("vertical")`);
-    assert.equal(literal.text, contentVertical ? "最大高70%" : "最大寬70%");
-    assert.match(literal.title, /寫死的數值，沒有綁定 token/);
+    assert.equal(literal.text, contentVertical ? "最大高70%未綁定" : "最大寬70%未綁定");
+    assert.match(literal.title, /寫死的數值，可以換成 token/);
     await key(cdp, "Escape");
     await waitRow(cdp, "maxInlineSize", (now) => !now.open, "closed");
     // An inherited value: the source is named, the row can be edited, and the source can be selected.
@@ -2644,7 +2647,8 @@ async function stage14(cdp) {
     const rowLines = lines.filter((l) => /：.* = /.test(l) && !l.startsWith("CSS："));
     assert.equal(rowLines.length, traced, rowLines.join("\n"));
     assert.ok(rowLines.some((l) => l.includes("繼承自 Badge Seal / hanko") && l.includes("可修改範圍：") && l.includes("［預設］")), text);
-    assert.ok(rowLines.some((l) => l.includes("唯讀：寫死的數值，沒有綁定 token")), text);
+    // A literal with tokens of its kind (1.4.0) is not read-only: the line says where it can be replaced by a token.
+    assert.ok(rowLines.some((l) => /寫死的數值 70%：可以在 \S+:\d+ 換成既有的 token（只改這條宣告）/.test(l) && !l.includes("唯讀")), text);
     // Every rule line points at a selector that is in that file, on that line.
     const rules = [...text.matchAll(/^CSS：(\S+) · (.+)（規則 #(\d+)，第 (\d+) 行）$/gm)];
     assert.ok(rules.length >= 2, text);
@@ -2860,13 +2864,17 @@ async function stage15(cdp) {
     await waitDrafts(cdp, (list) => list.length === 1, "back to one change");
 
     // The font size of the content is inherited from the badge root: staged from the child, written at the root's token.
+    // The trial ground's own applies may already have moved it to the title size: then the change goes to the label size.
+    const sizeFrom = /var\((--[\w-]+)\)/.exec(line(TRUTH(), 68))[1];
+    const [sizeToken, sizePx] = sizeFrom === "--md-sys-typescale-title-size" ? ["--md-sys-typescale-label-size", "13px"] : ["--md-sys-typescale-title-size", "20px"];
     await selectChild(cdp, "Badge Seal › content");
-    option = await pickToken(cdp, "fontSize", "title-size", "--md-sys-typescale-title-size");
+    const [sizeBefore] = await computedOf(cdp, CONTENT, ["font-size"]);
+    option = await pickToken(cdp, "fontSize", sizeToken.replace("--md-sys-typescale-", ""), sizeToken);
     await click(cdp, option.x, option.y);
     const staged = await waitDrafts(cdp, (list) => list.length === 2 && list.every((d) => d.status === "previewing"), "fill and font size staged");
     const size = staged.find((d) => d.id === "token:--md-comp-badge-seal-text-size");
     assert.ok(size && size.title.includes("改在「Badge Seal / hanko」的宣告上（繼承來源）"), JSON.stringify(staged));
-    assert.deepEqual(await computedOf(cdp, CONTENT, ["font-size"]), ["20px"]);
+    assert.deepEqual(await computedOf(cdp, CONTENT, ["font-size"]), [sizePx]);
     assert.deepEqual(governedHashes(), start, "staging writes nothing");
 
     const applyStarted = Date.now();
@@ -2887,20 +2895,20 @@ async function stage15(cdp) {
     const tokensAfter = fs.readFileSync(TRUTH(), "utf8");
     assert.deepEqual(changedLines(tokensBefore, tokensAfter), [54, 68]);
     assert.equal(line(TRUTH(), 54), NEW_TOKEN_LINE);
-    assert.equal(line(TRUTH(), 68), "  --md-comp-badge-seal-text-size: var(--md-sys-typescale-title-size);");
+    assert.equal(line(TRUTH(), 68), `  --md-comp-badge-seal-text-size: var(${sizeToken});`);
     assert.ok(fs.readFileSync(TRUTH()).equals(fs.readFileSync(MIRROR())), "mirror equals source of truth");
     // The Token Contract rows of the specification, in the same transaction.
     const specAfter = fs.readFileSync(BADGE_SPEC(), "utf8");
     assert.deepEqual(changedLines(specBefore, specAfter), [54, 68]);
     assert.equal(line(BADGE_SPEC(), 54), "| --md-comp-badge-seal-hanko-container-color | --md-sys-color-secondary | container fill | hanko |");
-    assert.equal(line(BADGE_SPEC(), 68), "| --md-comp-badge-seal-text-size | --md-sys-typescale-title-size | content size | all |");
+    assert.equal(line(BADGE_SPEC(), 68), `| --md-comp-badge-seal-text-size | ${sizeToken} | content size | all |`);
     assert.deepEqual(report.documents.map((d) => d.at), ["design-system/components/badge-seal.md:54", "design-system/components/badge-seal.md:68"]);
     assert.ok(report.documents[0].text.includes("sys-color-primary → sys-color-secondary"), report.documents[0].text);
     // The pairing warning of what was applied, with the contrast of the result.
     assert.ok(report.pairing.some((p) => p.warning !== "contrast" && Number(p.contrast) >= 1), JSON.stringify(report.pairing));
     // The page shows the source now, without previews.
     assert.equal(await inPreview(cdp, `return w.__CODE_LAYER__.live.hasPreviews()`), false);
-    assert.deepEqual([(await previewComputed(cdp)).bg, ...(await computedOf(cdp, CONTENT, ["font-size"]))], [BLUE, "20px"]);
+    assert.deepEqual([(await previewComputed(cdp)).bg, ...(await computedOf(cdp, CONTENT, ["font-size"]))], [BLUE, sizePx]);
     // The commands of the binding ran; the derived documents carry the new binding.
     const post = await waitReportDetails(cdp, (r) => r.post?.status === "done", "post-apply commands reported", 90000);
     assert.deepEqual([post.post.stale, post.post.results], ["false", [["docs-html", "true"], ["review-html", "true"]]]);
@@ -2919,7 +2927,7 @@ async function stage15(cdp) {
     const undone = await undoVerified();
     assert.equal(undone.headline, "已還原並驗證");
     assert.deepEqual((await serverState()).pendingDocs, [], "what was pending for an undone apply is dropped");
-    assert.deepEqual([(await previewComputed(cdp)).bg, ...(await computedOf(cdp, CONTENT, ["font-size"]))], [RED, "13px"]);
+    assert.deepEqual([(await previewComputed(cdp)).bg, ...(await computedOf(cdp, CONTENT, ["font-size"]))], [RED, sizeBefore]);
     await waitPostApply();
     return `${report.documents.map((d) => d.text).join("; ")} · ${post.post.results.map(([id]) => id).join(", ")} · click on Apply to the verified report: ${applyMs} ms`;
   });
@@ -3159,6 +3167,436 @@ const sealRuleText = (cdp, selector) =>
   inPreview(cdp, `const s = [...d.querySelectorAll("style[data-vite-dev-id]")].find((e) => e.dataset.viteDevId.endsWith("/BadgeSeal.css")); return [...s.sheet.cssRules].find((r) => r.selectorText === ${JSON.stringify(selector)}).cssText`);
 const waitComputed = (cdp, selector, property, value) =>
   waitSeen(async () => (await computedOf(cdp, selector, [property]))[0], (now) => now === value, `${property} of ${selector} is ${value}`);
+
+// ---- stage 17: literal values replaced by tokens (add-code-layer-tokenize-literals) -----------
+
+const RIBBON_ROOT = ".md-ribbon-banner";
+const HERO_KICKER = ".md-hero-title-lockup__kicker";
+
+async function stage17(cdp) {
+  const start = governedHashes();
+  const check = async (name, fn) =>
+    checkOuter(name, async () => {
+      try {
+        return await fn();
+      } finally {
+        const leftovers = await undoLeftovers().catch((error) => [`cleanup failed: ${error.message}`]);
+        if (leftovers.length > 0) process.stdout.write(`    (cleanup: undone through the API after the check: ${leftovers.join(", ")})\n`);
+      }
+    });
+
+  await check("17.1 a literal that has tokens of its kind is tokenizable at the declaration only; keywords, expressions, lists and structure stay read-only with their reasons", async () => {
+    await clearDrafts(cdp);
+    await loadActive(cdp, STORY.ribbonHorizontal);
+    const ribbon = await traceOf(cdp, RIBBON_ROOT, { fresh: true });
+    const margin = rowOf(ribbon, "margin");
+    assert.equal(margin.readOnly, null, JSON.stringify(margin.readOnly));
+    assert.deepEqual(margin.literal, { text: "0", kind: "zero" });
+    assert.deepEqual(margin.scopes.map((s) => [s.id, s.available, s.target.type, s.target.component, s.target.literal]), [["declaration", true, "tokenize-literal", 0, "0"]]);
+    assert.equal(margin.defaultScope, "declaration");
+    assert.equal(margin.scopes[0].impact.declarations, 1);
+    assert.match(margin.scopes[0].writes.files[0], /RibbonBanner\.css$/);
+    const maxInline = rowOf(ribbon, "maxInlineSize");
+    assert.deepEqual([maxInline.readOnly, maxInline.literal], [null, { text: "100%", kind: "percentage" }]);
+    const inline = rowOf(ribbon, "inlineSize");
+    assert.deepEqual(inline.readOnly?.reason, "keyword", "fit-content is a keyword");
+    assert.equal(inline.literal, null);
+    const display = rowOf(ribbon, "display");
+    assert.equal(display.readOnly?.reason, "structural");
+
+    // `margin: 0 0 var(--kicker-gap)`: two literal rows and one reference row.
+    await loadActive(cdp, STORY.heroDefault);
+    const kicker = await traceOf(cdp, HERO_KICKER, { fresh: true });
+    const marginRows = kicker.rows.filter((r) => r.group === "margin");
+    const summary = marginRows.map((r) => [r.id, r.literal?.text ?? null, r.scopes.map((s) => s.target.type).join("+"), r.declaration?.component ?? null]);
+    assert.equal(marginRows.length, 3, JSON.stringify(summary));
+    assert.equal(marginRows.filter((r) => r.literal?.text === "0" && r.scopes.length === 1 && r.scopes[0].target.type === "tokenize-literal").length, 2, JSON.stringify(summary));
+    const reference = marginRows.find((r) => r.scopes.some((s) => s.target.type === "rebind-declaration"));
+    assert.ok(reference && reference.literal === null && reference.tokenName?.endsWith("kicker-gap"), JSON.stringify(summary));
+
+    // An expression and a list are literals that cannot take a token: read-only, each with its own reason.
+    // The trial ground has neither, so the ribbon's root rule gets both for the length of this block.
+    const ribbonCss = path.join(testProject(), "src/components/ribbon-banner/RibbonBanner.css");
+    const hasAdded = `(index) => index.css.files.some((f) => f.file.endsWith("RibbonBanner.css") && f.rules.some((r) => r.declarations.some((d) => d.property === "max-block-size")))`;
+    const reasons = await withFileEdit(
+      ribbonCss,
+      (text) => {
+        const edited = text.replace("  max-inline-size: 100%;\n}", '  max-inline-size: 100%;\n  max-block-size: calc(100% - 16px);\n  font-family: "Noto Sans", sans-serif;\n}');
+        assert.notEqual(edited, text, "the ribbon's root rule was found");
+        return edited;
+      },
+      async () => {
+        await waitIndex(cdp, hasAdded, "the edited stylesheet in the index");
+        await loadActive(cdp, STORY.ribbonHorizontal);
+        const edited = await traceOf(cdp, RIBBON_ROOT, { fresh: true });
+        const expression = rowOf(edited, "maxBlockSize");
+        const list = rowOf(edited, "fontFamily");
+        assert.deepEqual([expression.readOnly?.reason, expression.literal, expression.declaration?.value], ["literal-expression", null, "calc(100% - 16px)"], JSON.stringify(expression.readOnly));
+        assert.deepEqual([list.readOnly?.reason, list.literal], ["literal-list", null], JSON.stringify(list.readOnly));
+        const shownExpression = await openRow(cdp, "maxBlockSize");
+        assert.deepEqual([shownExpression.editable, shownExpression.readonly, shownExpression.picker], ["false", "literal-expression", null]);
+        assert.match(shownExpression.reason, /運算式或無法辨識的值，不能直接換成 token/);
+        await key(cdp, "Escape");
+        const shownList = await openRow(cdp, "fontFamily");
+        assert.deepEqual([shownList.editable, shownList.readonly, shownList.picker], ["false", "literal-list", null]);
+        assert.match(shownList.reason, /以逗號或斜線分隔的值，不能直接換成 token/);
+        await key(cdp, "Escape");
+        return [expression.readOnly.reason, list.readOnly.reason];
+      },
+    );
+    await waitIndex(cdp, `(index) => !(${hasAdded})(index)`, "the stylesheet back in the index");
+    return `${summary.map((row) => row.join(" ")).join("; ")}; ${reasons.join(", ")}`;
+  });
+
+  await check("17.2 the probe and the preview replace the literal in the source's value; a re-bind on the same declaration previews with it", async () => {
+    await clearDrafts(cdp);
+    await loadActive(cdp, STORY.ribbonHorizontal);
+    await traceOf(cdp, RIBBON_ROOT, { fresh: true });
+    const ribbonCss = path.join(testProject(), "src/components/ribbon-banner/RibbonBanner.css");
+    const ribbonDisk = sha(ribbonCss);
+    // The probe leaves the rule as it was and starts no animation.
+    const probe = await inPreview(
+      cdp,
+      `const s = [...d.querySelectorAll("style[data-vite-dev-id]")].find((e) => e.dataset.viteDevId.endsWith("/RibbonBanner.css"));
+       const rule = [...s.sheet.cssRules].find((r) => r.selectorText === ".md-ribbon-banner");
+       const before = rule.style.cssText; const animations = d.getAnimations().length;
+       const result = await w.__CODE_LAYER__.probe("margin");
+       return { result, same: rule.style.cssText === before, animations: d.getAnimations().length - animations };`,
+    );
+    assert.deepEqual(probe, { result: "confirmed", same: true, animations: 0 });
+    // Hovering a candidate previews it on the page; the file stays as it is.
+    await openRow(cdp, "margin");
+    await waitRow(cdp, "margin", (now) => now.picker === "confirmed", "picker confirmed");
+    const options = await pickerOptions(cdp, "margin");
+    const values = await inPreview(cdp, `const cs = getComputedStyle(d.documentElement); return Object.fromEntries(${JSON.stringify(options.map((o) => o.token))}.map((n) => [n, cs.getPropertyValue(n).trim()]))`);
+    const wide = options.find((o) => /^[\d.]+px$/.test(values[o.token]) && parseFloat(values[o.token]) > 0);
+    assert.ok(wide, `a non-zero length among ${JSON.stringify(values)}`);
+    const option = await managerRect(cdp, `[data-code-layer-picker="margin"] [data-token="${wide.token}"]`);
+    await mouse(cdp, "mouseMoved", option.x, option.y);
+    await waitFor(async () => ((await computedOf(cdp, RIBBON_ROOT, ["margin-top"]))[0] === values[wide.token] ? true : null), { label: "hover previews the token" });
+    assert.equal(sha(ribbonCss), ribbonDisk, "hovering writes nothing");
+    await key(cdp, "Escape");
+    await waitFor(async () => ((await computedOf(cdp, RIBBON_ROOT, ["margin-top"]))[0] === "0px" ? true : null), { label: "the preview is removed" });
+
+    // `margin: 0 0 var(--kicker-gap)`: the literal of the block start and the reference of the block end, staged together.
+    await loadActive(cdp, STORY.heroDefault);
+    await traceOf(cdp, HERO_KICKER, { fresh: true });
+    const heroCss = path.join(testProject(), "src/components/hero-title-lockup/HeroTitleLockup.css");
+    const heroDisk = sha(heroCss);
+    const START = "margin/block-start";
+    const END = "margin/block-end";
+    await openRow(cdp, START);
+    await waitRow(cdp, START, (now) => now.picker === "confirmed", "literal picker confirmed");
+    const startOptions = await pickerOptions(cdp, START);
+    const startValues = await inPreview(cdp, `const cs = getComputedStyle(d.documentElement); return Object.fromEntries(${JSON.stringify(startOptions.map((o) => o.token))}.map((n) => [n, cs.getPropertyValue(n).trim()]))`);
+    const startPick = startOptions.find((o) => /^[\d.]+px$/.test(startValues[o.token]) && parseFloat(startValues[o.token]) > 0);
+    await clickIn(cdp, `[data-code-layer-picker=${JSON.stringify(START)}] [data-token="${startPick.token}"]`);
+    await waitDrafts(cdp, (list) => list.length === 1 && list[0].status === "previewing", "the literal staged");
+    const [, endBefore] = await computedOf(cdp, HERO_KICKER, ["margin-top", "margin-bottom"]);
+    await openRow(cdp, END);
+    await clickIn(cdp, `${popSelector(END)} [data-code-layer-scope="declaration"]`);
+    await waitRow(cdp, END, (now) => now.scope === "declaration" && now.picker === "confirmed", "reference picker at the declaration");
+    const endOptions = await pickerOptions(cdp, END);
+    const endValues = await inPreview(cdp, `const cs = getComputedStyle(d.documentElement); return Object.fromEntries(${JSON.stringify(endOptions.map((o) => o.token))}.map((n) => [n, cs.getPropertyValue(n).trim()]))`);
+    const endPick = endOptions.find((o) => /^[\d.]+px$/.test(endValues[o.token]) && endValues[o.token] !== endBefore && endValues[o.token] !== startValues[startPick.token]);
+    assert.ok(endPick, `another length for the block end among ${JSON.stringify(endValues)}`);
+    await clickIn(cdp, `[data-code-layer-picker=${JSON.stringify(END)}] [data-token="${endPick.token}"]`);
+    const both = await waitDrafts(cdp, (list) => list.length === 2 && list.every((d) => d.status === "previewing"), "both staged and previewing");
+    const expectBoth = async () => {
+      const [top, bottom] = await computedOf(cdp, HERO_KICKER, ["margin-top", "margin-bottom"]);
+      return top === startValues[startPick.token] && bottom === endValues[endPick.token] ? [top, bottom] : null;
+    };
+    const shown = await waitFor(expectBoth, { label: "both previews in effect" });
+    assert.equal(sha(heroCss), heroDisk, "staging writes nothing");
+
+    // A hot update that changes nothing keeps both previews.
+    await inPreview(cdp, `const s = [...d.querySelectorAll("style[data-vite-dev-id]")].find((e) => e.dataset.viteDevId.endsWith("/HeroTitleLockup.css")); w.__oldHero = s.sheet; return true`);
+    fs.writeFileSync(heroCss, fs.readFileSync(heroCss));
+    await waitFor(() => inPreview(cdp, `const s = [...d.querySelectorAll("style[data-vite-dev-id]")].find((e) => e.dataset.viteDevId.endsWith("/HeroTitleLockup.css")); return s.sheet !== w.__oldHero`), { timeout: 8000, label: "sheet replaced by Vite" });
+    await waitFor(expectBoth, { label: "previews re-applied after the hot update" });
+
+    // Someone else changes that literal: the staged tokenization shows a conflict, and recovers when undone.
+    const original = fs.readFileSync(heroCss);
+    const edited = original.toString("utf8").replace("margin: 0 0 var(--md-comp-hero-title-lockup-kicker-gap);", "margin: 2px 0 var(--md-comp-hero-title-lockup-kicker-gap);");
+    assert.notEqual(edited, original.toString("utf8"));
+    fs.writeFileSync(heroCss, edited);
+    try {
+      await waitFor(async () => ((await draftStatuses(cdp)).some((d) => d.status === "conflict") ? true : null), { timeout: 10000, label: "conflict" });
+    } finally {
+      fs.writeFileSync(heroCss, original);
+    }
+    await waitFor(async () => (allPreviewing(await draftStatuses(cdp), 2) ? true : null), { timeout: 10000, label: "previewing again" });
+    await clickAction(cdp, "discard");
+    await waitFor(() => inManager(cdp, `return document.querySelectorAll("[data-code-layer-draft]").length === 0`), { label: "discarded" });
+    assert.equal(sha(heroCss), heroDisk);
+    return `${both.map((d) => d.id.split("#")[0]).join(", ")} · ${shown.join(" / ")}`;
+  });
+
+  /** Stage the ribbon's `margin: 0` to a token whose live value satisfies `want`; returns the token and its value. */
+  const stageRibbonMargin = async (want, label) => {
+    await clearDrafts(cdp);
+    await loadActive(cdp, STORY.ribbonHorizontal);
+    await traceOf(cdp, RIBBON_ROOT, { fresh: true });
+    await openRow(cdp, "margin");
+    await waitRow(cdp, "margin", (now) => now.picker === "confirmed", "picker confirmed");
+    const options = await pickerOptions(cdp, "margin");
+    const values = await inPreview(cdp, `const cs = getComputedStyle(d.documentElement); return Object.fromEntries(${JSON.stringify(options.map((o) => o.token))}.map((n) => [n, cs.getPropertyValue(n).trim()]))`);
+    const pick = options.find((o) => want(values[o.token]));
+    assert.ok(pick, `${label} among ${JSON.stringify(values)}`);
+    await clickIn(cdp, `[data-code-layer-picker="margin"] [data-token="${pick.token}"]`);
+    await waitDrafts(cdp, (list) => list.length === 1 && ["previewing", "no-visible-effect"].includes(list[0].status), `${label} staged`);
+    return { token: pick.token, value: values[pick.token] };
+  };
+  const FINAL = ["verified", "verified-same", "mismatch", "timeout", "written-not-observable"];
+
+  await check("17.3 a token of another value is verified, a token of the same value is verified with the look unchanged, a blocked update times out", async () => {
+    const ribbonCss = path.join(testProject(), "src/components/ribbon-banner/RibbonBanner.css");
+    const original = sha(ribbonCss);
+    const marginTop = async () => (await computedOf(cdp, RIBBON_ROOT, ["margin-top"]))[0];
+
+    // Another value: the look changes, and it is the token's value with every preview removed.
+    const other = await stageRibbonMargin((v) => /^[\d.]+px$/.test(v) && parseFloat(v) > 0, "a non-zero length");
+    await clickAction(cdp, "apply");
+    const applied = await waitReport(cdp, "apply", FINAL, 40000);
+    assert.equal(applied.status, "verified", applied.text);
+    assert.equal(await inPreview(cdp, `return w.__CODE_LAYER__.live.hasPreviews()`), false, "no preview left");
+    assert.equal(await marginTop(), other.value);
+    assert.notEqual(sha(ribbonCss), original, "the file was written");
+    await clickAction(cdp, "undo");
+    await waitReport(cdp, "undo", FINAL, 40000);
+    assert.equal(sha(ribbonCss), original, "undo restored the exact bytes");
+    await waitFor(async () => ((await marginTop()) === "0px" ? true : null), { label: "margin back to 0" });
+
+    // The same value: the file changes and the look does not, which is the success of this kind of change.
+    const same = await stageRibbonMargin((v) => v === "0" || v === "0px", "a token of value 0");
+    await clickAction(cdp, "apply");
+    const unchanged = await waitReport(cdp, "apply", FINAL, 40000);
+    assert.equal(unchanged.status, "verified-same", unchanged.text);
+    assert.match(unchanged.text, /外觀不變/);
+    assert.deepEqual(unchanged.items, ["verified-same"]);
+    assert.match(fs.readFileSync(ribbonCss, "utf8"), new RegExp(`margin: var\\(${same.token}\\);`));
+    await clickAction(cdp, "undo");
+    await waitReport(cdp, "undo", FINAL, 40000);
+    assert.equal(sha(ribbonCss), original);
+
+    // The page cannot fetch the updated stylesheet: that is a timeout, never "the look is unchanged".
+    await stageRibbonMargin((v) => v === "0" || v === "0px", "a token of value 0");
+    await cdp.send("Network.setBlockedURLs", { urls: ["*RibbonBanner.css*"] });
+    let blocked;
+    try {
+      await clickAction(cdp, "apply");
+      blocked = await waitReport(cdp, "apply", FINAL, 40000);
+    } finally {
+      await cdp.send("Network.setBlockedURLs", { urls: [] });
+    }
+    assert.equal(blocked.status, "timeout", blocked.text);
+    await clickAction(cdp, "undo");
+    await waitReport(cdp, "undo", FINAL, 40000);
+    assert.equal(sha(ribbonCss), original);
+    return `${other.token} → verified; ${same.token} → verified-same; blocked → timeout`;
+  });
+
+  await check("17.4 a literal row looks editable and opens the picker headed by its value; a keyword row keeps its lock; a staged row shows both values", async () => {
+    await clearDrafts(cdp);
+    await loadActive(cdp, STORY.ribbonHorizontal);
+    await traceOf(cdp, RIBBON_ROOT, { fresh: true });
+    const marks = (rowId) => inManager(cdp, `const r = document.querySelector(${JSON.stringify(rowSelector(rowId))}); return { unbound: r.querySelector("[data-code-layer-unbound]")?.textContent ?? null, replaces: r.querySelector("[data-code-layer-replaces]")?.textContent ?? null, lock: r.lastElementChild?.querySelector("svg") !== null && r.getAttribute("data-editable") !== "true" }`);
+    const literal = await waitRow(cdp, "margin", (now) => now.editable === "true", "editable literal row");
+    assert.deepEqual([literal.readonly, literal.token], ["", ""]);
+    assert.match(literal.title, /寫死的數值，可以換成 token/);
+    assert.deepEqual(await marks("margin"), { unbound: "未綁定", replaces: null, lock: false });
+    const open = await openRow(cdp, "margin");
+    const pop = await inManager(cdp, `const p = document.querySelector(${JSON.stringify(popSelector("margin"))}); return { scopes: !!p.querySelector("[data-code-layer-scopes]"), head: p.querySelector("[data-code-layer-literal]")?.textContent ?? null, stepper: !!p.querySelector("[data-code-layer-stepper]"), firstLine: p.querySelector("[data-code-layer-picker]")?.firstElementChild?.getAttribute("data-code-layer-literal") ?? null }`);
+    assert.deepEqual([pop.scopes, pop.stepper, pop.firstLine], [false, false, "0"], JSON.stringify(pop));
+    assert.match(pop.head, /寫死的數值：0/);
+    assert.ok(open.popText.includes("影響 1 個元件"), open.popText);
+    await key(cdp, "Escape");
+    // The keyword row keeps its lock and says why, without a picker.
+    const keyword = await openRow(cdp, "inlineSize");
+    assert.deepEqual([keyword.editable, keyword.readonly, keyword.picker], ["false", "keyword", null]);
+    assert.match(keyword.reason, /關鍵字/);
+    assert.deepEqual((await marks("inlineSize")).unbound, null);
+    await key(cdp, "Escape");
+    // Staged: the chosen token as a pill, beside the literal it replaces.
+    await openRow(cdp, "margin");
+    await waitRow(cdp, "margin", (now) => now.picker === "confirmed", "picker confirmed");
+    const options = await pickerOptions(cdp, "margin");
+    await clickIn(cdp, `[data-code-layer-picker="margin"] [data-token="${options[0].token}"]`);
+    await waitDrafts(cdp, (list) => list.length === 1, "staged");
+    const staged = await waitRow(cdp, "margin", (now) => now.token === options[0].token, "the row shows the chosen token");
+    assert.deepEqual((await marks("margin")).replaces, "0 →");
+    assert.match(staged.title, /原本：0/);
+    await clickAction(cdp, "discard");
+    await waitFor(() => inManager(cdp, `return document.querySelectorAll("[data-code-layer-draft]").length === 0`), { label: "discarded" });
+    return `${options[0].token} staged over 0`;
+  });
+
+  await check("17.5 a literal's picker lists the tokens its property usually takes first; a zero margin is not matched to a corner token", async () => {
+    await clearDrafts(cdp);
+    await loadActive(cdp, STORY.ribbonHorizontal);
+    await traceOf(cdp, RIBBON_ROOT, { fresh: true });
+    const listOf = (rowId) => inManager(cdp, `const p = document.querySelector(${JSON.stringify(`[data-code-layer-picker=${JSON.stringify(rowId)}]`)}); return { options: [...p.querySelectorAll("[data-token]")].map((e) => ({ token: e.getAttribute("data-token"), group: e.getAttribute("data-group"), same: e.getAttribute("data-same") })), headings: [...p.querySelectorAll("[data-code-layer-candidate-group]")].map((e) => [e.getAttribute("data-code-layer-candidate-group"), e.textContent]) }`);
+    await openRow(cdp, "margin");
+    await waitRow(cdp, "margin", (now) => now.picker === "confirmed", "margin picker confirmed");
+    const margin = await listOf("margin");
+    // The category of a token, following a component token's alias to the system token, as the index has it.
+    const categories = await inPreview(cdp, `const items = new Map(w.__CODE_LAYER__.index.tokens.items.map((t) => [t.name, t])); const cat = (n) => { let t = items.get(n); for (let i = 0; t && t.tier === "comp" && t.alias && i < 8; i += 1) t = items.get(t.alias); return t ? t.category : null; }; return Object.fromEntries(${JSON.stringify(margin.options.map((o) => o.token))}.map((n) => [n, cat(n)]))`);
+    const first = margin.options.slice(0, 8);
+    assert.ok(first.every((o) => categories[o.token] === "spacing" && o.group === "2"), `the first eight are spacing tokens: ${JSON.stringify(first.map((o) => [o.token, categories[o.token], o.group]))}`);
+    const corner = margin.options.findIndex((o) => o.token === "--md-sys-shape-corner-none");
+    assert.ok(corner >= 8, `corner-none after the spacing tokens (at ${corner})`);
+    assert.equal(margin.options[corner].same, "true", "corner-none is still marked as the same value");
+    assert.ok(margin.headings.some(([group]) => group === "3"), JSON.stringify(margin.headings));
+    await key(cdp, "Escape");
+    await openRow(cdp, "maxInlineSize");
+    await waitRow(cdp, "maxInlineSize", (now) => now.picker === "confirmed", "max size picker confirmed");
+    const size = await listOf("maxInlineSize");
+    const sizeCategories = await inPreview(cdp, `const items = new Map(w.__CODE_LAYER__.index.tokens.items.map((t) => [t.name, t])); const cat = (n) => { let t = items.get(n); for (let i = 0; t && t.tier === "comp" && t.alias && i < 8; i += 1) t = items.get(t.alias); return t ? t.category : null; }; return Object.fromEntries(${JSON.stringify(size.options.map((o) => o.token))}.map((n) => [n, cat(n)]))`);
+    // No max-inline-size declaration references a token, so the row borrows what the other size declarations of the
+    // project reference (in the trial ground that depends on its current content: read it from the index).
+    const borrowed = await inPreview(
+      cdp,
+      `const items = new Map(w.__CODE_LAYER__.index.tokens.items.map((t) => [t.name, t])); const cat = (n) => { let t = items.get(n); for (let i = 0; t && t.tier === "comp" && t.alias && i < 8; i += 1) t = items.get(t.alias); return t ? t.category : null; };
+       const size = /^(min-|max-)?(inline|block)-size$|^(min-|max-)?(width|height)$/; const own = /^max-inline-size$|^max-width$/; const found = { own: [], section: [] };
+       for (const f of w.__CODE_LAYER__.index.css.files) for (const r of f.rules) for (const dcl of r.declarations) if (size.test(dcl.property)) for (const ref of dcl.refs) (own.test(dcl.property) ? found.own : found.section).push(cat(ref.name));
+       return found;`,
+    );
+    assert.deepEqual(borrowed.own, [], "no max-inline-size declaration references a token");
+    const home = new Set(borrowed.section.filter(Boolean));
+    assert.ok(home.size > 0, "the size section references some category");
+    assert.ok(size.options.slice(0, 2).every((o) => home.has(sizeCategories[o.token]) && o.group === "2"), `the first two are of the section's categories ${JSON.stringify([...home])}: ${JSON.stringify(size.options.slice(0, 4).map((o) => [o.token, sizeCategories[o.token], o.group]))}`);
+    await key(cdp, "Escape");
+    return `margin: ${margin.options.slice(0, 3).map((o) => o.token).join(", ")}… corner-none at ${corner}; max size (${[...home].join(", ")}): ${size.options.slice(0, 2).map((o) => o.token).join(", ")}`;
+  });
+
+  await check("17.6 a staged literal reads as value to token, survives a reload, does not step; once applied the row is an ordinary token row", async () => {
+    await clearDrafts(cdp);
+    await loadActive(cdp, STORY.hanko);
+    await clickBadge(cdp);
+    await selectChild(cdp, "Badge Seal › content");
+    const ROW = "maxInlineSize";
+    const before = sha(BADGE_CSS());
+    // A literal row does not step: no preview, nothing staged, no step controls.
+    await waitRow(cdp, ROW, (now) => now.editable === "true", "editable literal row");
+    await clickIn(cdp, rowSelector(ROW));
+    await key(cdp, "Escape");
+    await inManager(cdp, `document.querySelector(${JSON.stringify(rowSelector(ROW))}).focus(); return true`);
+    const sizeBefore = (await computedOf(cdp, SEAL_CONTENT, ["max-inline-size"]))[0];
+    await key(cdp, "ArrowUp");
+    await delayMs(300);
+    const still = await rowState(cdp, ROW);
+    assert.deepEqual([still.steps, still.stepToken], [0, ""], "no step on a literal");
+    assert.equal((await computedOf(cdp, SEAL_CONTENT, ["max-inline-size"]))[0], sizeBefore, "nothing previewed");
+    assert.equal((await draftStatuses(cdp)).length, 0, "nothing staged");
+
+    // Staged: the changes list shows 70% as the old value and the token as the new one; the file still holds 70%.
+    await openRow(cdp, ROW);
+    await waitRow(cdp, ROW, (now) => now.picker === "confirmed" && !now.popText.includes("step"), "picker confirmed");
+    const options = await pickerOptions(cdp, ROW);
+    // A token with a scale of its own, so that the applied row can step.
+    const scaled = await inPreview(cdp, `const items = new Map(w.__CODE_LAYER__.index.tokens.items.map((t) => [t.name, t])); return ${JSON.stringify(options.map((o) => o.token))}.filter((n) => items.get(n)?.scale)`);
+    const choice = scaled[0] ?? options[0].token;
+    await clickIn(cdp, `[data-code-layer-picker=${JSON.stringify(ROW)}] [data-token="${choice}"]`);
+    const staged = await waitDrafts(cdp, (list) => list.length === 1, "staged");
+    assert.match(staged[0].text, /70%/);
+    assert.ok(staged[0].text.includes(choice.replace(/^--md-(sys|comp-badge-seal)-/, "")) || staged[0].to === choice, staged[0].text);
+    assert.equal(staged[0].id.split(":")[0], "literal");
+    assert.match(fs.readFileSync(BADGE_CSS(), "utf8"), /max-inline-size: 70%;/, "the stylesheet on disk still holds 70%");
+    // A reload keeps the staged change and its preview.
+    await cdp.send("Page.reload");
+    await waitFor(() => inPreview(cdp, `return !!(w.__CODE_LAYER__ && w.__CODE_LAYER__.index && w.__CODE_LAYER__.effective.state === "active")`), { timeout: 60000, label: "active after the reload" });
+    await waitDrafts(cdp, (list) => list.length === 1 && ["previewing", "no-visible-effect"].includes(list[0].status), "staged after the reload");
+
+    // Applied: the row becomes an ordinary token row that can step, and the reference lists its chain.
+    await clickAction(cdp, "apply");
+    const applied = await waitReport(cdp, "apply", FINAL, 40000);
+    assert.ok(["verified", "verified-same"].includes(applied.status), applied.text);
+    const trace = await traceOf(cdp, SEAL_CONTENT, { fresh: true });
+    const row = rowOf(trace, ROW);
+    assert.deepEqual([row.literal, row.tokenName], [null, choice]);
+    assert.ok(row.scopes.some((sc) => sc.target.type === "rebind-declaration"), JSON.stringify(row.scopes.map((sc) => sc.target.type)));
+    if (scaled.length > 0) await waitRow(cdp, ROW, (now) => now.steps >= 2, "the applied row steps");
+    const reference = await copyFromOutline(cdp);
+    assert.ok(reference.includes(choice), "the reference names the token");
+    await clickAction(cdp, "undo");
+    await waitReport(cdp, "undo", FINAL, 40000);
+    assert.equal(sha(BADGE_CSS()), before, "undo restored the exact bytes");
+    return `70% → ${choice} (${applied.status})`;
+  });
+
+  await check("17.7 in an English interface the literal row, its picker and a staged tokenization are in English", async () => {
+    await clearDrafts(cdp);
+    await patchIndex(cdp, (json) => {
+      json.locale = "en";
+    });
+    try {
+      await loadActive(cdp, STORY.ribbonHorizontal);
+      assert.equal(await inPreview(cdp, `return w.__CODE_LAYER__.index.locale`), "en");
+      await traceOf(cdp, RIBBON_ROOT, { fresh: true });
+      const row = await waitRow(cdp, "margin", (now) => now.editable === "true", "editable literal row");
+      assert.match(row.title, /A literal value; it can be replaced by a token/);
+      assert.match(row.text, /no token/);
+      const open = await openRow(cdp, "margin");
+      await waitRow(cdp, "margin", (now) => now.picker === "confirmed", "picker confirmed");
+      const pop = await inManager(cdp, `return document.querySelector(${JSON.stringify(popSelector("margin"))}).textContent`);
+      assert.doesNotMatch(pop, CJK, pop.slice(0, 400));
+      assert.match(pop, /Literal value: 0; pick a token to replace it/);
+      assert.match(pop, /Usual for this property/);
+      assert.match(pop, /same value/);
+      const keyword = await openRow(cdp, "inlineSize");
+      assert.doesNotMatch(keyword.popText, CJK, keyword.popText);
+      await openRow(cdp, "margin");
+      await waitRow(cdp, "margin", (now) => now.picker === "confirmed", "picker confirmed again");
+      const options = await pickerOptions(cdp, "margin");
+      await clickIn(cdp, `[data-code-layer-picker="margin"] [data-token="${options[0].token}"]`);
+      const staged = await waitDrafts(cdp, (list) => list.length === 1, "staged");
+      assert.doesNotMatch(staged[0].text + staged[0].title, CJK, staged[0].text + staged[0].title);
+      const panel = await panelText(cdp);
+      assert.doesNotMatch(panel, CJK, panel.slice(0, 600));
+      await clickAction(cdp, "discard");
+      return `${open.title}; ${staged[0].text}`;
+    } finally {
+      await patchIndex(cdp, null);
+    }
+  });
+
+  await check("17.8 a re-bind to a token of the same value is written but not observable: only a tokenization reads as the look unchanged", async () => {
+    await clearDrafts(cdp);
+    await loadActive(cdp, STORY.hanko);
+    await clickBadge(cdp);
+    await waitTitle(cdp, "Badge Seal / hanko");
+    const before = governedHashes();
+    // The hanko text color, re-bound to another token that resolves to the same color.
+    await openRow(cdp, "color");
+    await waitRow(cdp, "color", (now) => now.picker === "confirmed", "picker confirmed");
+    const tokenName = await inPreview(cdp, `return w.__CODE_LAYER__.lastTrace.rows.find((r) => r.id === "color")?.tokenName ?? null`);
+    const options = await inManager(cdp, `return [...document.querySelectorAll('[data-code-layer-picker="color"] [data-token]')].map((e) => ({ token: e.getAttribute("data-token"), current: e.getAttribute("data-current") === "true" }))`);
+    const values = await inPreview(cdp, `const cs = getComputedStyle(d.documentElement); return Object.fromEntries(${JSON.stringify([tokenName, ...options.map((o) => o.token)])}.map((n) => [n, cs.getPropertyValue(n).trim().toLowerCase()]))`);
+    const pick = options.find((o) => !o.current && o.token !== tokenName && values[o.token] && values[o.token] === values[tokenName]);
+    assert.ok(pick, `a token with the value of ${tokenName} (${values[tokenName]}) among ${JSON.stringify(values)}`);
+    await clickIn(cdp, `[data-code-layer-picker="color"] [data-token="${pick.token}"]`);
+    await waitDrafts(cdp, (list) => list.length === 1 && ["previewing", "no-visible-effect"].includes(list[0].status), "re-bind staged");
+    await clickAction(cdp, "apply");
+    const report = await waitReport(cdp, "apply", ["verified", "verified-same", "mismatch", "timeout", "written-not-observable"], 40000);
+    assert.equal(report.status, "written-not-observable", report.text);
+    assert.deepEqual(report.items, ["written-not-observable"]);
+    assert.match(report.text, /此頁看不到效果/);
+    assert.doesNotMatch(report.text, /外觀不變/);
+    assert.notDeepEqual(governedHashes(), before, "the re-bind was written");
+    await clickAction(cdp, "undo");
+    await waitReport(cdp, "undo", ["verified", "verified-same", "mismatch", "timeout", "written-not-observable"], 40000);
+    assert.deepEqual(governedHashes(), before, "undo restored the exact bytes");
+    await waitPostApply();
+    return `${tokenName} → ${pick.token} (${values[pick.token]}): ${report.status}`;
+  });
+
+  await check("17.9 the stage left the project as it found it", async () => {
+    assert.deepEqual(governedHashes(), start);
+    const state = await serverState();
+    assert.deepEqual([state.undoStack.length, state.pendingDocs.length], [0, 0]);
+    return `${Object.keys(start).length} governed files unchanged`;
+  });
+}
 
 async function stage16(cdp) {
   const start = governedHashes();
@@ -3519,6 +3957,7 @@ async function main() {
     if (stages.includes(14)) await stage14(cdp, chrome);
     if (stages.includes(15)) await stage15(cdp, chrome);
     if (stages.includes(16)) await stage16(cdp, chrome);
+    if (stages.includes(17)) await stage17(cdp, chrome);
   } finally {
     cdp.close();
     await chrome.close();

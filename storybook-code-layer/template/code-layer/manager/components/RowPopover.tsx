@@ -4,7 +4,7 @@ import { t, tCode, tMaybe } from "../../shared/i18n";
 import { fieldLabel, prettyToken, rowLabel, scopeLabel, shortToken, sideGlyph } from "../../shared/labels";
 import { opTo, type ElementTrace, type IndexJson, type RowScope, type RowTrace } from "../../shared/protocol";
 import { cancelScopeConfirm, chooseScope, previewTransient, requestProbe, requestScope, selectDescriptor, stageDraft } from "../actions";
-import { candidatesFor, currentScope, draftOfRow, rowKey, scaleFor } from "../drafts";
+import { candidatesFor, currentScope, draftOfRow, literalCandidates, rowKey, scaleFor } from "../drafts";
 import { CheckIcon, CloseIcon, MinusIcon, PlusIcon } from "../icons";
 import { store, useStore } from "../store";
 import { Button, DevBlock, IconButton, LinkButton, Note, Option, Options, PopHead, PopTitle, Search, Segment, Segmented, StepRow, Swatch, Warn } from "../styles";
@@ -91,7 +91,9 @@ export function RowPopover({ trace, row, index, editable: modeEditable, dev, onC
         </Note>
       ) : null}
 
-      {!row.readOnly && row.scopes.length > 0 && !row.layout ? (
+      {!row.readOnly && row.literal && scope ? <Note data-code-layer-impact>{t("reach.impact", { components: scope.impact.components })}</Note> : null}
+      {/* A literal has one scope, the declaration: there is nothing to switch between. */}
+      {!row.readOnly && row.scopes.length > 0 && !row.layout && !row.literal ? (
         <div data-code-layer-scopes>
           <Segmented role="radiogroup" aria-label={t("reach.title")}>
             {row.scopes.map((option) => {
@@ -155,7 +157,7 @@ export function RowPopover({ trace, row, index, editable: modeEditable, dev, onC
       ) : null}
 
       {editable && scope && row.layout ? <LayoutOptions trace={trace} row={row} scope={scope} onClose={onClose} /> : null}
-      {editable && scope && boundToken && !row.layout ? <TokenList trace={trace} row={row} scope={scope} index={index} currentToken={boundToken} onClose={onClose} /> : null}
+      {editable && scope && (boundToken || row.literal) && !row.layout ? <TokenList trace={trace} row={row} scope={scope} index={index} currentToken={boundToken ?? ""} onClose={onClose} /> : null}
 
       {dev ? (
         <DevBlock data-code-layer-dev>
@@ -213,7 +215,9 @@ function TokenList({ trace, row, scope, index, currentToken, onClose }: ListProp
     };
   }, [trace.traceId, row.id, scope.id]);
 
-  const all = useMemo(() => candidatesFor(row, scope, index), [row, scope, index]);
+  const all = useMemo(() => candidatesFor(row, scope, index, tokenValues), [row, scope, index, tokenValues]);
+  // A literal row: which of the three groups each candidate is in, and whether its value equals the literal.
+  const marks = useMemo(() => new Map(literalCandidates(row, scope, index, tokenValues).map((entry) => [entry.token.name, entry] as const)), [row, scope, index, tokenValues]);
   const list = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return all;
@@ -255,6 +259,7 @@ function TokenList({ trace, row, scope, index, currentToken, onClose }: ListProp
 
   return (
     <div data-code-layer-picker={row.id} data-scope={scope.id} data-probe={probe ?? "pending"} style={{ display: "flex", flexDirection: "column", minHeight: 0 }}>
+      {row.literal ? <Note data-code-layer-literal={row.literal.text}>{t("picker.literalHead", { value: row.literal.text })}</Note> : null}
       <Search
         ref={input}
         value={query}
@@ -272,7 +277,15 @@ function TokenList({ trace, row, scope, index, currentToken, onClose }: ListProp
         {list.map((token, i) => {
           const value = tokenValues[token.name] ?? token.resolvedValue ?? "";
           const isCurrent = token.name === currentToken;
-          return (
+          const mark = marks.get(token.name);
+          const previous = i > 0 ? marks.get(list[i - 1].name) : undefined;
+          const heading = mark && mark.group !== previous?.group ? (
+            <Note key={`group-${mark.group}`} role="presentation" data-code-layer-candidate-group={mark.group}>
+              {t(`picker.group${mark.group}` as "picker.group1")}
+            </Note>
+          ) : null;
+          return [
+            heading,
             <Option
               key={token.name}
               role="option"
@@ -284,6 +297,8 @@ function TokenList({ trace, row, scope, index, currentToken, onClose }: ListProp
               data-token={token.name}
               data-tier={token.tier ?? ""}
               data-current={isCurrent ? "true" : "false"}
+              data-group={mark?.group ?? ""}
+              data-same={mark?.same ? "true" : "false"}
               onMouseMove={() => {
                 if (hovered.current === token.name) return;
                 hovered.current = token.name;
@@ -296,9 +311,9 @@ function TokenList({ trace, row, scope, index, currentToken, onClose }: ListProp
             >
               {token.kind === "color" ? <Swatch color={value} /> : isCurrent ? <CheckIcon /> : <span />}
               <span>{prettyToken(token.name, prefix, trace.componentId)}</span>
-              <span>{token.kind === "color" && isCurrent ? "✓" : value}</span>
-            </Option>
-          );
+              <span>{token.kind === "color" && isCurrent ? "✓" : mark?.same ? `${value} · ${t("picker.sameValue")}` : value}</span>
+            </Option>,
+          ];
         })}
         {list.length === 0 ? <Note>{t("picker.empty")}</Note> : null}
       </Options>

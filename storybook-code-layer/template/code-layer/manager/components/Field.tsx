@@ -142,10 +142,12 @@ export function Field({ trace, row, index, editable: modeEditable }: Props) {
       : conflict
         ? tMaybe(status?.message ?? "", status?.params) ?? t("draft.status.conflict")
         : draft
-          ? row.layout
+          ? row.layout || row.literal
             ? t("row.originalValue", { value: opFrom(draft.op) || t("layout.unset") })
             : t("row.original", { token: prettyToken(opFrom(draft.op), prefix, trace.componentId) })
-          : layoutDefault
+          : row.literal
+            ? t("row.literalHint")
+            : layoutDefault
             ? t("layout.default")
             : inherited
               ? t("pop.inherited", { label: inherited.label ?? "" })
@@ -193,8 +195,18 @@ export function Field({ trace, row, index, editable: modeEditable }: Props) {
             <LayoutIcon property={row.layout.property} keyword={layoutKeyword} flow={row.layout.property === "flex-direction" ? { ...flowOf(trace, row), direction: layoutKeyword } : flowOf(trace, row)} size={12} />
             <span>{layoutLabel(row.layout.property, layoutKeyword, row.layout.property === "flex-direction" ? { ...flowOf(trace, row), direction: layoutKeyword } : flowOf(trace, row))}</span>
           </TokenPill>
+        ) : row.literal && !pill ? (
+          // A literal: its value, and a mark that no token is bound where the token would be.
+          <>
+            {isColor && value ? <Swatch color={value} /> : null}
+            <ValueText data-code-layer-value>{value}</ValueText>
+            <TokenPill tone="muted" data-code-layer-unbound title={t("row.literalHint")}>
+              <span>{t("row.unbound")}</span>
+            </TokenPill>
+          </>
         ) : pill ? (
           <>
+            {row.literal && draft ? <ValueText data-code-layer-replaces>{`${row.literal.text} →`}</ValueText> : null}
             {isColor ? null : <ValueText data-code-layer-value>{value}</ValueText>}
             <TokenPill tone={draft || step ? "staged" : editable ? "token" : "muted"} title={`${shownToken}${value ? ` = ${value}` : ""}`}>
               {isColor && value ? <Swatch color={value} /> : null}

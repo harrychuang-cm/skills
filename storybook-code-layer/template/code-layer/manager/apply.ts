@@ -2,6 +2,7 @@
 // in the panel. The preview measures and verifies; the server writes.
 import type { PairingEntry } from "../shared/pairing.mjs";
 import { EVENTS, type Draft, type Envelope, type IndexJson } from "../shared/protocol";
+import { tokenizeComponent } from "../shared/literals.mjs";
 import { normalizeValue, replaceComponent, replaceVarName } from "../shared/value-refs.mjs";
 import { refreshServer, settle } from "./actions";
 import { getJson, postJson } from "./api";
@@ -115,6 +116,18 @@ export function buildApplyBatch(drafts: Draft[], index: IndexJson) {
         }
       }
       return { id, type: op.type, file: op.file, rule: locator, declaration: { property: op.property }, component: op.component, fromKeyword: op.fromKeyword, toKeyword: op.toKeyword, before: { value: values.before }, after: { value: values.after }, reason };
+    }
+    if (op.type === "tokenize-literal") {
+      // The literal is only compared with the file by the server; what it writes is var() and the token's name.
+      let values = { before: draft.before, after: draft.after };
+      if (declared != null) {
+        try {
+          values = { before: declared, after: tokenizeComponent(declared, op.component, op.literal, op.toToken) };
+        } catch {
+          // the server answers that the source changed
+        }
+      }
+      return { id, type: op.type, file: op.file, rule: locator, declaration: { property: op.property }, component: op.component, literal: op.literal, toToken: op.toToken, before: { value: values.before }, after: { value: values.after }, reason };
     }
     const values = currentValues(declared ?? null, op.refIndex, draft);
     return {

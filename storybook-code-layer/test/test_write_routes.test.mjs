@@ -372,3 +372,20 @@ test("GET /applies/:id reports a transaction, including its post-apply round onc
     ctx.server.close();
   }
 });
+
+test("write routes refuse the operation that restores a literal: only a reverse apply builds it", async () => {
+  const ctx = await start();
+  const css = path.join(ctx.ws, "sb/src/components/seal/Seal.css");
+  const before = sha(css);
+  try {
+    const token = (await call(ctx.port, { method: "GET", path: "/session" })).json.session;
+    const operations = [{ id: "op-1", type: "restore-literal", file: "src/components/seal/Seal.css", rule: { ordinal: 0, selector: ".fx-seal", atRules: [], occurrence: 0 }, declaration: { property: "background" }, component: 0, fromToken: "--fx-comp-seal-container-color", literal: "red", before: { value: "var(--fx-comp-seal-container-color)" }, after: { value: "red" } }];
+    for (const route of ["/validate", "/apply"]) {
+      const response = await call(ctx.port, { path: route, body: { schemaVersion: 1, batchId: `restore-${route.slice(1)}`, indexRevision: "sha256:test", operations }, session: token });
+      assert.deepEqual([response.status, response.json.error?.code], [400, "schema-invalid"], route);
+    }
+    assert.equal(sha(css), before);
+  } finally {
+    await new Promise((resolve) => ctx.server.close(resolve));
+  }
+});

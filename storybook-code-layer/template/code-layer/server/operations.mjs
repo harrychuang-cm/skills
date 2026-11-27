@@ -2,10 +2,12 @@
 // Every decision uses an index built fresh from disk inside the transaction.
 import { ApiError, ID_PATTERN, INTERNAL_OPERATION_TYPES, OPERATION_TYPES, TOKEN_NAME_PATTERN } from "../shared/api-contract.mjs";
 import { isRebindTarget } from "../shared/candidates.mjs";
-import { kindsCompatible } from "../shared/kinds.mjs";
+import { inferKind, kindsCompatible } from "../shared/kinds.mjs";
 import { KEYWORD_PATTERN, isFlexDisplay, isLayoutKeyword, isLayoutProperty, settersOf } from "../shared/layout.mjs";
+import { LITERAL_KINDS, restoreComponent, tokenizeComponent } from "../shared/literals.mjs";
+import { kindsOfSlot } from "../shared/property-table.mjs";
 import { SUPPORTED_FLOWS, sidesOf } from "../shared/sides.mjs";
-import { normalizeValue, replaceComponent, replaceVarName } from "../shared/value-refs.mjs";
+import { normalizeValue, replaceComponent, replaceVarName, splitTopLevel } from "../shared/value-refs.mjs";
 import { walkStyleRules } from "./css-index.mjs";
 import { readCssSource } from "./css-source.mjs";
 import { planInsertion } from "./patcher.mjs";
@@ -14,6 +16,8 @@ import { planInsertion } from "./patcher.mjs";
 const MAX_REF_INDEX = 63;
 
 const LAYOUT_TYPES = ["set-keyword", "add-declaration", "remove-declaration"];
+/** A literal component replaced by a token, and (server only) the literal put back. */
+const LITERAL_TYPES = ["tokenize-literal", "restore-literal"];
 const PROPERTY_PATTERN = /^-{0,2}[a-z][a-z0-9-]*$/;
 
 function fail(code, message, details) {
@@ -89,6 +93,26 @@ function validateLayoutOperation(op, where, limits) {
   validateReason(op, where, limits);
 }
 
+/** The literal operations: a literal component replaced by a token, and (server only) the literal put back. */
+function validateLiteralOperation(op, where, limits) {
+  if (op.type === "tokenize-literal") {
+    exactKeys(op, ["id", "type", "file", "rule", "declaration", "component", "literal", "toToken", "before", "after"], ["reason"], where);
+    string(op.toToken, `${where}.toToken`, limits, TOKEN_NAME_PATTERN);
+  } else {
+    exactKeys(op, ["id", "type", "file", "rule", "declaration", "component", "fromToken", "literal", "before", "after"], [], where);
+    string(op.fromToken, `${where}.fromToken`, limits, TOKEN_NAME_PATTERN);
+  }
+  integer(op.component, `${where}.component`);
+  if (op.component > MAX_REF_INDEX) fail("schema-invalid", `${where}.component is too large`);
+  string(op.literal, `${where}.literal`, limits);
+  exactKeys(op.before, ["value"], ["fileHash"], `${where}.before`);
+  string(op.before.value, `${where}.before.value`, limits);
+  exactKeys(op.after, ["value"], [], `${where}.after`);
+  string(op.after.value, `${where}.after.value`, limits);
+  validateRule(op, where, limits);
+  validateReason(op, where, limits);
+}
+
 /**
  * Exact-key validation of an apply / validate body. `internal` is set only
  * for a batch the server built itself (a reverse apply): it may carry the
@@ -116,6 +140,13 @@ export function validateBatch(body, limits, { internal = false } = {}) {
       if (ids.has(op.id)) fail("schema-invalid", `${where}.id is duplicated`);
       ids.add(op.id);
       validateLayoutOperation(op, where, limits);
+      return;
+    }
+    if (LITERAL_TYPES.includes(op.type)) {
+      string(op.id, `${where}.id`, limits, ID_PATTERN);
+      if (ids.has(op.id)) fail("schema-invalid", `${where}.id is duplicated`);
+      ids.add(op.id);
+      validateLiteralOperation(op, where, limits);
       return;
     }
     const common = ["id", "type", "fromToken", "toToken", "before", "after"];
@@ -229,15 +260,30 @@ export function resolveOperations(batch, { config, postcss, index, internal = fa
     return { file, rule, entry, ruleNode, locator: { ordinal: rule.ordinal, selector: rule.selector, atRules: rule.atRules, occurrence: rule.occurrence } };
   };
 
-  /** Which layout slot a component of a declaration sets, the same under every writing mode; null when it sets none or several. */
-  const layoutSlotOf = (decl, component) => {
+  /** The components of a declaration as sidesOf reads them: a reference carries the kind of the token it names, as in the preview. */
+  const sideComponents = (decl) =>
+    decl.components.map((c) => {
+      if (c.refIndex === null || c.refIndex === undefined) return { text: c.text };
+      const ref = decl.refs.find((r) => r.refIndex === c.refIndex);
+      return { text: c.text, kind: ref && c.shape === "single-var" ? index.tokenIndex.tokens.get(ref.name)?.kind ?? "unknown" : "unknown" };
+    });
+
+  /** Every slot a component of a declaration sets under the supported writing modes; null when that cannot be told. */
+  const slotSetOf = (decl, component) => {
+    const parts = sideComponents(decl);
     const slots = new Set();
     for (const { writingMode, direction } of SUPPORTED_FLOWS) {
-      const result = sidesOf(decl.property, decl.components.map((c) => ({ text: c.text })), writingMode, direction);
+      const result = sidesOf(decl.property, parts, writingMode, direction);
       if (!result.ok) return null;
       for (const entry of result.slots) if (entry.component === component) slots.add(entry.slot);
     }
-    return slots.size === 1 ? [...slots][0] : null;
+    return slots;
+  };
+
+  /** Which layout slot a component of a declaration sets, the same under every writing mode; null when it sets none or several. */
+  const layoutSlotOf = (decl, component) => {
+    const slots = slotSetOf(decl, component);
+    return slots && slots.size === 1 ? [...slots][0] : null;
   };
 
   const resolveLayout = (op, where) => {
@@ -321,10 +367,87 @@ export function resolveOperations(batch, { config, postcss, index, internal = fa
     results.push({ ...base, line, before: null, after: op.toKeyword, slot: property, fromKeyword: null, toKeyword: op.toKeyword, inserted: plan.text });
   };
 
+  /** Every slot a component of a declaration sets under any supported writing mode; null when that cannot be told. */
+  const slotsOfComponent = (decl, component) => {
+    const slots = slotSetOf(decl, component);
+    return slots && slots.size > 0 ? [...slots] : null;
+  };
+
+  /** A literal written back by a reverse apply must still be one plain component: no reference, no structure. */
+  const singleLiteral = (text) => {
+    const parts = splitTopLevel(text);
+    return parts.length === 1 && !parts[0].separator && parts[0].text === text && !/var\(|[;{}!]|\/\*/i.test(text);
+  };
+
+  const resolveLiteral = (op, where) => {
+    const property = op.declaration.property;
+    const { file, rule, entry, ruleNode, locator } = locateRule(op, where);
+    const base = { id: op.id, type: op.type, file: file.devId, mirror: null, cssFile: file.file, rule: locator, property };
+    const matching = rule.declarations.filter((d) => d.property === property);
+    const decl = matching[matching.length - 1];
+    if (!decl) fail("locator-mismatch", `${where}: ${property} is not declared in ${rule.selector}`);
+    if (decl.duplicateInRule) fail("unsupported-value-shape", `${where}: ${property} is declared more than once in its rule`);
+    if (decl.important) fail("unsupported-value-shape", `${where}: !important declarations are not supported`);
+    // A value that is one reference (after a tokenization of a lone literal) is a shape a restore can work on.
+    if (!["raw", "var-list", "single-var"].includes(decl.shape) || decl.components.some((c) => c.shape === "separator")) {
+      fail("unsupported-value-shape", `${where}: ${property} has a value with a top-level comma, slash or expression`, { shape: decl.shape });
+    }
+    const component = decl.components[op.component];
+    if (!component) fail("unsupported-value-shape", `${where}: ${property} has no component ${op.component}`);
+    if (component.overridden || decl.overriddenInRule) fail("unsupported-value-shape", `${where}: the declaration is overridden inside its rule`);
+    const before = normalizeValue(op.before.value);
+    const declNode = (ruleNode.nodes ?? []).filter((n) => n.type === "decl")[decl.index];
+    if (!declNode || declNode.prop !== property) fail("locator-mismatch", `${where}: the declaration moved`);
+    const key = `component:${file.file}#${rule.ordinal}#${decl.index}#${op.component}`;
+
+    if (op.type === "restore-literal") {
+      // The inverse of a tokenization: the component must still be exactly the reference it wrote.
+      if (component.shape !== "single-var" || component.text !== `var(${op.fromToken})` || decl.value !== before) {
+        fail("stale-before", `${where}: component ${op.component} of ${property} no longer holds var(${op.fromToken})`, { actual: decl.value });
+      }
+      if (!singleLiteral(op.literal)) fail("unsupported-value-shape", `${where}: the recorded literal is not a single plain component`);
+      const expectedAfter = restoreComponent(before, op.component, op.fromToken, op.literal);
+      if (normalizeValue(op.after.value) !== expectedAfter) fail("after-value-mismatch", `${where}: after.value should be ${expectedAfter}`);
+      if (targets.has(key)) fail("duplicate-target", `${where}: the component is targeted twice`);
+      targets.add(key);
+      entry.edits.push({ kind: "restore", decl: declNode, component: op.component, fromText: `var(${op.fromToken})`, toText: op.literal, opId: op.id });
+      results.push({ ...base, line: declNode.source.start.line, before, after: expectedAfter, component: op.component, literal: op.literal, fromToken: op.fromToken, toToken: null });
+      return;
+    }
+
+    if (component.shape !== "raw") fail("unsupported-value-shape", `${where}: component ${op.component} of ${property} holds a reference`, { shape: component.shape });
+    const literalKind = inferKind(component.text);
+    if (literalKind === "keyword" || !LITERAL_KINDS.has(literalKind)) {
+      fail("unsupported-value-shape", `${where}: component ${op.component} of ${property} is not a literal that can take a token (${literalKind})`, { kind: literalKind });
+    }
+    if (decl.value !== before || component.text !== op.literal) fail("stale-before", `${where}: the declaration is now ${decl.value}`, { actual: decl.value });
+    const to = designToken(index, op.toToken, where);
+    if (to.tier === "ref") fail("tier-rule", `${where}: component CSS must not reference ref tokens`);
+    if (to.tier === "comp" && !to.name.startsWith(`--${prefix}-comp-${file.componentId}-`)) fail("foreign-comp-token", `${where}: ${to.name} belongs to another component`);
+    // A literal has no old token to compare kinds with: every side or sub-property it sets must accept the token's kind.
+    const slots = slotsOfComponent(decl, op.component);
+    if (!slots) fail("unsupported-value-shape", `${where}: which sides component ${op.component} of ${property} sets cannot be told`);
+    for (const slot of slots) {
+      const kinds = kindsOfSlot(slot);
+      if (kinds === null) fail("unsupported-value-shape", `${where}: ${slot} is not a property of the inspector's table`, { slot });
+      if (!kinds.includes(to.kind)) fail("type-mismatch", `${where}: ${to.name} (${to.kind}) cannot set ${slot}`, { slot, kind: to.kind, accepted: kinds });
+    }
+    const expectedAfter = tokenizeComponent(before, op.component, op.literal, to.name);
+    if (normalizeValue(op.after.value) !== expectedAfter) fail("after-value-mismatch", `${where}: after.value should be ${expectedAfter}`);
+    if (targets.has(key)) fail("duplicate-target", `${where}: the component is targeted twice`);
+    targets.add(key);
+    entry.edits.push({ kind: "tokenize", decl: declNode, component: op.component, fromText: op.literal, toText: `var(${to.name})`, opId: op.id });
+    results.push({ ...base, line: declNode.source.start.line, before, after: expectedAfter, component: op.component, literal: op.literal, fromToken: null, toToken: to.name, slots });
+  };
+
   for (const op of batch.operations) {
     const where = `operation ${op.id}`;
     if (LAYOUT_TYPES.includes(op.type)) {
       resolveLayout(op, where);
+      continue;
+    }
+    if (LITERAL_TYPES.includes(op.type)) {
+      resolveLiteral(op, where);
       continue;
     }
     if (op.fromToken === op.toToken) fail("no-op", `${where}: nothing to change`);
@@ -437,6 +560,9 @@ export function resolveOperations(batch, { config, postcss, index, internal = fa
       rule: { ordinal: rule.ordinal, selector: rule.selector, atRules: rule.atRules, occurrence: rule.occurrence },
       property: decl.property,
       refIndex,
+      // The position of the reference among the top-level components: unlike refIndex, it does not move
+      // when a tokenization in the same batch adds a reference earlier in the value.
+      component: decl.components.indexOf(component),
       fromToken: op.fromToken,
       toToken: to.name,
     });

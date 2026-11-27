@@ -208,3 +208,129 @@ test("real files: patch every var() name and patch it back, byte-exact", () => {
   assert.equal(componentRefs, 162, "162 var() references in component CSS");
   assert.equal(tokenDecls, 102, "102 comp token declarations");
 });
+
+// ---- literal components: tokenize and restore (add-code-layer-tokenize-literals) ----------
+
+const { proveReparse } = await addon("server/patcher.mjs");
+const { splitTopLevel } = await addon("shared/value-refs.mjs");
+const { inferKind } = await addon("shared/kinds.mjs");
+const { LITERAL_KINDS } = await addon("shared/literals.mjs");
+const { kindsOfSlot } = await addon("shared/property-table.mjs");
+const { SUPPORTED_FLOWS, sidesOf } = await addon("shared/sides.mjs");
+
+/** Literal edits on one stylesheet in memory: { prop, selector, kind, component, from, to } or a name edit { prop, refIndex, from, to }. */
+function literalPatch(bytes, specs) {
+  const source = sourceFromBytes(bytes);
+  const root = postcss.parse(source.text);
+  const edits = specs.map((s, i) =>
+    s.kind ? { kind: s.kind, decl: findDecl(root, s.prop, s.selector), component: s.component, fromText: s.from, toText: s.to, opId: `op-${i}` } : { decl: findDecl(root, s.prop, s.selector), refIndex: s.refIndex ?? 0, fromName: s.from, toName: s.to, opId: `op-${i}` },
+  );
+  return patchFile(postcss, source, root, edits);
+}
+
+/** The expected new bytes, computed without the patcher: the one occurrence of `marker` holds the bytes to replace at `offset`. */
+function splice(bytes, marker, offset, from, to) {
+  const at = bytes.indexOf(Buffer.from(marker, "utf8"));
+  assert.ok(at >= 0 && bytes.indexOf(Buffer.from(marker, "utf8"), at + 1) === -1, `${marker} occurs once`);
+  const start = at + Buffer.byteLength(marker.slice(0, offset), "utf8");
+  assert.equal(bytes.subarray(start, start + Buffer.byteLength(from)).toString("utf8"), from);
+  return Buffer.concat([bytes.subarray(0, start), Buffer.from(to, "utf8"), bytes.subarray(start + Buffer.byteLength(from))]);
+}
+
+test("tokenizing a literal replaces only its bytes: beside a comment, with a BOM, CRLF, non-ASCII text and a value over several lines", () => {
+  const cases = [
+    { name: "a comment beside it", text: ".a {\n  padding: 8px /* tight */ 16px;\n}\n", marker: "padding: 8px", offset: 9, prop: "padding", component: 0, from: "8px" },
+    { name: "a BOM", text: ".a {\n  margin: 0 12px;\n}\n", bom: true, marker: "margin: 0 12px", offset: 10, prop: "margin", component: 1, from: "12px" },
+    { name: "CRLF", text: ".a {\r\n  margin: 0 12px;\r\n  color: red;\r\n}\r\n", marker: "margin: 0 12px", offset: 8, prop: "margin", component: 0, from: "0" },
+    { name: "non-ASCII text before it", text: "/* 印章：昭和 */\n.a {\n  border: 1px solid #000; /* 黑框 */\n}\n", marker: "solid #000", offset: 6, prop: "border", component: 2, from: "#000" },
+    { name: "a value over several lines", text: ".a {\n  margin:\n    0\n    12px;\n}\n", marker: "    12px", offset: 4, prop: "margin", component: 1, from: "12px" },
+  ];
+  for (const c of cases) {
+    const bytes = Buffer.concat([c.bom ? Buffer.from([0xef, 0xbb, 0xbf]) : Buffer.alloc(0), Buffer.from(c.text, "utf8")]);
+    const result = literalPatch(bytes, [{ kind: "tokenize", prop: c.prop, component: c.component, from: c.from, to: "var(--fx-sys-spacing-sm)" }]);
+    assert.ok(result.newBytes.equals(splice(bytes, c.marker, c.offset, c.from, "var(--fx-sys-spacing-sm)")), `${c.name}: only the literal's bytes changed`);
+    // And back: the recorded literal restores the original bytes exactly.
+    const back = literalPatch(result.newBytes, [{ kind: "restore", prop: c.prop, component: c.component, from: "var(--fx-sys-spacing-sm)", to: c.from }]);
+    assert.ok(back.newBytes.equals(bytes), `${c.name}: tokenizing and restoring gives back the file`);
+  }
+});
+
+test("two edits on one declaration: a tokenized literal and a re-bound reference", () => {
+  const bytes = Buffer.from(".a {\n  margin: 0 var(--fx-sys-spacing-xs);\n}\n", "utf8");
+  const result = literalPatch(bytes, [
+    { kind: "tokenize", prop: "margin", component: 0, from: "0", to: "var(--fx-sys-spacing-sm)" },
+    { prop: "margin", refIndex: 0, from: "--fx-sys-spacing-xs", to: "--fx-sys-spacing-md" },
+  ]);
+  assert.equal(result.newText, ".a {\n  margin: var(--fx-sys-spacing-sm) var(--fx-sys-spacing-md);\n}\n");
+  assert.equal(result.spans.length, 2);
+});
+
+test("what a literal edit may write is checked, and a change of structure fails the proof", () => {
+  const bytes = Buffer.from(".a {\n  margin: 0 12px;\n}\n", "utf8");
+  const refused = (spec, code) => assert.throws(() => literalPatch(bytes, [spec]), (e) => e instanceof PatchError && e.code === code, JSON.stringify(spec));
+  refused({ kind: "tokenize", prop: "margin", component: 1, from: "12px", to: "var(--a, 4px)" }, "unsupported-value-shape");
+  refused({ kind: "tokenize", prop: "margin", component: 1, from: "12px", to: "12px; color: red" }, "unsupported-value-shape");
+  refused({ kind: "tokenize", prop: "margin", component: 1, from: "13px", to: "var(--a)" }, "locator-mismatch");
+  const tokenized = Buffer.from(".a {\n  margin: 0 var(--a);\n}\n", "utf8");
+  for (const literal of ["12px; color: red", "8px 8px", "var(--b)", "1px /* x */", "a{b}"]) {
+    assert.throws(() => literalPatch(tokenized, [{ kind: "restore", prop: "margin", component: 1, from: "var(--a)", to: literal }]), (e) => e instanceof PatchError && e.code === "unsupported-value-shape", literal);
+  }
+  // Injected past the checks: text that adds a declaration changes the node count, and the re-parse proof fails.
+  const text = bytes.toString("utf8");
+  const root = postcss.parse(text);
+  const decl = findDecl(root, "margin");
+  const start = text.indexOf("12px");
+  const injected = `${text.slice(0, start)}12px; color: red${text.slice(start + 4)}`;
+  const span = { kind: "tokenize", decl, fromName: "12px", toName: "12px; color: red", start, end: start + 4, valueStart: text.indexOf("0 12px"), line: 2 };
+  assert.throws(() => proveReparse(postcss, root, injected, [span]), (e) => e instanceof PatchError && e.code === "proof-failed");
+});
+
+test("every literal component of the trial ground's component stylesheets tokenizes and restores in memory to the same bytes", () => {
+  const project = testProject();
+  const componentsDir = path.join(project, "src", "components");
+  const files = [];
+  const walk = (dir) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (entry.name.endsWith(".css")) files.push(full);
+    }
+  };
+  walk(componentsDir);
+  assert.ok(files.length > 0, "the trial ground has component stylesheets");
+  let tried = 0;
+  for (const file of files) {
+    const bytes = fs.readFileSync(file);
+    const source = sourceFromBytes(bytes);
+    const root = postcss.parse(source.text);
+    root.walkDecls((decl) => {
+      const raw = decl.raws.value?.raw ?? decl.value;
+      const parts = splitTopLevel(raw);
+      if (parts.some((p) => p.separator)) return;
+      parts.forEach((part, component) => {
+        if (/var\(/i.test(part.text) || !LITERAL_KINDS.has(inferKind(part.text))) return;
+        // Only components that set a property of the inspector's table.
+        const slots = new Set();
+        for (const { writingMode, direction } of SUPPORTED_FLOWS) {
+          const sides = sidesOf(decl.prop, parts.map((p) => p.text), writingMode, direction);
+          if (!sides.ok) return;
+          for (const entry of sides.slots) if (entry.component === component) slots.add(entry.slot);
+        }
+        if (slots.size === 0 || [...slots].some((slot) => kindsOfSlot(slot) === null)) return;
+        const selector = decl.parent.selector;
+        const edit = (kind, from, to) => ({ kind, decl, component, fromText: from, toText: to, opId: "op" });
+        const forward = patchFile(postcss, source, root, [edit("tokenize", part.text, "var(--code-layer-probe)")]);
+        const forwardRoot = postcss.parse(forward.newText);
+        let target = null;
+        forwardRoot.walkDecls(decl.prop, (d) => {
+          if (d.parent.selector === selector && d.source.start.line === decl.source.start.line) target = d;
+        });
+        const back = patchFile(postcss, { bytes: forward.newBytes, text: forward.newText, hasBom: source.hasBom }, forwardRoot, [{ kind: "restore", decl: target, component, fromText: "var(--code-layer-probe)", toText: part.text, opId: "op" }]);
+        assert.ok(back.newBytes.equals(bytes), `${path.relative(project, file)}:${decl.source.start.line} ${decl.prop} [${component}] ${part.text}`);
+        tried += 1;
+      });
+    });
+  }
+  assert.ok(tried > 0, "at least one literal was tried");
+  console.log(`# trial ground: ${files.length} stylesheets, ${tried} literal components tokenized and restored in memory`);
+});

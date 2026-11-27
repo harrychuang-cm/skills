@@ -640,3 +640,40 @@ test("post-apply: commits that arrive while a round is running share one further
   assert.notEqual(reports[0].finishedAt, reports[1].finishedAt);
   assert.equal(engine.state().postApply.running, false);
 });
+
+// ---- a tokenized literal (add-code-layer-tokenize-literals) -------------------------------
+
+test("a tokenized literal leaves one pending entry for its declaration, never a search for the literal, and undo clears it", async () => {
+  const css = [
+    ".fx-box {",
+    "  max-inline-size: 70%;",
+    "  margin: 0 12px; /* 12px matches the old gutter */",
+    "}",
+    "",
+  ].join("\n");
+  const spec = ["# Box", "", "The box is at most 70% wide.", "", "| Part | Value |", "| --- | --- |", "| width | 70% |", "| gutter | 12px |", ""].join("\n");
+  const made = await makeWorkspace({ fixture: "v1", files: { "sb/src/components/box/Box.css": css, "design-system/components/box.md": spec }, config: GOVERNED });
+  assert.notEqual(made.config.governance.proseScan, false, "prose scanning is on, so the absence of mentions is meaningful");
+  const engine = createEngine({ config: made.config, postcss, log: quiet });
+  const rule = { ordinal: 0, selector: ".fx-box", atRules: [], occurrence: 0 };
+  const op = (id, property, component, literal, toToken, before, after) => ({ id, type: "tokenize-literal", file: "src/components/box/Box.css", rule, declaration: { property }, component, literal, toToken, before: { value: before }, after: { value: after } });
+  const applied = await engine.apply(
+    batch([
+      op("a", "max-inline-size", 0, "70%", "--fx-sys-size-icon", "70%", "var(--fx-sys-size-icon)"),
+      op("b", "margin", 1, "12px", "--fx-sys-spacing-md", "0 12px", "0 var(--fx-sys-spacing-md)"),
+    ]),
+  );
+  assert.deepEqual(
+    applied.pending.map((e) => [e.operation, e.kind, e.reason, e.property, e.oldValue, e.newValue, e.file, e.line]),
+    [
+      ["a", "declaration", "declaration-not-documented", "max-inline-size", "70%", "--fx-sys-size-icon", "sb/src/components/box/Box.css", 2],
+      ["b", "declaration", "declaration-not-documented", "margin", "12px", "--fx-sys-spacing-md", "sb/src/components/box/Box.css", 3],
+      ["b", "comment", "comment-on-rewritten-line", "margin", "12px", "--fx-sys-spacing-md", "sb/src/components/box/Box.css", 3],
+    ],
+  );
+  // The specification mentions 70% and 12px on several lines: none of them is listed.
+  assert.ok(!applied.pending.some((e) => e.file === "design-system/components/box.md"), JSON.stringify(applied.pending));
+  assert.equal(engine.state().pendingDocs.length, 3);
+  await engine.undo({ applyId: applied.applyId });
+  assert.equal(engine.state().pendingDocs.length, 0);
+});

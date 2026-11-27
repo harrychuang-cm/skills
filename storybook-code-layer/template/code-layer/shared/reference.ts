@@ -44,6 +44,10 @@ function rowNotes(row: RowTrace): string[] {
     const scope = row.scopes[0];
     const selector = scope.target.type === "rebind-token" ? "" : scope.target.selector;
     notes.push(t(scope.target.type === "add-declaration" ? "reference.layoutAdds" : "reference.layoutEdits", { selector, file: scope.writes.files[0], line: scope.writes.line, options: row.layout.options.join(" | ") }));
+  } else if (row.literal && row.scopes.length > 0) {
+    // A literal has no chain: it can be replaced by an existing token at its declaration.
+    const scope = row.scopes[0];
+    notes.push(t("reference.literal", { value: row.literal.text, file: scope.writes.files[0], line: scope.writes.line }));
   } else if (row.scopes.length > 0) {
     const scopes = row.scopes.map((scope) => {
       const name = scopeLabel(scope.id);

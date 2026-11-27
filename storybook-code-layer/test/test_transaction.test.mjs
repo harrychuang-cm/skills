@@ -719,3 +719,208 @@ test("the undo stack is the same after a restart, with reversed and skipped entr
   await restarted.undo({ applyId: a.applyId });
   assert.deepEqual(treeHashes(ws), treeHashes((await makeWorkspace({ fixture: "v1" })).ws));
 });
+
+// ---- tokenizing a literal (add-code-layer-tokenize-literals) ------------------------------
+
+const LIT = "sb/src/components/box/Box.css";
+const LIT_FILE = "src/components/box/Box.css";
+const LIT_CSS = [
+  "/* box — 寫死的數值 */",
+  ".fx-box {",
+  "  margin: 0 12px;",
+  "  max-inline-size: 70%;",
+  "  border: 1px solid #000;",
+  "  font-family: \"Fixture Display\", serif;",
+  "  inline-size: calc(100% - 16px);",
+  "  z-index: 1;",
+  "  padding: 8px !important;",
+  "  gap: 4px;",
+  "  gap: 6px;",
+  "}",
+  ".fx-box--mixed {",
+  "  margin: 0 var(--fx-sys-spacing-xs);",
+  "}",
+  ".fx-box--ruled {",
+  "  border: 1px solid var(--fx-sys-color-ink-strong);",
+  "}",
+  "",
+].join("\n");
+const LIT_RULES = { box: [0, ".fx-box"], mixed: [1, ".fx-box--mixed"], ruled: [2, ".fx-box--ruled"] };
+const litRule = (name) => ({ ordinal: LIT_RULES[name][0], selector: LIT_RULES[name][1], atRules: [], occurrence: 0 });
+const litFacts = (file) => {
+  const s = fs.statSync(file);
+  return { hash: crypto.createHash("sha256").update(fs.readFileSync(file)).digest("hex"), ino: s.ino, mtimeMs: s.mtimeMs };
+};
+function tokenizeOp(rule, property, component, literal, toToken, before, after, id = "op-1") {
+  return { id, type: "tokenize-literal", file: LIT_FILE, rule: litRule(rule), declaration: { property }, component, literal, toToken, before: { value: before }, after: { value: after } };
+}
+let litCounter = 0;
+const litBatch = (operations) => ({ schemaVersion: 1, batchId: `literal-${(litCounter += 1)}`, indexRevision: "sha256:test", operations });
+async function literalWorkspace(css = LIT_CSS) {
+  const made = await makeWorkspace({ fixture: "v1", files: { [LIT]: css } });
+  return { ...made, css: path.join(made.ws, LIT), engine: createEngine({ config: made.config, postcss, log: { info() {}, warn() {}, error() {} } }) };
+}
+
+test("tokenize-literal: a literal component becomes a reference and no other byte changes", async () => {
+  const { engine, css } = await literalWorkspace();
+  const original = fs.readFileSync(css, "utf8");
+  const dry = await engine.apply(litBatch([tokenizeOp("box", "margin", 1, "12px", "--fx-sys-spacing-sm", "0 12px", "0 var(--fx-sys-spacing-sm)")]), { dryRun: true });
+  assert.equal(dry.dryRun, true);
+  assert.equal(fs.readFileSync(css, "utf8"), original, "a dry run writes nothing");
+  const applied = await engine.apply(litBatch([tokenizeOp("box", "margin", 1, "12px", "--fx-sys-spacing-sm", "0 12px", "0 var(--fx-sys-spacing-sm)")]));
+  assert.equal(fs.readFileSync(css, "utf8"), original.replace("margin: 0 12px;", "margin: 0 var(--fx-sys-spacing-sm);"));
+  const result = applied.results[0];
+  assert.deepEqual([result.type, result.component, result.literal, result.toToken, result.before, result.after, result.line], ["tokenize-literal", 1, "12px", "--fx-sys-spacing-sm", "0 12px", "0 var(--fx-sys-spacing-sm)", 3]);
+  assert.deepEqual(applied.files[0].edits, [{ line: 3, before: "12px", after: "var(--fx-sys-spacing-sm)" }]);
+  // A percentage size takes a length token: the property accepts the token's kind.
+  await engine.apply(litBatch([tokenizeOp("box", "max-inline-size", 0, "70%", "--fx-sys-size-icon", "70%", "var(--fx-sys-size-icon)")]));
+  assert.match(fs.readFileSync(css, "utf8"), /max-inline-size: var\(--fx-sys-size-icon\);/);
+  // The color component of a border shorthand takes a color token.
+  await engine.apply(litBatch([tokenizeOp("box", "border", 2, "#000", "--fx-sys-color-ink-strong", "1px solid #000", "1px solid var(--fx-sys-color-ink-strong)")]));
+  assert.match(fs.readFileSync(css, "utf8"), /border: 1px solid var\(--fx-sys-color-ink-strong\);/);
+});
+
+test("tokenize-literal: a literal beside a reference in a shorthand is tokenized; the reference's token kind tells which sides it sets", async () => {
+  const { engine, css } = await literalWorkspace();
+  const original = fs.readFileSync(css, "utf8");
+  await engine.apply(litBatch([tokenizeOp("ruled", "border", 0, "1px", "--fx-sys-stroke-thin", "1px solid var(--fx-sys-color-ink-strong)", "var(--fx-sys-stroke-thin) solid var(--fx-sys-color-ink-strong)")]));
+  assert.equal(fs.readFileSync(css, "utf8"), original.replace("border: 1px solid var(--fx-sys-color-ink-strong);", "border: var(--fx-sys-stroke-thin) solid var(--fx-sys-color-ink-strong);"));
+});
+
+test("tokenize-literal: every refusal names its code and changes nothing", async () => {
+  const { engine, css } = await literalWorkspace();
+  const before = litFacts(css);
+  const refused = async (operations, code) => {
+    await assert.rejects(engine.apply(litBatch(operations)), (error) => {
+      assert.equal(error.code, code, error.message);
+      return true;
+    });
+    assert.deepEqual(litFacts(css), before, `${code}: hash, inode and mtime are unchanged`);
+  };
+  const margin = (toToken, extra = {}) => ({ ...tokenizeOp("box", "margin", 0, "0", toToken, "0 12px", `var(${toToken}) 12px`), ...extra });
+  // The five rows this change adds to the rejection table.
+  await refused([margin("--fx-sys-typescale-body-weight")], "type-mismatch"); // a unitless number cannot set a margin
+  await refused([margin("--fx-sys-color-primary")], "type-mismatch");
+  await refused([tokenizeOp("box", "border", 1, "solid", "--fx-sys-stroke-thin", "1px solid #000", "1px var(--fx-sys-stroke-thin) #000")], "unsupported-value-shape"); // a keyword
+  await refused([tokenizeOp("box", "font-family", 0, '"Fixture Display"', "--fx-sys-typescale-display-family", '"Fixture Display", serif', 'var(--fx-sys-typescale-display-family), serif')], "unsupported-value-shape"); // a comma list
+  await refused([tokenizeOp("mixed", "margin", 1, "var(--fx-sys-spacing-xs)", "--fx-sys-spacing-sm", "0 var(--fx-sys-spacing-xs)", "0 var(--fx-sys-spacing-sm)")], "unsupported-value-shape"); // holds a reference
+  await refused([tokenizeOp("box", "z-index", 0, "1", "--fx-sys-typescale-body-weight", "1", "var(--fx-sys-typescale-body-weight)")], "unsupported-value-shape"); // not in the inspector's table
+  await refused([tokenizeOp("box", "inline-size", 0, "calc(100% - 16px)", "--fx-sys-size-icon", "calc(100% - 16px)", "var(--fx-sys-size-icon)")], "unsupported-value-shape"); // an expression
+  await refused([margin("--fx-sys-spacing-sm", { literal: "1" })], "stale-before"); // the component no longer holds the stated literal
+  await refused([{ id: "op-1", type: "restore-literal", file: LIT_FILE, rule: litRule("box"), declaration: { property: "margin" }, component: 0, fromToken: "--fx-sys-spacing-sm", literal: "0", before: { value: "0 12px" }, after: { value: "0 12px" } }], "schema-invalid"); // internal only
+  // The token rules every operation shares.
+  await refused([margin("--fx-ref-space-8")], "tier-rule");
+  await refused([margin("--fx-comp-seal-shape")], "foreign-comp-token");
+  await refused([margin("--fx-not-a-token")], "not-a-design-token");
+  // The rules of the declaration and of the request.
+  await refused([tokenizeOp("box", "padding", 0, "8px", "--fx-sys-spacing-sm", "8px", "var(--fx-sys-spacing-sm)")], "unsupported-value-shape"); // !important
+  await refused([tokenizeOp("box", "gap", 0, "6px", "--fx-sys-spacing-sm", "6px", "var(--fx-sys-spacing-sm)")], "unsupported-value-shape"); // declared twice in its rule
+  await refused([margin("--fx-sys-spacing-sm", { before: { value: "0 13px" } })], "stale-before");
+  await refused([margin("--fx-sys-spacing-sm", { after: { value: "var(--fx-sys-spacing-md) 12px" } })], "after-value-mismatch");
+  await refused([margin("--fx-sys-spacing-sm", { id: "a" }), margin("--fx-sys-spacing-md", { id: "b", after: { value: "var(--fx-sys-spacing-md) 12px" } })], "duplicate-target");
+  await refused([margin("--fx-sys-spacing-sm", { rule: { ...litRule("box"), selector: ".fx-other" } })], "locator-mismatch");
+  await refused([{ ...margin("--fx-sys-spacing-sm"), text: "0" }], "schema-invalid"); // no other key can carry text
+});
+
+function rebindDeclOp(rule, property, refIndex, fromToken, toToken, before, after, id = "op-r") {
+  return { id, type: "rebind-declaration", file: LIT_FILE, rule: litRule(rule), declaration: { property }, replacements: [{ refIndex, fromToken, toToken }], fromToken, toToken, before: { value: before }, after: { value: after } };
+}
+
+test("a re-bind and a tokenization on one declaration apply in one batch, each with its own old and new value", async () => {
+  const { engine, css } = await literalWorkspace();
+  const original = fs.readFileSync(css, "utf8");
+  const applied = await engine.apply(
+    litBatch([
+      tokenizeOp("mixed", "margin", 0, "0", "--fx-sys-spacing-sm", "0 var(--fx-sys-spacing-xs)", "var(--fx-sys-spacing-sm) var(--fx-sys-spacing-xs)", "op-t"),
+      rebindDeclOp("mixed", "margin", 0, "--fx-sys-spacing-xs", "--fx-sys-spacing-md", "0 var(--fx-sys-spacing-xs)", "0 var(--fx-sys-spacing-md)"),
+    ]),
+  );
+  assert.equal(fs.readFileSync(css, "utf8"), original.replace("margin: 0 var(--fx-sys-spacing-xs);", "margin: var(--fx-sys-spacing-sm) var(--fx-sys-spacing-md);"));
+  assert.deepEqual(
+    applied.results.map((r) => [r.id, r.type, r.before, r.after, r.component]),
+    [
+      ["op-t", "tokenize-literal", "0 var(--fx-sys-spacing-xs)", "var(--fx-sys-spacing-sm) var(--fx-sys-spacing-xs)", 0],
+      ["op-r", "rebind-declaration", "0 var(--fx-sys-spacing-xs)", "0 var(--fx-sys-spacing-md)", 1],
+    ],
+  );
+});
+
+test("a journal record without the component position (1.3.1 and older) is still reversed by its reference number", async () => {
+  const made = await literalWorkspace();
+  const applied = await made.engine.apply(litBatch([rebindDeclOp("mixed", "margin", 0, "--fx-sys-spacing-xs", "--fx-sys-spacing-md", "0 var(--fx-sys-spacing-xs)", "0 var(--fx-sys-spacing-md)")]));
+  // Rewrite the journal as an older version wrote it: no component in the operation record.
+  const journalFile = path.join(made.config.stateDir, "journal.jsonl");
+  const lines = fs.readFileSync(journalFile, "utf8").split("\n").filter(Boolean).map((line) => JSON.parse(line));
+  let stripped = 0;
+  for (const record of lines) {
+    for (const o of record.operations ?? []) {
+      if (o.type === "rebind-declaration" && "component" in o) {
+        delete o.component;
+        stripped += 1;
+      }
+    }
+  }
+  assert.ok(stripped > 0, "the record carried the component");
+  fs.writeFileSync(journalFile, `${lines.map((r) => JSON.stringify(r)).join("\n")}\n`);
+  // Another program edits another line: whole-file undo is refused, the reverse apply still finds the reference.
+  fs.writeFileSync(made.css, fs.readFileSync(made.css, "utf8").replace("z-index: 1;", "z-index: 2;"));
+  const engine = createEngine({ config: made.config, postcss, log: { info() {}, warn() {}, error() {} } });
+  await assert.rejects(engine.undo({ applyId: applied.applyId }), (e) => e.code === "undo-conflict");
+  await engine.reverse({ applyId: applied.applyId });
+  const text = fs.readFileSync(made.css, "utf8");
+  assert.match(text, /margin: 0 var\(--fx-sys-spacing-xs\);/);
+  assert.match(text, /z-index: 2;/);
+});
+
+test("undo and reverse apply of a tokenization", async () => {
+  const quietLog = { info() {}, warn() {}, error() {} };
+  const op = () => tokenizeOp("box", "max-inline-size", 0, "70%", "--fx-sys-size-icon", "70%", "var(--fx-sys-size-icon)");
+
+  // An exact undo puts the bytes back.
+  const a = await literalWorkspace();
+  const originalBytes = fs.readFileSync(a.css);
+  const first = await a.engine.apply(litBatch([op()]));
+  await a.engine.undo({ applyId: first.applyId });
+  assert.ok(fs.readFileSync(a.css).equals(originalBytes), "undo restores the exact bytes");
+
+  // Another edit in the same file: whole-file undo is refused, the reverse apply puts the literal back and keeps the edit.
+  const b = await literalWorkspace();
+  const second = await b.engine.apply(litBatch([op()]));
+  fs.writeFileSync(b.css, fs.readFileSync(b.css, "utf8").replace("z-index: 1;", "z-index: 2;"));
+  await assert.rejects(b.engine.undo({ applyId: second.applyId }), (e) => e.code === "undo-conflict");
+  await b.engine.reverse({ applyId: second.applyId });
+  const reversed = fs.readFileSync(b.css, "utf8");
+  assert.match(reversed, /max-inline-size: 70%;/);
+  assert.match(reversed, /z-index: 2;/);
+
+  // The mixed batch on one declaration is reversed back to `margin: 0 var(--gap)`.
+  const c = await literalWorkspace();
+  const mixed = await c.engine.apply(
+    litBatch([
+      tokenizeOp("mixed", "margin", 0, "0", "--fx-sys-spacing-sm", "0 var(--fx-sys-spacing-xs)", "var(--fx-sys-spacing-sm) var(--fx-sys-spacing-xs)", "op-t"),
+      rebindDeclOp("mixed", "margin", 0, "--fx-sys-spacing-xs", "--fx-sys-spacing-md", "0 var(--fx-sys-spacing-xs)", "0 var(--fx-sys-spacing-md)"),
+    ]),
+  );
+  fs.writeFileSync(c.css, fs.readFileSync(c.css, "utf8").replace("z-index: 1;", "z-index: 2;"));
+  await c.engine.reverse({ applyId: mixed.applyId });
+  assert.match(fs.readFileSync(c.css, "utf8"), /\.fx-box--mixed \{\n {2}margin: 0 var\(--fx-sys-spacing-xs\);/);
+
+  // Someone changed that component to another token by hand: refused, nothing changes.
+  const d = await literalWorkspace();
+  const third = await d.engine.apply(litBatch([op()]));
+  fs.writeFileSync(d.css, fs.readFileSync(d.css, "utf8").replace("max-inline-size: var(--fx-sys-size-icon);", "max-inline-size: var(--fx-sys-size-touch-min);"));
+  const handEdited = litFacts(d.css);
+  await assert.rejects(d.engine.reverse({ applyId: third.applyId }), (e) => e.code === "stale-before");
+  assert.deepEqual(litFacts(d.css), handEdited);
+
+  // A literal in the journal that is not one plain component (someone edited the journal): refused, nothing changes.
+  const e = await literalWorkspace();
+  const fourth = await e.engine.apply(litBatch([op()]));
+  fs.writeFileSync(e.css, fs.readFileSync(e.css, "utf8").replace("z-index: 1;", "z-index: 2;"));
+  const journalFile = path.join(e.config.stateDir, "journal.jsonl");
+  fs.writeFileSync(journalFile, fs.readFileSync(journalFile, "utf8").replaceAll('"literal":"70%"', '"literal":"70%; color: red"'));
+  const engine = createEngine({ config: e.config, postcss, log: quietLog });
+  const tampered = litFacts(e.css);
+  await assert.rejects(engine.reverse({ applyId: fourth.applyId }), (error) => ["unsupported-value-shape", "stale-before", "proof-failed"].includes(error.code));
+  assert.deepEqual(litFacts(e.css), tampered);
+});

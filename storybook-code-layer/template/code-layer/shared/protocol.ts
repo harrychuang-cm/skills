@@ -222,7 +222,9 @@ export type ScopeTarget =
   /** A layout keyword: the component of a declaration that holds it now. */
   | { type: "set-keyword"; file: string; workspacePath: string; ordinal: number; selector: string; property: string; component: number; line: number }
   /** A layout property nothing declares yet: a declaration appended to the rule that declares the element's display. */
-  | { type: "add-declaration"; file: string; workspacePath: string; ordinal: number; selector: string; property: string; line: number };
+  | { type: "add-declaration"; file: string; workspacePath: string; ordinal: number; selector: string; property: string; line: number }
+  /** A literal component of a declaration, replaced by a reference to an existing token. */
+  | { type: "tokenize-literal"; file: string; workspacePath: string; ordinal: number; selector: string; property: string; component: number; literal: string; line: number };
 
 export type RowScope = {
   id: ScopeId;
@@ -297,6 +299,12 @@ export type RowTrace = {
    * source holds (null when nothing declares the property).
    */
   layout: { property: string; options: string[]; declared: string | null; direction: string; wrap: string } | null;
+  /**
+   * Set on a row whose value is a literal that can be replaced by a token: the
+   * literal as the source holds it and its kind. Such a row has no token chain
+   * and exactly one scope, the declaration.
+   */
+  literal: { text: string; kind: string } | null;
 };
 
 export type ElementTrace = {
@@ -351,20 +359,29 @@ export type DraftOp =
       line: number;
     }
   | { type: "set-keyword"; file: string; ordinal: number; selector: string; property: string; component: number; fromKeyword: string; toKeyword: string; line: number }
-  | { type: "add-declaration"; file: string; ordinal: number; selector: string; property: string; toKeyword: string; line: number };
+  | { type: "add-declaration"; file: string; ordinal: number; selector: string; property: string; toKeyword: string; line: number }
+  /** A literal component replaced by a token; `literal` is what the source holds there now. */
+  | { type: "tokenize-literal"; file: string; ordinal: number; selector: string; property: string; component: number; literal: string; toToken: string; line: number };
 
 /** A layout operation: a keyword instead of a token. */
 export type LayoutOp = Extract<DraftOp, { type: "set-keyword" | "add-declaration" }>;
-export type TokenOp = Exclude<DraftOp, LayoutOp>;
+/** A tokenization: a literal value instead of an old token. */
+export type LiteralOp = Extract<DraftOp, { type: "tokenize-literal" }>;
+export type TokenOp = Exclude<DraftOp, LayoutOp | LiteralOp>;
 
 export function isLayoutOp(op: DraftOp): op is LayoutOp {
   return op.type === "set-keyword" || op.type === "add-declaration";
 }
 
-/** What the target holds before the change: a token name, a keyword, or nothing for an added declaration. */
+export function isLiteralOp(op: DraftOp): op is LiteralOp {
+  return op.type === "tokenize-literal";
+}
+
+/** What the target holds before the change: a token name, a keyword, a literal, or nothing for an added declaration. */
 export function opFrom(op: DraftOp): string {
   if (op.type === "set-keyword") return op.fromKeyword;
   if (op.type === "add-declaration") return "";
+  if (op.type === "tokenize-literal") return op.literal;
   return op.fromToken;
 }
 
@@ -421,10 +438,12 @@ type Addressed =
   | { type: "rebind-token"; token: string }
   | { type: "rebind-declaration"; file: string; ordinal: number; property: string; refIndex: number }
   | { type: "set-keyword"; file: string; ordinal: number; property: string; component: number }
-  | { type: "add-declaration"; file: string; ordinal: number; property: string };
+  | { type: "add-declaration"; file: string; ordinal: number; property: string }
+  | { type: "tokenize-literal"; file: string; ordinal: number; property: string; component: number };
 
 function addressId(target: Addressed): string {
   if (target.type === "rebind-token") return `token:${target.token}`;
+  if (target.type === "tokenize-literal") return `literal:${target.file}#${target.ordinal}#${target.property}#${target.component}`;
   if (target.type === "set-keyword") return `keyword:${target.file}#${target.ordinal}#${target.property}#${target.component}`;
   if (target.type === "add-declaration") return `add:${target.file}#${target.ordinal}#${target.property}`;
   return `decl:${target.file}#${target.ordinal}#${target.property}#${target.refIndex}`;

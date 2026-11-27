@@ -6,7 +6,7 @@
 //   arm time) or, without an arm measurement, the target token's live value.
 //   "Verified" also requires that the value actually changed (A != expected).
 import { findRootDeclaration, normalizeValue } from "../shared/value-refs.mjs";
-import { isLayoutOp, type Descriptor, type Draft, type IndexJson } from "../shared/protocol";
+import { isLayoutOp, isLiteralOp, type Descriptor, type Draft, type IndexJson } from "../shared/protocol";
 import { toHex } from "./color";
 import { resolve } from "./descriptor";
 import { withFreeze } from "./freeze";
@@ -22,7 +22,8 @@ export type Armed = { armId: string; draftIds: string[]; drafts: Draft[]; witnes
 
 export type VerifyItem = {
   draftId: string;
-  status: "verified" | "written-not-observable" | "mismatch" | "timeout";
+  /** verified-same: a tokenization whose token has the literal's value; the file changed and the look did not. */
+  status: "verified" | "verified-same" | "written-not-observable" | "mismatch" | "timeout";
   expected: string | null;
   actual: string | null;
   /** A catalog key, translated by the panel. */
@@ -95,7 +96,9 @@ function level1(draft: Draft, request: VerifyRequest, index: IndexJson | null): 
 function expectedFromTokens(draft: Draft, mode: "apply" | "undo"): string | null {
   // A layout keyword is its own computed value; before an added declaration there is nothing to name.
   if (isLayoutOp(draft.op)) return mode === "apply" ? draft.op.toKeyword : draft.op.type === "set-keyword" ? draft.op.fromKeyword : null;
-  const token = mode === "apply" ? draft.op.toToken : draft.op.fromToken;
+  // After an undo a tokenized row holds its literal again, which is not a token to resolve.
+  const token = isLiteralOp(draft.op) ? (mode === "apply" ? draft.op.toToken : null) : mode === "apply" ? draft.op.toToken : draft.op.fromToken;
+  if (!token) return null;
   const value = getComputedStyle(document.documentElement).getPropertyValue(token).trim();
   return value || null;
 }
@@ -139,9 +142,15 @@ export async function runVerification(
     const actual = measure(element, witness.property);
     if (!sameValue(actual, expected)) return { draftId: draft.id, status: "mismatch", expected, actual, reason: null };
     const changed = request.mode === "apply" ? !sameValue(A, expected) : !sameValue(measured?.B ?? expectedFromTokens(draft, "apply"), A);
-    return { draftId: draft.id, status: changed ? "verified" : "written-not-observable", expected, actual, reason: changed ? null : "verify.reason.noChange" };
+    if (changed) return { draftId: draft.id, status: "verified", expected, actual, reason: null };
+    // A tokenization with a token of the literal's value: the content arrived, the witness is on this page, and its
+    // value was the same with previews removed, with previews applied, and after the write. That is its success.
+    if (isLiteralOp(draft.op)) return { draftId: draft.id, status: "verified-same", expected, actual, reason: null };
+    return { draftId: draft.id, status: "written-not-observable", expected, actual, reason: "verify.reason.noChange" };
   });
-  const rank = { mismatch: 3, timeout: 2, "written-not-observable": 1, verified: 0 } as const;
-  const status = items.reduce<VerifyItem["status"]>((worst, item) => (rank[item.status] > rank[worst] ? item.status : worst), "verified");
+  const rank = { mismatch: 3, timeout: 2, "written-not-observable": 1, verified: 0, "verified-same": 0 } as const;
+  const worst = items.reduce<VerifyItem["status"]>((w, item) => (rank[item.status] > rank[w] ? item.status : w), "verified");
+  // Verified overall; "the look is unchanged" only when that is true of every change.
+  const status = rank[worst] > 0 ? worst : items.length > 0 && items.every((item) => item.status === "verified-same") ? "verified-same" : "verified";
   return { status, items };
 }

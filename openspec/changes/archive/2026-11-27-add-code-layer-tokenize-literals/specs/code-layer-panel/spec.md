@@ -2,12 +2,17 @@
 
 ### Requirement: Property rows in the panel
 
-The inspector SHALL render the traced rows in the sections and order of the tracing table. Each row SHALL show its label, the resolved value, and the bound token as a pill. A row whose value is a tokenizable literal SHALL show, in place of the pill, a mark that no token is bound, and SHALL be visibly editable. Activating a row SHALL open a popover beside the inspector: for an editable row the token picker; for a read-only row the reason in words. An inherited row SHALL be marked as inherited, and its popover SHALL name the element it is inherited from and, when that element is selectable, offer to select it.
+The inspector SHALL render the traced rows in the sections and order of the tracing table. Each row SHALL show its label, the resolved value, and the bound token as a pill. An editable layout row SHALL show the icon and the name of its current keyword in place of a token pill. A row whose value is a tokenizable literal SHALL show, in place of the pill, a mark that no token is bound, and SHALL be visibly editable. Activating a row SHALL open a popover beside the inspector: for a row that is editable by re-binding or by tokenizing the token picker; for an editable layout row the layout options; for a read-only row the reason in words. An inherited row SHALL be marked as inherited, and its popover SHALL name the element it is inherited from and, when that element is selectable, offer to select it.
 
 #### Scenario: A read-only row explains itself
 
-- **WHEN** a row's value is a keyword, a literal expression, a literal list, or a literal for which the project has no token of an accepted kind
+- **WHEN** a row's value is a keyword outside the layout rows, a literal expression, a literal list, or a literal for which the project has no token of an accepted kind
 - **THEN** the row shows the value, is visibly not editable, and its tooltip and its popover state the reason, without a token picker
+
+#### Scenario: The display row stays read-only
+
+- **WHEN** a flex container is selected
+- **THEN** its display row is visibly not editable and states that display is view-only, while its direction row is editable
 
 #### Scenario: A literal row offers tokens
 
@@ -76,7 +81,7 @@ With an editable row focused, ArrowUp and ArrowDown SHALL move the row to the ne
 
 ### Requirement: Changes list
 
-The inspector SHALL list every staged change in one line with the row, the old and the new token and its state, and SHALL give the element, the write location and the impact on demand. For a tokenization the line SHALL show the old literal value in the place of the old token. It SHALL offer to remove one change, discard all, and hold a control to compare against the unmodified page. While changes are staged the inspector SHALL say in one line, beside the actions, that they are a preview in this browser and not yet written to files, with their count, and the apply action SHALL be labelled as writing to files. With no staged change and no report, the changes area SHALL take no space. Staged changes SHALL be saved immediately when they change and restored after a reload. A change that has been applied SHALL leave the list and SHALL NOT reappear after any reload.
+The inspector SHALL list every staged change in one line with the row, the old and the new token and its state, and SHALL give the element, the write location and the impact on demand. For a layout change the line SHALL show the old and the new keyword in the place of the tokens, and for an added declaration it SHALL show that the property was not set in the place of the old keyword. For a tokenization the line SHALL show the old literal value in the place of the old token. It SHALL offer to remove one change, discard all, and hold a control to compare against the unmodified page. While changes are staged the inspector SHALL say in one line, beside the actions, that they are a preview in this browser and not yet written to files, with their count, and the apply action SHALL be labelled as writing to files. With no staged change and no report, the changes area SHALL take no space. Staged changes SHALL be saved immediately when they change and restored after a reload. A change that has been applied SHALL leave the list and SHALL NOT reappear after any reload.
 
 #### Scenario: Applied changes do not come back
 
@@ -92,6 +97,11 @@ The inspector SHALL list every staged change in one line with the row, the old a
 
 - **WHEN** a person holds the compare control
 - **THEN** every preview is removed while it is held and re-applied on release, and the control does not move under the pointer
+
+#### Scenario: A layout change reads as keyword to keyword
+
+- **WHEN** the distribution of a flex container is staged from `center` to `space-between`, and its wrapping, which no declaration sets, is staged to `wrap`
+- **THEN** the changes list has one line showing `center` and `space-between` and one line showing that wrapping was not set and is now `wrap`, and the stylesheet on disk is unchanged
 
 #### Scenario: A tokenization reads as value to token
 

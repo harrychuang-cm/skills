@@ -6,9 +6,12 @@ export const SESSION_HEADER = "x-code-layer-session";
 export const ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
 export const TOKEN_NAME_PATTERN = /^--[A-Za-z0-9_-]{1,200}$/;
 
-export const OPERATION_TYPES = ["rebind-token", "rebind-declaration", "set-keyword", "add-declaration"];
-/** Built only by the server, as the inverse of an add-declaration it journaled. Never accepted from a request. */
-export const INTERNAL_OPERATION_TYPES = ["remove-declaration"];
+export const OPERATION_TYPES = ["rebind-token", "rebind-declaration", "set-keyword", "add-declaration", "tokenize-literal"];
+/**
+ * Built only by the server, as the inverse of an operation it journaled: removing a declaration an
+ * add-declaration wrote, restoring the literal a tokenize-literal replaced. Never accepted from a request.
+ */
+export const INTERNAL_OPERATION_TYPES = ["remove-declaration", "restore-literal"];
 
 /** Every refusal code. `lane: "agent"` marks problems a person or an agent could resolve. */
 export const ERROR_CODES = {

@@ -49,7 +49,7 @@ Read <cm-skills path>/frontend-product-implementation/SKILL.md and follow that w
 | 判斷 Figma 端修改要不要同步回 Storybook | `$figma-sync-back` | 三方比對分辨 Figma 改了／程式碼改了／兩邊都改，產出分流報告；只判斷、不動程式碼。 |
 | 把重複性流程變成自動化 | `$agent-automation-orchestrate` | 自動化的起始點：建立專案契約，之後用它執行、續跑、查狀態。 |
 | 在 Storybook 專案安裝通用工具頁（覆蓋率、元件時間軸） | `$storybook-tools-install` | 帶入「UI 圖片/PRD → 覆蓋率報告 → 審查 → 實作」工具、Component Timeline 頁面和配套 skills。 |
-| 在 Storybook 裡像 Figma 一樣選取元件、改綁 token、調整排列，並寫回原始碼 | `$storybook-code-layer` | 安裝、檢查、更新或移除 Code Layer：選取畫面上的元素 → 在畫布上的檢視器點數值換 token，或調整 flex 容器的方向、對齊、分布、換行，即時預覽 → 套用到 token 檔、元件樣式表與規格表，可還原。也可以選擇啟用「請 AI 修改」：每次在瀏覽器外允許，結果通過範圍檢查才寫入、可還原。 |
+| 在 Storybook 裡像 Figma 一樣選取元件、改綁 token、調整排列，並寫回原始碼 | `$storybook-code-layer` | 安裝、檢查、更新或移除 Code Layer：選取畫面上的元素 → 在畫布上的檢視器點數值換 token（寫死的數值也能換成既有的 token），或調整 flex 容器的方向、對齊、分布、換行，即時預覽 → 套用到 token 檔、元件樣式表與規格表，可還原。也可以選擇啟用「請 AI 修改」：每次在瀏覽器外允許，結果通過範圍檢查才寫入、可還原。 |
 | 在其他專案安裝 Figma 清理自動化 | `$design-automation-hub-install` | 安裝 Figma plugin、本機 coordinator 和 figma-cleanup task。 |
 | 讓 iOS App 適配 iPhone Duo（摺疊機）並自動化截圖驗證 | `$iphone-duo-adaptation` | 盤點寫死螢幕尺寸 → 設計師答 10 題問卷 → 版面規則 → Lego 開關或 UIKit 做法 → 模擬器自動開合截圖 → Before／After 報告。Lego 與非 Lego App 都能用。 |
 
@@ -541,7 +541,7 @@ Use $storybook-tools-install to install only the component timeline into ./apps/
 
 ### `$storybook-code-layer`
 
-用途：在 Vite 版的 Storybook 專案安裝 Code Layer，並負責之後的檢查、更新與移除。Code Layer 是 Storybook 裡的設計模式：打開工具列開關後可以選取畫面上的元素，畫布上會浮出一個可拖移的檢視器，每個樣式值是一列「圖示、數值、token」，點一下就能換成另一個既有的 token 並即時預覽（需要時可以打開開發者資訊，看它來自哪條宣告、哪一串 token）；選到 flex 容器時，版面區的方向、對齊、分布、換行也能從固定的幾個選項裡挑（這些是 CSS 關鍵字，沒有 token，會直接寫進元件樣式表）；在按下「套用到檔案」之前都只是這個瀏覽器裡的預覽，按下後才寫入 token 檔（真相與鏡像）、元件樣式表與元件規格的 Token Contract 列，寫完會驗證畫面與檔案一致，也可以還原。
+用途：在 Vite 版的 Storybook 專案安裝 Code Layer，並負責之後的檢查、更新與移除。Code Layer 是 Storybook 裡的設計模式：打開工具列開關後可以選取畫面上的元素，畫布上會浮出一個可拖移的檢視器，每個樣式值是一列「圖示、數值、token」，點一下就能換成另一個既有的 token 並即時預覽（需要時可以打開開發者資訊，看它來自哪條宣告、哪一串 token）；寫死的數值（例如 `margin: 0`、`70%`）在專案有可用 token 時也能點開，換成既有的 token，候選依「數值相同、這個屬性常用的類別、其他類別」排序（1.4.0 起）；選到 flex 容器時，版面區的方向、對齊、分布、換行也能從固定的幾個選項裡挑（這些是 CSS 關鍵字，沒有 token，會直接寫進元件樣式表）；在按下「套用到檔案」之前都只是這個瀏覽器裡的預覽，按下後才寫入 token 檔（真相與鏡像）、元件樣式表與元件規格的 Token Contract 列，寫完會驗證畫面與檔案一致，也可以還原。
 
 適合情境：
 

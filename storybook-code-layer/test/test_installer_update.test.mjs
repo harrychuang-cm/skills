@@ -377,3 +377,42 @@ test("uninstall with a 0.1.0 receipt (format 1) removes only the preset element 
   assert.equal(fs.readFileSync(path.join(project, "tsconfig.json"), "utf8"), wiredTsconfig, "the exclude entry is left");
   assert.deepEqual(fs.readdirSync(installDir), ["code-layer.config.json"]);
 });
+
+test("update from 1.3.1 to 1.4.0: changed files are updated, new files installed, the binding untouched; a file the person edited blocks it", async () => {
+  // A 1.3.1 installation as this release finds it: the files 1.4.0 changed hold older content the receipt records,
+  // and the files 1.4.0 added do not exist yet.
+  const CHANGED = ["server/operations.mjs", "server/patcher.mjs", "server/transaction.mjs", "runtime/tracer.ts", "manager/components/Field.tsx"];
+  const ADDED = ["shared/literals.mjs", "shared/literals.d.mts", "shared/property-table.mjs", "shared/property-table.d.mts"];
+  const { ws, project, installDir } = await olderInstallation({ outdated: CHANGED, version: "1.3.1" });
+  const receipt = readReceipt(installDir);
+  for (const relative of ADDED) {
+    fs.rmSync(path.join(installDir, relative));
+    delete receipt.files[relative];
+  }
+  writeReceipt(installDir, receipt);
+  const bindingFile = path.join(installDir, "code-layer.config.json");
+  const binding = fs.readFileSync(bindingFile);
+
+  const real = await run({ projectRoot: project, mode: "update" });
+  assert.deepEqual([real.ok, real.result, real.installed.version], [true, "updated", "1.3.1"]);
+  assert.deepEqual(
+    real.actions.filter((a) => a.action !== "write-receipt").map((a) => [a.action, a.path.slice(AT.length + 1)]).sort(),
+    [...CHANGED.map((p) => ["update", p]), ...ADDED.map((p) => ["install", p])].sort(),
+  );
+  for (const file of manifest.files) assert.equal(sha(path.join(installDir, file.path)), file.sha256, file.path);
+  assert.ok(fs.readFileSync(bindingFile).equals(binding), "the binding is byte-identical");
+  assert.equal(readReceipt(installDir).version, manifest.version);
+  assert.equal(manifest.version, "1.4.0");
+
+  // A second 1.3.1 installation in which the person edited a managed file: nothing is written, the edit stays.
+  const other = await olderInstallation({ outdated: CHANGED, version: "1.3.1" });
+  const edited = path.join(other.installDir, "manager/Inspector.tsx");
+  fs.writeFileSync(edited, `// my change\n${fs.readFileSync(edited, "utf8")}`);
+  const before = treeHash(other.ws);
+  const refused = await run({ projectRoot: other.project, mode: "update" });
+  assert.deepEqual([refused.ok, refused.result], [false, "refused"]);
+  assert.ok(errors(refused).some((issue) => issue.code === "locally-modified-managed-file"), JSON.stringify(errors(refused)));
+  assert.equal(treeHash(other.ws), before, "zero writes");
+  assert.match(fs.readFileSync(edited, "utf8"), /^\/\/ my change/);
+  assert.equal(treeHash(ws) !== "", true);
+});

@@ -3,7 +3,7 @@ import React from "react";
 import { t, tMaybe } from "../../shared/i18n";
 import { changeEnds, draftRowLabel, groupLabel, prettyToken, scopeLabel, shortToken } from "../../shared/labels";
 import { pairingReport, type PairingEntry } from "../../shared/pairing.mjs";
-import { isLayoutOp, opFrom, opTo, type Draft, type IndexJson } from "../../shared/protocol";
+import { isLayoutOp, isLiteralOp, opFrom, opTo, type Draft, type IndexJson } from "../../shared/protocol";
 import { discardAll, removeDraft, setCompare, stageOffer } from "../actions";
 import { CloseIcon, WarnIcon } from "../icons";
 import { useStore } from "../store";
@@ -83,7 +83,7 @@ export function ChangesBar({ index, applyEnabled, applyHint, onApply, applying, 
         const label = tMaybe(`field.${draft.group}`) ?? groupLabel(draft.group);
         const ends = changeEnds(draft.op, prefix);
         // Layout keywords are shown as written; token names lose the prefix and the component.
-        const shown = isLayoutOp(draft.op) ? ends : { from: prettyToken(draft.op.fromToken, prefix), to: prettyToken(draft.op.toToken, prefix) };
+        const shown = isLayoutOp(draft.op) ? ends : isLiteralOp(draft.op) ? { from: draft.op.literal, to: prettyToken(draft.op.toToken, prefix) } : { from: prettyToken(draft.op.fromToken, prefix), to: prettyToken(draft.op.toToken, prefix) };
         return (
           <ChangeRow key={draft.id} data-code-layer-draft={draft.id} data-scope={draft.scope} data-status={status?.status ?? ""} data-to={opTo(draft.op)} data-from={opFrom(draft.op)} data-type={draft.op.type}>
             <ChangeMain title={`${details}\n${ends.from} → ${ends.to}\n${where}`}>

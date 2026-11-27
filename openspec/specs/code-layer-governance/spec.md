@@ -63,7 +63,7 @@ code:
 ---
 ### Requirement: Documents pending sync
 
-After every apply the server SHALL record what the write has left out of date and cannot rewrite deterministically, as pending entries bound to that apply. An entry SHALL name a file and line and a reason. The server SHALL produce an entry for: a re-bound token whose specification row was not eligible; every `rebind-declaration`, every `set-keyword` and every `add-declaration`, because component stylesheet declarations are not tabulated; a comment on the same line as a rewritten declaration; and, for a re-bind, every line in the component's specification, stylesheet, source and stories that mentions the short name of the old token outside the rewritten cell. A layout operation has no token name, and the server SHALL NOT search any document for its keywords. The entry of a layout operation SHALL carry the property, the old keyword when there was one, and the new keyword. Pending entries SHALL be listed by the state route, shown in the panel beside the change that caused them, removed when their apply is undone, and removable one by one when a person marks them done. The tool SHALL offer the pending entries of an apply as a plain-text brief that an AI assistant can act on.
+After every apply the server SHALL record what the write has left out of date and cannot rewrite deterministically, as pending entries bound to that apply. An entry SHALL name a file and line and a reason. The server SHALL produce an entry for: a re-bound token whose specification row was not eligible; every `rebind-declaration`, every `set-keyword`, every `add-declaration` and every `tokenize-literal`, because component stylesheet declarations are not tabulated; a comment on the same line as a rewritten declaration; and, for a re-bind, every line in the component's specification, stylesheet, source and stories that mentions the short name of the old token outside the rewritten cell. A layout operation and a tokenization have no old token name, and the server SHALL NOT search any document for their keywords or literal values. The entry of a layout operation SHALL carry the property, the old keyword when there was one, and the new keyword. The entry of a tokenization SHALL carry the old literal value and the new token. Pending entries SHALL be listed by the state route, shown in the panel beside the change that caused them, removed when their apply is undone, and removable one by one when a person marks them done. The tool SHALL offer the pending entries of an apply as a plain-text brief that an AI assistant can act on.
 
 #### Scenario: Prose that still names the old role
 
@@ -80,12 +80,56 @@ After every apply the server SHALL record what the write has left out of date an
 - **WHEN** `justify-content: center` is set to `space-between`, the declaration has no comment on its line, and the component's specification contains the word `center` on several lines
 - **THEN** exactly one pending entry is recorded for that operation, pointing at the declaration's file and line with `center` as the old value and `space-between` as the new one
 
+#### Scenario: A tokenized literal leaves one entry
+
+- **WHEN** `max-inline-size: 70%` is tokenized, the declaration has no comment on its line, and the component's specification contains the text `70%` on several lines
+- **THEN** exactly one pending entry is recorded for that operation, pointing at the declaration's file and line with `70%` as the old value and the token as the new one
+
 
 <!-- @trace
-source: add-code-layer-layout-editing
-updated: 2026-11-26
+source: add-code-layer-tokenize-literals
+updated: 2026-11-27
 code:
-  - storybook-code-layer/
+  - storybook-code-layer/template/code-layer/runtime/tracer.ts
+  - storybook-code-layer/README.md
+  - storybook-code-layer/template/code-layer/shared/literals.d.mts
+  - storybook-code-layer/template/code-layer/server/operations.mjs
+  - storybook-code-layer/SKILL.md
+  - storybook-code-layer/template/code-layer/server/patcher.mjs
+  - storybook-code-layer/template/code-layer/shared/api-contract.mjs
+  - storybook-code-layer/template/code-layer/server/transaction.mjs
+  - storybook-code-layer/template/code-layer/shared/properties.ts
+  - storybook-code-layer/template/code-layer/runtime/verify.ts
+  - storybook-code-layer/template/code-layer/shared/messages.en.ts
+  - storybook-code-layer/template/code-layer/manager/components/Report.tsx
+  - storybook-code-layer/template/TEMPLATE_MANIFEST.json
+  - storybook-code-layer/template/code-layer/manager/components/ChangesBar.tsx
+  - storybook-code-layer/template/code-layer/shared/labels.ts
+  - storybook-code-layer/template/code-layer/shared/property-table.mjs
+  - storybook-code-layer/template/code-layer/manager/components/RowPopover.tsx
+  - storybook-code-layer/template/code-layer/shared/protocol.ts
+  - storybook-code-layer/template/code-layer/manager/drafts.ts
+  - storybook-code-layer/template/KNOWN_MANIFESTS.json
+  - storybook-code-layer/template/code-layer/shared/property-table.d.mts
+  - storybook-code-layer/template/code-layer/shared/messages.zh-Hant.ts
+  - storybook-code-layer/template/code-layer/server/pending-docs.mjs
+  - storybook-code-layer/template/code-layer/manager/apply.ts
+  - storybook-code-layer/template/code-layer/runtime/livePreview.ts
+  - storybook-code-layer/template/code-layer/manager/components/Field.tsx
+  - storybook-code-layer/template/code-layer/shared/reference.ts
+  - storybook-code-layer/template/code-layer/shared/literals.mjs
+  - docs/skills-usage.md
+  - docs/code-layer-guide.html
+  - storybook-code-layer/template/code-layer/package.json
+tests:
+  - storybook-code-layer/test/test_write_routes.test.mjs
+  - storybook-code-layer/test/run_core_loop_browser.mjs
+  - storybook-code-layer/test/run_live_api.mjs
+  - storybook-code-layer/test/test_installer_update.test.mjs
+  - storybook-code-layer/test/test_governance.test.mjs
+  - storybook-code-layer/test/test_patcher.test.mjs
+  - storybook-code-layer/test/test_literals.test.mjs
+  - storybook-code-layer/test/test_transaction.test.mjs
 -->
 
 ---

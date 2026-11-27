@@ -273,6 +273,54 @@ async function main() {
     return applied.json.applyId;
   });
 
+  // A literal of a component stylesheet replaced by a token (1.4.0): `max-inline-size: 70%` of the badge's content.
+  const literalBatch = (batchId, { toToken, literal = "70%", type = "tokenize-literal" } = {}) => {
+    const file = index.css.files.find((f) => f.file === "src/components/badge-seal/BadgeSeal.css");
+    const rule = file.rules.find((r) => r.declarations.some((d) => d.property === "max-inline-size" && d.value === "70%"));
+    const locator = { ordinal: rule.ordinal, selector: rule.selector, atRules: rule.atRules, occurrence: rule.occurrence };
+    return {
+      schemaVersion: 1,
+      batchId,
+      indexRevision: index.revision,
+      operations: [
+        type === "tokenize-literal"
+          ? { id: "lit", type, file: file.file, rule: locator, declaration: { property: "max-inline-size" }, component: 0, literal, toToken, before: { value: "70%" }, after: { value: `var(${toToken})` } }
+          : { id: "lit", type, file: file.file, rule: locator, declaration: { property: "max-inline-size" }, component: 0, fromToken: toToken, literal, before: { value: `var(${toToken})` }, after: { value: literal } },
+      ],
+    };
+  };
+  const sizeToken = index.tokens.items.find((t) => t.tier === "sys" && t.source === "tier" && !t.duplicate && t.resolution === "ok" && t.kind === "dimension")?.name;
+  const colorToken = index.tokens.items.find((t) => t.tier === "sys" && t.source === "tier" && !t.duplicate && t.resolution === "ok" && t.kind === "color")?.name;
+
+  await check("10.11 a literal replaced by a token: validate writes nothing, refusals write nothing, apply writes one line, undo restores the exact bytes", async () => {
+    assert.ok(sizeToken && colorToken, "the trial ground has a length and a color token");
+    const plan = await post("/validate", literalBatch("live-literal-dry", { toToken: sizeToken }), session.session);
+    assert.equal(plan.status, 200, JSON.stringify(plan.json));
+    assert.deepEqual(plan.json.results.map((r) => [r.type, r.component, r.literal, r.toToken, r.before, r.after]), [["tokenize-literal", 0, "70%", sizeToken, "70%", `var(${sizeToken})`]]);
+    assert.deepEqual(hashes(), start, "validate writes nothing");
+    const refusals = [
+      ["a color token for a size", literalBatch("live-literal-r1", { toToken: colorToken }), 422, "type-mismatch"],
+      ["a literal the file does not hold", literalBatch("live-literal-r2", { toToken: sizeToken, literal: "71%" }), 409, "stale-before"],
+      ["the internal restore", literalBatch("live-literal-r3", { toToken: sizeToken, type: "restore-literal" }), 400, "schema-invalid"],
+    ];
+    for (const [label, body, status, code] of refusals) {
+      const response = await post("/apply", body, session.session);
+      assert.deepEqual([response.status, response.json.error?.code], [status, code], label);
+    }
+    assert.deepEqual(hashes(), start, "refusals write nothing");
+    const applied = await post("/apply", literalBatch("live-literal-apply", { toToken: sizeToken }), session.session);
+    assert.equal(applied.status, 200, JSON.stringify(applied.json));
+    assert.equal(fs.readFileSync(files.css, "utf8"), originals.css.replace("max-inline-size: 70%;", `max-inline-size: var(${sizeToken});`));
+    assert.deepEqual(Object.entries(hashes()).filter(([key, value]) => value !== start[key]).map(([key]) => key), ["css"], "only the component stylesheet changed");
+    assert.deepEqual(applied.json.pending.map((e) => [e.kind, e.property, e.oldValue, e.newValue]), [["declaration", "max-inline-size", "70%", sizeToken]]);
+    const undone = await post("/undo", { applyId: applied.json.applyId }, session.session);
+    assert.equal(undone.status, 200, JSON.stringify(undone.json));
+    assert.deepEqual(hashes(), start);
+    const state = (await request({ route: "/state" })).json;
+    assert.deepEqual(state.undoStack.map((entry) => entry.applyId), stackBefore, "the undo stack is what it was before the run");
+    return `${sizeToken}; ${refusals.length} refusals; ${applied.json.applyId}`;
+  });
+
   const failed = results.filter((r) => !r.ok);
   if (JSON.stringify(hashes()) !== JSON.stringify(start)) {
     process.stdout.write("!! files differ from the start of this run; restoring from the in-memory originals\n");

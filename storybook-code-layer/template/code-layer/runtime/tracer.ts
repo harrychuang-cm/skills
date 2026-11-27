@@ -6,8 +6,10 @@
 // declaration that matches the element is turned into slot -> component
 // assignments, the last one in cascade order wins each slot, and slots that
 // share a winner are reported as one row.
+import { isRebindTarget } from "../shared/candidates.mjs";
 import { inferKind } from "../shared/kinds.mjs";
 import { KEYWORD_PATTERN, isFlexDisplay, layoutOptions, layoutSentinel } from "../shared/layout.mjs";
+import { isLiteralList, literalVerdict } from "../shared/literals.mjs";
 import { GROUPS, rowIdFor, sentinelFor, slotPart, type GroupDef } from "../shared/properties";
 import type {
   ChainLink,
@@ -42,6 +44,8 @@ export type TraceContext = {
   classPrefixes: string[];
   /** Workspace-relative paths the server cannot write right now. */
   unwritable: Set<string>;
+  /** Per component id: the kinds of the tokens its declarations may reference (system tokens and its own). */
+  offeredKinds: Map<string, Set<string>>;
 };
 
 export async function buildContext(index: IndexJson, unwritable: Set<string> = new Set()): Promise<TraceContext> {
@@ -61,7 +65,21 @@ export async function buildContext(index: IndexJson, unwritable: Set<string> = n
     resolver: new TokenResolver(index, tokens, entries),
     classPrefixes: index.components?.classPrefixes ?? [],
     unwritable,
+    offeredKinds: new Map(),
   };
+}
+
+/** The kinds of the tokens a declaration of a component may reference: system tokens and the component's own tokens. */
+function offeredKinds(ctx: TraceContext, componentId: string): Set<string> {
+  const known = ctx.offeredKinds.get(componentId);
+  if (known) return known;
+  const own = `--${ctx.index.tokens.prefix}-comp-${componentId}-`;
+  const kinds = new Set<string>();
+  for (const token of ctx.tokens.values()) {
+    if (isRebindTarget(token) && (token.tier === "sys" || (token.tier === "comp" && token.name.startsWith(own)))) kinds.add(token.kind);
+  }
+  ctx.offeredKinds.set(componentId, kinds);
+  return kinds;
 }
 
 // ---- slot winners ------------------------------------------------------------
@@ -349,6 +367,7 @@ function buildRow(element: Element, group: GroupDef, slots: string[], traced: Tr
     inheritedFrom: traced?.inherited ?? noSource,
     warnings: [],
     layout: null,
+    literal: null,
   };
   if (sides.some((side) => animatedNames(group, side.slot, side.physical).some((name) => isAnimating(element, name)))) return readOnlyRow(base, "animated");
   if (!traced && group.layout && layout.flex) return undeclaredLayoutRow(base, slots[0], layout, ctx);
@@ -414,6 +433,8 @@ function buildRow(element: Element, group: GroupDef, slots: string[], traced: Tr
     return { ...row, layout: { property: slots[0], options: layoutOptions(slots[0]), declared: component.text, direction: layout.direction, wrap: layout.wrap }, scopes: [scope], defaultScope: scope.available ? "declaration" : null };
   }
   if (!group.editable) return readOnlyRow(row, "structural");
+  // A list of literals (a font stack, `8px / 4px`) has no component sides can be asked for: say it is a list.
+  if (winner.failure === "unsupported-value" && isLiteralList(decl.value)) return readOnlyRow(row, "literal-list", decl.value.trim());
   if (winner.failure) return readOnlyRow(row, winner.failure);
   const indexed = decl.indexed!;
   if (indexed.duplicateInRule) return readOnlyRow(row, "duplicate-declaration", decl.property);
@@ -424,6 +445,27 @@ function buildRow(element: Element, group: GroupDef, slots: string[], traced: Tr
   }
   if (!component) return readOnlyRow(row, "reset-by-shorthand", decl.property);
   if (component.shape === "keyword") return readOnlyRow(row, "keyword");
+  if (component.shape === "raw" && winner.component !== null) {
+    // A literal: editable by replacing it with a reference to an existing token, at the declaration only.
+    const verdict = literalVerdict(decl.value, winner.component, { accepted: group.kinds, available: offeredKinds(ctx, identity.file.componentId) });
+    if (!verdict.tokenizable) return readOnlyRow(row, verdict.reason === "not-a-literal" ? "raw-value" : verdict.reason, component.text);
+    const file = identity.file;
+    const line = indexed.line;
+    const problem = ctx.unwritable.has(file.workspacePath) ? "file-not-writable" : null;
+    const scope: RowScope = {
+      id: "declaration",
+      available: problem === null,
+      reason: problem,
+      detail: problem ? file.workspacePath : null,
+      target: { type: "tokenize-literal", file: file.file, workspacePath: file.workspacePath, ordinal, selector, property: decl.property, component: winner.component, literal: component.text, line },
+      fromToken: "",
+      before: decl.value,
+      targetTier: "sys",
+      writes: { files: [file.workspacePath], line },
+      impact: { declarations: 1, components: 1, excludesInlineStyles: false },
+    };
+    return { ...row, literal: { text: component.text, kind: verdict.kind }, scopes: [scope], defaultScope: scope.available ? "declaration" : null };
+  }
   if (component.shape !== "single-var" || !ref) return readOnlyRow(row, "raw-value");
 
   // The custom property must come from the document root: a re-declaration on an element is a scoped override.
@@ -600,7 +642,21 @@ export function probeScope(element: Element, row: RowTrace, scope: RowScope, ctx
   const original = rule.style.getPropertyValue(property);
   const priority = rule.style.getPropertyPriority(property);
   const sentinel = sentinelFor(group);
-  const probeValue = target.refIndex === null ? sentinel : replaceReference(original, target.refIndex, sentinel);
+  let probeValue: string | null;
+  if (scope.target.type === "tokenize-literal") {
+    // The CSSOM normalises a value without var() (`8px 8px` reads back as `8px`), so components are counted in the source's value.
+    try {
+      probeValue = replaceComponent(scope.before, scope.target.component, scope.target.literal, sentinel);
+    } catch {
+      return "no-target";
+    }
+  } else if (scope.target.type === "rebind-declaration") {
+    // Counted in the source's value too: a staged tokenization on the same declaration adds a var() to the
+    // previewed text, which moves the number of every later reference.
+    probeValue = replaceReference(scope.before, target.refIndex ?? 0, sentinel);
+  } else {
+    probeValue = target.refIndex === null ? sentinel : replaceReference(original, target.refIndex, sentinel);
+  }
   if (probeValue === null) return "no-target";
   const cssTextBefore = rule.style.cssText;
   let result: ProbeResult = "unconfirmed";

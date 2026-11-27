@@ -219,6 +219,8 @@ export function collectPending({ config, index, specFiles, results, skipped, new
     entries.push(entry);
   };
   const LAYOUT = new Set(["set-keyword", "add-declaration"]);
+  // A tokenization replaces a literal: there is no old token name to search for.
+  const LITERAL = new Set(["tokenize-literal", "restore-literal"]);
   const change = (result) => ({
     operation: result.id,
     token: result.token ?? null,
@@ -227,6 +229,8 @@ export function collectPending({ config, index, specFiles, results, skipped, new
     newToken: result.toToken ?? null,
     // A layout operation has keywords instead of tokens; an added declaration has no old one.
     ...(LAYOUT.has(result.type) ? { oldValue: result.fromKeyword ?? null, newValue: result.toKeyword ?? null } : {}),
+    ...(result.type === "tokenize-literal" ? { oldValue: result.literal, newValue: result.toToken } : {}),
+    ...(result.type === "restore-literal" ? { oldValue: result.fromToken, newValue: result.literal } : {}),
   });
 
   for (const result of results) {
@@ -238,7 +242,7 @@ export function collectPending({ config, index, specFiles, results, skipped, new
       // A system token feeds every component that uses the role: no single document can be named.
       push({ ...base, kind: "system-token", reason: "system-token-changed", file: relW(result.file), line: result.line, excerpt: declarationLine.trim().slice(0, 200) });
     }
-    if (result.type === "rebind-declaration" || LAYOUT.has(result.type)) {
+    if (result.type === "rebind-declaration" || LAYOUT.has(result.type) || LITERAL.has(result.type)) {
       // Component stylesheet declarations are not tabulated anywhere.
       push({ ...base, kind: "declaration", reason: "declaration-not-documented", file: relW(result.file), line: result.line, excerpt: declarationLine.trim().slice(0, 200) });
     }
@@ -265,6 +269,8 @@ export function collectPending({ config, index, specFiles, results, skipped, new
       if (result.type === "rebind-token" && result.tier !== "comp") continue;
       // Keywords such as `row` and `center` are ordinary words: prose is never searched for them.
       if (LAYOUT.has(result.type)) continue;
+      // Literals such as `0`, `8px` or `100%` would match countless unrelated lines: never searched either.
+      if (LITERAL.has(result.type)) continue;
       const term = shortNameOf(result.fromToken, prefix, componentIds);
       if (!searchable(term)) continue;
       const base = change(result);

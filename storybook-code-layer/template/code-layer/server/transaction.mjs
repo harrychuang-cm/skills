@@ -16,6 +16,7 @@ import { checkScriptProblems, runChecks } from "./checks.mjs";
 import { decodeCss, diskHash, servedTextHashSync } from "./css-source.mjs";
 import { buildIndex } from "./index-builder.mjs";
 import { Journal, newApplyId } from "./journal.mjs";
+import { restoreComponent } from "../shared/literals.mjs";
 import { replaceComponent, replaceVarName } from "../shared/value-refs.mjs";
 import { resolveOperations, validateBatch } from "./operations.mjs";
 import { patchFile } from "./patcher.mjs";
@@ -328,6 +329,9 @@ export function createEngine({ config, postcss, log = { info() {}, warn() {}, er
       refIndex: r.refIndex ?? 0,
       // Layout operations: which component, which keywords, and the exact text an add inserted.
       ...(r.slot ? { slot: r.slot, component: r.component ?? null, fromKeyword: r.fromKeyword ?? null, toKeyword: r.toKeyword ?? null, ...(r.inserted ? { inserted: r.inserted } : {}) } : {}),
+      // Literal operations: which component, and the literal the server read from the file (never the request's).
+      ...(r.type === "tokenize-literal" || r.type === "restore-literal" ? { component: r.component, literal: r.literal } : {}),
+      ...(r.type === "rebind-declaration" && Number.isInteger(r.component) ? { component: r.component } : {}),
     }));
     const response = {
       ok: true,
@@ -465,6 +469,7 @@ export function createEngine({ config, postcss, log = { info() {}, warn() {}, er
       if (o.type === "rebind-declaration") return Boolean(o.fromToken && o.toToken && o.rule && o.property && Number.isInteger(o.refIndex));
       if (o.type === "set-keyword") return Boolean(o.rule && o.property && Number.isInteger(o.component) && o.fromKeyword && o.toKeyword);
       if (o.type === "add-declaration") return Boolean(o.rule && o.property && o.toKeyword && typeof o.inserted === "string" && o.inserted);
+      if (o.type === "tokenize-literal") return Boolean(o.rule && o.property && Number.isInteger(o.component) && typeof o.literal === "string" && o.literal && o.toToken);
       return false;
     };
     return Array.isArray(operations) && operations.length > 0 && operations.every(one);
@@ -518,13 +523,31 @@ export function createEngine({ config, postcss, log = { info() {}, warn() {}, er
             after: { value: replaceComponent(decl.value, o.component, o.toKeyword, o.fromKeyword) },
           };
         }
+        if (o.type === "tokenize-literal") {
+          // Back to the literal the server read from the file when it applied, at the same component.
+          const component = decl?.components[o.component];
+          if (!decl || !component || component.shape !== "single-var" || component.text !== `var(${o.toToken})`) {
+            throw new ApiError("stale-before", `${o.property} of ${o.rule.selector} in ${o.file} no longer holds what this apply wrote; it cannot be reversed`, { file: o.file, selector: o.rule.selector, property: o.property, expected: `var(${o.toToken})`, actual: decl?.value ?? null });
+          }
+          let after;
+          try {
+            after = restoreComponent(decl.value, o.component, o.toToken, o.literal);
+          } catch {
+            throw new ApiError("stale-before", `${o.property} of ${o.rule.selector} in ${o.file} no longer holds what this apply wrote; it cannot be reversed`, { file: o.file, property: o.property });
+          }
+          return { id, type: "restore-literal", file: o.file, rule: o.rule, declaration: { property: o.property }, component: o.component, fromToken: o.toToken, literal: o.literal, before: { value: decl.value }, after: { value: after } };
+        }
         if (o.type === "add-declaration") {
           if (!decl || decl.value !== o.toKeyword) {
             throw new ApiError("stale-before", `${o.property} of ${o.rule.selector} in ${o.file} no longer holds what this apply added; it cannot be reversed`, { file: o.file, selector: o.rule.selector, property: o.property, expected: o.toKeyword, actual: decl?.value ?? null });
           }
           return { id, type: "remove-declaration", file: o.file, rule: o.rule, declaration: { property: o.property }, fromKeyword: o.toKeyword, inserted: o.inserted };
         }
-        const ref = decl?.refs.find((r) => r.refIndex === o.refIndex);
+        // Find the reference by its component when the journal has it (1.4.0): a tokenization in the same
+        // apply may have added a reference earlier in the value, which moved the reference's number.
+        const byComponent = Number.isInteger(o.component) ? decl?.components[o.component] : null;
+        const refIndex = byComponent ? (byComponent.shape === "single-var" ? byComponent.refIndex : -1) : o.refIndex;
+        const ref = decl?.refs.find((r) => r.refIndex === refIndex);
         if (!decl || !ref || ref.name !== o.toToken) {
           throw new ApiError("stale-before", `${o.property} of ${o.rule.selector} in ${o.file} no longer holds what this apply wrote; it cannot be reversed`, { file: o.file, selector: o.rule.selector, property: o.property, expected: o.toToken, actual: decl?.value ?? null });
         }
@@ -534,11 +557,11 @@ export function createEngine({ config, postcss, log = { info() {}, warn() {}, er
           file: o.file,
           rule: o.rule,
           declaration: { property: o.property },
-          replacements: [{ refIndex: o.refIndex, fromToken: o.toToken, toToken: o.fromToken }],
+          replacements: [{ refIndex, fromToken: o.toToken, toToken: o.fromToken }],
           fromToken: o.toToken,
           toToken: o.fromToken,
           before: { value: decl.value },
-          after: { value: replaceVarName(decl.value, o.refIndex, o.toToken, o.fromToken) },
+          after: { value: replaceVarName(decl.value, refIndex, o.toToken, o.fromToken) },
         };
       });
       const batchId = `reverse-${tx.applyId}`.slice(0, 64);

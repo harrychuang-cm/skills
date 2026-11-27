@@ -33,6 +33,13 @@ person asks what they are installing:
 - Values, colors and type: only swapping the token a `var(--…)` references for
   another existing token of the same kind. It never invents a number or a
   color and never creates a token.
+- Literal values (since 1.4.0): a literal component of a component stylesheet
+  declaration (`margin: 0`, `max-inline-size: 70%`, `#000` in a border) can be
+  replaced by `var(--an existing token)` whose kind the property accepts, at
+  that declaration only. The server writes only `var(`, an indexed token name
+  and `)`; it never writes another literal, except when a reverse apply puts
+  back the literal it recorded. Keywords, `calc()`, comma or slash lists and
+  literals with no token of an accepted kind stay read-only with a reason.
 - Layout (since 1.2.0): on a flex container, the direction, alignment,
   distribution and wrapping can be set to one of a fixed list of CSS keywords.
   These are not tokens, so they are written straight into the component

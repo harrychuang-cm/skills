@@ -25,6 +25,14 @@ export class PatchError extends Error {
 
 const PROPERTY_NAME = /^[a-z][a-z-]*$/;
 const KEYWORD = /^-?[A-Za-z_][A-Za-z0-9_-]*$/;
+/** Exactly one var() reference to a custom property, without fallback: what a tokenization writes. */
+const TOKEN_REFERENCE = /^var\(--[A-Za-z0-9_-]+\)$/;
+
+/** A literal a reverse apply may write back: one top-level component, no reference, comment or structure. */
+function plainLiteral(text) {
+  const parts = splitTopLevel(text);
+  return parts.length === 1 && !parts[0].separator && parts[0].text === text && !/var\(|[;{}!]|\/\*/i.test(text);
+}
 
 /** Raw value span of a PostCSS declaration inside the BOM-less text. */
 export function locateDeclValue(text, decl) {
@@ -114,12 +122,16 @@ function planEdit(source, edit) {
   }
   const { valueStart, rawValue } = locateDeclValue(text, edit.decl);
   const line = edit.decl.source.start.line;
-  if (kind === "component") {
+  if (kind === "component" || kind === "tokenize" || kind === "restore") {
     const part = splitTopLevel(rawValue)[edit.component];
     if (!part || part.separator || part.text !== edit.fromText) {
       throw new PatchError("locator-mismatch", `component ${edit.component} of ${edit.decl.prop} is not ${edit.fromText}`, { line });
     }
-    if (!KEYWORD.test(edit.toText)) throw new PatchError("unsupported-value-shape", `invalid keyword ${edit.toText}`);
+    // What each kind may write: a keyword (set-keyword), exactly one reference to a token (tokenize-literal),
+    // or the recorded literal as one plain component (its inverse).
+    if (kind === "component" && !KEYWORD.test(edit.toText)) throw new PatchError("unsupported-value-shape", `invalid keyword ${edit.toText}`);
+    if (kind === "tokenize" && !TOKEN_REFERENCE.test(edit.toText)) throw new PatchError("unsupported-value-shape", `invalid token reference ${edit.toText}`);
+    if (kind === "restore" && !plainLiteral(edit.toText)) throw new PatchError("unsupported-value-shape", `invalid literal ${edit.toText}`);
     return { kind, decl: edit.decl, fromName: edit.fromText, toName: edit.toText, start: valueStart + part.start, end: valueStart + part.end, valueStart, line, rawValue };
   }
   const ref = findVarRefs(rawValue)[edit.refIndex];
@@ -147,7 +159,8 @@ function planEdit(source, edit) {
  * Plan edits on one file.
  * source: { bytes, text, hasBom } (from readCssSource)
  * edits:  [{ decl, refIndex, fromName, toName, opId }]                       name (the default kind)
- *         [{ kind: "component", decl, component, fromText, toText, opId }]
+ *         [{ kind: "component", decl, component, fromText, toText, opId }]         a keyword
+ *         [{ kind: "tokenize" | "restore", decl, component, fromText, toText, opId }] a literal and its token
  *         [{ kind: "insert", rule, property, value, opId }]
  *         [{ kind: "remove", decl, inserted, opId }]
  * Returns { newBytes, newText, spans } or throws PatchError. In a span,

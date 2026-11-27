@@ -1,6 +1,6 @@
 // Names of rows, sides and scopes in the interface language.
 import { tCode, tMaybe, t } from "./i18n";
-import { isLayoutOp, opFrom, opTo, type DraftOp, type EffectiveState, type RowSide, type ScopeId } from "./protocol";
+import { isLayoutOp, isLiteralOp, opFrom, opTo, type DraftOp, type EffectiveState, type RowSide, type ScopeId } from "./protocol";
 
 /** Why the tool is suspended, in words; missing browser features are named. */
 export function suspendText(effective: Extract<EffectiveState, { state: "suspended" }>): string {
@@ -107,5 +107,7 @@ export function prettyToken(name: string, prefix: string, componentId: string | 
  */
 export function changeEnds(op: DraftOp, prefix: string): { from: string; to: string } {
   if (isLayoutOp(op)) return { from: opFrom(op) || t("layout.unset"), to: opTo(op) };
+  // A tokenization: the literal as the source holds it, then the token.
+  if (isLiteralOp(op)) return { from: op.literal, to: shortToken(op.toToken, prefix) };
   return { from: shortToken(op.fromToken, prefix), to: shortToken(op.toToken, prefix) };
 }

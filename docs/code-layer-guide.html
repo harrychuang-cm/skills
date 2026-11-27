@@ -14,6 +14,7 @@
   4. 介面導覽：script 裡的 FIGURES（每個編號對應 sel 與說明）。
   5. 模擬器的介面文字：script 裡的 L.zh／L.en，要和工具的 shared/messages.*.ts 一致。
      排列的四個屬性與選項：script 裡的 LAYOUT，要和工具的 shared/layout.mjs 一致。
+     寫死的值與它的候選：script 裡 PROPS 的 literal 與 literalCandidates，三組的排序要和工具的 shared/literals.mjs 一致。
      電腦跳出的確認視窗（模擬）：script 裡的 CONFIRM，要和工具的 server/agent/messages.confirm.mjs 一致。
   6. 其餘章節（範圍、記號、結果、滑鼠與鍵盤、常見問題）是一般 HTML，直接改。
   視覺：只有亮色。白色與淺灰的區塊交替，強調色只有一個藍色。
@@ -262,6 +263,11 @@
   .sw { width: 11px; height: 11px; flex: none; border-radius: 3px; box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.14); }
   .i-reason { margin: 0 12px 4px 34px; font-size: 11.5px; color: var(--tool-warn); }
   .pill.is-default { opacity: 0.6; }
+  .pill.is-unbound { background: none; border-color: var(--tool-line); color: var(--tool-dim); }
+  .i-row .val.is-replaced { color: var(--tool-dim); }
+  .opt-group { padding: 6px 6px 2px; font-size: 11px; font-weight: 600; color: var(--tool-dim); }
+  .opt-group:first-child { padding-top: 0; }
+  .fig-stage .opts { max-height: none; }
   .pill svg { flex: none; }
   .opt .li { width: 14px; height: 14px; flex: none; display: grid; place-items: center; color: var(--tool-dim); }
   .pop-where { font-size: 11.5px; color: var(--tool-dim); line-height: 1.5; }
@@ -655,15 +661,18 @@
       <div class="row label-row"><span>為什麼鎖住</span><span>例子</span><span>想改的話</span></div>
       <div class="row"><span>顯示方式，只供檢視</span><span data-label="例子"><code>display</code>（把區塊改成 flex 或 grid、隱藏）</span><span data-label="想改的話">用「請 AI 修改」，或用「複製參照」貼給 AI，請它改</span></div>
       <div class="row"><span>不是 flex 容器</span><span data-label="例子">一般區塊上的方向、對齊、分布、換行</span><span data-label="想改的話">這些設定對它沒有作用；要排列先請 AI 改成 flex</span></div>
-      <div class="row"><span>沒有綁 token</span><span data-label="例子">寫死的數值（<code>100%</code>、<code>12px</code>）、關鍵字、<code>calc()</code></span><span data-label="想改的話">只用一次就請 AI 改數值；別處也會用，就用「複製參照」貼給 AI，請它新增 token</span></div>
+      <div class="row"><span>關鍵字、運算式、多個值</span><span data-label="例子"><code>auto</code>、<code>fit-content</code>、<code>calc(100% - 16px)</code>、<code>8px / 4px</code></span><span data-label="想改的話">請 AI 改，或用「複製參照」貼給 AI</span></div>
+      <div class="row"><span>專案裡沒有可用的 token</span><span data-label="例子">寫死的 <code>0.5</code>，但專案沒有數字類的 token</span><span data-label="想改的話">請工程師新增 token；只用這一次，就請 AI 改數值</span></div>
       <div class="row"><span>值來自元件外面</span><span data-label="例子">字體繼承自整個頁面、來自另一個元件</span><span data-label="想改的話">選到來源的元件再改</span></div>
       <div class="row"><span>無法確認規則在作用</span><span data-label="例子">被別的規則蓋過、行內樣式、<code>!important</code>、動畫中</span><span data-label="想改的話">請工程師看一下</span></div>
     </div>
     <ul class="notes">
+      <li>寫死的單一數值或顏色（例如 <code>88px</code>、<code>70%</code>、<code>#FFFFFF</code>），專案又有同類的 token 時，不會鎖住：token 的位置寫著「未綁定」，點一下就能換成 token。只改那一條宣告。</li>
       <li>「請 AI 修改」是選用的功能，專案啟用之後才有：在檢視器旁邊直接請 AI 改。它只能修改既有的檔案，不能新增 token 或檔案；需要新 token 時，用「複製參照」貼給 AI 對話，或請工程師新增。</li>
     </ul>
     <ul class="marks">
       <li><span class="glyph" data-icon="lock"></span><div><strong>鎖頭</strong><span>只供檢視。停上去看原因。</span></div></li>
+      <li><span class="glyph" data-icon="unbound"></span><div><strong>未綁定</strong><span>寫死的數值，可以換成 token。點了打開候選。</span></div></li>
       <li><span class="glyph" data-icon="up"></span><div><strong>向上箭頭</strong><span>值從上層繼承來。可以改，改的是上層。</span></div></li>
       <li><span class="glyph blue" data-icon="pill"></span><div><strong>藍框的 token</strong><span>這一列有暫存的變更，還沒寫入。</span></div></li>
       <li><span class="glyph" data-icon="plus"></span><div><strong>＋n</strong><span>還有 n 個沒有設定的屬性，點了展開。</span></div></li>
@@ -682,6 +691,7 @@
     <div class="rows">
       <div class="row label-row"><span>你會看到</span><span>意思</span><span>要做什麼</span></div>
       <div class="row"><span class="st ok">已寫入並驗證</span><span data-label="意思">檔案寫好了，畫面也確認一致。</span><span data-label="要做什麼">不用做什麼。</span></div>
+      <div class="row"><span class="st ok">已寫入並驗證，外觀不變</span><span data-label="意思">寫死的值換成了數值相同的 token：檔案改了，畫面本來就該一樣，也確認一樣。</span><span data-label="要做什麼">不用做什麼。</span></div>
       <div class="row"><span class="st warn">已寫入，此頁看不到效果</span><span data-label="意思">改的東西不在目前這個 story 上。</span><span data-label="要做什麼">切到看得到的 story，按「重新驗證」。</span></div>
       <div class="row"><span class="st warn">已寫入，但沒有在時限內更新</span><span data-label="意思">檔案寫好了，畫面還沒跟上。</span><span data-label="要做什麼">按「重新整理預覽並驗證」。</span></div>
       <div class="row"><span class="st bad">已寫入，但畫面與預覽不符</span><span data-label="意思">寫入後的畫面和預覽時不一樣。</span><span data-label="要做什麼">按「還原」，再告訴工程師。</span></div>
@@ -800,10 +810,14 @@
         <summary>有哪些事還不能做？</summary>
         <div class="a"><ul>
           <li>改顯示方式（<code>display</code>）、grid 的排列、子元素的順序，或用拖曳調整大小與位置。flex 容器的方向、對齊、分布、換行可以改。</li>
-          <li>改寫死的數值、把它換成 token，或新增一個原本沒有的 token。</li>
+          <li>改寫死的數值本身（例如把 <code>88px</code> 改成 <code>96px</code>），或新增一個原本沒有的 token。寫死的值可以換成既有的 token，但只改那一條宣告。</li>
           <li>選取或修改 <code>::before</code>／<code>::after</code> 這類裝飾，以及滑鼠移上去、聚焦時才出現的樣式。</li>
           <li>只改畫面上的某一顆元件，而不影響同款的其他顆。</li>
         </ul><p>這些可以交給 AI：專案啟用了「請 AI 修改」時，直接在檢視器旁請它改；也可以用「複製參照」貼給 AI 對話。「請 AI 修改」只能修改既有的檔案，不能新增 token 或檔案。</p></div>
+      </details>
+      <details>
+        <summary>寫死的值換成 token，畫面會變嗎？</summary>
+        <div class="a"><p>挑「數值相同」那一組的 token，畫面不變，結果會寫「已寫入並驗證，外觀不變」。挑別的 token，就變成那個 token 的值。</p><p>「數值相同」只對目前的主題成立：專案有深色主題時，同一個 token 在另一個主題可能是別的值。換上去之後，這個屬性就會跟著 token 變。</p><p>工具只改那一條宣告，不會動元件 token 或全域 token，所以浮層裡沒有修改範圍可以選。按「還原」會把原本寫死的數值放回去。</p></div>
       </details>
       <details>
         <summary>工具列的 Code Layer 亮著，但選不到東西？</summary>
@@ -832,6 +846,15 @@
       <p>工具有新功能時，這份文件會一起更新。</p>
     </div>
     <div class="log">
+      <article>
+        <div class="v">1.4.0<small>2026-11-27</small></div>
+        <ul>
+          <li>寫死的單一數值或顏色可以換成既有的 token：這種列不再有鎖頭，token 的位置寫著「未綁定」，點開後的候選分成三組：數值相同、這個屬性常用的類別、其他類別。</li>
+          <li>只改那一條宣告；預覽、套用、驗證、還原都和換 token 一樣。挑數值相同的 token 時，結果寫「已寫入並驗證，外觀不變」。</li>
+          <li>關鍵字、<code>calc()</code> 這類運算式、用逗號或斜線分隔的值，以及專案沒有同類 token 的值，仍然鎖著並說明原因。</li>
+          <li>「複製參照」會寫出寫死的值可以在哪個檔案的哪一行換成 token。</li>
+        </ul>
+      </article>
       <article>
         <div class="v">1.3.1<small>2026-11-27</small></div>
         <ul>
@@ -900,7 +923,7 @@
 <script>
 (() => {
   "use strict";
-  const GUIDE_VERSION = "1.3.1";
+  const GUIDE_VERSION = "1.4.0";
   const GUIDE_UPDATED = "2026-11-27";
 
   const $ = (sel, root = document) => root.querySelector(sel);
@@ -949,6 +972,7 @@
     radius: [["shape-corner-none", "0px"], ["shape-corner-sm", "4px"], ["shape-corner-md", "8px"], ["shape-corner-lg", "16px"], ["shape-corner-full", "999px"]],
     spacing: [["spacing-inset-xs", "4px"], ["spacing-inset-sm", "8px"], ["spacing-inset-md", "12px"], ["spacing-inset-lg", "16px"], ["spacing-inset-xl", "24px"]],
     size: [["typescale-label-size", "13px"], ["typescale-body-size", "16px"], ["typescale-title-size", "20px"], ["typescale-headline-size", "28px"]],
+    box: [["size-touch", "48px"], ["size-badge-sm", "72px"], ["size-badge-md", "88px"], ["size-badge-lg", "104px"]],
   };
   const VALUE = Object.fromEntries(Object.values(TOKENS).flat());
   const PROPS = {
@@ -957,7 +981,11 @@
     fill: { kind: "color", css: "background", comp: "--comp-badge-fill" },
     fontSize: { kind: "size", css: "font-size", comp: "--comp-badge-size" },
     color: { kind: "color", css: "color", comp: "--comp-badge-text" },
+    // Written as a literal in the stylesheet: the row offers tokens to replace it, at this declaration only.
+    minWidth: { kind: "box", css: "min-width", comp: null, literal: "88px" },
   };
+  /* The token lists a length literal can take: its own category first, the others after it. */
+  const LITERAL_POOL = ["box", "spacing", "radius", "size"];
   /* The four layout rows of a flex container: a fixed list of keywords each, written straight into the stylesheet. */
   const LAYOUT = {
     direction: { css: "flex-direction", options: ["row", "column", "row-reverse", "column-reverse"], initial: "row" },
@@ -974,7 +1002,8 @@
       { section: "layout", id: "wrap", prop: "wrap" },
       { section: "spacing", id: "padding", prop: "padding" },
       { section: "spacing", id: "margin", lock: "unset", value: "0px", unset: true },
-      { section: "size", id: "minWidth", icon: "width", lock: "literal", value: "88px" },
+      { section: "size", id: "minWidth", icon: "width", prop: "minWidth" },
+      { section: "size", id: "maxWidth", icon: "width", lock: "expression", value: "calc(100% - 16px)" },
       { section: "appearance", id: "radius", prop: "radius" },
       { section: "fill", id: "fill", prop: "fill" },
       { section: "typography", id: "fontSize", prop: "fontSize" },
@@ -993,7 +1022,7 @@
     zh: {
       toggle: "Code Layer", guide: [["點一下", "選取元件"], ["雙擊", "進入內層"], ["點數值", "換成另一個 token"]],
       sections: { layout: "版面", spacing: "間距", size: "尺寸", appearance: "外觀", fill: "填色", typography: "文字" },
-      fields: { display: "顯示", alignItems: "對齊", justifyContent: "分布", direction: "方向", wrap: "換行", padding: "內距", margin: "外距", minWidth: "最小寬", radius: "圓角", fill: "填色", fontSize: "字級", color: "文字色" },
+      fields: { display: "顯示", alignItems: "對齊", justifyContent: "分布", direction: "方向", wrap: "換行", padding: "內距", margin: "外距", minWidth: "最小寬", maxWidth: "最大寬", radius: "圓角", fill: "填色", fontSize: "字級", color: "文字色" },
       layout: { row: "橫向", column: "直向", "row-reverse": "橫向（反向）", "column-reverse": "直向（反向）", nowrap: "不換行", wrap: "換行", center: "置中", stretch: "撐滿", baseline: "對齊文字基線", "space-between": "兩端對齊", "space-around": "分散對齊", "space-evenly": "等距分布", normal: "預設", left: "靠左", right: "靠右", top: "靠上", bottom: "靠下" },
       unset: "未設定", layDefault: "預設值，尚未宣告", layEdits: (selector, css) => `會改 ${selector} 的 ${css}。`, layAdds: (selector, css) => `${selector} 還沒有設定 ${css}，會在這條規則新增一行。`, layUnstage: "取消這個變更", original: (v) => `原本：${v}`,
       reach: { title: "套用到", declaration: "只有這裡", component: "這個元件", system: "整個系統" },
@@ -1004,7 +1033,11 @@
       items: (n) => `逐項結果（${n}）`, itemOk: (e) => `已驗證（預期 ${e}，實際 ${e}）`, docs: (n) => `已同步改寫規格文件 ${n} 處`, pending: (n) => `文件待同步（${n}）`,
       copyForAi: "複製給 AI", resolve: "標示完成", derived: "衍生文件已重新產生", reverify: "重新驗證", reloadVerify: "重新整理預覽並驗證",
       copyRef: "複製參照", contrast: (a, b) => `對比 ${a} → ${b}`, pairAccept: "一起改內容色",
-      lock: { structure: "display 只供檢視", literal: "寫死的數值，沒有綁定 token", unset: "沒有宣告：使用瀏覽器預設值" },
+      lock: { structure: "display 只供檢視", expression: "運算式或無法辨識的值，不能直接換成 token", unset: "沒有宣告：使用瀏覽器預設值" },
+      unbound: "未綁定", literalHint: "寫死的數值，可以換成 token", literalHead: (v) => `寫死的數值：${v}，選一個 token 取代它`,
+      groups: { 1: "數值相同", 2: "這個屬性常用的類別", 3: "其他類別" }, sameValue: "數值相同",
+      verifiedSame: "已寫入並驗證，外觀不變", undoneSame: "已還原並驗證，外觀不變", itemSame: "外觀不變",
+      refLiteral: (v, at) => `寫死的數值 ${v}：可以在 ${at} 換成既有的 token（只改這條宣告）`,
       noScope: { system: "這個專案沒有開放 system 層", component: "這個值沒有經過元件 token" },
       pendingReason: "元件樣式表的宣告沒有任何表格記載，請確認規格的敘述是否需要更新",
       more: (n) => `＋${n}`, less: "收起", dev: "開發者資訊：顯示檔案位置與 token 鏈", collapse: "收合", expand: "展開", close: "關閉", remove: (row) => `移除 ${row} 的變更`,
@@ -1023,7 +1056,7 @@
     en: {
       toggle: "Code Layer", guide: [["Click", "Select a component"], ["Double-click", "Go one level in"], ["Click a value", "Swap it for another token"]],
       sections: { layout: "Layout", spacing: "Spacing", size: "Size", appearance: "Appearance", fill: "Fill", typography: "Typography" },
-      fields: { display: "Display", alignItems: "Align", justifyContent: "Justify", direction: "Direction", wrap: "Wrap", padding: "Padding", margin: "Margin", minWidth: "Min W", radius: "Radius", fill: "Fill", fontSize: "Size", color: "Text" },
+      fields: { display: "Display", alignItems: "Align", justifyContent: "Justify", direction: "Direction", wrap: "Wrap", padding: "Padding", margin: "Margin", minWidth: "Min W", maxWidth: "Max W", radius: "Radius", fill: "Fill", fontSize: "Size", color: "Text" },
       layout: { row: "Horizontal", column: "Vertical", "row-reverse": "Horizontal, reversed", "column-reverse": "Vertical, reversed", nowrap: "No wrap", wrap: "Wrap", center: "Center", stretch: "Stretch", baseline: "Text baseline", "space-between": "Space between", "space-around": "Space around", "space-evenly": "Space evenly", normal: "Default", left: "Left", right: "Right", top: "Top", bottom: "Bottom" },
       unset: "not set", layDefault: "default, not declared", layEdits: (selector, css) => `Changes ${css} of ${selector}.`, layAdds: (selector, css) => `${selector} does not set ${css} yet; a line is added to that rule.`, layUnstage: "Discard this change", original: (v) => `Was: ${v}`,
       reach: { title: "Apply to", declaration: "Only here", component: "This component", system: "Whole system" },
@@ -1034,7 +1067,11 @@
       items: (n) => `Results (${n})`, itemOk: (e) => `verified (expected ${e}, got ${e})`, docs: (n) => `${n} specification row(s) rewritten in the same write`, pending: (n) => `Documents pending sync (${n})`,
       copyForAi: "Copy for AI", resolve: "Mark done", derived: "Derived artifacts regenerated", reverify: "Verify again", reloadVerify: "Reload the preview and verify",
       copyRef: "Copy reference", contrast: (a, b) => `Contrast ${a} → ${b}`, pairAccept: "Update content color too",
-      lock: { structure: "display is shown for reference only", literal: "A fixed value, not bound to a token", unset: "No declaration: the browser default applies" },
+      lock: { structure: "display is shown for reference only", expression: "An expression or an unrecognised value; it cannot be replaced by a token here", unset: "No declaration: the browser default applies" },
+      unbound: "no token", literalHint: "A literal value; it can be replaced by a token", literalHead: (v) => `Literal value: ${v}; pick a token to replace it`,
+      groups: { 1: "Same value", 2: "Usual for this property", 3: "Other categories" }, sameValue: "same value",
+      verifiedSame: "Written and verified; the look is unchanged", undoneSame: "Undone and verified; the look is unchanged", itemSame: "look unchanged",
+      refLiteral: (v, at) => `literal value ${v}: it can be replaced by an existing token at ${at} (this declaration only)`,
       noScope: { system: "This project has not opened the system tier", component: "This value does not go through a component token" },
       pendingReason: "No table documents component stylesheet declarations; check whether the specification needs an update",
       more: (n) => `+${n}`, less: "Less", dev: "Developer details: show file locations and token chains", collapse: "Collapse", expand: "Expand", close: "Close", remove: (row) => `Remove the change to ${row}`,
@@ -1107,6 +1144,7 @@
     bind: {
       padding: { decl: "comp", comp: "spacing-inset-md" }, radius: { decl: "shape-corner-sm", comp: null }, fill: { decl: "comp", comp: "color-primary" },
       fontSize: { decl: "comp", comp: "typescale-label-size" }, color: { decl: "comp", comp: "color-on-primary" },
+      minWidth: { decl: null, comp: null }, // null: the literal is still in the stylesheet
     },
     lay: { direction: null, alignItems: "center", justifyContent: "center", wrap: null }, added: [],
     history: [], report: null, busy: false, dev: false, collapsed: false, more: {}, lockShown: null, query: "", written: [], reverted: false, flags: {}, pos: { right: 14, top: 14 }, applies: 0,
@@ -1117,6 +1155,23 @@
   const clone = (value) => JSON.parse(JSON.stringify(value));
   const applied = (s, prop) => (s.bind[prop].decl === "comp" ? s.bind[prop].comp : s.bind[prop].decl);
   const draftOf = (s, prop) => s.drafts.find((d) => d.prop === prop) ?? null;
+  /** A row's value: its token's value, or the literal in the stylesheet while no token replaces it. */
+  const valueOf = (s, prop, token = applied(s, prop)) => (token ? VALUE[token] : PROPS[prop].literal);
+  /** A literal row still waiting for a token. */
+  const isLiteral = (s, prop) => Boolean(PROPS[prop] && PROPS[prop].literal && !applied(s, prop));
+  /** The candidates of a literal in three groups (as shared/literals.mjs orders them): 1) its own category with the
+   *  same value, 2) the rest of that category, nearest value first, 3) every other length token, by name. */
+  const literalCandidates = (prop) => {
+    const meta = PROPS[prop];
+    const target = Number.parseFloat(meta.literal);
+    const byName = (a, b) => a.name.localeCompare(b.name);
+    const home = TOKENS[meta.kind].map(([name, value]) => ({ name, value, same: value === meta.literal, distance: Math.abs(Number.parseFloat(value) - target) }))
+      .map((c) => ({ ...c, group: c.same ? 1 : 2 }))
+      .sort((a, b) => a.group - b.group || a.distance - b.distance || byName(a, b));
+    const others = LITERAL_POOL.filter((kind) => kind !== meta.kind).flatMap((kind) => TOKENS[kind])
+      .map(([name, value]) => ({ name, value, same: value === meta.literal, group: 3 })).sort(byName);
+    return [...home, ...others];
+  };
   const shown = (s, prop) => {
     if (s.transient && s.transient.prop === prop) return s.transient.to;
     const draft = s.comparing || !s.on ? null : draftOf(s, prop);
@@ -1186,14 +1241,15 @@
         { key: "css:display", text: "display: flex;" },
         // Declared layout properties sit where they were written.
         ...Object.entries(LAYOUT).filter(([id]) => s.lay[id] !== null && !s.added.includes(id)).map(([id, p]) => ({ key: `css:${id}`, text: `${p.css}: ${s.lay[id]};` })),
-        ...Object.entries(PROPS).map(([prop, p]) => ({ key: `css:${prop}`, text: `${p.css}: var(${s.bind[prop].decl === "comp" ? p.comp : `--sys-${s.bind[prop].decl}`});` })),
+        ...Object.entries(PROPS).map(([prop, p]) => ({ key: `css:${prop}`, text: p.literal && !s.bind[prop].decl ? `${p.css}: ${p.literal};` : `${p.css}: var(${s.bind[prop].decl === "comp" ? p.comp : `--sys-${s.bind[prop].decl}`});` })),
+        { key: "css:maxWidth", text: "max-width: calc(100% - 16px);" },
         // A layout property nothing declared goes at the end of the rule: shown as a line to come while it is only staged.
         ...Object.entries(LAYOUT).filter(([id]) => s.added.includes(id) || (s.lay[id] === null && draftOf(s, id))).map(([id, p]) => ({ key: `css:${id}`, text: `${p.css}: ${s.lay[id] ?? draftOf(s, id).to};`, added: s.lay[id] === null })),
       ] },
       { file: "design-system/components/badge.md", note: "元件規格表", lines: withComp.map(([prop, p]) => ({ key: `spec:${prop}`, text: `| ${p.comp} | --sys-${s.bind[prop].comp} |` })) },
     ];
   };
-  const lineNumber = (key) => ({ "css:display": 9, "css:alignItems": 10, "css:justifyContent": 11, "css:direction": 17, "css:wrap": 18, "tok:padding": 4, "tok:fill": 5, "tok:fontSize": 6, "tok:color": 7, "css:padding": 12, "css:radius": 13, "css:fill": 14, "css:fontSize": 15, "css:color": 16, "spec:padding": 21, "spec:fill": 22, "spec:fontSize": 23, "spec:color": 24 }[key]);
+  const lineNumber = (key) => ({ "css:display": 9, "css:alignItems": 10, "css:justifyContent": 11, "css:minWidth": 17, "css:maxWidth": 18, "css:direction": 19, "css:wrap": 20, "tok:padding": 4, "tok:fill": 5, "tok:fontSize": 6, "tok:color": 7, "css:padding": 12, "css:radius": 13, "css:fill": 14, "css:fontSize": 15, "css:color": 16, "spec:padding": 21, "spec:fill": 22, "spec:fontSize": 23, "spec:color": 24 }[key]);
 
   /* ------------------------------------------------------------ ask AI helpers */
   const aiRunning = (st) => Boolean(st.ai.run && !st.ai.run.final);
@@ -1206,7 +1262,7 @@
     return typeof text === "function" ? text(reason.path ?? "") : text ?? reason.code;
   };
   /** What a row of an element shows, for "what changed" after an AI run. */
-  const elementValues = (st, key) => Object.fromEntries((ROWS[key] ?? []).filter((row) => row.prop).map((row) => [row.id, PROPS[row.prop] ? VALUE[applied(st, row.prop)] : st.lay[row.prop] ?? LAYOUT[row.prop].initial]));
+  const elementValues = (st, key) => Object.fromEntries((ROWS[key] ?? []).filter((row) => row.prop).map((row) => [row.id, PROPS[row.prop] ? valueOf(st, row.prop) : st.lay[row.prop] ?? LAYOUT[row.prop].initial]));
   const aiRows = (st, T, run) => {
     if (!run.before || st.ai.undone || st.selection !== run.before.element) return [];
     const now = elementValues(st, run.before.element);
@@ -1255,6 +1311,15 @@
       const tip = draft ? T.original(draft.from || T.unset) : isDefault ? T.layDefault : `${LAYOUT[row.prop].css}: ${keyword}`;
       return `<button type="button" class="i-row" data-act="row" data-id="${row.id}" data-open="${s.openRow === row.prop}" data-part="row-${row.id}" title="${esc(tip)}"><span class="ic">${icon}</span><span class="lb">${esc(label)}</span><span class="pill${draft ? " is-staged" : ""}${isDefault ? " is-default" : ""}" data-part="lay-pill">${layIcon(row.prop, keyword, direction)}<span>${esc(layLabel(T, row.prop, keyword, direction))}</span></span></button>`;
     }
+    if (isLiteral(s, row.prop)) {
+      // A literal: its value, and "no token" where the token would be. Once staged: the literal, an arrow, the new value and token.
+      const draft = draftOf(s, row.prop);
+      const literal = PROPS[row.prop].literal;
+      const shownHTML = draft
+        ? `<span class="val is-replaced" data-part="replaces">${esc(literal)} →</span><span class="val">${esc(VALUE[draft.to])}</span><span class="pill is-staged" data-part="pill"><span>${esc(draft.to)}</span></span>`
+        : `<span class="val">${esc(literal)}</span><span class="pill is-unbound" data-part="unbound"><span>${esc(T.unbound)}</span></span>`;
+      return `<button type="button" class="i-row" data-act="row" data-id="${row.id}" data-open="${s.openRow === row.prop}" data-part="row-${row.id}" title="${esc(T.literalHint)}"><span class="ic">${icon}</span><span class="lb">${esc(label)}</span>${shownHTML}</button>`;
+    }
     const token = draftOf(s, row.prop) ? draftOf(s, row.prop).to : applied(s, row.prop);
     const staged = Boolean(draftOf(s, row.prop));
     const isColor = PROPS[row.prop].kind === "color";
@@ -1280,6 +1345,15 @@
     return navHTML(s) + sections;
   }
   function optionsHTML(s, T, prop) {
+    if (isLiteral(s, prop)) {
+      // Under a heading per group; a token of the literal's value says so in every group.
+      const current = draftOf(s, prop) ? draftOf(s, prop).to : null;
+      const query = s.query.trim().toLowerCase();
+      const list = literalCandidates(prop).filter((c) => !query || c.name.includes(query) || c.value.toLowerCase().includes(query));
+      if (!list.length) return `<div class="pop-note">沒有符合的 token。</div>`;
+      return list.map((c, i) => (i === 0 || list[i - 1].group !== c.group ? `<div class="opt-group" role="presentation" data-group="${c.group}" data-part="opt-group-${c.group}">${esc(T.groups[c.group])}</div>` : "")
+        + `<button type="button" class="opt" role="option" data-act="opt" data-token="${c.name}" data-group="${c.group}" data-same="${c.same}" aria-selected="${c.name === current}"><span class="nm">${esc(c.name)}</span><span class="v"${c.same ? ' data-part="opt-same"' : ""}>${c.name === current ? "✓" : c.same ? `${esc(c.value)} · ${esc(T.sameValue)}` : esc(c.value)}</span></button>`).join("");
+    }
     const kind = PROPS[prop].kind;
     const current = draftOf(s, prop) ? draftOf(s, prop).to : applied(s, prop);
     const query = s.query.trim().toLowerCase();
@@ -1307,10 +1381,25 @@
       ${dev}
     </div>`;
   }
+  /** A literal row's picker: one scope (this declaration) and no stepper; headed by the literal, the candidates in three groups. */
+  function literalPopHTML(s, T, prop, mode) {
+    const meta = PROPS[prop];
+    const count = literalCandidates(prop).length;
+    const dev = s.dev ? `<div class="i-dev" data-part="pop-dev">${esc(T.writes(`src/components/badge/Badge.css:${lineNumber(`css:${prop}`)}`))}<br>${esc(meta.css)}: ${esc(meta.literal)}</div>` : "";
+    return `<div class="pop ${mode}" data-pop="${prop}">
+      <div class="pop-head"><span>${esc(T.fields[prop])}</span><button type="button" class="i-btn" data-act="close-pop" data-part="pop-close" aria-label="${esc(T.close)}">${ICON.close}</button></div>
+      <div class="pop-note" data-part="pop-impact">${esc(T.impact(1))}</div>
+      <div class="pop-note" data-part="pop-literal">${esc(T.literalHead(meta.literal))}</div>
+      <input class="pop-search" id="sim-search-${mode || "float"}" type="search" autocomplete="off" data-part="pop-search" placeholder="${esc(T.search(count))}" aria-label="${esc(T.search(count))}" value="${esc(s.query)}">
+      <div class="opts" role="listbox" data-part="pop-opts">${optionsHTML(s, T, prop)}</div>
+      ${dev}
+    </div>`;
+  }
   function popoverHTML(s, T, mode = "") {
     const prop = s.openRow;
     if (!prop) return "";
     if (LAYOUT[prop]) return layoutPopHTML(s, T, prop, mode);
+    if (isLiteral(s, prop)) return literalPopHTML(s, T, prop, mode);
     const meta = PROPS[prop];
     const scopes = scopesOf(s, prop);
     const scope = scopeOf(s, prop);
@@ -1341,7 +1430,7 @@
       if (draft.inherited) sub.push(`<span>${esc(T.changedOn(EL.root))}</span>`);
       if (pair) sub.push(`<span class="warn" data-part="chg-pair">${ICON.warn}${esc(T.contrast(pair.before, pair.after))}</span><button type="button" class="chip-btn" data-act="pair" data-token="${pair.partner}">${esc(T.pairAccept)}</button>`);
       const where = draft.layout ? T.writes("src/components/badge/Badge.css") : `${T.reach[draft.scope]} · ${T.writes(draft.scope === "component" ? "tokens/tokens-comp.css" : "src/components/badge/Badge.css")}`;
-      return `<div class="chg" data-prop="${draft.prop}" title="${esc(where)}"><span class="dot"></span><span class="chg-main" data-part="chg-line"><b>${esc(T.fields[draft.prop])}</b>${esc(draft.from || T.unset)} → <strong>${esc(draft.to)}</strong></span><button type="button" class="x" data-act="remove" data-prop="${draft.prop}" data-part="chg-x" aria-label="${esc(T.remove(T.fields[draft.prop]))}">${ICON.close}</button>${sub.length ? `<div class="chg-sub">${sub.join("")}</div>` : ""}</div>`;
+      return `<div class="chg" data-prop="${draft.prop}" title="${esc(where)}"><span class="dot"></span><span class="chg-main" data-part="chg-line"><b>${esc(T.fields[draft.prop])}</b>${esc(draft.literal ?? (draft.from || T.unset))} → <strong>${esc(draft.to)}</strong></span><button type="button" class="x" data-act="remove" data-prop="${draft.prop}" data-part="chg-x" aria-label="${esc(T.remove(T.fields[draft.prop]))}">${ICON.close}</button>${sub.length ? `<div class="chg-sub">${sub.join("")}</div>` : ""}</div>`;
     }).join("");
     return `<div class="i-changes" data-part="changes">${lines}
       <div class="i-state" data-part="chg-state"><span class="dot"></span>${esc(T.previewOnly(s.drafts.length))}</div>
@@ -1356,14 +1445,14 @@
       return `<div class="i-report"><div class="rep-head"><span class="rep-ic busy"></span><strong>${esc(text)}</strong></div></div>`;
     }
     if (report.mode === "undo") {
-      return `<div class="i-report" data-part="report"><div class="rep-head"><span class="rep-ic">${ICON.check}</span><strong>${esc(T.undone)}</strong></div></div>`;
+      return `<div class="i-report" data-part="report"><div class="rep-head"><span class="rep-ic">${ICON.check}</span><strong>${esc(report.same ? T.undoneSame : T.undone)}</strong></div></div>`;
     }
     const part = (id, label, body) => `<div class="part"><button type="button" data-act="part" data-part-id="${id}" data-part="rep-${id}" aria-expanded="${Boolean(report.open[id])}"><span>${report.open[id] ? "▾" : "▸"}</span><span>${esc(label)}</span></button>${report.open[id] ? `<div class="part-body">${body}</div>` : ""}</div>`;
-    const items = report.items.map((item) => `<div>${esc(T.fields[item.prop])} · ${esc(item.inherited ? EL.root : EL[item.element] ?? EL.root)}：${esc(item.from || T.unset)} → ${esc(item.to)}：${esc(T.itemOk(item.layout ? item.to : VALUE[item.to]))}</div>`).join("") + `<div class="acts"><button type="button" class="tbtn" data-act="reverify">${esc(T.reverify)}</button><button type="button" class="tbtn" data-act="reverify">${esc(T.reloadVerify)}</button></div>`;
+    const items = report.items.map((item) => `<div>${esc(T.fields[item.prop])} · ${esc(item.inherited ? EL.root : EL[item.element] ?? EL.root)}：${esc(item.literal ?? (item.from || T.unset))} → ${esc(item.to)}：${esc(item.same ? T.itemSame : T.itemOk(item.layout ? item.to : VALUE[item.to]))}</div>`).join("") + `<div class="acts"><button type="button" class="tbtn" data-act="reverify">${esc(T.reverify)}</button><button type="button" class="tbtn" data-act="reverify">${esc(T.reloadVerify)}</button></div>`;
     const docs = report.docs.map((doc) => `<div>design-system/components/badge.md:${doc.line}：sys-${esc(doc.from)} → sys-${esc(doc.to)}</div>`).join("");
     const pending = report.pending.map((entry) => `<div>src/components/badge/Badge.css:${entry.line} — ${esc(T.pendingReason)}</div>`).join("") + `<div class="acts"><button type="button" class="tbtn" data-act="copy-brief" data-part="rep-copy-ai">${esc(T.copyForAi)}</button><button type="button" class="tbtn" data-act="resolve" data-part="rep-resolve">${esc(T.resolve)}</button></div>`;
     return `<div class="i-report" data-part="report">
-      <div class="rep-head" data-part="rep-head"><span class="rep-ic">${ICON.check}</span><strong>${esc(T.verified)}</strong><button type="button" class="tbtn" data-act="undo" data-part="rep-undo" ${s.busy || aiRunning(s) ? "disabled" : ""}${aiRunning(s) ? ` title="${esc(T.aiBusyHint)}"` : ""}>${esc(T.undo)}</button></div>
+      <div class="rep-head" data-part="rep-head"><span class="rep-ic">${ICON.check}</span><strong>${esc(report.same ? T.verifiedSame : T.verified)}</strong><button type="button" class="tbtn" data-act="undo" data-part="rep-undo" ${s.busy || aiRunning(s) ? "disabled" : ""}${aiRunning(s) ? ` title="${esc(T.aiBusyHint)}"` : ""}>${esc(T.undo)}</button></div>
       ${part("items", T.items(report.items.length), items)}
       ${report.docs.length ? part("docs", T.docs(report.docs.length), docs) : ""}
       ${report.pending.length ? part("pending", T.pending(report.pending.length), pending) : ""}
@@ -1478,6 +1567,7 @@
     badge.style.borderRadius = VALUE[shown(s, "radius")];
     badge.style.padding = VALUE[shown(s, "padding")];
     badge.style.fontSize = VALUE[shown(s, "fontSize")];
+    badge.style.minWidth = valueOf(s, "minWidth", shown(s, "minWidth"));
     badge.style.flexDirection = layShown(s, "direction");
     badge.style.alignItems = layShown(s, "alignItems");
     badge.style.justifyContent = layShown(s, "justifyContent");
@@ -1664,7 +1754,9 @@
       const from = applied(s, prop);
       const row = rowsFor(s).find((r) => r.prop === prop);
       s.drafts = s.drafts.filter((draft) => draft.prop !== prop);
-      if (to !== from) s.drafts.push({ prop, from, to, scope: scopeOf(s, prop), element: s.selection ?? "root", inherited: Boolean(row && row.inherited) });
+      // A literal replaced by a token: "the look is unchanged" when the token has the literal's value.
+      const literal = isLiteral(s, prop) ? PROPS[prop].literal : null;
+      if (to !== from) s.drafts.push({ prop, from, to, scope: scopeOf(s, prop), element: s.selection ?? "root", inherited: Boolean(row && row.inherited), literal, same: Boolean(literal) && VALUE[to] === literal });
       s.transient = null;
       s.report = null;
       s.written = [];
@@ -1706,7 +1798,7 @@
       Object.assign(s, { busy: true, openRow: null, reverted: false, report: { mode: "apply", phase: "writing" } });
       render();
       later(600, () => {
-        s.history.push(clone({ bind: s.bind, lay: s.lay, added: s.added }));
+        s.history.push(clone({ bind: s.bind, lay: s.lay, added: s.added, same: changes.every((c) => c.same) }));
         for (const change of changes) {
           if (change.layout) {
             if (s.lay[change.prop] === null) s.added.push(change.prop);
@@ -1720,7 +1812,7 @@
         later(700, () => {
           s.applies += 1;
           s.report = {
-            mode: "apply", phase: "done", open: {}, items: changes,
+            mode: "apply", phase: "done", open: {}, items: changes, same: changes.every((c) => c.same),
             docs: changes.filter((c) => c.scope === "component").map((c) => ({ line: lineNumber(`spec:${c.prop}`), from: c.from, to: c.to })),
             pending: changes.filter((c) => c.scope === "declaration").map((c) => ({ line: lineNumber(`css:${c.prop}`), prop: c.prop })),
           };
@@ -1736,7 +1828,8 @@
       Object.assign(s, { busy: true, reverted: true, report: { mode: "undo", phase: "writing" } });
       render();
       later(500, () => {
-        Object.assign(s, s.history.pop());
+        const { same, ...entry } = s.history.pop();
+        Object.assign(s, entry);
         s.written = Object.keys(PROPS).flatMap((prop) => [
           ...(before[prop].comp !== s.bind[prop].comp ? targets(prop, "component") : []),
           ...(before[prop].decl !== s.bind[prop].decl ? targets(prop, "declaration") : []),
@@ -1744,7 +1837,7 @@
         s.report.phase = "verifying";
         render();
         later(600, () => {
-          s.report = { mode: "undo", phase: "done" };
+          s.report = { mode: "undo", phase: "done", same };
           s.busy = false;
           render();
         });
@@ -1921,6 +2014,10 @@
   function referenceText(st = s) {
     const line = (prop) => {
       const meta = PROPS[prop];
+      if (isLiteral(st, prop)) {
+        const at = `src/components/badge/Badge.css:${lineNumber(`css:${prop}`)}`;
+        return `${L.zh.fields[prop]}：${meta.css}（${at}） = ${meta.literal} · ${L.zh.refLiteral(meta.literal, at)}`;
+      }
       const token = applied(st, prop);
       const viaComp = st.bind[prop].decl === "comp";
       return `${L.zh.fields[prop]}：${meta.css} → ${viaComp ? `${meta.comp}（tokens/tokens-comp.css:${lineNumber(`tok:${prop}`)}）→ ` : ""}--sys-${token} = ${VALUE[token]}`;
@@ -2196,13 +2293,17 @@
       ],
     },
     {
-      id: "locked", title: "遇到鎖頭", sub: "交給 AI",
-      who: "想把最小寬從 88px 改大一點，但那一列有鎖頭，點了沒有反應。",
+      id: "literal", title: "換掉寫死的值", sub: "換成 token，或交給 AI",
+      who: "最小寬寫死成 88px。設計系統裡已經有一樣大小的 token，想把它換上去，以後改 token 就會跟著變。",
       preset: () => ({ on: true, selection: "root" }),
       steps: [
-        { do: "點一下有鎖頭的「最小寬」", see: "出現原因：這個數值是寫死的，沒有綁 token。真的工具是滑鼠停著就會顯示。", target: row("minWidth"), done: () => Boolean(s.flags.lockSeen), auto: () => ((s.lockShown = "minWidth"), (s.flags.lockSeen = true), render()) },
-        { do: "按標題列的複製圖示", see: "一段文字複製到剪貼簿，寫明是哪個元件、哪個檔案、哪些 token。", target: '.i-head [data-act="copy"]', done: () => Boolean(s.flags.copied), auto: () => act.copy() },
-        { do: "貼到 AI 對話，加一句你要的修改", see: "只用這一次的數值，就說「把最小寬改成 96px」。別處也會用到，就說「新增一個 token 並把這裡換成它」。專案啟用了「請 AI 修改」的話，前者也可以直接按「AI」交給它；它不能新增 token。", target: "#sim-copied", done: () => Boolean(s.flags.pasted), auto: () => ((s.flags.pasted = true), coach.sync()), manual: "我知道了" },
+        { do: "點「最小寬」那一列", see: "這一列沒有鎖頭，token 的位置寫著「未綁定」：數值是寫死的，可以換成 token。浮層最上面寫著原本的數值。", target: row("minWidth"), done: () => s.openRow === "minWidth" || Boolean(draftOf(s, "minWidth")) || Boolean(s.bind.minWidth.decl), auto: () => act.open("minWidth") },
+        { do: "挑「數值相同」下面的 size-badge-md", see: "候選分成三組：數值相同、這個屬性常用的類別、其他類別。挑數值相同的，畫面不會變；變更清單寫著「88px → size-badge-md」。", target: '.opt[data-token="size-badge-md"]', done: () => Boolean(draftOf(s, "minWidth")) || Boolean(s.bind.minWidth.decl), auto: () => act.stage("minWidth", "size-badge-md") },
+        { do: "按「套用到檔案」", see: "樣式表那一行的 88px 換成了 var(--sys-size-badge-md)。外觀沒有變，所以結果寫「已寫入並驗證，外觀不變」。", target: '[data-act="apply"]', done: applyDone, auto: () => (draftsReady([["minWidth", "size-badge-md"]]), act.apply()) },
+        { do: "再點一次「最小寬」", see: "現在它是一般的 token 列：有 −／＋，可以沿著刻度調大調小。", target: row("minWidth"), done: () => s.openRow === "minWidth" && Boolean(s.bind.minWidth.decl), auto: () => act.open("minWidth") },
+        { do: "點有鎖頭的「最大寬」", see: "不是每個寫死的值都能換：calc() 這類運算式、關鍵字、用逗號或斜線分隔的值仍然鎖著。真的工具是滑鼠停著就會說明原因。", target: row("maxWidth"), done: () => Boolean(s.flags.lockSeen), auto: () => ((s.lockShown = "maxWidth"), (s.flags.lockSeen = true), render()) },
+        { do: "按標題列的複製圖示", see: "一段文字複製到剪貼簿，寫明是哪個元件、哪個檔案、每一列的值，以及最大寬為什麼鎖著。", target: '.i-head [data-act="copy"]', done: () => Boolean(s.flags.copied), auto: () => act.copy() },
+        { do: "貼到 AI 對話，加一句你要的修改", see: "例如「把最大寬改成 calc(100% - 24px)」。專案啟用了「請 AI 修改」的話，也可以直接按「AI」交給它；它不能新增 token。", target: "#sim-copied", done: () => Boolean(s.flags.pasted), auto: () => ((s.flags.pasted = true), coach.sync()), manual: "我知道了" },
       ],
     },
     {
@@ -2303,6 +2404,7 @@
         { sel: '[data-part="child"]', at: "left", t: "內層元素", d: "「↳」後面是元件裡面的東西，點了就進入。" },
         { sel: '[data-part="more"]', at: "right", t: "＋n", d: "這一區還有 n 個沒有設定的屬性，點了展開。" },
         { sel: '[data-part="row-fill"]', at: "left", t: "一列一個屬性", d: "圖示、數值、token。點一下就能換 token。" },
+        { sel: '[data-part="unbound"]', at: "right", t: "未綁定", d: "數值是寫死的，還沒有綁 token。點一下就能從既有的 token 裡挑一個換上去。" },
         { sel: '[data-part="lock"]', at: "right", t: "鎖頭", d: "只能看。滑鼠停在這一列上會說明原因。" },
       ],
     },
@@ -2315,6 +2417,17 @@
         { sel: '[data-part="pop-search"]', at: "left", t: "搜尋", d: "token 很多時，輸入名稱或數值來找。" },
         { sel: '[data-part="pop-opts"]', at: "left", t: "可以換的 token", d: "滑鼠移過去，畫面立刻預覽；點下去才暫存。打勾的是目前的值。" },
         { sel: '[data-part="pop-close"]', at: "top", t: "關閉", d: "也可以按 Esc。" },
+      ],
+    },
+    {
+      title: "換掉寫死的值", intro: "點「未綁定」的那一列，會打開這個浮層。",
+      html: (T) => popoverHTML(figureState({ openRow: "minWidth" }), T, "is-static"),
+      parts: [
+        { sel: '[data-part="pop-literal"]', at: "left", t: "原本寫死的數值", d: "選一個 token 取代它。只改這一條宣告，所以沒有修改範圍可以選，也沒有 −／＋。" },
+        { sel: '[data-part="opt-group-1"]', at: "left", t: "數值相同", d: "和寫死的數值一樣的 token。挑這一組，畫面不會變。" },
+        { sel: '[data-part="opt-group-2"]', at: "left", t: "這個屬性常用的類別", d: "專案裡同一種屬性平常用的 token，數值接近的排前面。" },
+        { sel: '[data-part="opt-group-3"]', at: "left", t: "其他類別", d: "其他可以用的 token，照名稱排。" },
+        { sel: '[data-part="opt-same"]', at: "right", t: "數值相同", d: "只對目前的主題成立；專案有深色主題時，另一個主題的值可能不同。" },
       ],
     },
     {
@@ -2469,7 +2582,7 @@
   renderScope("component");
 
   /* ------------------------------------------------------- small glyphs in text */
-  const GLYPH = { lock: ICON.lock, up: ICON.inherit, pill: '<span style="border:1px solid currentColor;border-radius:4px;padding:0 4px;font-size:10px">tok</span>', plus: "＋n", warn: ICON.warn, diamond: "◆" };
+  const GLYPH = { lock: ICON.lock, up: ICON.inherit, pill: '<span style="border:1px solid currentColor;border-radius:4px;padding:0 4px;font-size:10px">tok</span>', plus: "＋n", warn: ICON.warn, diamond: "◆", unbound: '<span style="border:1px solid currentColor;border-radius:4px;padding:0 3px;font-size:9px;white-space:nowrap">未綁定</span>' };
   $$("[data-icon]").forEach((el) => (el.innerHTML = GLYPH[el.dataset.icon] ?? ""));
 })();
 </script>

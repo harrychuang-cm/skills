@@ -1,13 +1,14 @@
 ## Context
 
-Code Layer 1.1.0（add-storybook-code-layer）的寫入只有一種形狀：把 `var()` 裡的 token 名稱換成另一個既有的 token。值是寫死的分量在追蹤結果裡是 `raw`，檢視器顯示為唯讀，原因是 `raw-value`。
+Code Layer 1.3.1 的決定性寫入有兩類：把 `var()` 裡的 token 名稱換成另一個既有的 token（1.1.0，add-storybook-code-layer），以及版面編輯的 `set-keyword`（把值的一個分量換成固定清單裡的關鍵字）與 `add-declaration`（在 flex 規則最後新增一行；1.2.0，add-code-layer-layout-editing）。1.3.0 另有選用的「請 AI 修改」，它走自己的範圍關卡與匯入，和本 change 無關。值是寫死的分量在追蹤結果裡是 `raw`，檢視器顯示為唯讀，原因是 `raw-value`。
 
-現況中與這個 change 有關的事實（2026-11-25 讀碼與實測）：
+現況中與這個 change 有關的事實（2026-11-25 讀碼與實測，2026-11-27 依 1.3.1 更新）：
 
 - 索引已經把每個宣告的值拆成最上層的分量（`shared/value-refs.mjs` 的 `splitTopLevel`、`classifyValue`），每個分量有文字、形狀（`single-var`、`raw`、`keyword`、`expression`、`separator`）與在值裡的位置。追蹤時每個 slot（邏輯 longhand）對到「哪個宣告的第幾個分量」。所以「`margin: 0 0 var(--gap)` 的上邊是第 0 個分量、寫死的 `0`」這件事已經算得出來。
-- 寫入的證明在 `server/patcher.mjs`：每筆編輯是一段位元組區間，證明新檔等於舊檔把這些區間換成預期的位元組，再重新解析比對節點序列。區間目前只會是 token 名稱。
+- 寫入的證明在 `server/patcher.mjs`：每筆編輯是一段位元組區間，證明新檔等於舊檔把這些區間換成預期的位元組，再重新解析比對節點序列。區間有兩種：token 名稱（改綁）與值的一個分量（`set-keyword`）；另有插入與移除一行（`add-declaration` 與它的反向）。`tokenize-literal` 的分量編輯與 `set-keyword` 同一類，只是寫入的是 `var(--名稱)`。
 - 即時預覽把同一個宣告上的草稿依序套在索引給的原始值上，再整段 `setProperty`。probe 則是在 CSSOM 序列化後的值上以「第幾個 `var()`」替換哨兵值。
-- 反向套用（`server/transaction.mjs` 的 `reverse`）由 journal 的操作紀錄建立反向操作，再走一般的 `runBatch`，所以反向操作要通過與請求相同的 `validateBatch`。
+- 反向套用（`server/transaction.mjs` 的 `reverse`）由 journal 的操作紀錄建立反向操作，再走一般的 `runBatch`，所以反向操作要通過與請求相同的 `validateBatch`。`set-keyword` 的反向已經以 journal 記錄的關鍵字寫回、移除宣告是請求不能送出的內部操作；本 change 的 `restore-literal` 與它們同一類。
+- `shared/sides.mjs`（版面編輯）已能算出一個分量在各書寫方向設定哪些邊；伺服器的型別檢查直接重用它，不另寫一份。
 - 檢視器的屬性表（哪些 slot、每個 slot 接受哪些型別的 token）在 `shared/properties.ts`，伺服器讀不到 TypeScript 檔。伺服器目前只檢查「新舊 token 型別相容」。
 - 試驗場的實測數字見 proposal。量測用的腳本只讀檔，沒有保留在 repo。
 
@@ -19,7 +20,7 @@ Code Layer 1.1.0（add-storybook-code-layer）的寫入只有一種形狀：把 
 
 - 檢視器上寫死的值，只要有型別相符的既有 token，就能換成 token，手感與改綁相同（點開、挑選、即時預覽、套用、還原）。
 - 寫死的數值剛好等於某個 token 時，一眼看得出來，換了之後工具明確回報外觀沒變。
-- 1.1.0 的安全性質全部保留：封閉可寫集合、位元組級最小差異、拒絕時零寫入、可還原、驗證不自我證明、請求不能提供要寫入的文字。
+- 1.3.1 的安全性質全部保留：封閉可寫集合、位元組級最小差異、拒絕時零寫入、可還原、驗證不自我證明、請求不能提供要寫入的文字。
 - 仍然鎖住的值都說得出原因。
 
 **Non-Goals:**
@@ -28,7 +29,7 @@ Code Layer 1.1.0（add-storybook-code-layer）的寫入只有一種形狀：把 
 - 新增 token（包含「把這個數值抽成一個新的 component token」）。命名與層級需要人決定，屬於 agent lane。
 - 關鍵字（`auto`、`bold`、`normal`、`currentcolor`）、函式與運算式（`calc()`、`min()`）、以逗號或斜線分隔的值（字體清單、橢圓圓角）。
 - token 檔裡值是寫死的 component token。試驗場 102 個 component token 全部是單一 alias，沒有這種情況；有需要時另案處理。
-- 版面結構的編輯（display、方向、對齊、換行）。這是候選功能 B。
+- 版面結構的編輯：方向、對齊、分布、換行已由 add-code-layer-layout-editing（1.2.0）完成；display 仍然唯讀，不在本 change。
 - 依數值相同自動批次替換整個專案。每一筆都由人在檢視器上選。
 - 改變既有改綁操作的驗證語意。換成數值相同的 token 的改綁，仍然回報「此頁看不到效果」。
 
@@ -96,7 +97,7 @@ Code Layer 1.1.0（add-storybook-code-layer）的寫入只有一種形狀：把 
 
 ### 位元組證明從 token 名稱擴大為一個分量
 
-`patcher.mjs` 的編輯分成兩種：名稱編輯（既有）與分量編輯。分量編輯的區間是該分量在宣告原始值中的起訖位置（`splitTopLevel` 在遮掉註解與字串後計算，所以緊鄰的註解不在區間內），替換成 `var(--名稱)`。
+`patcher.mjs` 已有名稱編輯、分量編輯（`set-keyword`）與插入／移除三種；`tokenize-literal` 用分量編輯。分量編輯的區間是該分量在宣告原始值中的起訖位置（`splitTopLevel` 在遮掉註解與字串後計算，所以緊鄰的註解不在區間內），替換成 `var(--名稱)`。
 
 兩道證明不變，只是把「舊名稱／新名稱」一般化為「舊文字／新文字」：
 
@@ -128,7 +129,7 @@ Code Layer 1.1.0（add-storybook-code-layer）的寫入只有一種形狀：把 
 
 ### 驗證多一種結果：已驗證、外觀不變
 
-1.1.0 的規則是「預覽開與關的值不同，才叫已驗證」，預覽沒有改變任何值時歸為「已寫入，此頁看不到效果」。換成數值相同的 token 是這項功能的主要用途之一，它的預期結果正是外觀不變，歸到「看不到效果」會讓人以為沒有成功。
+現行的規則（自 1.1.0 起）是「預覽開與關的值不同，才叫已驗證」，預覽沒有改變任何值時歸為「已寫入，此頁看不到效果」。換成數值相同的 token 是這項功能的主要用途之一，它的預期結果正是外觀不變，歸到「看不到效果」會讓人以為沒有成功。
 
 新增第五種結果 `verified-same`，只用於 `tokenize-literal`，條件是：
 
@@ -144,8 +145,9 @@ Code Layer 1.1.0（add-storybook-code-layer）的寫入只有一種形狀：把 
 
 CSSOM 會把沒有 `var()` 的值正規化（`margin: 8px 8px` 讀回來是 `8px`，`#FFF` 讀回來是 `rgb(255, 255, 255)`），所以不能在 CSSOM 讀回的值上數「第幾個分量」。
 
-- 預覽：以索引給的原始值為基底，用與伺服器相同的函式（`shared/literals.mjs` 的 `replaceComponent`）替換後整段 `setProperty`，優先權沿用原宣告。
+- 預覽：以索引給的原始值為基底，用與伺服器相同的函式（`shared/value-refs.mjs` 的 `replaceComponent`；`shared/literals.mjs` 的 `tokenizeComponent` 也是包裝它）替換後整段 `setProperty`，優先權沿用原宣告。
 - probe：同樣以索引的原始值為基底，把該分量換成哨兵值後整段寫入，量完寫回 CSSOM 原本的文字；既有的「規則文字前後相同，否則由樣式表自己的文字重建」保護照用。
+- 同一個宣告上，一個分量已暫存換成 token、另一個 `var()` 又要改綁時：改綁的 probe 也以原始碼的值為基底（`replaceReference` 換掉該引用），不讀 CSSOM 裡已被預覽改過的文字；兩筆的預覽一起套用，換 token 的那筆最後套。
 - 草稿的分類不讀 CSSOM，做法與改綁相同：頁面樣式表文字的雜湊先要等於索引的雜湊，再由索引中該分量現在的內容決定——仍是原本的字面值為尚未寫入，已經是 `var(--選的 token)` 為已寫入，其他為衝突。
 
 ### 檢視器上的呈現
@@ -180,14 +182,14 @@ CSSOM 會把沒有 `var()` 的值正規化（`margin: 8px 8px` 讀回來是 `8px
 - **寫入端點的能力範圍略為擴大**（見 proposal 的 Impact）→ 仍然限於封閉可寫集合、既有 token、型別相符，每一筆可還原；請求不能提供文字。
 - **反向套用信任 journal 裡的字面值**：能改 journal 的人已經能改專案的任何檔 → 寫回前仍重新分類字面值並跑兩道證明，結構改變就失敗。
 - **`inferKind` 對不認得的具名顏色判為關鍵字**（只認得常見的 19 個）→ 這種值維持唯讀，原因是關鍵字；不會被誤換。
-- **1.1.0 的 journal 沒有分量位置** → 反向套用對舊紀錄沿用引用編號，行為與 1.1.0 相同。
+- **1.4.0 以前 `rebind-declaration` 的 journal 紀錄沒有分量位置** → 反向套用對舊紀錄沿用引用編號，行為不變。
 
 ## Migration Plan
 
-1. 模板版本 1.2.0，`KNOWN_MANIFESTS.json` 加入 1.2.0。
+1. 模板版本 1.4.0，`KNOWN_MANIFESTS.json` 加入 1.4.0（已有 1.3.0、1.3.1）。
 2. 既有專案以 `install_code_layer.mjs --update` 升級；專案綁定不需要修改。
-3. 試驗場升級時依既有安排由我停掉並重啟 6006 上的 Storybook，升級前先記錄一份新的雜湊基準（試驗場現在有使用者自己的兩筆套用）。
-4. 回復方式：以安裝器裝回 1.1.0 的模板。已經用 1.2.0 套用的換 token 仍可用整檔還原（備份）取消；1.1.0 不認得這種操作的反向套用。
+3. 試驗場升級時由我停掉並重啟 6006 上的 Storybook（Cursor 的 agent 可能會自動重跑 `npm run storybook`，需要時請使用者從 Cursor 停掉），升級前先記錄新的雜湊基準與還原堆疊；使用者自己的套用以當時的還原堆疊為準，綁定固定的 `"locale": "zh-Hant"` 與已啟用的 AI 修改都不得改動。
+4. 回復方式：以安裝器裝回 1.3.1 的模板。已經用 1.4.0 套用的換 token 仍可用整檔還原（備份）取消；1.3.1 不認得這種操作的反向套用。
 
 ## Open Questions
 

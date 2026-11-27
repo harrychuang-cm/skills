@@ -107,8 +107,8 @@ export function Report({ prefix }: { prefix: string }) {
   const entries = state.applyId && !state.undone ? pendingDocs.filter((entry) => entry.applyId === state.applyId) : [];
   const post = state.postApply;
   const items = state.result?.items ?? [];
-  const allVerified = items.every((item) => item.status === "verified");
-  const tone = state.error ? "error" : busy ? "busy" : state.result?.status ?? "";
+  const allVerified = items.every((item) => item.status === "verified" || item.status === "verified-same");
+  const tone = state.error ? "error" : busy ? "busy" : state.result?.status === "verified-same" ? "verified" : state.result?.status ?? "";
   const warnings = state.pairing.filter((entry) => entry.warning);
 
   return (

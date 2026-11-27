@@ -2,6 +2,7 @@
 // Classification reads only <style> textContent (never the CSSOM we edit):
 //   before -> apply the preview;  after -> already in source;  else -> conflict.
 // Removing previews from a sheet = re-assigning its own text (rebuilds it).
+import { tokenizeComponent } from "../shared/literals.mjs";
 import { findRootDeclaration, findVarRefs, normalizeValue, replaceComponent, replaceVarName } from "../shared/value-refs.mjs";
 import type { Draft, DraftStatus, IndexJson, PreviewStatePayload, SyncPayload } from "../shared/protocol";
 import { resolve } from "./descriptor";
@@ -144,6 +145,13 @@ export class LivePreview {
       if (held === op.toKeyword) return { style, state: "after", message: null };
       return { style, state: "other", message: "draft.message.currentValue", params: { value: decl.value } };
     }
+    if (op.type === "tokenize-literal") {
+      // The literal still there: staged. The reference to the chosen token: written. Anything else: someone else's change.
+      const held = decl.components[op.component]?.text ?? null;
+      if (held === op.literal) return { style, state: "before", message: null, base: decl.value };
+      if (held === `var(${op.toToken})`) return { style, state: "after", message: null };
+      return { style, state: "other", message: "draft.message.currentValue", params: { value: decl.value } };
+    }
     // Only the staged reference decides: a sibling reference of the same value may change independently.
     const name = findVarRefs(decl.value)[op.refIndex]?.name ?? null;
     if (name === op.fromToken) return { style, state: "before", message: null, base: decl.value };
@@ -183,11 +191,14 @@ export class LivePreview {
         for (const { draft } of group) failed.add(draft.id);
         continue;
       }
-      // Same replacements as the server: the name of the refIndex-th var(), the keyword of a component, nothing else.
-      for (const { draft } of group) {
+      // Same replacements as the server: the name of the refIndex-th var(), the keyword of a component, a literal
+      // component replaced by var(). Tokenizations last: they add a reference, which moves the numbers of later ones.
+      const ordered = [...group].sort((a, b) => Number(a.draft.op.type === "tokenize-literal") - Number(b.draft.op.type === "tokenize-literal"));
+      for (const { draft } of ordered) {
         try {
           if (draft.op.type === "rebind-declaration") text = replaceVarName(text, draft.op.refIndex, draft.op.fromToken, draft.op.toToken);
           else if (draft.op.type === "set-keyword") text = replaceComponent(text, draft.op.component, draft.op.fromKeyword, draft.op.toKeyword);
+          else if (draft.op.type === "tokenize-literal") text = tokenizeComponent(text, draft.op.component, draft.op.literal, draft.op.toToken);
         } catch {
           failed.add(draft.id);
         }

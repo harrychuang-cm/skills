@@ -2,6 +2,7 @@
 import { rebindTargets } from "../shared/candidates.mjs";
 import { kindsCompatible, parseScalar, sameScale } from "../shared/kinds.mjs";
 import { GROUP_BY_ID } from "../shared/properties";
+import { categoryUsage, homeCategories, orderLiteralCandidates, tokenCategoryOf, tokenizeComponent } from "../shared/literals.mjs";
 import { normalizeValue, replaceComponent, replaceVarName } from "../shared/value-refs.mjs";
 import { PROTOCOL_VERSION, draftId, opFrom, scopeDraftId, type Draft, type DraftOp, type ElementTrace, type IndexJson, type RowScope, type RowTrace, type ScopeId, type TokenItem } from "../shared/protocol";
 
@@ -28,6 +29,7 @@ function opFor(scope: RowScope, to: string, from: string): DraftOp {
   if (target.type === "rebind-token") return { type: "rebind-token", token: target.token, tier: target.tier, fromToken: from, toToken: to, file: target.file, line: target.line };
   if (target.type === "set-keyword") return { type: "set-keyword", file: target.file, ordinal: target.ordinal, selector: target.selector, property: target.property, component: target.component, fromKeyword: from, toKeyword: to, line: target.line };
   if (target.type === "add-declaration") return { type: "add-declaration", file: target.file, ordinal: target.ordinal, selector: target.selector, property: target.property, toKeyword: to, line: target.line };
+  if (target.type === "tokenize-literal") return { type: "tokenize-literal", file: target.file, ordinal: target.ordinal, selector: target.selector, property: target.property, component: target.component, literal: target.literal, toToken: to, line: target.line };
   return { type: "rebind-declaration", file: target.file, ordinal: target.ordinal, selector: target.selector, property: target.property, refIndex: target.refIndex, fromToken: from, toToken: to, line: target.line };
 }
 
@@ -40,6 +42,7 @@ export function makeDraft(trace: ElementTrace, row: RowTrace, scope: RowScope, t
   let after: string;
   try {
     if (scope.target.type === "add-declaration") after = toToken;
+    else if (scope.target.type === "tokenize-literal") after = tokenizeComponent(before, scope.target.component, scope.target.literal, toToken);
     else if (scope.target.type === "set-keyword") after = replaceComponent(before, scope.target.component, fromToken, toToken);
     else after = replaceVarName(before, scope.target.type === "rebind-declaration" ? scope.target.refIndex : 0, fromToken, toToken);
   } catch {
@@ -67,16 +70,44 @@ export function makeDraft(trace: ElementTrace, row: RowTrace, scope: RowScope, t
 }
 
 function ownComponentPrefix(scope: RowScope, index: IndexJson): string | null {
-  if (scope.target.type !== "rebind-declaration") return null;
+  if (scope.target.type !== "rebind-declaration" && scope.target.type !== "tokenize-literal") return null;
   const file = scope.target.file;
   const componentId = index.css.files.find((f) => f.file === file)?.componentId;
   return componentId ? `--${index.tokens.prefix}-comp-${componentId}-` : null;
 }
 
+/** Per index revision: which token categories each property group already uses (for ordering a literal's candidates). */
+let usageCache: { revision: string; usage: Map<string, Set<string>> } | null = null;
+function usageOf(index: IndexJson): Map<string, Set<string>> {
+  if (usageCache?.revision !== index.revision) usageCache = { revision: index.revision, usage: categoryUsage(index) };
+  return usageCache.usage;
+}
+
+/**
+ * The candidates of a literal row in their three groups (same value, home
+ * categories by distance, other categories by name), each with its group and
+ * whether its value equals the literal for the active theme.
+ */
+export function literalCandidates(row: RowTrace, scope: RowScope, index: IndexJson, liveValues: Record<string, string> = {}): Array<{ token: TokenItem; group: 1 | 2 | 3; same: boolean }> {
+  if (!row.literal) return [];
+  const tokens = index.tokens.items;
+  const byName = new Map(tokens.map((t) => [t.name, t] as const));
+  const group = GROUP_BY_ID[row.group];
+  const own = ownComponentPrefix(scope, index);
+  const list = (rebindTargets(tokens) as TokenItem[]).filter((t) => (t.tier === "sys" || (t.tier === "comp" && own !== null && t.name.startsWith(own))) && Boolean(group?.kinds.includes(t.kind)));
+  return orderLiteralCandidates(row.literal.text, list, {
+    home: homeCategories(row.group, usageOf(index)),
+    valueOf: (t) => liveValues[t.name] ?? t.resolvedValue ?? null,
+    categoryOf: (t) => tokenCategoryOf(t.name, byName),
+  });
+}
+
 /** Tokens a row may be re-bound to at a scope, best matches first. */
-export function candidatesFor(row: RowTrace, scope: RowScope, index: IndexJson): TokenItem[] {
+export function candidatesFor(row: RowTrace, scope: RowScope, index: IndexJson, liveValues: Record<string, string> = {}): TokenItem[] {
   // A layout row is set to a keyword, never to a token.
   if (row.layout) return [];
+  // A literal row: the tokens its property accepts, in the three groups of literalCandidates.
+  if (row.literal) return literalCandidates(row, scope, index, liveValues).map((entry) => entry.token);
   const tokens = index.tokens.items;
   const from = tokens.find((t) => t.name === scope.fromToken) ?? null;
   const fromKind = from?.kind ?? "unknown";
