@@ -320,7 +320,7 @@ You can also ask the agent to use `executive-presentation` by name. If a running
 
 ### `uiux-director`
 
-A UI/UX design director for product managers. [Skill instructions](uiux-director/SKILL.md) clarify who the product is for and why, research comparable products with sources, and record a design direction and an experience map as durable documents in the target project's `product-design/` folder (`PRODUCT_BRIEF.md`, `DESIGN_DIRECTION.md`, `EXPERIENCE_MAP.md`, `DECISION_LOG.md`), so later sessions in any agent continue from them. A managed block in the target's `AGENTS.md` and `CLAUDE.md` points agents to those documents.
+A UI/UX design director for product managers. [Skill instructions](uiux-director/SKILL.md) clarify who the product is for and why, research comparable products with sources, and record a design direction and an experience map as durable documents in the target project's `product-design/` folder (`PRODUCT_BRIEF.md`, `DESIGN_DIRECTION.md`, `EXPERIENCE_MAP.md`, `DECISION_LOG.md`), so later sessions in any agent continue from them. A managed block in the target's `AGENTS.md` and `CLAUDE.md` points agents to those documents. It asks separately for the product's own brand materials (design evidence) and for websites, apps, or screenshots the PM likes (direction, with a follow-up on what they like about each, translated into what to borrow and what not to borrow); supplied screenshots are kept in `product-design/references/`.
 
 Five modes, one per request:
 

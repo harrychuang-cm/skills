@@ -75,6 +75,7 @@ The target project's `product-design/` folder is this skill's memory. Create eac
 - **Read before UI work.** In every mode, read the existing documents first. Confirmed entries are the product's authority; do not ask again what they answer. Unconfirmed entries are assumptions: use them, say so, and ask when the work depends on one.
 - **Write when deciding.** When the PM makes or confirms a decision, update its document and append a `DECISION_LOG.md` entry in the same turn. Never leave a decision only in the conversation.
 - **Mark what is not confirmed.** Inferred or assumed content gets `Confirmation: unconfirmed` and a row under Open Questions in `DECISION_LOG.md`.
+- **Take references any time.** A website, app, or screenshot the PM supplies in any mode is a direction reference: ask what they like about it, save screenshots in `product-design/references/`, and record it in `PRODUCT_BRIEF.md` › PM References ([references/product-research.md](references/product-research.md)). When it would change a confirmed entry, ask before changing it and log the answer.
 
 ### Document Language
 
@@ -109,7 +110,7 @@ Token decisions follow Google Material Design 3's method and are recorded in `DE
 1. **Language.** Resolve the document language first (Document Language above).
 2. **Interview.** Follow [references/discovery-interview.md](references/discovery-interview.md) until its stop conditions are met. Summarize; after the PM confirms, write `PRODUCT_BRIEF.md` and the core tasks in `EXPERIENCE_MAP.md`.
 3. **Research.** Follow [references/product-research.md](references/product-research.md). Every reference product and convention carries a source link; facts and inferences stay apart; nothing is invented. Without research tools, say so and mark the research unverified. After the PM confirms, fill the brief's Research Summary.
-4. **Direction.** Follow [references/design-direction.md](references/design-direction.md) and [references/md3-token-method.md](references/md3-token-method.md): draft two or three candidates, build `product-design/direction-comparison.html`, let the PM choose or mix, then write `DESIGN_DIRECTION.md`.
+4. **Direction.** Follow [references/design-direction.md](references/design-direction.md) and [references/md3-token-method.md](references/md3-token-method.md): draft two or three candidates, build `product-design/direction-comparison.html`, ask once more whether a website, app, or screenshot is closer to what the PM wants, let the PM choose or mix, then write `DESIGN_DIRECTION.md`.
 5. **Experience map.** Draft the navigation model, the depth thresholds, and the first feature registry, show the PM a short summary with each core task's counted path, and after confirmation write them to `EXPERIENCE_MAP.md` (unconfirmed parts stay `unconfirmed`).
 6. **Pointer.** Add the agent instruction pointer (above).
 7. **Next step.** Offer `build`, or hand the documents to `storybook-product-prototype` when the team prototypes in Storybook.
@@ -138,7 +139,7 @@ For a half-built or vibe-coded product. `review` changes no UI source files; it 
 4. **Token checks.** Report literal color, spacing, radius, and type values in UI code, direct use of `--md-ref-*` in UI code, baseline values without a recorded source, and domain meanings that reuse `error` or `primary` (md3-token-method.md › Review Checks).
 5. **Visual and design-system checks.** Run `anti-ai-style` in review mode with `DESIGN_DIRECTION.md` as the recorded direction, and `ds-governance` review-only. Without them, use the baseline rules (Companion Skills) and say so.
 6. **Report.** Write `product-design/reviews/<YYYY-MM-DD>-review.md` from [references/review-report-template.md](references/review-report-template.md) in the document language. Rank findings P0 (users get lost, get stuck, or cannot reach a core task), P1 (unclear hierarchy or extra effort), or P2 (polish). Each finding states the problem, the impact on users, the recommendation, and whether the fix is UI-only or needs engineering confirmation; depth findings include the counted path. Update the current steps in `EXPERIENCE_MAP.md` and append a `DECISION_LOG.md` entry.
-7. **Hand back.** In the conversation, give the summary and the top P0 findings in plain words, the report path, and ask which finding IDs to fix.
+7. **Hand back.** In the conversation, give the summary and the top P0 findings in plain words, the report path, and ask which finding IDs to fix and whether the PM has reference websites, apps, or screenshots for the visual fixes. This question is not one of the three confirmation questions.
 
 ## Fix
 

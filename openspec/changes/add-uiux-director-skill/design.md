@@ -8,7 +8,7 @@
 
 使用者（PM 與設計主管）要的兩個情境：0→1 探索時逐步釐清 TA、產品目的、設計風格與呼吸感並寫成文件；以及 vibe coding 做到一半時，由「設計總監」健檢體驗，特別是不讓使用者迷路、不把重點功能藏太深，同時保留隨時增刪功能的彈性。
 
-已確認的使用者決定：文件放目標專案 `product-design/`；文件語言第一次詢問、預設繁體中文；設計方向比較頁放第一階段，且要提供參考案例與 demo；design token 採用 Google Material Design 3 的方法（實作前補充）。
+已確認的使用者決定：文件放目標專案 `product-design/`；文件語言第一次詢問、預設繁體中文；設計方向比較頁放第一階段，且要提供參考案例與 demo；design token 採用 Google Material Design 3 的方法（實作前補充）；過程中要詢問 PM 想參考的品牌網站、App 或截圖，review 不加第四題、改在交回報告時詢問（實作後補充）。
 
 repo 內既有的 MD3 慣例：`design-system-extractor/references/token-architecture.md` 已使用 `--md-ref-*`／`--md-sys-*`／`--md-comp-*` 三層命名；使用者本機另裝有 `figma-m3-variables`（不在本 repo），以 `ref/`／`sys/`／`comp/` 管理 Figma Variables，並提供 M3 色彩角色、typescale、shape scale、spacing ladder、elevation 與 state layer 的詞彙。
 
@@ -22,6 +22,7 @@ repo 內既有的 MD3 慣例：`design-system-extractor/references/token-archite
 - 把「呼吸感」變成由 TA 推導、有具體數值的密度設定。
 - 提供附真實參考案例與自家畫面 demo 的方向比較頁，讓 PM 用看的選。
 - 修復安裝腳本因名稱不符而全部失敗的問題。
+- PM 手上的參考素材（品牌素材、喜歡的網站／App／截圖）能被主動問到、被理解成具體決策，並留在專案裡。
 - 設計 token 決策以 MD3 三層方法記錄，命名與 extractor、figma-m3-variables 一致，讓設計方向可以直接接到 token 實作。
 
 **Non-Goals:**
@@ -107,6 +108,20 @@ repo 內既有的 MD3 慣例：`design-system-extractor/references/token-archite
 
 理由：`ds-governance` 的規則是沿用既有 token 關係、不建立平行系統；強制遷移既有專案到 MD3 會變成大型重構，超出 PM 這個 skill 的範圍。對應表讓 MD3 詞彙仍能用在既有專案上。
 
+### 參考素材分成品牌證據與方向參考
+
+決定：discover 訪談把原本的「品牌證據」與「參考產品」兩題改成：(1) 自家品牌素材（品牌色、logo、品牌規範、既有產品、Figma），屬權威順序中的設計證據，直接決定 key color 與字體；(2) PM 喜歡的網站、App 或截圖，屬方向參考，必須追問「喜歡它哪一點」，再整理成借什麼／不借什麼並對應到八項決策。`PRODUCT_BRIEF.md` 新增 `PM References` 段落（Brand Materials 與 Liked References 兩張表）；PM 提供的截圖存到 `product-design/references/`，比較頁可直接放。詢問時點：discover 訪談、提出比較頁時再問一次、PM 任何時候丟進參考都當方向參考處理；會改變已確認條目時先問並記錄。PM 沒有參考就用研究找到的案例，不阻擋。
+
+理由：PM 常有「我喜歡某某 App 的感覺」這類素材，但原本的題目偏向競品，也沒有主動要截圖；只在開頭問一次，又會錯過 PM 看到比較頁後才想起的參考。兩種參考份量不同：自家品牌是證據，喜歡的參考只是方向，若不追問喜歡哪一點，AI 容易整個照抄外觀，變成另一種模板，甚至抄到他牌識別。
+
+替代方案：只把參考當成研究的起點——無法表達 PM 的偏好，也不會留下紀錄。
+
+### review 不加第四題，交回報告時再問參考
+
+決定：review 維持最多三題確認（TA、目的、核心任務），參考素材的問題放在交回健檢報告時，與「要修哪幾項」一起問，且不計入三題。
+
+理由：review 的價值在快速拿到報告；健檢本身不需要參考素材，但 fix 動到視覺前需要。放在交回時問，健檢不被拖慢，修正又能拿到方向。
+
 ### 交由既有 skill 負責去 AI 味、token、原型
 
 決定：視覺 AI 味判斷交給 `anti-ai-style`（build 用 prevent、review 用 review），token 與共用元件交給 `ds-governance`，Storybook 原型與交接文件交給 `storybook-product-prototype`（把 `product-design/` 文件帶入其 PRD 訪談）。在 `scripts/skill-dependencies.json` 登記 `anti-ai-style` 與 `ds-governance` 為 `support`。Figma Variables 的工作在 `figma-m3-variables` 可用時交給它；它不在本 repo，安裝腳本會因找不到依賴而失敗，所以不登記。skill 內只保留一份精簡底線（漸層／毛玻璃／卡片包卡片／裝飾 emoji／敷衍假資料／無故置中），在同伴 skill 缺席時使用並明說。刪除原草稿寫死的 Tokens 與元件清單。
@@ -141,8 +156,8 @@ repo 內既有的 MD3 慣例：`design-system-extractor/references/token-archite
 
 **檔案契約（skill 內）：**
 
-- `uiux-director/SKILL.md`：frontmatter `name: uiux-director` 與英文 description（含中文觸發詞）；本文包含角色與原則、載入與範圍、權威順序（已確認的 `product-design/` 條目 → 設計證據 → 本次對話中 PM 的指示 → 同伴 skill 規則 → 本 skill 底線）、模式路由、各模式流程摘要、文件語言流程、managed block 流程、同伴 skill 分工與底線、停止點、資源索引。目標長度 200 行以內（估計值，依 `anti-ai-style/SKILL.md` 的 144 行與 `ds-governance/SKILL.md` 的 109 行推估），細節放 references。
-- `uiux-director/references/`：`discovery-interview.md`（訪談題庫與停止條件）、`product-research.md`（研究對象、來源要求、事實與推論的標示法）、`design-direction.md`（八項決策對應、密度推導表與 MD3 對應、比較頁流程）、`md3-token-method.md`（三層命名、key color 與 tonal palette、sys 色彩角色與 extension role、typescale、shape、surface 與 elevation、state layer、density scale 與 spacing ladder、window size class 邊距、baseline 外觀防護、既有 token 對應表、Token Gate 起始清單）、`experience-review.md`（迷路檢查清單、步數計算定義與範例、門檻與覆寫）、`feature-change.md`（新增與刪除的影響檢查）、`review-report-template.md`（報告結構）。
+- `uiux-director/SKILL.md`：frontmatter `name: uiux-director` 與英文 description（含中文觸發詞）；本文包含角色與原則、載入與範圍、權威順序（已確認的 `product-design/` 條目 → 設計證據 → 本次對話中 PM 的指示 → 同伴 skill 規則 → 本 skill 底線）、模式路由、各模式流程摘要、文件語言流程、managed block 流程、同伴 skill 分工與底線、停止點、資源索引。目標長度約 200 行（估計值，依 `anti-ai-style/SKILL.md` 的 144 行與 `ds-governance/SKILL.md` 的 109 行推估；加入參考素材規則後容許小幅超出），細節放 references。
+- `uiux-director/references/`：`discovery-interview.md`（訪談題庫與停止條件，品牌素材與喜歡的參考分開兩題並追問喜歡哪一點）、`product-research.md`（研究對象、從 PM 參考開始、截圖整理成借／不借、來源要求、事實與推論的標示法）、`design-direction.md`（八項決策對應、密度推導表與 MD3 對應、比較頁流程）、`md3-token-method.md`（三層命名、key color 與 tonal palette、sys 色彩角色與 extension role、typescale、shape、surface 與 elevation、state layer、density scale 與 spacing ladder、window size class 邊距、baseline 外觀防護、既有 token 對應表、Token Gate 起始清單）、`experience-review.md`（迷路檢查清單、步數計算定義與範例、門檻與覆寫）、`feature-change.md`（新增與刪除的影響檢查）、`review-report-template.md`（報告結構）。
 - `uiux-director/assets/`：`PRODUCT_BRIEF.template.md`、`DESIGN_DIRECTION.template.md`（含 `Material Design 3 Token Plan` 段落：key colors 與來源、palette 來源、sys 角色對應表、typescale／shape／elevation／state／density 選擇、既有 token 對應表）、`EXPERIENCE_MAP.template.md`、`DECISION_LOG.template.md`（開頭含 `Document Language:` 一行）、`direction-comparison.template.html`、`agent-pointer.snippet.md`（managed block 內容）。
 - `uiux-director/README.md`（繁中，給 PM 看的使用說明與範例對話）、`uiux-director/agents/openai.yaml`（沿用 `anti-ai-style/agents/openai.yaml` 結構）。
 - repo `README.md` 新增 `### uiux-director` 段落，說明用途、五個模式、與同伴 skill 的關係與安裝指令。
@@ -165,7 +180,7 @@ repo 內既有的 MD3 慣例：`design-system-extractor/references/token-archite
 
 **範圍：**
 
-- 範圍內：`uiux-director/` 全部內容、`scripts/skill-dependencies.json` 的新鍵、repo `README.md` 的新段落；MD3 token 方法的文件化規則。
+- 範圍內：`uiux-director/` 全部內容、`scripts/skill-dependencies.json` 的新鍵、repo `README.md` 的新段落；MD3 token 方法的文件化規則；PM 參考素材的詢問、記錄與截圖保存規則。
 - 範圍外：修改 `anti-ai-style`、`ds-governance`、`storybook-product-prototype`、`design-system-extractor`、`figma-m3-variables` 的內容；tonal palette 產生腳本；修改安裝腳本本身；步數自動檢查腳本；任何目標產品專案的實際修改（演練產生的檔案不提交到本 repo）。
 
 ## Risks / Trade-offs
@@ -178,6 +193,8 @@ repo 內既有的 MD3 慣例：`design-system-extractor/references/token-archite
 - [MD3 baseline 外觀混進產品（紫色、Roboto、Material 範例版型）] → 模板預設值不含 baseline 值；`md3-token-method.md` 明列防護規則；review 交給 anti-ai-style 檢查預設色系。
 - [M3 角色不足以表達領域語意] → 用具名 extension role，不挪用 `error` 等既有角色，並在對應表記錄理由。
 - [既有專案的 token 與 MD3 角色對不上] → 只寫對應表、對不上的角色標未對應並列為開放問題，不強制遷移。
+- [照抄 PM 喜歡的參考，連他牌識別一起抄] → 一定追問喜歡哪一點，只借對應的決策；logo 與招牌配色一律列在不借。
+- [PM 中途丟的參考悄悄改掉已確認方向] → 會改變已確認條目時先問，再寫 DECISION_LOG。
 - [managed block 寫入使用者的根目錄指引檔造成困擾] → 只在既有檔案中寫入標記區塊、可重跑取代；不存在時先問。
 
 ## Migration Plan

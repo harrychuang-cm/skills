@@ -94,7 +94,7 @@ Before writing the first `product-design/` document, the skill SHALL ask the use
 ---
 ### Requirement: Discovery interview and product research
 
-In `discover` mode the skill SHALL ask one focused question at a time until it has the primary target audience (who they are, context of use, primary device, domain expertise), the product purpose, up to three core tasks, and how success is observed. It SHALL then research comparable and analogous products and domain conventions, citing a source link for every reference product and every convention claim, and SHALL distinguish sourced facts from its own inferences. It SHALL NOT invent products, metrics, or sources; when research tools are unavailable it SHALL say so and mark affected entries as unverified. Interview answers and research SHALL be written to `PRODUCT_BRIEF.md` only after the product manager confirms the summary.
+In `discover` mode the skill SHALL ask one focused question at a time until it has the primary target audience (who they are, context of use, primary device, domain expertise), the product purpose, up to three core tasks, and how success is observed, and it SHALL ask once about brand materials and liked references as defined in the PM reference materials requirement. It SHALL then research comparable and analogous products and domain conventions, citing a source link for every reference product and every convention claim, and SHALL distinguish sourced facts from its own inferences. It SHALL NOT invent products, metrics, or sources; when research tools are unavailable it SHALL say so and mark affected entries as unverified. Interview answers and research SHALL be written to `PRODUCT_BRIEF.md` only after the product manager confirms the summary.
 
 #### Scenario: Interview asks one question at a time
 
@@ -169,12 +169,17 @@ Before a design direction is confirmed, the skill SHALL present two or three can
 ---
 ### Requirement: Review mode experience health check
 
-In `review` mode the skill SHALL NOT modify UI source. When `PRODUCT_BRIEF.md` is absent it SHALL infer the target audience, product purpose, and core tasks from the code and rendered screens, and confirm them with the product manager using at most three questions before judging. It SHALL build the current experience map from routes, navigation structure, and rendered screens, and SHALL check wayfinding: each page title matches the label of the control that opened it, navigation indicates the current location, every page offers a visible way back or out, success, empty, and error states offer a next step, one concept uses one name across the product, dialogs are not stacked, flows longer than three steps show progress, and mobile top-level navigation has at most five items. It SHALL check core-task depth against the experience map thresholds. It SHALL report literal color, spacing, radius, and type values in UI code and direct use of reference-tier (`--md-ref-*`) tokens in UI code as findings. Visual AI-style findings SHALL come from the `anti-ai-style` review mode and design-system findings from `ds-governance` when those skills are available. The report SHALL be written in the document language to `product-design/reviews/<YYYY-MM-DD>-review.md`, rank findings as P0 (users get lost, stuck, or cannot reach a core task), P1 (unclear hierarchy or extra effort), or P2 (polish), and state for each finding the problem, the impact on users, the recommendation, and whether the fix is UI-only or needs engineering confirmation.
+In `review` mode the skill SHALL NOT modify UI source. When `PRODUCT_BRIEF.md` is absent it SHALL infer the target audience, product purpose, and core tasks from the code and rendered screens, and confirm them with the product manager using at most three questions before judging. It SHALL build the current experience map from routes, navigation structure, and rendered screens, and SHALL check wayfinding: each page title matches the label of the control that opened it, navigation indicates the current location, every page offers a visible way back or out, success, empty, and error states offer a next step, one concept uses one name across the product, dialogs are not stacked, flows longer than three steps show progress, and mobile top-level navigation has at most five items. It SHALL check core-task depth against the experience map thresholds. It SHALL report literal color, spacing, radius, and type values in UI code and direct use of reference-tier (`--md-ref-*`) tokens in UI code as findings. Visual AI-style findings SHALL come from the `anti-ai-style` review mode and design-system findings from `ds-governance` when those skills are available. The report SHALL be written in the document language to `product-design/reviews/<YYYY-MM-DD>-review.md`, rank findings as P0 (users get lost, stuck, or cannot reach a core task), P1 (unclear hierarchy or extra effort), or P2 (polish), and state for each finding the problem, the impact on users, the recommendation, and whether the fix is UI-only or needs engineering confirmation. When handing the report back, the skill SHALL ask whether the product manager has reference websites, apps, or screenshots to use before `fix` changes visuals; this question SHALL NOT count toward the three confirmation questions and SHALL NOT delay the report.
 
 #### Scenario: Review of a half-built vibe-coded product without a brief
 
 - **WHEN** a product manager asks for a UX review of a project that has UI routes but no `product-design/` folder
 - **THEN** the skill asks at most three confirmation questions about audience, purpose, and core tasks, then writes a dated review report and changes no UI source files
+
+#### Scenario: References are requested at hand-back
+
+- **WHEN** the skill hands back a review report after asking two confirmation questions
+- **THEN** the hand-back message asks whether the product manager has reference websites, apps, or screenshots for the visual fixes, and the review asked no more than three confirmation questions before the report
 
 #### Scenario: Buried core feature is a P0 finding
 
@@ -269,3 +274,39 @@ The skill SHALL record token decisions in `DESIGN_DIRECTION.md` with Material De
 
 - **WHEN** `build` adds a primary button to a project with M3 tokens
 - **THEN** the button's colors and corner radius reference `--md-comp-*` or `--md-sys-*` custom properties and contain no hex values and no `--md-ref-*` references
+
+---
+### Requirement: PM reference materials
+
+The skill SHALL ask for two kinds of reference separately. The product's own brand materials (brand colors, logo, brand guidelines, an existing product, Figma) SHALL be recorded as design evidence. Websites, apps, or screenshots the product manager likes SHALL be recorded as direction references, and for each one the skill SHALL ask what the product manager likes about it. Each direction reference SHALL be recorded in the PM References section of `PRODUCT_BRIEF.md` with its source (URL or file path), what the product manager likes, what to avoid, the design decisions it informs, and its Confirmation, and SHALL be translated into what to borrow and what not to borrow. The skill SHALL NOT copy another brand's logo, signature colors, or other identity elements from a direction reference. The skill SHALL ask in the `discover` interview, again when presenting the direction comparison page, and SHALL treat any reference the product manager supplies at any time, in any mode, as a direction reference; when a reference would change a confirmed entry, the skill SHALL ask before changing it and record the answer in `DECISION_LOG.md`. Screenshots the product manager supplies SHALL be saved under `product-design/references/`, and the comparison page SHALL be allowed to show them. When the product manager has no references, the skill SHALL continue with the references found in research without blocking.
+
+#### Scenario: Liked reference gets a follow-up question
+
+- **WHEN** the product manager says they like a banking app's home screen
+- **THEN** the skill asks what they like about it before using it, and records the answer as borrow and not-borrow entries tied to specific design decisions
+
+##### Example: a liked reference translated into decisions
+
+| Source | What the PM likes | Borrow | Not borrow | Decisions informed |
+| --- | --- | --- | --- | --- |
+| A banking app home screen (screenshot `product-design/references/bank-home.png`) | Large balance number, few items on the first screen | One large lead number; at most four items in the first viewport | Its brand red and logo | Hierarchy, Density |
+
+#### Scenario: Supplied screenshot is kept
+
+- **WHEN** the product manager pastes a screenshot during the `discover` interview
+- **THEN** the screenshot is saved under `product-design/references/` and a PM References row points to it
+
+#### Scenario: Brand evidence and liked references play different roles
+
+- **WHEN** the product manager supplies both a brand guide with a navy brand color and a liked app whose signature color is orange
+- **THEN** the key color comes from the brand guide, and the liked app informs only the decisions the product manager said they like, with its orange recorded under not borrow
+
+#### Scenario: A mid-build reference conflicts with the confirmed direction
+
+- **WHEN** during `build` the product manager supplies a screenshot whose density is far more compact than the confirmed direction
+- **THEN** the skill asks whether to update the direction before changing any density value, and records the answer in `DECISION_LOG.md`
+
+#### Scenario: No references does not block
+
+- **WHEN** the product manager answers that they have no brand materials and no liked references
+- **THEN** `discover` continues, the entries are recorded as none, and the candidate directions cite references found in research

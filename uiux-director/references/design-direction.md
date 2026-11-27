@@ -96,7 +96,7 @@ The PM chooses by looking, not by reading adjectives. Build `product-design/dire
 1. Draft two or three candidates that differ in a way that matters to this audience, usually density and the color and type character. Do not pad the set with a third candidate that only differs in hue.
 2. Give each candidate a short name and one sentence tied to the primary users and the core task.
 3. Fill its Density Profile values and its Material Design 3 choices: key colors with their source or audience reason, the main system color roles, extension roles, the typescale roles in use, and the shape steps in use ([md3-token-method.md](md3-token-method.md)).
-4. Attach at least two real reference products from the research to each candidate: the name, the source URL, what to borrow, and what not to borrow. Link to sources; embed third-party images only when the PM supplied them.
+4. Attach at least two real reference products to each candidate: the name, the source URL, what to borrow, and what not to borrow. Put the PM's own liked references first where they fit the candidate, then references from research. Link to sources; show images only when the PM supplied them (from `product-design/references/`).
 
 ### Build the demo
 
@@ -109,6 +109,7 @@ The PM chooses by looking, not by reading adjectives. Build `product-design/dire
 ### Let the PM choose
 
 1. Tell the PM where the file is and how to open it, and summarize the candidates in two or three lines each in the conversation.
-2. The PM may pick one candidate or mix parts ("density of A, color of B"). Ask about any part a mix leaves ambiguous.
-3. Write the chosen or combined direction to `DESIGN_DIRECTION.md` with Chosen from and Confirmed filled in, and append a `DECISION_LOG.md` entry naming the candidates and the parts taken from each.
-4. Keep the comparison page as the record of what was considered. When the direction changes later, update the page or add a new one; do not leave the old page implying a different choice.
+2. Ask once more: 「有沒有哪個網站、App 或截圖，比這幾個方向更接近你想要的？」 Seeing candidates often reminds the PM of one. Handle a new reference as in [product-research.md](product-research.md) › Start From The PM's References, and adjust or add a candidate when it changes the picture.
+3. The PM may pick one candidate or mix parts ("density of A, color of B"). Ask about any part a mix leaves ambiguous.
+4. Write the chosen or combined direction to `DESIGN_DIRECTION.md` with Chosen from and Confirmed filled in, and append a `DECISION_LOG.md` entry naming the candidates and the parts taken from each.
+5. Keep the comparison page as the record of what was considered. When the direction changes later, update the page or add a new one; do not leave the old page implying a different choice.

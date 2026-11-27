@@ -23,7 +23,7 @@ Stop interviewing and summarize when all of these hold:
 2. The product purpose is known: the problem and the outcome for the user.
 3. Up to three core tasks are known.
 4. How success is observed is known.
-5. Questions 9–12 (brand evidence, references, secondary users, non-goals) have each been asked once. Later steps depend on them: key colors need brand evidence, research starts from the PM's references, and the summary lists non-goals. The PM may skip any of them; a skipped one becomes an `unconfirmed` assumption.
+5. Questions 9–12 (brand materials, liked references, secondary users, non-goals) have each been asked once. Later steps depend on them: key colors need brand materials, research starts from the PM's references, and the summary lists non-goals. The PM may skip any of them; a skipped one becomes an `unconfirmed` assumption.
 
 ## Question Bank
 
@@ -39,16 +39,27 @@ Ask in this order and skip what is answered. The example wording is for a Tradit
 | 6 | Outcome | What they can do afterward | 「用了之後，他們能做到什麼以前做不到、或做得很辛苦的事？」 |
 | 7 | Core tasks | At most three, with frequency | 「如果使用者只能在這個產品做三件事，是哪三件？各多久做一次？」 |
 | 8 | Success | An observable sign, not a feeling | 「上線後，看到什麼現象會讓你覺得成功？例如第一次就完成下單、客服詢問變少。」 |
-| 9 | Brand evidence | Inputs for key colors and type | 「有沒有品牌色、logo、品牌規範、既有產品或 Figma 可以參考？」 |
-| 10 | References the PM has in mind | Seeds for research | 「你心中有沒有競爭對手，或想參考的產品（不限同產業）？」 |
+| 9 | Brand materials | Design evidence for key colors and type | 「你們自己有沒有品牌色、logo、品牌規範、既有產品或 Figma？有的話給我連結或截圖。」 |
+| 10 | Liked references | Direction: websites, apps, or screenshots the PM likes, competitors included | 「有沒有你喜歡、想參考的網站、App 或截圖？不限同產業，競爭對手也可以，截圖直接貼上來就好。」 Then, for each one: 「你喜歡它哪一點？例如字很大、首頁很乾淨、重要數字一眼就看到。」 |
 | 11 | Secondary users | Optional | 「還有沒有第二類使用者？例如主管、客服、家人。」 |
 | 12 | Non-goals | What the product will not do | 「有沒有明確不做的事？先講清楚可以避免之後功能越長越多。」 |
+
+## Brand Materials And Liked References
+
+Questions 9 and 10 ask for two different things; keep them apart.
+
+- **Brand materials** are the product's own: brand colors, logo, guidelines, an existing product, Figma. They are design evidence and decide key colors and typefaces.
+- **Liked references** are someone else's websites, apps, or screenshots the PM likes. They are direction only. The follow-up 「你喜歡它哪一點？」 is part of question 10, not a new question, and it is asked for every reference: without it the reference would be copied whole.
+- **Screenshots** the PM supplies are saved in `product-design/references/` with a short descriptive file name (`bank-home.png`). When the host shows an image only inside the conversation and gives no file, ask the PM to drop the file into the project or give its path, and describe the image in the table meanwhile.
+- **Nothing to give** is a fine answer. Record "none" and move on; research supplies the references.
+
+Translating liked references into borrow and not-borrow entries happens in [product-research.md](product-research.md) › Start From The PM's References.
 
 ## Summary And Confirmation
 
 When the stop conditions are met:
 
-1. Show a short summary in the conversation: target users, purpose, core tasks, success measures, non-goals, and any assumptions marked as unconfirmed.
+1. Show a short summary in the conversation: target users, purpose, core tasks, success measures, non-goals, the brand materials and liked references with what the PM likes about each, and any assumptions marked as unconfirmed.
 2. Ask the PM to confirm or correct it.
 3. After confirmation, write `PRODUCT_BRIEF.md` from [../assets/PRODUCT_BRIEF.template.md](../assets/PRODUCT_BRIEF.template.md), copy the core tasks into `EXPERIENCE_MAP.md`, and append a `DECISION_LOG.md` entry.
 4. Continue with research ([product-research.md](product-research.md)).

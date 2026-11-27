@@ -46,6 +46,26 @@ Up to three tasks the product exists for. `EXPERIENCE_MAP.md` measures how many 
 
 - <What this product deliberately does not do, and why.>
 
+## PM References
+
+What the PM brought. Screenshots the PM supplies are saved in `product-design/references/` and linked here by file path. Write "none" in a table the PM had nothing for.
+
+### Brand Materials
+
+The product's own brand: design evidence that decides key colors, typefaces, and anything else it specifies.
+
+| Material | Source | What it decides | Confirmation |
+| --- | --- | --- | --- |
+| <brand color \| logo \| brand guidelines \| existing product \| Figma> | <URL or product-design/references/file> | <e.g. primary key color #xxxxxx; brand typeface> | |
+
+### Liked References
+
+Websites, apps, or screenshots the PM likes: direction, not evidence. Each one is translated into what to borrow and what not to borrow. Logos, signature colors, and other brand identity are never borrowed.
+
+| Source | What the PM likes | Borrow | Not borrow | Decisions informed | Confirmation |
+| --- | --- | --- | --- | --- | --- |
+| <URL or product-design/references/file> | <the PM's words: what they like about it> | <the concrete pattern to take> | <its logo, signature colors, anything the PM did not mention> | <Hierarchy, Density, Type, ...> | |
+
 ## Research Summary
 
 Every reference product and every convention claim carries a source link. Facts come from a source; inferences are labeled as inferences.

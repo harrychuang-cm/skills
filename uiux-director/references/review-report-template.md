@@ -65,10 +65,14 @@ From `anti-ai-style` (tell IDs kept), `ds-governance`, and the token checks in m
 
 Reply with the IDs to fix, for example 「修 P0-1、P0-2、P1-3」. `fix` applies only the selected IDs; findings marked "needs engineering confirmation" are listed for engineering and not applied.
 
+Before the visual fixes: <is there a website, app, or screenshot you want them to follow? Paste it and say what you like about it.>
+
 ## Limits
 
 <What was not checked: states that could not be reached, screens not rendered, platforms not run, flows behind sign-in.>
 ```
+
+The reference question in Next Step is asked at hand-back, after the report is written. It is not one of the review's three confirmation questions and does not delay the report.
 
 ## Change Scope
 
