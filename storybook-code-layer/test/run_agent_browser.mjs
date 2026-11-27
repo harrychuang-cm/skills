@@ -633,6 +633,8 @@ async function stage(cdp, chrome) {
     await waitRunState(runId, ["running"], 30000);
     const applyDuring = await waitSeen(() => inManager(cdp, `const b = document.querySelector('[data-code-layer-action="apply"]'); return b ? { disabled: b.disabled, title: b.title } : null`), (b) => b.disabled, "apply turned off");
     assert.equal(applyDuring.title, "AI 正在修改專案；結束之前不能套用、還原、略過或同步鏡像。");
+    const runningDialog = await waitDialog(cdp, (d) => d.runState === "running", "running in the dialog");
+    assert.match(runningDialog.stateText, /Fake runner/, "the dialog names the runner while it works");
 
     await cdp.send("Page.reload");
     await afterLoad(cdp);

@@ -22,17 +22,36 @@ import path from "node:path";
 import process from "node:process";
 
 import { ApiError } from "../../shared/api-contract.mjs";
-import { CONFIRM_TEXT as TEXT, SUMMARY_TEXT_LIMIT } from "./messages.confirm.mjs";
+import { CONFIRM_TEXT as TEXT, SUMMARY_CONTEXT_LIMIT, SUMMARY_TEXT_LIMIT } from "./messages.confirm.mjs";
 
 const MAX_CODE_ATTEMPTS = 3;
 
 
-/** The text a person approves: what will run, on what, and what it may change. */
-export function confirmationSummary({ locale, projectId, element, runner, allowed, text }) {
+/**
+ * The text a person approves: what will run, on what, and what it may change.
+ * followUp: { original, question, answer } when the request answers an agent's
+ * question. The answer is what is new, so it comes first and gets the full
+ * length; the earlier request and the question are shortened context.
+ */
+export function confirmationSummary({ locale, projectId, element, runner, allowed, text, followUp = null }) {
   const t = TEXT[locale] ?? TEXT["zh-Hant"];
-  const chars = [...text];
-  const shown = chars.length > SUMMARY_TEXT_LIMIT ? `${chars.slice(0, SUMMARY_TEXT_LIMIT).join("")}…\n${t.truncated(chars.length)}` : text;
+  const clip = (value, limit) => {
+    const chars = [...value];
+    return chars.length > limit ? `${chars.slice(0, limit).join("")}…\n${t.truncated(chars.length, limit)}` : value;
+  };
   // The request text is shown as it was typed; only the labels follow the language.
+  const request = followUp
+    ? [
+        `${t.answer}${t.colon}`,
+        clip(followUp.answer, SUMMARY_TEXT_LIMIT),
+        "",
+        `${t.question}${t.colon}`,
+        clip(followUp.question, SUMMARY_CONTEXT_LIMIT),
+        "",
+        `${t.original}${t.colon}`,
+        clip(followUp.original, SUMMARY_CONTEXT_LIMIT),
+      ]
+    : [`${t.request}${t.colon}`, clip(text, SUMMARY_TEXT_LIMIT)];
   return [
     t.intro,
     "",
@@ -41,8 +60,7 @@ export function confirmationSummary({ locale, projectId, element, runner, allowe
     `${t.runner}${t.colon}${runner}`,
     `${t.allowed}${t.colon}${allowed.join(", ")}`,
     "",
-    `${t.request}${t.colon}`,
-    shown,
+    ...request,
     "",
     t.cost,
   ].join("\n");

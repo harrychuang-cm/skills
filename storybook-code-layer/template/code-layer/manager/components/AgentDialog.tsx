@@ -173,6 +173,8 @@ function RunState({ run, text, codeError }: { run: AgentRunView; text: string | 
       <Note style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <strong style={{ marginRight: "auto" }} data-code-layer-agent-state>
           {t(`agent.state.${run.state}` as "agent.state.running")}
+          {/* From approval until the end, the dialog names the tool that works, like the report area. */}
+          {!run.final && run.state !== "awaiting-confirmation" && run.runner ? ` · ${run.runner}` : ""}
           {elapsed !== null ? ` · ${t("agent.elapsed", { seconds: elapsed })}` : ""}
         </strong>
         {!run.final && run.state !== "checking" ? (

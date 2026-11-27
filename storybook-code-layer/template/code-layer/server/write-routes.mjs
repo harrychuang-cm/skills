@@ -2,7 +2,7 @@
 // Every POST has already passed the guard (loopback, Host, Origin,
 // Sec-Fetch-Site, JSON content type, session header) before reaching here.
 import { ApiError, ID_PATTERN } from "../shared/api-contract.mjs";
-import { registerAgentRoutes } from "./agent/routes.mjs";
+import { registerAgentRoutes, registerReadOnlyAgentRoutes } from "./agent/routes.mjs";
 import { createEngine } from "./transaction.mjs";
 
 function applyIdBody(body) {
@@ -16,7 +16,11 @@ function applyIdBody(body) {
 
 /** agentOptions: test doubles for the AI routes (confirmer, launchImpl, probeImpl). */
 export async function extendWithWrites(app, agentOptions = {}) {
-  if (!app.config || !app.postcss || app.readOnlyReasons.length > 0) return;
+  if (!app.config || !app.postcss || app.readOnlyReasons.length > 0) {
+    // No writes, so no AI runs either; the status route still says why.
+    registerReadOnlyAgentRoutes(app);
+    return;
+  }
   const engine = createEngine({ config: app.config, postcss: app.postcss, log: app.log, notifyChanged: app.notifyChanged });
   app.engine = engine;
   app.capabilities.write = engine.readOnly.length === 0;

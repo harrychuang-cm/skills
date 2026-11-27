@@ -36,17 +36,17 @@ Code Layer 1.2.0 能直接改的有兩種：把 `var()` 裡的 token 換成另�
 - 與 add-code-layer-tokenize-literals（A，未核可）沒有需求重疊。
 - Affected code（皆在 `storybook-code-layer/` 之下，另列者除外）:
   - New:
-    - template/code-layer/server/agent/routes.mjs、runs.mjs、confirm.mjs、workcopy.mjs、launcher.mjs、contract.mjs、scope-gate.mjs、import.mjs、request-file.mjs、runners.mjs
+    - template/code-layer/server/agent/routes.mjs、runs.mjs、confirm.mjs、messages.confirm.mjs、workcopy.mjs、launcher.mjs、contract.mjs、scope-gate.mjs、request-file.mjs、runners.mjs（匯入沒有獨立模組，寫在 transaction.mjs 的 `importAgentChanges`）
     - template/code-layer/server/agent/check-result.mjs（orchestrator 的 verification 指令）
     - template/code-layer/manager/agent.ts、manager/components/AgentDialog.tsx、manager/components/AgentRunReport.tsx
     - scripts/enable_agent.mjs
     - test/test_agent_scope_gate.test.mjs、test_agent_runs.test.mjs、test_agent_confirm.test.mjs、test/fixtures/fake-runner.mjs、test/run_agent_browser.mjs
   - Modified:
-    - template/code-layer/server/config.mjs（新增 `agent` 鍵）、app.mjs、plugin.mjs、transaction.mjs（匯入型交易與 agent 模式的 lock）、journal.mjs
+    - template/code-layer/server/config.mjs（新增 `agent` 鍵）、transaction.mjs（匯入型交易與 agent 模式的 lock）、journal.mjs、paths.mjs、write-routes.mjs（掛上 agent 路由；唯讀時只回報狀態）
     - template/code-layer/shared/api-contract.mjs、protocol.ts、messages.zh-Hant.ts、messages.en.ts
     - template/code-layer/runtime/overlay.ts、index.ts（選取標籤上的 AI 按鈕，經 channel 通知 manager）
-    - template/code-layer/manager.tsx、manager/store.ts、manager/Inspector.tsx、manager/icons.tsx、manager/components/ChangesBar.tsx、Report.tsx
-    - template/code-layer/package.json（版本 1.3.0）、template/TEMPLATE_MANIFEST.json、template/KNOWN_MANIFESTS.json
+    - template/code-layer/manager.tsx、manager/store.ts、manager/Inspector.tsx、manager/icons.tsx、manager/styles.ts、manager/components/ChangesBar.tsx、Notices.tsx、Report.tsx
+    - template/code-layer/package.json（版本 1.3.0，修正版 1.3.1）、template/TEMPLATE_MANIFEST.json、template/KNOWN_MANIFESTS.json
     - SKILL.md、README.md、scripts/install_code_layer.mjs（`--check` 回報 agent 就緒狀態）
     - （repo 根目錄）README.md、docs/code-layer-guide.html、docs/skills-usage.md、docs/skills-guide.html、scripts/skill-dependencies.json（storybook-code-layer 對 agent-automation-orchestrate 的 support 相依）
   - Removed: (none)

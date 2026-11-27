@@ -76,7 +76,7 @@ agent 的工作目錄與 `{workspace}` 都是這份副本。真實專案在整�
 
 本機 runner 檔 `<stateDir>/agent-runners.json` 由 `scripts/enable_agent.mjs` 產生（權限 0600），記錄 node、orchestrator、各 CLI 的路徑與版本，以及要用的配方。CLI 的路徑照找到時的樣子記錄，不解析 symlink：`~/.local/bin/claude` 這類啟動連結在 CLI 自我更新後仍然有效；版本若因此改變，狀態會變成未就緒並請使用者重新執行啟用腳本。伺服器每次查詢狀態與每個請求都重新讀這個檔，所以執行啟用腳本後不必重啟 Storybook（綁定的 `agent` 鍵仍需要重啟才生效）。配方：
 
-- claude（預設、第一順位）：`["--add-dir", "{workspace}", "--restricted", "--strict-mcp-config", "--tools", "Read", "Write", "Edit", "Glob", "Grep", "--permission-mode", "acceptEdits", "--permission-prompts", "none", "-p", "{prompt}"]`。`--restricted` 只拿掉會執行指令的內建工具，仍會載入 MCP 伺服器（含 claude.ai 連接器）；`--strict-mcp-config` 而且不給 `--mcp-config`，才一個都不載入。2026-11-26 第一次真實執行（沒有這個旗標）時，agent 拿到了 123 個連接器工具的完整定義（Gmail、Google Drive、Google Calendar、Figma、Claude Docs、Claude Data），雖然只用了 Read、Grep、Edit、Write，但違反「只有檔案工具」；之後加入這個旗標，並列入 `--help` 必須出現的旗標。
+- claude（預設、第一順位）：`["--add-dir", "{workspace}", "--restricted", "--strict-mcp-config", "--no-session-persistence", "--tools", "Read", "Write", "Edit", "Glob", "Grep", "--permission-mode", "acceptEdits", "--permission-prompts", "none", "-p", "{prompt}"]`。1.3.1 加入 `--no-session-persistence`：沒有它時 Claude Code 會把每次執行（含需求文字）存在 `~/.claude/projects/<複本路徑>/`，每個請求一個資料夾，不在狀態目錄的清理範圍內，違反「需求文字只存在 request.txt」（2026-11-26 真實執行時發現）。runner 檔的參數是啟用時寫入的，所以伺服器把 runner 檔中缺少目前配方旗標的 runner 判為未就緒（`runner-recipe-outdated`），提示重跑啟用腳本；工具版本與說明文字的檢查結果，以 runner 檔與每個指令解析後的實際檔案和修改時間為快取依據，工具在 Storybook 執行期間自動更新也會重新檢查。`--restricted` 只拿掉會執行指令的內建工具，仍會載入 MCP 伺服器（含 claude.ai 連接器）；`--strict-mcp-config` 而且不給 `--mcp-config`，才一個都不載入。2026-11-26 第一次真實執行（沒有這個旗標）時，agent 拿到了 123 個連接器工具的完整定義（Gmail、Google Drive、Google Calendar、Figma、Claude Docs、Claude Data），雖然只用了 Read、Grep、Edit、Write，但違反「只有檔案工具」；之後加入這個旗標，並列入 `--help` 必須出現的旗標。
 - codex（選用、需指定模型）：`["exec", "--skip-git-repo-check", "--sandbox", "workspace-write", "-m", "<模型>", "-C", "{workspace}", "{prompt}"]`。codex 無法關閉 shell，靠 sandbox 限制寫入範圍與網路；啟用腳本會說明這個差別，預設不加入。
 
 agent 不需要執行任何指令：檢查由伺服器在匯入前執行。啟用腳本對每個配方做一次不耗額度的檢查（執行檔存在、`--version` 可執行、`--help` 列出配方用到的旗標），不啟動 agent。
@@ -87,7 +87,7 @@ agent 不需要執行任何指令：檢查由伺服器在匯入前執行。啟�
 
 確認方式由綁定的 `agent.confirm` 決定：`native-dialog`（macOS 預設）、`terminal-code`（其他平台預設，或 macOS 上無法顯示對話框時自動改用）、`off`（必須明寫，狀態與檢視器會持續標示「未經確認」）。
 
-- 原生對話框：伺服器把摘要寫成暫存檔，執行 `osascript`，由腳本讀取該檔並 `display dialog`（文字以檔案傳入，不內插到 AppleScript 原始碼，也不放進 argv）。按鈕為「拒絕」（預設）與「允許」。摘要含：專案 id、Storybook 的 port、物件標籤與 story、需求文字（超過 600 字截斷並註明總長度）、runner、允許修改的路徑範圍。60 秒未回應視為拒絕。
+- 原生對話框：伺服器把摘要寫成暫存檔，執行 `osascript`，由腳本讀取該檔並 `display dialog`（文字以檔案傳入，不內插到 AppleScript 原始碼，也不放進 argv）。按鈕為「拒絕」（預設）與「允許」。摘要含：專案 id、物件標籤、需求文字（超過 600 字截斷並註明總長度）、runner、允許修改的路徑範圍。接續提問的請求以「你的回答」為主、完整列在最前面，原本的需求與 AI 的問題各截到 200 字當前情（1.3.1：否則回答常被 600 字的截斷整段切掉，頁面上的程式可以趁機送出與使用者以為的不同的回答）。同時開多個 Storybook 時以專案 id 區分；port 與 story 不列（不同專案的 id 不同，同一專案同時只能跑一個 Storybook）。60 秒未回應視為拒絕。
 - 終端機代碼：伺服器在 Storybook 的終端機印出同一份摘要與 6 位數代碼；頁面上輸入代碼才啟動。代碼綁定請求的雜湊（需求文字、物件參照、物件識別），只能用一次，三次錯誤即作廢，180 秒未輸入也作廢。
 - 對話框與終端機摘要的文字（標題、按鈕、欄位名稱、成本提示、代碼說明）放在伺服器端的訊息目錄 `server/agent/messages.confirm.mjs`，有繁體中文與英文兩份、鍵集合相同，依請求帶來的介面語言選用；需求文字本身照原樣顯示。
 - 任何時候最多只有一個等待確認的請求。
@@ -216,7 +216,7 @@ journal 的 `agent-run` 紀錄只有：runId、runner id、各狀態的時間、
 ## Migration Plan
 
 1. 前置已滿足：add-storybook-code-layer 與 add-code-layer-layout-editing 皆已封存，1.2.0 的清單已記錄在 `KNOWN_MANIFESTS.json`。
-2. 依 tasks 實作；模板版本 1.3.0，重建清單並記錄 1.3.0。
+2. 依 tasks 實作；模板版本 1.3.0，重建清單並記錄 1.3.0。1.3.0 已於 2026-11-26 發布到 main；之後的修正（`--no-session-persistence`、verify 與 review 的修正）發布為 1.3.1，不改寫 1.3.0 的檔案紀錄，已安裝 1.3.0 的專案升級時才認得出自己的檔案。
 3. 既有專案以 `install_code_layer.mjs --update` 升級；不做任何事就不會啟用 agent，行為與 1.2.0 相同。
 4. 要啟用的專案：在綁定加入 `agent.enabled`，在每台要使用的機器執行 `enable_agent.mjs`。
 5. 回復：刪除狀態目錄的 `agent-runners.json` 或把綁定的 `agent.enabled` 改為 false 即停用；已匯入的修改以還原堆疊處理。

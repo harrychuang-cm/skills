@@ -543,6 +543,7 @@ export const en: Record<keyof typeof zhHant, string> = {
   "agent.reason.runner-broken": "{runner} does not run: {detail}",
   "agent.reason.runner-version-changed": "{runner} changed version ({detail}); set it up again.",
   "agent.reason.runner-flag-missing": "{runner} does not support the required option {detail}.",
+  "agent.reason.runner-recipe-outdated": "{runner} was set up by an older version (missing {detail}); run the enable script again.",
   "agent.reason.runner-check-failed": "Checking the command line tools failed: {detail}",
   "agent.reason.read-only": "The Code Layer server is read-only ({detail}).",
   "agent.reason.confirmation-denied": "The request was denied.",

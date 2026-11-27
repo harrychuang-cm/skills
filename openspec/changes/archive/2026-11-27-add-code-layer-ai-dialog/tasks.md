@@ -9,7 +9,7 @@
 
 ## 3. 瀏覽器外的確認
 
-- [ ] 3.1 [after: 2.2] 每次請求都先經過頁面程式碰不到的確認：依 design「瀏覽器外的確認以原生對話框為主、終端機一次性代碼為輔」新增 server/agent/confirm.mjs（原生對話框以檔案傳入文字、終端機代碼綁定請求雜湊、逾時視為拒絕、同時最多一個等待中的請求），測試以注入的確認替身取代真實對話框。完成時成立 spec「Out-of-browser confirmation」。驗證：新增 storybook-code-layer/test/test_agent_confirm.test.mjs 並通過：拒絕後沒有建立副本、沒有啟動程序；為請求 A 發出的代碼用於請求 B 不被接受；代碼只能用一次、三次錯誤後作廢；需求文字含引號、反斜線與換行時，傳給 osascript 的參數中不含該文字（只含檔案路徑）；`confirm: "off"` 時狀態回報未經確認。另在 macOS 手動確認一次真實對話框顯示專案、物件、需求文字、runner 與允許範圍，預設按鈕為拒絕。
+- [x] 3.1 [after: 2.2] 每次請求都先經過頁面程式碰不到的確認：依 design「瀏覽器外的確認以原生對話框為主、終端機一次性代碼為輔」新增 server/agent/confirm.mjs（原生對話框以檔案傳入文字、終端機代碼綁定請求雜湊、逾時視為拒絕、同時最多一個等待中的請求），測試以注入的確認替身取代真實對話框。完成時成立 spec「Out-of-browser confirmation」。驗證：新增 storybook-code-layer/test/test_agent_confirm.test.mjs 並通過：拒絕後沒有建立副本、沒有啟動程序；為請求 A 發出的代碼用於請求 B 不被接受；代碼只能用一次、三次錯誤後作廢；需求文字含引號、反斜線與換行時，傳給 osascript 的參數中不含該文字（只含檔案路徑）；`confirm: "off"` 時狀態回報未經確認。另在 macOS 手動確認一次真實對話框顯示專案、物件、需求文字、runner 與允許範圍，預設按鈕為拒絕。
 
 ## 4. 工作副本與啟動
 
@@ -19,7 +19,7 @@
 ## 5. 範圍關卡與匯入
 
 - [x] 5.1 [after: 4.2] 不合規的結果完全不進專案：依 design「範圍關卡只接受允許清單內既有檔案的修改」新增 server/agent/scope-gate.mjs。完成時成立 spec「Scope gate」。驗證：新增 storybook-code-layer/test/test_agent_scope_gate.test.mjs 並通過該規格範例表的七列，每個被拒的案例都列出違規路徑與原因代碼，且真實工作區零寫入；`agent.allowedGlobs` 縮小範圍後，原本允許的元件原始碼修改被拒。
-- [x] 5.2 [after: 5.1] 合規的結果成為一筆可還原的套用：依 design「匯入是一筆可還原的套用」新增 server/agent/import.mjs，交易支援 `agent-import` 紀錄與 agent 模式的 lock。完成時成立 spec「Import as one undoable apply」。驗證：test_agent_runs.test.mjs 新增並通過：兩個樣式表的修改匯入後還原，位元組與之前相同；修改 token 真相檔時鏡像在同一筆交易更新且兩者相同；執行期間真實檔案被改過時為 stale 並零寫入；檢查在副本上失敗時零寫入；執行中送出的 apply、undo、反向套用、鏡像同步都以 `agent-run-active` 被拒，執行結束後成功；匯入途中注入失敗時由既有的回滾還原。
+- [x] 5.2 [after: 5.1] 合規的結果成為一筆可還原的套用：依 design「匯入是一筆可還原的套用」在 server/transaction.mjs 新增 `importAgentChanges`（實作時沒有另開 import.mjs），交易支援 `agent-import` 紀錄與 agent 模式的 lock。完成時成立 spec「Import as one undoable apply」。驗證：test_agent_runs.test.mjs 新增並通過：兩個樣式表的修改匯入後還原，位元組與之前相同；修改 token 真相檔時鏡像在同一筆交易更新且兩者相同；執行期間真實檔案被改過時為 stale 並零寫入；檢查在副本上失敗時零寫入；執行中送出的 apply、undo、反向套用、鏡像同步都以 `agent-run-active` 被拒，執行結束後成功；匯入途中注入失敗時由既有的回滾還原。
 
 ## 6. 生命週期與紀錄
 
@@ -36,4 +36,4 @@
 ## 8. 文件、登錄與端對端
 
 - [x] 8.1 [after: 7.4] 使用者與 agent 都知道如何安全地啟用：更新 storybook-code-layer/SKILL.md（啟用前必須向使用者說明的內容、`enable_agent.mjs` 的用法、不得代替使用者同意）、README.md（威脅模型摘要、兩種確認方式、範圍關卡會拒絕什麼、成本提示、停用方式）、repo 的 README.md、docs/skills-usage.md、docs/skills-guide.html、scripts/skill-dependencies.json（對 agent-automation-orchestrate 的 support 相依），以及 docs/code-layer-guide.html（`GUIDE_VERSION` 1.3.0、更新紀錄、新增「請 AI 改」旅程並說明確認與還原、常見問題「要花錢嗎」「AI 會改到哪些檔」、模擬器加入 AI 按鈕與對話框，維持亮色、簡潔，重新發布到同一個 artifact）；`install_code_layer.mjs --check` 列出 agent 的就緒狀態；模板版本 1.3.0，重建清單並在 KNOWN_MANIFESTS.json 記錄 1.3.0。驗證：`node storybook-code-layer/scripts/build_template_manifest.mjs --check`、`node scripts/install_agent_skills.mjs --agent all --scope user --skill storybook-code-layer --dry-run`、`node --test scripts/test_install_agent_skills.mjs` 通過；說明文件以 headless 瀏覽器檢查通過（每段旅程走到最後、沒有 script 錯誤、1280 與 400 寬沒有水平捲動）；內容審閱 SKILL.md 與 README 中每個指令可照抄執行；`spectra validate add-code-layer-ai-dialog` 通過。
-- [ ] 8.2 [after: 8.1] 以真實 CLI 在試驗場走一次（需要使用者在場，會產生一次請求的用量）：在 80sJP-Fable 啟用 agent，從 Hanko story 的對話框送出一個現有寫入做不到的小修改（例如把某個字面值的 `max-inline-size` 改綁到既有的 token），在原生對話框按允許。開始前記錄試驗場的雜湊基準與還原堆疊（使用者自己的套用不得被還原）。驗證：執行結束為已匯入，面板列出被改的檔；程序清單中找不到需求文字；按還原後試驗場所有檔案與執行前逐位元組相同；再送一次並在原生對話框按拒絕，沒有啟動任何程序；從終端機啟動與以背景方式啟動 Storybook 兩種情況下原生對話框都會出現（不出現時記錄並確認自動改用終端機代碼）；把觀察到的耗時與用量記入 README。
+- [x] 8.2 [after: 8.1] 以真實 CLI 在試驗場走一次（需要使用者在場，會產生一次請求的用量）：在 80sJP-Fable 啟用 agent，從 Hanko story 的對話框送出一個現有寫入做不到的小修改（例如把某個字面值的 `max-inline-size` 改綁到既有的 token），在原生對話框按允許。開始前記錄試驗場的雜湊基準與還原堆疊（使用者自己的套用不得被還原）。驗證：執行結束為已匯入，面板列出被改的檔；程序清單中找不到需求文字；按還原後試驗場所有檔案與執行前逐位元組相同；再送一次並在原生對話框按拒絕，沒有啟動任何程序；從終端機啟動與以背景方式啟動 Storybook 兩種情況下原生對話框都會出現（不出現時記錄並確認自動改用終端機代碼）；把觀察到的耗時與用量記入 README。

@@ -2268,7 +2268,9 @@ async function stage14(cdp) {
     await selectChild(cdp, "Badge Seal › content");
     const literal = await openRow(cdp, "maxInlineSize");
     assert.deepEqual([literal.editable, literal.readonly, literal.picker, literal.reason], ["false", "raw-value", null, "寫死的數值，沒有綁定 token"]);
-    assert.equal(literal.text, "最大寬70%");
+    // max-inline-size is the width in horizontal writing and the height in vertical writing (the trial ground's hanko content is set tategaki).
+    const contentVertical = await inPreview(cdp, `return getComputedStyle(d.querySelector(".md-badge-seal--hanko .md-badge-seal__content")).writingMode.startsWith("vertical")`);
+    assert.equal(literal.text, contentVertical ? "最大高70%" : "最大寬70%");
     assert.match(literal.title, /寫死的數值，沒有綁定 token/);
     await key(cdp, "Escape");
     await waitRow(cdp, "maxInlineSize", (now) => !now.open, "closed");
@@ -3472,13 +3474,16 @@ async function stage16(cdp) {
     assert.match(lineOf("排列方向"), /flex-direction = row · 尚未宣告；可設為 row \| column \| row-reverse \| column-reverse 之一（會在 \.md-badge-seal 新增一行，storybook\/src\/components\/badge-seal\/BadgeSeal\.css:3）/);
     assert.match(lineOf("交叉軸對齊"), /align-items（storybook\/src\/components\/badge-seal\/BadgeSeal\.css:6） = center · 可改成 flex-start \| center \| flex-end \| stretch \| baseline 之一（改 \.md-badge-seal 的這個宣告，storybook\/src\/components\/badge-seal\/BadgeSeal\.css:6）/);
     assert.match(lineOf("顯示方式"), /唯讀：display 只供檢視/);
-    // The content box stacks its children: its main axis is vertical, so distribution runs top to bottom and alignment left to right.
+    // The content box stacks its children (a column): in horizontal writing distribution runs top to bottom and alignment left to right;
+    // in vertical-rl writing (the trial ground's hanko content) the block axis runs right to left and the inline axis top to bottom.
     await traceOf(cdp, SEAL_CONTENT, { fresh: true });
+    const contentWriting = await inPreview(cdp, `return getComputedStyle(d.querySelector(".md-badge-seal--hanko .md-badge-seal__content")).writingMode`);
+    const sides = contentWriting === "vertical-rl" ? { main: ["靠右", "靠左"], cross: ["靠上", "靠下"] } : { main: ["靠上", "靠下"], cross: ["靠左", "靠右"] };
     const justify = await openLayoutRow(cdp, "justifyContent");
-    assert.deepEqual(justify.options.slice(0, 3).map((o) => o.text), ["靠上flex-start", "置中✓", "靠下flex-end"]);
+    assert.deepEqual(justify.options.slice(0, 3).map((o) => o.text), [`${sides.main[0]}flex-start`, "置中✓", `${sides.main[1]}flex-end`]);
     await key(cdp, "Escape");
     const align = await openLayoutRow(cdp, "alignItems");
-    assert.deepEqual(align.options.slice(0, 3).map((o) => o.text), ["靠左flex-start", "置中✓", "靠右flex-end"]);
+    assert.deepEqual(align.options.slice(0, 3).map((o) => o.text), [`${sides.cross[0]}flex-start`, "置中✓", `${sides.cross[1]}flex-end`]);
     await key(cdp, "Escape");
   });
 

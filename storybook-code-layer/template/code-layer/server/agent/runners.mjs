@@ -28,9 +28,11 @@ export const RECIPES = {
     // No shell, file tools confined to the working directory, permission settings of the user and the project ignored.
     // --restricted alone still loads MCP servers, claude.ai connectors included (real run, 2026-11-26: 123 connector
     // tools were handed to the agent); --strict-mcp-config with no --mcp-config loads none.
-    args: () => ["--add-dir", "{workspace}", "--restricted", "--strict-mcp-config", "--tools", "Read", "Write", "Edit", "Glob", "Grep", "--permission-mode", "acceptEdits", "--permission-prompts", "none", "-p", "{prompt}"],
+    // --no-session-persistence: otherwise every run, request text included, is kept under ~/.claude/projects/
+    // (real runs, 2026-11-26: one folder per request, outside the state directory's clean-up).
+    args: () => ["--add-dir", "{workspace}", "--restricted", "--strict-mcp-config", "--no-session-persistence", "--tools", "Read", "Write", "Edit", "Glob", "Grep", "--permission-mode", "acceptEdits", "--permission-prompts", "none", "-p", "{prompt}"],
     helpArgs: ["--help"],
-    flags: ["--add-dir", "--restricted", "--strict-mcp-config", "--tools", "--permission-mode", "--permission-prompts"],
+    flags: ["--add-dir", "--restricted", "--strict-mcp-config", "--no-session-persistence", "--tools", "--permission-mode", "--permission-prompts"],
   },
   codex: {
     id: "codex",
@@ -195,6 +197,24 @@ export async function probeRunner(runner, { node, spawnImpl } = {}) {
   return problems;
 }
 
+/**
+ * What the probe results depend on: the runner file and, for each command, the
+ * file it resolves to and that file's modification time. A tool that updates
+ * itself while Storybook runs changes this, so it is checked again.
+ */
+export function probeKey(read) {
+  const parts = [String(read.mtimeMs)];
+  for (const runner of read.data.runners) {
+    try {
+      const real = fs.realpathSync(runner.command);
+      parts.push(`${real}@${fs.statSync(real).mtimeMs}`);
+    } catch {
+      parts.push(`${runner.command}@missing`);
+    }
+  }
+  return parts.join("|");
+}
+
 /** Problems that can be told without running anything: the binding, the file, the paths. */
 export function staticProblems(config, read) {
   if (!config.agent.enabled) return [{ code: "binding-disabled", detail: "agent.enabled is not true in the project binding" }];
@@ -203,7 +223,13 @@ export function staticProblems(config, read) {
   const problems = [];
   if (!isExecutable(read.data.node)) problems.push({ code: "node-missing", detail: read.data.node });
   if (!fs.existsSync(read.data.orchestratorRunTask)) problems.push({ code: "orchestrator-missing", detail: read.data.orchestratorRunTask });
-  for (const runner of read.data.runners) if (!isExecutable(runner.command)) problems.push({ code: "runner-missing", runner: runner.id, detail: runner.command });
+  for (const runner of read.data.runners) {
+    if (!isExecutable(runner.command)) problems.push({ code: "runner-missing", runner: runner.id, detail: runner.command });
+    // A runner file written by an older version lacks options the current recipe depends on (1.3.1: --no-session-persistence).
+    const recipe = RECIPES[runner.id];
+    const missing = recipe ? recipe.flags.filter((flag) => !runner.args.includes(flag)) : [];
+    if (missing.length) problems.push({ code: "runner-recipe-outdated", runner: runner.id, detail: missing.join(" ") });
+  }
   return problems;
 }
 

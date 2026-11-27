@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "name": "storybook-code-layer",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "installDir": ".storybook/code-layer",
   "projectOwned": [
     "INSTALL_RECEIPT.json",
@@ -55,8 +55,8 @@
     },
     {
       "path": "manager/components/AgentDialog.tsx",
-      "sha256": "sha256:6349e76929b5dc8882221e310f09ed1b726f5a561c3a8290bfe5cee82e57c2a1",
-      "bytes": 9960
+      "sha256": "sha256:d6cd3a2242fe7f80451883439e2d4f7ea06bef69d1ad5a4ffc137ef6173b3ae7",
+      "bytes": 10172
     },
     {
       "path": "manager/components/AgentRunReport.tsx",
@@ -120,7 +120,7 @@
     },
     {
       "path": "package.json",
-      "sha256": "sha256:7d072abcde22a5393f61fdbcc58f1202620f52ec80b890c75c8a61f43a86bb3a",
+      "sha256": "sha256:e51df9c58c9f61a525b46a2fccb28241d5a6778a3e98dac5671320cd28692b77",
       "bytes": 64
     },
     {
@@ -225,8 +225,8 @@
     },
     {
       "path": "server/agent/confirm.mjs",
-      "sha256": "sha256:aa2f200ff54fa147c66972d1315e5a36cccd3605f102db4f7135a1a59e46861f",
-      "bytes": 9098
+      "sha256": "sha256:9ba0d121f7b140d9a04fe87e8386e5206a59249aa5c528a7161b036a968e23aa",
+      "bytes": 9763
     },
     {
       "path": "server/agent/contract.mjs",
@@ -240,8 +240,8 @@
     },
     {
       "path": "server/agent/messages.confirm.mjs",
-      "sha256": "sha256:754ee6cc7c1771b90b62d48be96f25b08ca0a0cd60c74cd17618eb8bf6b97ccd",
-      "bytes": 1698
+      "sha256": "sha256:f731d15f4785693387c1724b104b87436ff02a93f9d5f68a5ac66e9c0a7f8480",
+      "bytes": 2058
     },
     {
       "path": "server/agent/request-file.mjs",
@@ -250,18 +250,18 @@
     },
     {
       "path": "server/agent/routes.mjs",
-      "sha256": "sha256:4f5f36e7710a7fdee5ed830e4112457f8b3d8c4bf2923a855777d1c1f36f5b78",
-      "bytes": 2204
+      "sha256": "sha256:2821c7013c6f31ae26fb5cbba14b7452ea62b7f96bb782ac09a179581a49f58f",
+      "bytes": 4174
     },
     {
       "path": "server/agent/runners.mjs",
-      "sha256": "sha256:9dfe9e2df8adc885fd2d7421f32c0871d8fd95ec97c6b8a86eaf80fca9855c49",
-      "bytes": 10432
+      "sha256": "sha256:9958f078c085c853c7e2aa16d60b9d2243bdecc3b94e306e66cd0f13dfb5b897",
+      "bytes": 11659
     },
     {
       "path": "server/agent/runs.mjs",
-      "sha256": "sha256:1970baea9472382ab10e1972024786d8aa16a9a5b003fe9ccf3ecceb371eb1c3",
-      "bytes": 25797
+      "sha256": "sha256:f17a40121c2f9c2531094e255d0d6abda729d810906dc8fc8fed9d01ce71541d",
+      "bytes": 26150
     },
     {
       "path": "server/agent/scope-gate.mjs",
@@ -390,8 +390,8 @@
     },
     {
       "path": "server/write-routes.mjs",
-      "sha256": "sha256:e26df5415159627fcfbc690888c21a17d2cd660900d58415bc72216fe4f6f4a1",
-      "bytes": 4421
+      "sha256": "sha256:3c51c9549d71f5e18058ade9026a21c980aa52ee2805e3bad122dbe6f154b794",
+      "bytes": 4571
     },
     {
       "path": "shared/api-contract.d.mts",
@@ -470,13 +470,13 @@
     },
     {
       "path": "shared/messages.en.ts",
-      "sha256": "sha256:9d7c16f0107c5afd1faf66b3b8570928f8cbdc6daa2061ce8570511ad7051ec5",
-      "bytes": 35421
+      "sha256": "sha256:048e87c12cad97565d00ce7f0bc598cfa813344630a535c62ff1e05e1e885e39",
+      "bytes": 35554
     },
     {
       "path": "shared/messages.zh-Hant.ts",
-      "sha256": "sha256:6dd674a4bcb780b9ea5b9c42988182aa220a03b4f67ea779c55a1a698182fade",
-      "bytes": 33760
+      "sha256": "sha256:7dd574c11408cfd3f54def530ee0603dcc3be2a546d6df6723d10b35dca0b00f",
+      "bytes": 33889
     },
     {
       "path": "shared/pairing.d.mts",

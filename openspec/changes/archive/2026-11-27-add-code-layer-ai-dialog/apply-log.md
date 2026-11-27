@@ -107,12 +107,59 @@
 - 匯入 `BadgeSeal.css` 與 `badge-seal.md`：CSS 新增 `.md-badge-seal--hanko .md-badge-seal__content { writing-mode: vertical-rl; text-orientation: upright; }`，規格補一句直書。程序清單監看沒有任何程序的參數含預備文字的字串。
 - 套用後指令產生的 `docs/design-system/index.html` 與 `review.html` 每次都寫入產生時間（各一行），同樣的來源產生兩次也不同。所以「還原後所有檔案逐位元組相同」對這兩個檔只能做到「除了產生時間那一行」，其他 499 個檔要逐位元組相同。預期狀態已在暫存副本上算好（`scratchpad/real-run/docs-check/`）。
 
-## 尚未完成
+## 第二次真實執行與收尾（2026-11-27，3.1 與 8.2 完成）
 
-- 1.3.0 對既有功能的回歸：`run_core_loop_browser.mjs --stage all`、`run_live_api.mjs`、`run_build_check.mjs`（要停掉 Storybook）。這三項會在試驗場套用、還原或停掉 6006；使用者正在使用工具，要等使用者方便的時段。
-- 回歸之前先以 `install_code_layer.mjs --update` 更新試驗場：發布前把一句新文字的「檢查器」改成全工具一致的「檢視器」，試驗場的安裝副本因此落後一個檔（`shared/messages.zh-Hant.ts`）。回歸若需要再改模板，重新執行 `--record-release` 即可取代 1.3.0 的紀錄。
-- 3.1 的人工確認（macOS 真實對話框的內容與預設按鈕）併入 8.2。
-- 8.2 以真實 CLI 在試驗場走一次：需要使用者在場，會產生一次請求的用量。
+1.3.0 已於 11-26 提交並推上 main（fb12143）。
+
+使用者的兩個決定：
+
+- 第一次執行的「待使用者決定 2」：加上 `--no-session-persistence`，並刪除既有的 3 個 `~/.claude/projects/*code-layer-agent*` 資料夾（已刪）。1.3.0 已發布，所以不重新記錄 1.3.0，改升為 **1.3.1**（`KNOWN_MANIFESTS.json` 記錄 1.3.1）。舊 runner 檔的參數是啟用時寫入的，README 註明升級後要重跑啟用腳本。
+- 「待使用者決定 3」（模型與費用）：這次不改，併入 `add-code-layer-runner-fallback`，讓啟用腳本可以指定每個工具的模型。
+
+試驗場以 `--update` 更新到 1.3.1（`package.json`、`server/agent/runners.mjs`），重跑啟用腳本，runner 檔帶有 `--no-session-persistence`。單元測試 185 項中 182 通過、3 略過。
+
+程序監看：每 0.2 秒記錄一次程序清單。以帶有比對字串的假程序做正向對照，確認抓得到。之後我自己的指令都不含比對字串。基準為試驗場 463 個檔的雜湊（兩個產生的文件遮掉產生時間那一行，其餘逐位元組比對）。
+
+| 檢查 | 結果 |
+| --- | --- |
+| 背景啟動（`nohup`）下送出 Hanko 圓角請求、按允許 | 原生對話框出現，內容有專案、元素、需求文字、Runner、允許範圍，預設按鈕是「拒絕」（3.1 的人工確認）；Claude Code 執行 17.1 秒，匯入 `BadgeSeal.css`（corner-sm → corner-md）與 `badge-seal.md` |
+| 程序參數 | claude 的命令列含 `--strict-mcp-config --no-session-persistence`；沒有任何程序的參數含需求文字 |
+| 對話紀錄 | `~/.claude/projects/` 沒有新增資料夾 |
+| 按還原 | 463 個檔與基準相同（0 個不同） |
+| Cursor agent 啟動的 Storybook 下按拒絕 | `denied`（`confirmation-denied`）；只有 `osascript`，沒有 `claude -p`；沒有工作副本；檔案不變 |
+| 從終端機前景啟動（`ttys036`、上層為 zsh）下按拒絕 | 原生對話框出現；`denied`；沒有 `claude -p`；檔案不變 |
+| 回歸：`run_live_api.mjs` | 10/10 |
+| 回歸：`run_core_loop_browser.mjs --stage all` | 77/79。14.3 與 16.8 失敗，原因是試驗場的 Hanko 內容框在 11-26 被使用者改成直書（`writing-mode: vertical-rl`）：`max-inline-size` 在直書是高度，column 容器的主軸由右到左，工具顯示「最大高」「靠右／靠左」是正確的，測試把橫書寫死了。改成依實際書寫方向決定預期值後，stage 14、16 重跑 17/17 |
+| 回歸：`run_build_check.mjs` | 3/3（靜態建置不含任何 Code Layer 程式碼） |
+| 回歸之後的試驗場 | 463 個檔與基準相同 |
+
+另外：Cursor 的 agent 在 Storybook 被停掉後約一分鐘，自動重新執行了 `npm run storybook`。之後在試驗場停掉 Storybook 時，要先在 Cursor 停掉那個指令。
+
+## verify 與 review 之後的修正（2026-11-27，併入 1.3.1）
+
+`/spectra-verify` 沒有 Critical，6 個 Warning、5 個 Suggestion；`/spectra-review` 沒有 Critical，3 個 Warning、3 個 Suggestion。處理如下：
+
+| 發現 | 處理 |
+| --- | --- |
+| verify W1 規格說沒結束都能取消，但 checking 不能 | 規格改為「除了正在檢查並匯入時」（design 本來就這樣寫） |
+| verify W2 規格說每次匯入都跑檢查 | 規格改為「改到 token 真相檔時」（與一般套用相同） |
+| verify W3 執行中對話框沒有 runner | 對話框狀態列在核准後到結束前顯示 runner；瀏覽器 A8 加斷言 |
+| verify W4 design 寫摘要有 port 與 story | design 改成實際內容，說明為何不列 |
+| verify W5 1.3.1 沒寫回文件 | design 的參數清單、遷移計畫、提案的版本補上 |
+| verify W6 唯讀時 `/agent/*` 404、頁面一直顯示「正在檢查」；停用時查詢、確認碼、取消不回 disabled | 唯讀伺服器註冊只回報狀態的 agent 路由（原因 `read-only`），其他路由拒絕；停用時三條路由回 `agent-disabled` 附原因；兩個新測試 |
+| verify S2 物件參照只寫檔名的 CSS 行不被檢查 | 正規式改為檔名後接空白或行尾；新增測試案例 |
+| verify S4 提案的程式清單與任務 5.2 過時 | 改成實際的檔案 |
+| review 1 舊 runner 檔升級後沒有提示 | `staticProblems` 檢查 runner 檔的參數含目前配方的每個旗標，缺少時 `runner-recipe-outdated`；SKILL.md 第 4 節補上重跑啟用腳本；新測試 |
+| review 2 工具在 Storybook 執行期間自動更新不會重新檢查 | 探測快取以 runner 檔與每個指令解析後的實際檔案及修改時間為依據（`probeKey`）；新測試 |
+| review 3 接續回答時確認摘要截掉回答 | 接續請求的摘要先列「你的回答」（600 字），原本的需求與 AI 的問題各截到 200 字；新測試 |
+| review 5 啟用腳本另寫一份寫檔 | 改用 `writeRunnerFile` |
+| review 6 使用說明仍是 1.3.0 | `GUIDE_VERSION` 1.3.1、更新紀錄、模擬器的進度也顯示 runner；headless 檢查七段旅程都走到最後、沒有 script 錯誤、1280 與 400 寬沒有水平捲動；重新發布到同一個 artifact（第 5 版） |
+
+移到 `add-code-layer-runner-fallback`（之後以 `/spectra-ingest` 併入）：verify S1（Codex 可能把對話存在 `~/.codex/sessions`，和 Codex 試跑一起驗證）、verify S3（整體時限沒有測試；該 change 本來就要把時限計算抽出來測）、使用者決定的「啟用腳本可指定每個工具的模型」。
+
+記為已知限制（README）：review 4（建立與比對副本是同步 I/O，工作區很大時 Storybook 會停住幾秒）、verify S5（以訊號強制結束 Storybook 時 AI 不會一起結束，下次啟動才標為中斷）。
+
+驗證：單元測試 190 項中 187 通過、3 略過（多了 5 項）；瀏覽器 `run_agent_browser.mjs` 12/13，A6 失敗是因為試驗場綁定固定了 `"locale": "zh-Hant"`（綁定優先於瀏覽器語言），暫時拿掉後 A6 1/1；teardown 後綁定與 runner 檔恢復原狀。`build_template_manifest.mjs --check` current，`test_install_agent_skills.mjs` 35/35，`spectra validate` valid。
 
 ## 需要知道的事
 
@@ -121,4 +168,4 @@
 
 - 已知、不在本 change 修正：選取元素的 trace 在 live 預覽移除時不會重新量測。帶著預覽重新整理後再捨棄，檢視器的列會顯示預覽時的值，直到重新選取該元素。AI 的「屬性改變」已改為送出時重新量測，不受影響。
 - 確認碼模式下，Storybook 的終端機會印出請求文字（給人核對用，屬於設計）。
-- 沒有提交：cm-skills 的變更都在分支 `feat/storybook-code-layer` 的工作目錄裡。
+- 1.3.0 於 2026-11-26 提交（fb12143）並合併進 main；1.3.1 的變更在 main 的工作目錄裡，隨歸檔一起提交。

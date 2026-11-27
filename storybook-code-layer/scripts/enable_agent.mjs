@@ -26,7 +26,7 @@ import { SKILL_ROOT, TEMPLATE_DIR } from "./lib/files.mjs";
 
 const { loadConfig } = await import(pathToFileURL(path.join(TEMPLATE_DIR, "server", "config.mjs")).href);
 const runnersModule = await import(pathToFileURL(path.join(TEMPLATE_DIR, "server", "agent", "runners.mjs")).href);
-const { RECIPES, candidatePaths, firstLine, probe, readRunnerFile, runnerFileProblems, runnerFilePath } = runnersModule;
+const { RECIPES, candidatePaths, firstLine, probe, readRunnerFile, runnerFileProblems, runnerFilePath, writeRunnerFile } = runnersModule;
 
 export const ENABLE_USAGE =
   "usage: enable_agent.mjs --project-root <storybook root> [--runners claude[,codex]] [--codex-model <id>] [--claude <path>] [--codex <path>] [--orchestrator-root <dir>] [--timeout-ms <n>] [--disable] [--dry-run] [--json]";
@@ -160,10 +160,8 @@ async function main() {
         removed = true;
       }
     } else {
-      fs.mkdirSync(path.dirname(plan.file), { recursive: true });
-      const temp = `${plan.file}.${process.pid}.tmp`;
-      fs.writeFileSync(temp, `${JSON.stringify(plan.data, null, 2)}\n`, { mode: 0o600 });
-      fs.renameSync(temp, plan.file);
+      // The same writer the server's tests use: it checks the shape, then writes owner-only by rename.
+      writeRunnerFile(plan.stateDir, plan.data);
       written = true;
     }
   }

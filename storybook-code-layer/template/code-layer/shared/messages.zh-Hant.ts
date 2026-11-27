@@ -541,6 +541,7 @@ export const zhHant = {
   "agent.reason.runner-broken": "{runner} 無法執行：{detail}",
   "agent.reason.runner-version-changed": "{runner} 的版本變了（{detail}），需要重新設定。",
   "agent.reason.runner-flag-missing": "{runner} 不支援需要的參數 {detail}。",
+  "agent.reason.runner-recipe-outdated": "{runner} 的設定是舊版產生的（缺少 {detail}），請重跑啟用腳本。",
   "agent.reason.runner-check-failed": "檢查命令列工具時出錯：{detail}",
   "agent.reason.read-only": "Code Layer 伺服器目前是唯讀模式（{detail}）。",
   "agent.reason.confirmation-denied": "請求被拒絕了。",

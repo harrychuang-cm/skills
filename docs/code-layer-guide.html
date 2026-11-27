@@ -833,6 +833,16 @@
     </div>
     <div class="log">
       <article>
+        <div class="v">1.3.1<small>2026-11-27</small></div>
+        <ul>
+          <li>請 AI 修改時，Claude Code 不再在你的電腦上留下這次的對話紀錄。從 1.3.0 升級後要重跑一次啟用腳本；重跑之前，✦ 會說明「設定是舊版產生的」。</li>
+          <li>AI 工作時，對話框也會寫出是哪個 AI 工具在做。</li>
+          <li>回答 AI 的問題時，電腦跳出的確認視窗會把你的回答完整列在最前面，原本的需求和 AI 的問題放在下面當參考。</li>
+          <li>Code Layer 伺服器是唯讀狀態時，✦ 會說出真正的原因，不再一直顯示「正在檢查命令列工具」。</li>
+          <li>AI 命令列工具在 Storybook 開著的時候自動更新，也會重新檢查。</li>
+        </ul>
+      </article>
+      <article>
         <div class="v">1.3.0<small>2026-11-26</small></div>
         <ul>
           <li>新增「請 AI 修改」（選用，預設關閉）：按選取框標籤上的「AI」或標題列的 ✦，在檢視器旁邊打開對話框，用一句話描述想要的修改，交給你電腦上的 AI 命令列工具。</li>
@@ -890,8 +900,8 @@
 <script>
 (() => {
   "use strict";
-  const GUIDE_VERSION = "1.3.0";
-  const GUIDE_UPDATED = "2026-11-26";
+  const GUIDE_VERSION = "1.3.1";
+  const GUIDE_UPDATED = "2026-11-27";
 
   const $ = (sel, root = document) => root.querySelector(sel);
   const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -1366,7 +1376,7 @@
     const cancel = !run.final && run.state !== "checking" ? `<button type="button" class="chip-btn" data-act="ai-cancel">${esc(T.aiCancel)}</button>` : "";
     return `<div class="ai-run" data-part="ai-run" data-state="${run.state}">
       ${run.final ? "" : `<div class="pop-note">${esc(T.aiYourRequest)}</div><div class="ai-plain">${esc(run.text)}</div>`}
-      <div class="ai-run-state"><strong>${esc(T.aiState[run.state])}<span data-ai-elapsed>${esc(aiElapsed(T, run))}</span></strong>${cancel}</div>
+      <div class="ai-run-state"><strong>${esc(T.aiState[run.state])}${!run.final && !waiting ? ` · ${esc(AI_RUNNER)}` : ""}<span data-ai-elapsed>${esc(aiElapsed(T, run))}</span></strong>${cancel}</div>
       ${waiting ? `<div class="pop-note" data-part="ai-confirm-note">${esc(T.aiConfirmNative)}</div>` : ""}
       ${run.final ? `<div class="pop-note">${esc(T.aiSeeReport)}</div>` : ""}
     </div>`;

@@ -50,6 +50,20 @@ test("the summary names the project, the element, the runner, what may change, a
   assert.ok(!long.includes("x".repeat(601)));
 });
 
+test("a follow-up's summary shows the answer in full first; the earlier request and the question are short context", () => {
+  const original = "原".repeat(400);
+  const question = "問".repeat(250);
+  const answer = "可以，順便改 hover 色";
+  const text = confirmationSummary({ locale: "zh-Hant", projectId: "p", element: "e", runner: "r", allowed: [], text: `${original}\n\n${question}\n\n${answer}`, followUp: { original, question, answer } });
+  assert.ok(text.includes(`你的回答：\n${answer}`), "the answer is shown as typed");
+  assert.ok(text.indexOf(answer) < text.indexOf("AI 的問題："), "the answer comes before the context");
+  assert.ok(text.includes("原".repeat(200)) && !text.includes("原".repeat(201)), "the earlier request is cut at 200 characters");
+  assert.match(text, /只顯示前 200 字，全文 400 字/);
+  assert.match(text, /只顯示前 200 字，全文 250 字/);
+  const en = confirmationSummary({ locale: "en", projectId: "p", element: "e", runner: "r", allowed: [], text: "x", followUp: { original: "o", question: "q", answer: "yes" } });
+  assert.match(en, /Your answer: \nyes|Your answer:\nyes|Your answer: yes/);
+});
+
 test("native dialog: the request text is read from a file, never passed as an argument; the answer decides", async () => {
   const dir = tempDir("code-layer-confirm-");
   for (const answer of ["approve", "deny", "timeout"]) {

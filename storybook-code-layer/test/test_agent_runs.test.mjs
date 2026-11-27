@@ -23,6 +23,7 @@ import {
   TOKENS_COMP,
   agentTraps,
   agentWorkspace,
+  fakeRunnerRecord as fakeRunnerRecordFor,
   postcss,
   quiet,
   requestBody,
@@ -112,6 +113,36 @@ test("a runner file that names a missing tool, or a tool whose version changed, 
   assert.deepEqual(disabled.runs.status().reasons.map((r) => r.code), ["binding-disabled"]);
 });
 
+test("a runner file written before the current recipe is not ready and says to run the enable script again", async () => {
+  const { RECIPES } = await addon("server/agent/runners.mjs");
+  // A 1.3.0 runner file: the claude recipe of that version had no --no-session-persistence.
+  const oldArgs = RECIPES.claude.args().filter((a) => a !== "--no-session-persistence");
+  const w = await agentWorkspace({ runnerFile: { runners: [fakeRunnerRecordFor({ id: "claude", label: "Claude Code", args: oldArgs, flags: RECIPES.claude.flags.filter((f) => f !== "--no-session-persistence") })] } });
+  const status = w.runs.status();
+  assert.equal(status.ready, false);
+  assert.deepEqual(status.reasons.map((r) => [r.code, r.runner, r.detail]), [["runner-recipe-outdated", "claude", "--no-session-persistence"]]);
+  assert.throws(() => w.runs.submit(requestBody("x")), (e) => e.code === "agent-not-ready");
+});
+
+test("a tool that updates itself while the server runs is checked again", async () => {
+  const bin = tempDir("code-layer-tool-");
+  const tool = path.join(bin, "tool");
+  fs.writeFileSync(tool, "#!/bin/sh\necho 1.0.0\n", { mode: 0o755 });
+  const w = await agentWorkspace({ runnerFile: { runners: [fakeRunnerRecordFor({ command: tool, version: "1.0.0" })] } });
+  let probes = 0;
+  const runs = createAgentRuns({ config: w.config, engine: w.engine, postcss, log: quiet, confirmer: testConfirmer(), probeImpl: async () => { probes += 1; return []; } });
+  await runs.settled();
+  assert.equal(probes, 1);
+  runs.status();
+  assert.equal(probes, 1, "an unchanged tool is not probed again");
+  const later = new Date(Date.now() + 60000);
+  fs.utimesSync(tool, later, later);
+  assert.deepEqual(runs.status().reasons.map((r) => r.code), ["checking"], "the replaced tool is checked again before runs are ready");
+  await runs.settled();
+  assert.equal(probes, 2);
+  assert.equal(runs.status().ready, true);
+});
+
 test("a binding without the agent key resolves as before, with AI runs off", () => {
   const ws = tempDir();
   const raw = fixtureV1Config();
@@ -131,12 +162,12 @@ test("enable_agent: it finds the tools, runs only --version and help, and a dry 
   const bin = tempDir("code-layer-bin-");
   const claude = path.join(bin, "claude");
   // A stand-in that answers only what enable_agent asks: its version and its help.
-  fs.writeFileSync(claude, '#!/bin/sh\ncase "$1" in --version) echo "2.1.308 (Claude Code)";; --help) echo "--add-dir --restricted --strict-mcp-config --tools --permission-mode --permission-prompts";; *) exit 9;; esac\n', { mode: 0o755 });
+  fs.writeFileSync(claude, '#!/bin/sh\ncase "$1" in --version) echo "2.1.308 (Claude Code)";; --help) echo "--add-dir --restricted --strict-mcp-config --no-session-persistence --tools --permission-mode --permission-prompts";; *) exit 9;; esac\n', { mode: 0o755 });
   const calls = [];
   const probeImpl = async (command, args) => {
     calls.push([command, ...args]);
     if (args[0] === "--version") return { ok: true, code: 0, output: "2.1.308 (Claude Code)\n" };
-    return { ok: true, code: 0, output: "--add-dir --restricted --strict-mcp-config --tools --permission-mode --permission-prompts" };
+    return { ok: true, code: 0, output: "--add-dir --restricted --strict-mcp-config --no-session-persistence --tools --permission-mode --permission-prompts" };
   };
   const parsed = parseEnableArgs(["--project-root", made.projectRoot, "--orchestrator-root", ORCHESTRATOR_ROOT, "--dry-run"]);
   assert.equal(parsed.ok, true);
@@ -148,6 +179,9 @@ test("enable_agent: it finds the tools, runs only --version and help, and a dry 
   assert.equal(plan.data.runners[0].args.includes("--strict-mcp-config"), true);
   assert.equal(plan.data.runners[0].args.includes("--mcp-config"), false);
   assert.equal(plan.data.runners[0].flags.includes("--strict-mcp-config"), true, "a tool whose help lacks it is refused");
+  // No session kept on disk: Claude Code would otherwise store every run, request text included, under ~/.claude/projects/.
+  assert.equal(plan.data.runners[0].args.includes("--no-session-persistence"), true);
+  assert.equal(plan.data.runners[0].flags.includes("--no-session-persistence"), true, "a tool whose help lacks it is refused");
   assert.equal(plan.data.orchestratorRunTask, ORCHESTRATOR);
   assert.equal(fs.existsSync(path.join(made.config.stateDir, "agent-runners.json")), false, "planning wrote nothing");
   // A help text without a needed flag refuses the runner.
@@ -177,8 +211,8 @@ test("installing, checking, updating and deriving a binding never start an agent
 // ---- 2.2 the request guard ----------------------------------------------------------------
 
 async function startServer(w) {
-  const app = await createApp({ projectRoot: w.projectRoot, configFile: w.configFile, servedRoots: [w.projectRoot], log: quiet, postcss, extend: (a) => extendWithWrites(a, { confirmer: w.confirmer }) });
-  await app.agentRuns.settled();
+  const app = await createApp({ projectRoot: w.projectRoot, configFile: w.configFile, servedRoots: w.servedRoots ?? [w.projectRoot], log: quiet, postcss, extend: (a) => extendWithWrites(a, { confirmer: w.confirmer }) });
+  await app.agentRuns?.settled();
   const server = http.createServer((req, res) => {
     req.url = req.url.slice(API_BASE.length) || "/";
     void app.handle(req, res);
@@ -223,6 +257,7 @@ test("agent routes use the request guard and the limits; refusals come before an
       ["text over 2000 characters", requestBody("字".repeat(2001)), {}, 400, "schema-invalid"],
       ["reference over 16 KiB", requestBody("x", { reference: `CSS：sb/src/components/seal/Seal.css · .fx-seal\n${"a".repeat(16 * 1024)}` }), {}, 400, "schema-invalid"],
       ["a stylesheet not in the index", requestBody("x", { reference: "CSS：sb/src/components/ghost/Ghost.css · .fx-ghost（規則 #0，第 1 行）" }), {}, 400, "schema-invalid"],
+      ["a stylesheet not in the index, named without a selector", requestBody("x", { reference: "CSS：sb/src/components/ghost/Ghost.css" }), {}, 400, "schema-invalid"],
       ["an unknown key", { ...requestBody("x"), extra: 1 }, {}, 400, "schema-invalid"],
     ];
     for (const [label, body, headers, status, code] of cases) {
@@ -238,6 +273,40 @@ test("agent routes use the request guard and the limits; refusals come before an
     assert.equal((await s.get("/agent/status")).json.activeRunId, ok.json.runId);
     confirmer.answer(ok.json.runId, "deny");
     await waitFinal(s.app.agentRuns, ok.json.runId);
+  } finally {
+    await s.close();
+  }
+});
+
+test("while AI runs are off, the routes about one run answer disabled with the reasons", async () => {
+  const w = await agentWorkspace({ runnerFileWritten: false });
+  const s = await startServer(w);
+  try {
+    const runId = "20261127-083611-ai-889237";
+    const responses = [await s.get(`/agent/runs/${runId}`), await s.call(`/agent/runs/${runId}/confirm`, { code: "123456" }), await s.call(`/agent/runs/${runId}/cancel`, {})];
+    for (const r of responses) {
+      assert.deepEqual([r.status, r.json.error?.code], [409, "agent-disabled"], JSON.stringify(r.json));
+      assert.equal(r.json.error.details?.reasons?.[0]?.code ?? r.json.error.reasons?.[0]?.code, "runner-file-missing");
+    }
+  } finally {
+    await s.close();
+  }
+});
+
+test("a read-only server still answers the agent status with the real reason, and refuses requests", async () => {
+  const w = await agentWorkspace();
+  // The state directory inside a served root makes the whole server read-only.
+  const s = await startServer({ ...w, servedRoots: [w.ws] });
+  try {
+    assert.equal(s.app.agentRuns, undefined, "no AI runs on a read-only server");
+    const status = await s.get("/agent/status");
+    assert.equal(status.status, 200);
+    assert.deepEqual([status.json.ready, status.json.enabled, status.json.reasons.map((r) => r.code)], [false, true, ["read-only"]]);
+    assert.match(status.json.reasons[0].detail, /state-dir-served/);
+    assert.equal(status.json.limits.maxTextChars, 2000);
+    const refused = await s.call("/agent/runs", requestBody("x"));
+    assert.deepEqual([refused.status, refused.json.error?.code], [409, "agent-not-ready"]);
+    assert.equal(fs.existsSync(path.join(w.config.stateDir, "agent")) ? fs.readdirSync(path.join(w.config.stateDir, "agent")).length : 0, 0, "no run was created");
   } finally {
     await s.close();
   }

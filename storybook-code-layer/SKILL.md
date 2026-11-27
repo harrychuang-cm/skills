@@ -177,7 +177,7 @@ Each managed file is decided from three hashes — the new template, the receipt
 
 One conflict stops the whole update with zero writes. Show the conflicting files; `--force-managed` discards the person's changes to them and is theirs to choose. An installation without a receipt whose files equal a released template version (for example one made during the 0.1.0 proof phase) is adopted and updated. The binding is validated against the new template and never written; when it is no longer valid the update stops and says which key to change. A newer installation is never downgraded.
 
-After a successful update, restart Storybook.
+After a successful update, restart Storybook. When AI requests are enabled on this machine (`<stateDir>/agent-runners.json` exists), run `enable_agent.mjs` again after updating from 1.3.0: the runner file keeps the options it was written with, and 1.3.1 added `--no-session-persistence` to Claude Code's. Until then AI requests are not ready, with the reason `runner-recipe-outdated`.
 
 ## 5. Uninstall
 
@@ -196,7 +196,7 @@ Before enabling, tell the person in plain language and wait for their agreement.
 
 - The dialog in their browser will be able to start a paid command line tool that edits this project. Each request uses their own account and takes a while.
 - Every request waits for their approval outside the browser: a macOS dialog whose default button is "deny" and that shows the request, the element, the tool and the files the agent may change; or, where no dialog can be shown, a six-digit code printed in the terminal that runs Storybook. Unanswered requests are denied (60 s for the dialog, 180 s for a code).
-- The agent works on a copy of the workspace. Claude Code is started with file tools only (no shell, no MCP servers: their claude.ai connectors such as Gmail or Drive are not loaded); Codex keeps a shell inside its sandbox, and it also starts the MCP servers listed in the person's own Codex configuration (`~/.codex/config.toml`), which run outside that sandbox. That is why Codex is not used unless they ask for it; when their configuration lists MCP servers, name them and say that those servers would be available to the agent.
+- The agent works on a copy of the workspace. Claude Code is started with file tools only (no shell, no MCP servers: their claude.ai connectors such as Gmail or Drive are not loaded) and keeps no session on disk; Codex keeps a shell inside its sandbox, and it also starts the MCP servers listed in the person's own Codex configuration (`~/.codex/config.toml`), which run outside that sandbox. That is why Codex is not used unless they ask for it; when their configuration lists MCP servers, name them and say that those servers would be available to the agent.
 - Only modifications of existing files in the allowed set reach the project: the writable token sources, files under the component roots and the component specifications, narrowed by `agent.allowedGlobs` when set. New or deleted files, added or removed tokens, edits to token mirrors and CSS that does not parse make the whole result refused, and the project is not changed.
 - An accepted result is one apply: the inspector lists each changed file with its line counts, and undo puts every byte back.
 - To stop: `enable_agent.mjs --disable`, or `"enabled": false` in the binding.

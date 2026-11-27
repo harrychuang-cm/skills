@@ -22,7 +22,7 @@ import { buildContract, readRunSummary, writeContract } from "./contract.mjs";
 import { confirmationSummary } from "./confirm.mjs";
 import { launch } from "./launcher.mjs";
 import { readResult, requestMarkdown, writeRequestFile } from "./request-file.mjs";
-import { probeRunner, readRunnerFile, staticProblems } from "./runners.mjs";
+import { probeKey, probeRunner, readRunnerFile, staticProblems } from "./runners.mjs";
 import { allowedSet, judgeWorkCopy } from "./scope-gate.mjs";
 import { createWorkCopy, removeWorkCopy } from "./workcopy.mjs";
 
@@ -99,8 +99,8 @@ export function createAgentRuns({ config, engine, postcss, log = { info() {}, wa
   const specFiles = listSpecFiles(config.governance.componentSpecsDir);
   const runs = new Map();
   let active = null;
-  /** Readiness probes of the runner commands, by runner file mtime. */
-  let probed = { mtimeMs: null, problems: [], running: null };
+  /** Readiness probes of the runner commands, by the runner file and the commands as installed (probeKey). */
+  let probed = { key: null, problems: [], running: null };
 
   const runDir = (runId) => path.join(area, runId);
   const now = () => new Date().toISOString();
@@ -108,9 +108,9 @@ export function createAgentRuns({ config, engine, postcss, log = { info() {}, wa
   // ---- readiness -------------------------------------------------------------------
 
   function startProbe(read) {
-    const key = read.mtimeMs;
-    if (probed.mtimeMs === key && (probed.running || probed.done)) return;
-    probed = { mtimeMs: key, problems: [], running: null, done: false };
+    const key = probeKey(read);
+    if (probed.key === key && (probed.running || probed.done)) return;
+    probed = { key, problems: [], running: null, done: false };
     const mine = probed;
     mine.running = Promise.all(read.data.runners.map((runner) => probeImpl(runner, { node: read.data.node })))
       .then((lists) => {
@@ -266,7 +266,9 @@ export function createAgentRuns({ config, engine, postcss, log = { info() {}, wa
     try {
       // 1. Approval outside the page.
       const allowed = allowedSet(config, specFiles).describe();
-      const summary = confirmationSummary({ locale, projectId: config.projectId, element: run.element.label, runner: run.runner, allowed: allowed.paths, text });
+      // A follow-up shows the answer in full first: the earlier request and the question are only context.
+      const followUp = run.followUp ? { original: run.followUp.originalText, question: run.followUp.question, answer: run.answerText } : null;
+      const summary = confirmationSummary({ locale, projectId: config.projectId, element: run.element.label, runner: run.runner, allowed: allowed.paths, text, followUp });
       const ticket = confirmer.request({
         runId: run.runId,
         runDir: runDir(run.runId),
@@ -403,9 +405,10 @@ export function createAgentRuns({ config, engine, postcss, log = { info() {}, wa
       throw new ApiError(ready.reasons.some((r) => r.code === "binding-disabled" || r.code === "runner-file-missing") ? "agent-disabled" : "agent-not-ready", "AI runs are not ready", { reasons: ready.reasons });
     }
     if (active) throw new ApiError("agent-run-active", "another AI run is in progress", { runId: active.runId });
-    // The rule lines of a reference ("CSS: <file> · <selector> …") name the element's stylesheets: each must be indexed.
+    // The rule lines of a reference ("CSS: <file> · <selector> …") name the element's stylesheets: each must be indexed,
+    // with or without a selector after the file name.
     const known = knownStylesheets();
-    const named = [...new Set(request.reference.split("\n").map((line) => /^CSS(?:\uFF1A|:)\s*(\S+\.css)\s+·/.exec(line.trim())?.[1]).filter(Boolean))];
+    const named = [...new Set(request.reference.split("\n").map((line) => /^CSS(?:\uFF1A|:)\s*(\S+\.css)(?:\s|$)/.exec(line.trim())?.[1]).filter(Boolean))];
     const unknown = named.filter((file) => !known.has(file));
     if (unknown.length) throw new ApiError("schema-invalid", "the reference names stylesheets that are not in the index", { stylesheets: unknown.slice(0, 5) });
 
